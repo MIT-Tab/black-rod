@@ -1,0 +1,49 @@
+* Model Overview
+** Debater
+*** Name
+*** Pronouns (?)
+*** School
+**** Other affiliations (?)
+*** Graduation Year (?)
+**** Maybe just store something like eligibility_remaining
+*** VARISTY / NOVICE status
+** Team
+*** Debater 1 / Debater 2
+*** School
+**** Hybrid School
+** Tournament
+*** Name
+*** Year
+*** Properties
+**** Num teams
+**** Num novice teams
+**** Num novices
+*** Number of Rounds
+** Team Result
+*** TEAM
+*** TOURNAMENT
+*** Type of Break (VARSITY / NOVICE)
+*** Farthest advanced (either # of wins, or O/Q/S/F/C)
+*** This can actually be generated from a more general ROUND RESULT dump
+** Speaker Result
+*** SPEAKER
+*** TEAM RESULT
+*** Type of award given (VARSITY / NOVICE)
+*** Place (this should be intuited)
+** Round Result
+*** TOURNAMENT
+*** Round Number (or O,Q,S,F,C)
+*** gov TEAM
+*** opp TEAM
+*** Winner
+** Speaker Round Result
+*** TOURNAMENT
+*** Round Number
+*** SPEAKER
+*** Position (pm/lo/mo/mg)
+*** Score
+* Standings
+* Registration
+* Implementation Thoughts
+** Storing tab scratches and then reusing from tournament to tournament
+** Could also do some sort of API so people could pull data (if they want) / maybe implement with some sort of auth system

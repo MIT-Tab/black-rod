@@ -1,0 +1,20 @@
+# Git Flow Files
+gitflow/
+
+# Emacs Files
+*~
+*\#*
+
+# Compiled Python Files
+*.pyc
+
+# Virtual Env
+venv/
+
+# Django Files
+*db.sqlite3*
+media/*
+static_root/*
+
+# Weird Mac Files
+*.DS_STORE*
