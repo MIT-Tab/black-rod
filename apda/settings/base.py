@@ -118,3 +118,12 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/1.11/howto/static-files/
 
 STATIC_URL = '/static/'
+
+SCHOOL_YEARS = (
+    ('2018', '2018-2019'),
+    ('2019', '2019-2020'),
+    ('2020', '2020-2021')
+    ('2021', '2021-2022')
+)
+
+DEFAULT_SCHOOL_YEAR = '2018'

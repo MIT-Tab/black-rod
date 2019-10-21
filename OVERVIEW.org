@@ -28,7 +28,7 @@
 ** Speaker Result
 *** SPEAKER
 *** TEAM RESULT
-*** Type of award given (VARSITY / NOVICE)
+*** oType of award given (VARSITY / NOVICE)
 *** Place (this should be intuited)
 ** Round Result
 *** TOURNAMENT
