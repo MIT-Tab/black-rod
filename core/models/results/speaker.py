@@ -10,3 +10,8 @@ class SpeakerResult(models.Model):
 
     debater = models.ForeignKey(Debater,
                                 on_delete=models.CASCADE)
+
+    type_of_place = models.IntegerFIeld(choices=Debater.STATUS,
+                                        default=Debater.VARSITY)
+
+    place = models.IntegerField(default=-1)

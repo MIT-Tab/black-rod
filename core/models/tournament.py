@@ -9,8 +9,8 @@ class Tournament(models.Model):
 
     num_rounds = models.IntegerField(default=5)
 
-    school_year = models.CharField(choices=settings.SCHOOL_YEARS,
-                                   default=settings.DEFAULT_SCHOOL_YEAR)
+    school_year = models.CharField(choices=settings.SEASONS,
+                                   default=settings.DEFAULT_SEASON)
 
     num_teams = models.IntegerField(null=False)
     num_novice_teams = models.IntegerField(null=False)

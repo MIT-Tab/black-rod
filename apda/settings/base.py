@@ -119,11 +119,11 @@ USE_TZ = True
 
 STATIC_URL = '/static/'
 
-SCHOOL_YEARS = (
+SEASONS = (
     ('2018', '2018-2019'),
     ('2019', '2019-2020'),
     ('2020', '2020-2021')
     ('2021', '2021-2022')
 )
 
-DEFAULT_SCHOOL_YEAR = '2018'
+DEFAULT_SEASON = '2018'
