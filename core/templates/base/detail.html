@@ -1,0 +1,20 @@
+{% extends 'base/base.html' %}
+
+{% block content %}
+    <div class="row m-5">
+	<div class="col-lg-3">
+	    <div class="card m-2">
+		<div class="card-body">
+		    <h5 class="card-title">{{ object }}
+			{% include 'base/_buttons.html' %}
+		    </h5>
+		    <hr />
+		    {% block detail_view %}In Progress{% endblock %}
+		</div>
+	    </div>
+	</div>
+	<div class="col-lg-9">
+	    {% block added_information_view %}In Progress{% endblock %}
+	</div>
+    </div>
+{% endblock %}

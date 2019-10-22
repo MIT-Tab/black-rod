@@ -37,7 +37,17 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+
+    'webpack_loader',
+    'menu_generator',
+    'crispy_forms',
+    'import_export',
+    'django_tables2',
+
+    'core',
 ]
+
+CRISPY_TEMPLATE_PACK = 'bootstrap4'
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -118,3 +128,88 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/1.11/howto/static-files/
 
 STATIC_URL = '/static/'
+STATICFILES_DIRS = (
+    os.path.join(BASE_DIR, 'assets'),
+)
+
+SEASONS = (
+    ('2000', '2000-2001'),
+    ('2001', '2001-2002'),
+    ('2002', '2002-2003'),
+    ('2003', '2003-2004'),
+    ('2004', '2004-2005'),
+    ('2005', '2005-2006'),
+    ('2006', '2006-2007'),
+    ('2007', '2007-2008'),
+    ('2008', '2008-2009'),
+    ('2009', '2009-2010'),
+    ('2010', '2010-2011'),
+    ('2011', '2011-2012'),
+    ('2012', '2012-2013'),
+    ('2013', '2013-2014'),
+    ('2014', '2014-2015'),
+    ('2015', '2015-2016'),
+    ('2016', '2016-2017'),
+    ('2017', '2017-2018'),
+    ('2018', '2018-2019'),
+    ('2019', '2019-2020'),
+    ('2020', '2020-2021'),
+    ('2021', '2021-2022')
+)
+
+DEFAULT_SEASON = '2018'
+CURRENT_SEASON = '2018'
+
+WEBPACK_LOADER = {
+    'DEFAULT': {
+        'CACHE': not DEBUG,
+        'BUNDLE_DIR_NAME': 'webpack_bundles/', # must end with slash
+        'STATS_FILE': os.path.join(BASE_DIR, 'webpack-stats.json'),
+        'POLL_INTERVAL': 0.1,
+        'TIMEOUT': None,
+        'IGNORE': [r'.+\.hot-update.js', r'.+\.map']
+    }
+}
+
+AUTH_USER_MODEL = 'core.User'
+
+NAV_MENU_RIGHT = [
+]
+
+NAV_MENU_LEFT = [
+    {
+        'name': 'Home',
+        'url': 'core:index'
+    },
+    {
+        'name': 'Standings',
+        'url': 'core/',
+        'submenu': [
+            {
+                'name': 'Schools',
+                'url': 'core:school_list',
+                'root': True
+            }
+        ]
+    },
+    {
+        'name': 'Admin',
+        'url': '/admin/',
+        'validators': ['menu_generator.validators.is_superuser']
+    },
+    {
+        'name': 'Login',
+        'url': '/auth/login/',
+        'validators': ['menu_generator.validators.is_anonymous']
+    },
+    {
+        'name': 'Logout',
+        'url': '/auth/logout/',
+        'validators': ['menu_generator.validators.is_authenticated']
+    }
+]
+
+LOGIN_REDIRECT_URL = '/'
+LOGOUT_REDIRECT_URL = '/'
+
+DJANGO_TABLES2_TEMPLATE = 'base/table.html'

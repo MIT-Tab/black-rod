@@ -1,0 +1,57 @@
+{% extends "base/base.html" %}
+
+{% block content %}
+    <div class="row m-5">
+	<div class="col">
+	    <div class="card">
+		<div class="card-body">
+		    <h2 class="card-title">TOTY</h2>
+		    <small>Team of the Year</small>
+		    <hr />
+		    <table class="table table-bordered">
+			<thead>
+			    <th scope="col">#</th>
+			    <th scope="col">School</th>
+			    <th scope="col">Debaters</th>
+			    <th scope="col">Points</th>
+			</thead>
+			<tbody>
+			    {% for team in toty %}
+				<tr>
+				    <td>{{ forloop.counter }}</td>
+				    <td>{{ team.school.name }}</td>
+				    <td>{{ team.debaters|join:", " }}</td>
+				    <td>{{ team.points }}</td>
+				</tr>
+			    {% endfor %}
+			</tbody>
+		    </table>
+		</div>
+	    </div>
+	</div>
+	<div class="col">
+	    <div class="card">
+		<div class="card-body">
+		    <h2 class="card-title">SOTY</h2>
+		    <small>Speaker of the Year</small></h2>
+		</div>
+	    </div>
+	</div>
+	<div class="col">
+	    <div class="card">
+		<div class="card-body">
+		    <h2 class="card-title">COTY</h2>
+		    <small>Club of the Year</small>
+		</div>
+	    </div>
+	</div>
+	<div class="col">
+	    <div class="card">
+		<div class="card-body">
+		    <h2 class="card-title">NOTY</h2>
+		    <small>Novice of the Year</small>
+		</div>
+	    </div>
+	</div>	
+    </div>
+{% endblock %}
