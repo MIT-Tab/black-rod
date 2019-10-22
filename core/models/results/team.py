@@ -14,3 +14,6 @@ class TeamResult(models.Model):
                                         default=Debater.VARSITY)
 
     place = models.IntegerField(default=-1)
+
+    class Meta:
+        unique_together = ('tournament', 'type_of_place', 'place')
