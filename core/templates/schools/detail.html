@@ -1,0 +1,26 @@
+{% extends 'base/detail.html' %}
+
+{% block title %}{{ object }}{% endblock %}
+
+{% block detail_view %}
+    <table class="table table-bordered">
+	<thead>
+	    <th>Field</th>
+	    <th>Value</th>
+	</thead>
+	<tbody>
+	    <tr>
+		<td>ID</td>
+		<td>{{ object.id }}</td>
+	    </tr>
+	    <tr>
+		<td>Name</td>
+		<td>{{ object.name }}</td>
+	    </tr>
+	    <tr>
+		<td>Included in OTY?</td>
+		<td>{{ object.included_in_oty|yesno:"Yes,No" }}</td>
+	    </tr>
+	</tbody>
+    </table>
+{% endblock %}
