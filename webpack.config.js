@@ -1,77 +1,56 @@
-const path = require('path');
-const webpack = require('webpack');
-const BundleTracker = require('webpack-bundle-tracker');
-const MiniCssExtractPlugin = require('mini-css-extract-plugin');
-const UglifyJsPlugin = require('uglifyjs-webpack-plugin');
-const OptimizeCSSAssetsPlugin = require('optimize-css-assets-webpack-plugin');
+var path = require("path");
+var webpack = require('webpack');
+var BundleTracker = require('webpack-bundle-tracker');
 
 module.exports = {
-  mode: 'development',
   context: __dirname,
-  entry: {
-      main: './assets/js/index',
+
+  entry: './apda/assets/js/index',
+
+  output: {
+      path: path.resolve('./apda/assets/webpack_bundles/'),
+      filename: "[name]-[hash].js",
   },
-  optimization: {
-    minimizer: [
-      new UglifyJsPlugin({ cache: true, parallel: true, sourceMap: false  }),
-      new OptimizeCSSAssetsPlugin({})
+
+  plugins: [
+    new BundleTracker({filename: './apda/webpack-stats.json'}),
+  ],
+  module: {
+    rules: [
+      {
+	test: /\.css/,
+	use: [
+          "css-loader"
+	]
+      },
+      {
+	test: /\.(scss)$/,
+	use: [{
+	  loader: 'style-loader',
+	}, {
+	  loader: 'css-loader',
+	}, {
+	  loader: 'postcss-loader',
+	  options: {
+            plugins: function () {
+              return [
+		require('precss'),
+		require('autoprefixer')
+              ];
+            }
+	  }
+	}, {
+	  loader: 'sass-loader'
+	}]
+      },
+      {
+        test: /\.js$/,
+        exclude: /node_modules/,
+        use: ['babel-loader']
+      }
     ]
   },
-  output: {
-    path: path.resolve('./assets/webpack_bundles/'),
-    filename: "[name]-[hash].js"
-  },
-  module: {
-    rules: [{
-      test: /\.css/,
-      use: [
-        MiniCssExtractPlugin.loader,
-        "css-loader"
-      ]
-    }, {
-      test: /\.(png|jpe?g|gif)$/,
-      use: [
-        {
-          loader: 'file-loader',
-          options: {},
-        },
-      ],
-    }, {
-      test: /\.scss$/,
-      use: [
-        MiniCssExtractPlugin.loader,
-        "css-loader", // translates CSS into CommonJS
-        "sass-loader" // compiles Sass to CSS, using Node Sass by default
-      ]
-    },
-    {
-      test: /\.js$/,
-      exclude: /(node_modules)/,
-      use: {
-        loader: 'babel-loader',
-        options: {
-          presets: ['@babel/preset-env']
-        }
-      }
-    }]
-  },
   resolve: {
-    alias: {
-      jquery: "jquery/src/jquery"
-    },
-    extensions: ['.js', '.scss', '.css'],
-  },
-  plugins: [
-    new BundleTracker({filename: './webpack-stats.json'}),
-    new MiniCssExtractPlugin({
-      filename: '[name].css',
-      chunkFilename: '[id].css'
-    }),
-    new webpack.ProvidePlugin({ // inject ES5 modules as global vars
-      $: 'jquery',
-      jQuery: 'jquery',
-      'window.jQuery': 'jquery',
-      Tether: 'tether'
-    })
-  ]
-}
+    extensions: ['*', '.js', '.jsx']
+  }
+};

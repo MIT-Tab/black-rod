@@ -9,7 +9,7 @@ server_env = os.environ.copy()
 server_env["DEBUG"] = "1"
 server_env["DJANGO_SETTINGS_MODULE"] = "apda.settings.development"
 
-webpack_args = ["./node_modules/.bin/webpack", "--config", "webpack.config.js", "--watch"]
+webpack_args = ["npm", "run", "watch"]
 server_args = ["python", "manage.py", "runserver"]
 
 webpack_proc = subprocess.Popen(webpack_args, stdout=sys.stdout, stderr=sys.stderr)

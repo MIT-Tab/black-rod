@@ -1,52 +1,40 @@
 {
   "name": "apda",
   "version": "1.0.0",
-  "description": "",
-  "main": "webpack.config.js",
+  "description": "Standings site for APDA",
+  "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "build": "webpack --config webpack.config.js",
-    "lint": "eslint assets -c .eslintrc --ext js"
+    "build": "webpack --config webpack.config.js --progress --colors --mode development",
+    "watch": "webpack --config webpack.config.js --watch --mode development"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/MIT-Tab/black-rod.git"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "author": "Rodda John",
+  "license": "MIT",
   "bugs": {
     "url": "https://github.com/MIT-Tab/black-rod/issues"
   },
   "homepage": "https://github.com/MIT-Tab/black-rod#readme",
   "devDependencies": {
-    "@babel/core": "^7.4.4",
-    "@babel/preset-env": "^7.4.4",
-    "babel": "^6.23.0",
-    "babel-loader": "^8.0.5",
-    "css-loader": "^2.1.1",
-    "eslint": "^5.16.0",
-    "eslint-config-airbnb-base": "^13.1.0",
-    "eslint-config-prettier": "^4.2.0",
-    "eslint-import-resolver-webpack": "^0.11.1",
-    "eslint-plugin-import": "^2.17.2",
-    "eslint-plugin-prettier": "^3.1.0",
-    "file-loader": "^3.0.1",
-    "mini-css-extract-plugin": "^0.6.0",
+    "@babel/core": "^7.6.4",
+    "babel-loader": "^8.0.6",
+    "babel-preset-env": "^1.7.0",
+    "css-loader": "^3.2.0",
     "node-sass": "^4.12.0",
-    "optimize-css-assets-webpack-plugin": "^5.0.1",
-    "prettier": "^1.17.1",
-    "sass-loader": "^7.1.0",
-    "style-loader": "^0.23.1",
-    "uglifyjs-webpack-plugin": "^2.1.2",
-    "webpack": "^4.30.0",
-    "webpack-bundle-tracker": "^0.4.2-beta",
-    "webpack-cli": "^3.3.2"
+    "postcss-loader": "^3.0.0",
+    "precss": "^4.0.0",
+    "sass-loader": "^8.0.0",
+    "style-loader": "^1.0.0",
+    "webpack": "^4.41.2",
+    "webpack-bundle-tracker": "^0.4.3",
+    "webpack-cli": "^3.3.9"
   },
   "dependencies": {
     "bootstrap": "^4.3.1",
-    "jquery": "^1.9.1",
-    "popper.js": "^1.15.0",
-    "select2": "^4.0.7-rc.0"
+    "jquery": "^3.4.1",
+    "popper.js": "^1.16.0"
   }
 }
