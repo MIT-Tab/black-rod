@@ -180,6 +180,11 @@ NAV_MENU_LEFT = [
         'url': 'core:index'
     },
     {
+        'name': 'Admin',
+        'url': '/admin/',
+        'validators': ['menu_generator.validators.is_superuser']
+    },
+    {
         'name': 'Login',
         'url': '/auth/login/',
         'validators': ['menu_generator.validators.is_anonymous']
