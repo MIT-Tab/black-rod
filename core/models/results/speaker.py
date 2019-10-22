@@ -1,17 +1,19 @@
-from djang.db import models
+from django.db import models
 
-from apda.models.debater import Debater
-from apda.models.tournament import Tournament
+from core.models.debater import Debater
+from core.models.tournament import Tournament
 
 
 class SpeakerResult(models.Model):
     tournament = models.ForeignKey(Tournament,
+                                   on_delete=models.CASCADE,
                                    related_name='speaker_results')
 
     debater = models.ForeignKey(Debater,
-                                on_delete=models.CASCADE)
+                                on_delete=models.CASCADE,
+                                related_name='speaker_results')
 
-    type_of_place = models.IntegerFIeld(choices=Debater.STATUS,
+    type_of_place = models.IntegerField(choices=Debater.STATUS,
                                         default=Debater.VARSITY)
 
     place = models.IntegerField(default=-1)

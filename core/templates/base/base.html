@@ -1,0 +1,14 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN">
+<html lang="en">
+    <head>
+	{% load render_bundle from webpack_loader %}
+	{% render_bundle 'main' %}
+	
+	<title>{% block title %}{% endblock %}</title>
+    </head>
+    <body>
+	{% include "base/_nav.html" %}
+
+	</div>
+    </body>
+</html>

@@ -1,6 +1,6 @@
 from django.db import models
 
-from apda.models import School
+from .school import School
 
 
 class Debater(models.Model):
