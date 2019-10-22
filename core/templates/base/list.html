@@ -1,0 +1,30 @@
+{% extends 'base/base.html' %}
+
+{% load render_table from django_tables2 %}
+{% load crispy_forms_tags %}
+
+{% block content %}
+    <div class="row m-5">
+	<div class="col-lg-3">
+	    <div class="card m-2">
+		<div class="card-body">
+		    <h5 class="card-title">Search</h5>
+		    <form action="" method="GET">
+			{{ filter.form|crispy }}
+			<input type="submit" class="btn btn-info" value="Search">
+		    </form>
+		</div>
+	    </div>
+	</div>
+	<div class="col-lg-9">
+	    <div class="card m-2">
+		<div class="card-body">
+		    <h5 class="card-title">{% block table_title %}Object List{% endblock %}
+			{% include 'base/_buttons.html' %}
+		    </h5>
+		    {% render_table table %}
+		</div>
+	    </div>
+	</div>
+    </div>
+{% endblock %}

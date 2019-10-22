@@ -41,6 +41,8 @@ INSTALLED_APPS = [
     'webpack_loader',
     'menu_generator',
     'crispy_forms',
+    'import_export',
+    'django_tables2',
 
     'core',
 ]
@@ -180,6 +182,17 @@ NAV_MENU_LEFT = [
         'url': 'core:index'
     },
     {
+        'name': 'Standings',
+        'url': 'core/',
+        'submenu': [
+            {
+                'name': 'Schools',
+                'url': 'core:school_list',
+                'root': True
+            }
+        ]
+    },
+    {
         'name': 'Admin',
         'url': '/admin/',
         'validators': ['menu_generator.validators.is_superuser']
@@ -198,3 +211,5 @@ NAV_MENU_LEFT = [
 
 LOGIN_REDIRECT_URL = '/'
 LOGOUT_REDIRECT_URL = '/'
+
+DJANGO_TABLES2_TEMPLATE = 'base/table.html'
