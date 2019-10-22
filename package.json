@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
     "build": "webpack --config webpack.config.js"
   },
   "repository": {
@@ -19,8 +19,11 @@
   },
   "homepage": "https://github.com/MIT-Tab/black-rod#readme",
   "devDependencies": {
+    "file-loader": "^4.2.0",
     "webpack": "^4.41.2",
     "webpack-bundle": "^0.9.35",
-    "webpack-bundle-tracker": "^0.4.3"
-    }
+    "webpack-bundle-tracker": "^0.4.3",
+    "webpack-cli": "^3.3.9"
+  },
+  "dependencies": {}
 }
