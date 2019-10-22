@@ -18,3 +18,6 @@ static_root/*
 
 # Weird Mac Files
 *.DS_STORE*
+
+# Webpacks
+node_modules/
