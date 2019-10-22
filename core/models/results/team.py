@@ -1,11 +1,12 @@
 from django.db import models
 
-from apda.models.debater import Debater
-from apda.models.tournament import Tournament
+from core.models.debater import Debater
+from core.models.tournament import Tournament
 
 
 class TeamResult(models.Model):
     tournament = models.ForeignKey(Tournament,
+                                   on_delete=models.CASCADE,
                                    related_name='team_results')
     
     debaters = models.ManyToManyField(Debater)

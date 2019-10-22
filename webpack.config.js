@@ -1,17 +1,77 @@
-var path = require('path');
-var webpack = require('webpack');
-var BundleTracker = require('webpack-bundle-tracker');
+const path = require('path');
+const webpack = require('webpack');
+const BundleTracker = require('webpack-bundle-tracker');
+const MiniCssExtractPlugin = require('mini-css-extract-plugin');
+const UglifyJsPlugin = require('uglifyjs-webpack-plugin');
+const OptimizeCSSAssetsPlugin = require('optimize-css-assets-webpack-plugin');
 
 module.exports = {
-  mode: "none",
+  mode: 'development',
   context: __dirname,
-  entry: './assets/js/index',
+  entry: {
+      main: './assets/js/index',
+  },
+  optimization: {
+    minimizer: [
+      new UglifyJsPlugin({ cache: true, parallel: true, sourceMap: false  }),
+      new OptimizeCSSAssetsPlugin({})
+    ]
+  },
   output: {
     path: path.resolve('./assets/webpack_bundles/'),
     filename: "[name]-[hash].js"
   },
-  
+  module: {
+    rules: [{
+      test: /\.css/,
+      use: [
+        MiniCssExtractPlugin.loader,
+        "css-loader"
+      ]
+    }, {
+      test: /\.(png|jpe?g|gif)$/,
+      use: [
+        {
+          loader: 'file-loader',
+          options: {},
+        },
+      ],
+    }, {
+      test: /\.scss$/,
+      use: [
+        MiniCssExtractPlugin.loader,
+        "css-loader", // translates CSS into CommonJS
+        "sass-loader" // compiles Sass to CSS, using Node Sass by default
+      ]
+    },
+    {
+      test: /\.js$/,
+      exclude: /(node_modules)/,
+      use: {
+        loader: 'babel-loader',
+        options: {
+          presets: ['@babel/preset-env']
+        }
+      }
+    }]
+  },
+  resolve: {
+    alias: {
+      jquery: "jquery/src/jquery"
+    },
+    extensions: ['.js', '.scss', '.css'],
+  },
   plugins: [
-    new BundleTracker({filename: './webpack-stats.json'})
+    new BundleTracker({filename: './webpack-stats.json'}),
+    new MiniCssExtractPlugin({
+      filename: '[name].css',
+      chunkFilename: '[id].css'
+    }),
+    new webpack.ProvidePlugin({ // inject ES5 modules as global vars
+      $: 'jquery',
+      jQuery: 'jquery',
+      'window.jQuery': 'jquery',
+      Tether: 'tether'
+    })
   ]
 }

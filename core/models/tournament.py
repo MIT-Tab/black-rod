@@ -15,7 +15,8 @@ class Tournament(models.Model):
     num_rounds = models.IntegerField(default=5)
 
     season = models.CharField(choices=settings.SEASONS,
-                              default=settings.DEFAULT_SEASON)
+                              default=settings.DEFAULT_SEASON,
+                              max_length=16)
 
     num_teams = models.IntegerField(null=False)
     num_novice_teams = models.IntegerField(null=False)
