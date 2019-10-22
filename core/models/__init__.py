@@ -1,3 +1,4 @@
+from .user import User
 from .debater import Debater
 from .school import School
 from .tournament import Tournament
@@ -12,16 +13,17 @@ from .standings.soty import SOTY
 from .standings.toty import TOTY
 
 __all__ = [
-    Debater,
-    School,
-    Tournament,
+    'User', 
+    'Debater',
+    'School',
+    'Tournament',
 
-    SpeakerResult,
-    TeamResult,
+    'SpeakerResult',
+    'TeamResult',
 
-    COTY,
-    NOTY,
-    QUAL,
-    SOTY,
-    TOTY
+    'COTY',
+    'NOTY',
+    'QUAL',
+    'SOTY',
+    'TOTY'
 ]

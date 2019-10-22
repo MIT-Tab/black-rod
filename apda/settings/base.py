@@ -39,9 +39,13 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
 
     'webpack_loader',
+    'menu_generator',
+    'crispy_forms',
 
     'core',
 ]
+
+CRISPY_TEMPLATE_PACK = 'bootstrap4'
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -164,3 +168,33 @@ WEBPACK_LOADER = {
         'IGNORE': [r'.+\.hot-update.js', r'.+\.map']
     }
 }
+
+AUTH_USER_MODEL = 'core.User'
+
+NAV_MENU_RIGHT = [
+]
+
+NAV_MENU_LEFT = [
+    {
+        'name': 'Home',
+        'url': 'core:index'
+    },
+    {
+        'name': 'Admin',
+        'url': '/admin/',
+        'validators': ['menu_generator.validators.is_superuser']
+    },
+    {
+        'name': 'Login',
+        'url': '/auth/login/',
+        'validators': ['menu_generator.validators.is_anonymous']
+    },
+    {
+        'name': 'Logout',
+        'url': '/auth/logout/',
+        'validators': ['menu_generator.validators.is_authenticated']
+    }
+]
+
+LOGIN_REDIRECT_URL = '/'
+LOGOUT_REDIRECT_URL = '/'
