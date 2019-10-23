@@ -2,8 +2,8 @@
 
 {% block content %}
     <div class="row m-5">
-	<div class="col-lg-3">
-	    <div class="card m-2">
+	<div class="col-lg-4">
+	    <div class="card mb-2">
 		<div class="card-body">
 		    <h5 class="card-title">{{ object }}
 			{% include 'base/_buttons.html' %}
@@ -13,7 +13,7 @@
 		</div>
 	    </div>
 	</div>
-	<div class="col-lg-9">
+	<div class="col-lg-8">
 	    {% block added_information_view %}In Progress{% endblock %}
 	</div>
     </div>

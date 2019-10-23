@@ -1,0 +1,30 @@
+{% extends 'base/detail.html' %}
+
+{% block title %}{{ object }}{% endblock %}
+
+{% block detail_view %}
+    <table class="table table-bordered">
+	<thead>
+	    <th>Field</th>
+	    <th>Value</th>
+	</thead>
+	<tbody>
+	    <tr>
+		<td>ID</td>
+		<td>{{ object.id }}</td>
+	    </tr>
+	    <tr>
+		<td>Name</td>
+		<td>{{ object.name }}</td>
+	    </tr>
+	    <tr>
+		<td>School</td>
+		<td>{{ object.school.name }}</td>
+	    </tr>
+	    <tr>
+		<td>Debaters</td>
+		<td>{{ object.debaters.all|join:", " }}</td>
+	    </tr>
+	</tbody>
+    </table>
+{% endblock %}

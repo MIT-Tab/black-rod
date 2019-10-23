@@ -3,9 +3,10 @@ from django.db import models
 from django.conf import settings
 
 from core.models.debater import Debater
+from core.models.standings.base import AbstractStanding
 
 
-class TOTY(models.Model):
+class TOTY(AbstractStanding):
     season = models.CharField(choices=settings.SEASONS,
                               default=settings.DEFAULT_SEASON,
                               max_length=16)
