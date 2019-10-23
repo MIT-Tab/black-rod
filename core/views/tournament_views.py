@@ -43,6 +43,7 @@ class TournamentTable(CustomTable):
         fields = ('id',
                   'name',
                   'host.name',
+                  'date',
                   'season',
                   'num_rounds',
                   'num_teams',

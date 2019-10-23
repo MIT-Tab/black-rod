@@ -30,6 +30,7 @@ class TournamentForm(forms.ModelForm):
         fields = ('host',
                   'num_rounds',            
                   'season',
+                  'date',
                   'num_teams',
                   'num_novice_teams',
                   'num_debaters',
