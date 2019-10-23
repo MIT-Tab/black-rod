@@ -18,7 +18,6 @@ def index(request):
     soty = SOTY.objects.filter(season=settings.CURRENT_SEASON).order_by('-points').all()
     noty = NOTY.objects.filter(season=settings.CURRENT_SEASON).order_by('-points').all()
 
-    
     return render(request,
                   'core/index.html',
                   locals())

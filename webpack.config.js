@@ -14,6 +14,9 @@ module.exports = {
 
   plugins: [
     new BundleTracker({filename: './apda/webpack-stats.json'}),
+    new webpack.ProvidePlugin({ // inject ES5 modules as global vars
+      $: 'jquery',
+    })
   ],
   module: {
     rules: [

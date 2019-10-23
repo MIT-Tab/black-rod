@@ -1,7 +1,10 @@
 from django.urls import reverse_lazy
 
 from django_filters import FilterSet
+
 from django_tables2 import Column
+
+from dal import autocomplete
 
 from core.utils.generics import (
     CustomListView,
@@ -90,3 +93,13 @@ class SchoolDeleteView(CustomDeleteView):
     success_url = reverse_lazy('core:school_list')
 
     template_name = 'schools/delete.html'
+
+
+class SchoolAutocomplete(autocomplete.Select2QuerySetView):
+    def get_queryset(self):
+        qs = School.objects.all()
+
+        if self.q:
+            qs = qs.filter(name__icontains=self.q)
+
+        return qs
