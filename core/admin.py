@@ -21,8 +21,13 @@ class TournamentAdmin(ImportExportModelAdmin):
     resource_class = TournamentResource
 
 
+class TeamAdmin(ImportExportModelAdmin):
+    resource_class = TeamResource
+
+
 admin.site.register(User, UserAdmin)
 
 admin.site.register(School, SchoolAdmin)
 admin.site.register(Debater, DebaterAdmin)
 admin.site.register(Tournament, TournamentAdmin)
+admin.site.register(Team, TeamAdmin)

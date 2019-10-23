@@ -22,7 +22,6 @@ class TournamentFilter(FilterSet):
             'id': ['exact'],
             'name': ['icontains'],
             'season': ['exact'],
-            'num_rounds': ['exact'],            
             'num_teams': ['gt'],
             'num_novice_teams': ['gt'],
             'num_debaters': ['gt'],
@@ -42,10 +41,8 @@ class TournamentTable(CustomTable):
         model = Tournament
         fields = ('id',
                   'name',
-                  'host.name',
                   'date',
                   'season',
-                  'num_rounds',
                   'num_teams',
                   'num_novice_debaters',
                   'qual',

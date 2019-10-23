@@ -16,3 +16,8 @@ class DebaterResource(resources.ModelResource):
 class TournamentResource(resources.ModelResource):
     class Meta:
         model = Tournament
+
+
+class TeamResource(resources.ModelResource):
+    class Meta:
+        model = Team

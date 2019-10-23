@@ -18,12 +18,14 @@
 		<td>{{ object.name }}</td>
 	    </tr>
 	    <tr>
-		<td>School</td>
-		<td>{{ object.school.name }}</td>
-	    </tr>
-	    <tr>
 		<td>Debaters</td>
-		<td>{{ object.debaters.all|join:", " }}</td>
+		<td>
+		    <ul>
+			{% for debater in object.debaters.all %}
+			    <li>{{ debater.name }} ({{ debater.school.name }})</li>
+			{% endfor %}
+		    </ul>
+		</td>
 	    </tr>
 	</tbody>
     </table>

@@ -6,19 +6,21 @@ from .debater import Debater
 
 
 class Team(models.Model):
-    school = models.ForeignKey(School,
-                               on_delete=models.SET_NULL,
-                               related_name='teams',
-                               blank=True,
-                               null=True)
-
     name = models.CharField(max_length=128,
                             blank=False)
 
     debaters = models.ManyToManyField(Debater)
 
     def update_name(self):
-        self.name = '%s %s' % (self.school.name,
+        school_name = ''
+
+        if self.debaters.all()[0].school == self.debaters.all()[1].school:
+            school_name = self.debaters.all()[0].school.name
+        else:
+            school_name = '%s / %s' % (self.debaters.first().school.name,
+                                       self.debaters.last().school.name)
+
+        self.name = '%s %s' % (school_name,
                                ''.join([debater.last_name[0] \
                                         for debater in self.debaters.all()]))
 

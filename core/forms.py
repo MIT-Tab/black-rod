@@ -45,27 +45,15 @@ class TournamentForm(forms.ModelForm):
 class TeamForm(forms.ModelForm):
     debaters = forms.ModelMultipleChoiceField(
         queryset=Debater.objects.all(),
-        widget=autocomplete.ModelSelect2Multiple(url='core:debater_autocomplete', forward=['school'])
-    )
-
-    school = forms.ModelChoiceField(
-        queryset=School.objects.all(),
-        widget=autocomplete.ModelSelect2(url='core:school_autocomplete')
+        widget=autocomplete.ModelSelect2Multiple(url='core:debater_autocomplete')
     )
 
     class Meta:
         model = Team
-        fields = ('school',
-                  'debaters')
+        fields = ('debaters',)
 
     def clean(self):
         cleaned_data = super().clean()
-
-        for debater in cleaned_data.get('debaters'):
-            if not debater.school == cleaned_data.get('school'):
-                raise forms.ValidationError(
-                    '%s is not from %s' % (debater.name, cleaned_data.get('school'))
-                )
 
         if not len(cleaned_data.get('debaters')) == 2:
             raise forms.ValidationError(

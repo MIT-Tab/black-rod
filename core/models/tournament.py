@@ -119,3 +119,6 @@ class Tournament(models.Model):
             self.name = self.host.name + suffix
 
         super().save(*args, **kwargs)
+
+    class Meta:
+        ordering = ('-season', '-date')
