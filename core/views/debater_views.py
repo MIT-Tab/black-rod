@@ -1,6 +1,10 @@
 from django.urls import reverse_lazy
+from django.db.models import Q
 
 from django_filters import FilterSet
+
+from dal import autocomplete
+
 from django_tables2 import Column
 
 from core.utils.generics import (
@@ -97,3 +101,20 @@ class DebaterDeleteView(CustomDeleteView):
     success_url = reverse_lazy('core:debater_list')
 
     template_name = 'debaters/delete.html'
+
+
+class DebaterAutocomplete(autocomplete.Select2QuerySetView):
+    def get_queryset(self):
+        qs = Debater.objects.all()
+
+        if self.q:
+            query = Q(first_name=self.q) | Q(last_name=self.q)
+            qs = qs.filter(query)
+
+        school = self.forwarded.get('school', None)
+
+        if school:
+            qs = qs.filter(school__id=school)
+
+        return qs
+    

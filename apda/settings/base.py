@@ -196,7 +196,15 @@ NAV_MENU_LEFT = [
             {
                 'name': 'Debaters',
                 'url': 'core:debater_list',
-            }
+            },
+            {
+                'name': 'Tournaments',
+                'url': 'core:tournament_list',
+            },
+            {
+                'name': 'Teams',
+                'url': 'core:team_list',
+            },            
         ]
     },
     {

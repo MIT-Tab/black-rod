@@ -12,6 +12,7 @@ from core.utils.generics import (
     CustomDeleteView
 )
 from core.models.tournament import Tournament
+from core.forms import TournamentForm
 
 
 class TournamentFilter(FilterSet):
@@ -20,8 +21,17 @@ class TournamentFilter(FilterSet):
         fields = {
             'id': ['exact'],
             'name': ['icontains'],
-            'school__name': ['icontains'],
-            'status': ['exact']
+            'season': ['exact'],
+            'num_rounds': ['exact'],            
+            'num_teams': ['gt'],
+            'num_novice_teams': ['gt'],
+            'num_debaters': ['gt'],
+            'num_novice_debaters': ['gt'],
+            'qual': ['exact'],
+            'toty': ['exact'],
+            'soty': ['exact'],
+            'noty': ['exact'],
+            'qual_bar': ['exact'],
         }
 
 
@@ -31,10 +41,17 @@ class TournamentTable(CustomTable):
     class Meta:
         model = Tournament
         fields = ('id',
-                  'first_name',
-                  'last_name',
-                  'school.name',
-                  'status')
+                  'name',
+                  'host.name',
+                  'season',
+                  'num_rounds',
+                  'num_teams',
+                  'num_novice_debaters',
+                  'qual',
+                  'toty',
+                  'soty',
+                  'noty',
+                  'qual_bar')
 
 
 class TournamentListView(CustomListView):
@@ -79,14 +96,14 @@ class TournamentDetailView(CustomDetailView):
 class TournamentUpdateView(CustomUpdateView):
     model = Tournament
 
-    fields = ['first_name', 'last_name', 'school', 'status']
+    form_class = TournamentForm
     template_name = 'tournaments/update.html'
 
 
 class TournamentCreateView(CustomCreateView):
     model = Tournament
 
-    fields = ['first_name', 'last_name', 'school', 'status']    
+    form_class = TournamentForm
     template_name = 'tournaments/create.html'
 
 

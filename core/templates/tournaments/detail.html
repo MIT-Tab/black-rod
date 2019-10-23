@@ -1,0 +1,70 @@
+{% extends 'base/detail.html' %}
+
+{% block title %}{{ object }}{% endblock %}
+
+{% block detail_view %}
+    <table class="table table-bordered">
+	<thead>
+	    <th>Field</th>
+	    <th>Value</th>
+	</thead>
+	<tbody>
+	    <tr>
+		<td>ID</td>
+		<td>{{ object.id }}</td>
+	    </tr>
+	    <tr>
+		<td>Name</td>
+		<td>{{ object.name }}</td>
+	    </tr>
+	    <tr>
+		<td>Host School</td>
+		<td>{{ object.host.name }}</td>
+	    </tr>
+	    <tr>
+		<td>Season</td>
+		<td>{{ object.get_season_display }}</td>
+	    </tr>
+	    <tr>
+		<td>Num Rounds</td>
+		<td>{{ object.num_rounds }}</td>
+	    </tr>
+	    <tr>
+		<td>Teams</td>
+		<td>{{ object.num_teams }}</td>
+	    </tr>
+	    <tr>
+		<td>Novice Teams</td>
+		<td>{{ object.num_novice_teams }}</td>
+	    </tr>
+	    <tr>
+		<td>Debaters</td>
+		<td>{{ object.num_debaters }}</td>
+	    </tr>
+	    <tr>
+		<td>Novice Debaters</td>
+		<td>{{ object.num_novice_debaters }}</td>
+	    </tr>
+	    <tr>
+		<td>Qual</td>
+		<td>{{ object.qual|yesno:"Yes,No" }}</td>
+	    </tr>
+	    <tr>
+		<td>TOTY</td>
+		<td>{{ object.toty|yesno:"Yes,No" }}</td>
+	    </tr>
+	    <tr>
+		<td>SOTY</td>
+		<td>{{ object.soty|yesno:"Yes,No" }}</td>
+	    </tr>
+	    <tr>
+		<td>NOTY</td>
+		<td>{{ object.noty|yesno:"Yes,No" }}</td>
+	    </tr>
+	    <tr>
+		<td>Qual Bar</td>
+		<td>{{ object.qual_bar }}</td>
+	    </tr>
+	</tbody>
+    </table>
+{% endblock %}
