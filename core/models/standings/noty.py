@@ -3,18 +3,13 @@ from django.db import models
 from django.conf import settings
 
 from core.models.debater import Debater
+from core.models.standings.base import AbstractStanding
 
 
-class NOTY(models.Model):
-    season = models.CharField(choices=settings.SEASONS,
-                              default=settings.DEFAULT_SEASON,
-                              max_length=16)
-
+class NOTY(AbstractStanding):
     debater = models.ForeignKey(Debater,
                                 on_delete=models.CASCADE,
                                 related_name='noty')
-
-    points = models.FloatField(default=-1)
 
     class Meta:
         unique_together = ('season', 'debater')

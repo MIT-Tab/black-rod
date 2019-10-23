@@ -1,4 +1,5 @@
 from django.db import models
+from django.shortcuts import reverse
 
 from .school import School
 
@@ -30,6 +31,9 @@ class Debater(models.Model):
     @property
     def name(self):
         return '%s %s' % (self.first_name, self.last_name)
+
+    def get_absolute_url(self):
+        return reverse('core:debater_detail', kwargs={'pk': self.id})
 
     def __str__(self):
         return self.name

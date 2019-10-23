@@ -1,5 +1,6 @@
 from .user import User
 from .debater import Debater
+from .team import Team
 from .school import School
 from .tournament import Tournament
 
@@ -16,6 +17,7 @@ __all__ = [
     'User', 
     'Debater',
     'School',
+    'Team',
     'Tournament',
 
     'SpeakerResult',

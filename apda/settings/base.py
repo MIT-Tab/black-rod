@@ -31,6 +31,9 @@ ALLOWED_HOSTS = []
 # Application definition
 
 INSTALLED_APPS = [
+    'dal',
+    'dal_select2',
+    
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -131,6 +134,7 @@ STATIC_URL = '/static/'
 STATICFILES_DIRS = (
     os.path.join(BASE_DIR, 'assets'),
 )
+STATIC_ROOT = os.path.join(BASE_DIR, 'static_root')
 
 SEASONS = (
     ('2000', '2000-2001'),
@@ -188,8 +192,19 @@ NAV_MENU_LEFT = [
             {
                 'name': 'Schools',
                 'url': 'core:school_list',
-                'root': True
-            }
+            },
+            {
+                'name': 'Debaters',
+                'url': 'core:debater_list',
+            },
+            {
+                'name': 'Tournaments',
+                'url': 'core:tournament_list',
+            },
+            {
+                'name': 'Teams',
+                'url': 'core:team_list',
+            },            
         ]
     },
     {
