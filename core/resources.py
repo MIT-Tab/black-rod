@@ -21,3 +21,8 @@ class TournamentResource(resources.ModelResource):
 class TeamResource(resources.ModelResource):
     class Meta:
         model = Team
+
+
+class TeamResultResource(resources.ModelResource):
+    class Meta:
+        model = TeamResult

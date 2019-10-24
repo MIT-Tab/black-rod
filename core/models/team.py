@@ -15,8 +15,8 @@ class Team(models.Model):
     def update_name(self):
         school_name = ''
 
-        if self.debaters.all()[0].school == self.debaters.all()[1].school:
-            school_name = self.debaters.all()[0].school.name
+        if self.debaters.first().school == self.debaters.last().school:
+            school_name = self.debaters.first().school.name
         else:
             school_name = '%s / %s' % (self.debaters.first().school.name,
                                        self.debaters.last().school.name)

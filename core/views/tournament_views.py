@@ -12,6 +12,7 @@ from core.utils.generics import (
     CustomDeleteView
 )
 from core.models.tournament import Tournament
+from core.models.debater import Debater
 from core.forms import TournamentForm
 
 
@@ -89,6 +90,25 @@ class TournamentDetailView(CustomDetailView):
             'include_pk': True
         },
     ]
+
+    def get_context_data(self, *args, **kwargs):
+        context = super().get_context_data(*args, **kwargs)
+
+        obj = self.object
+
+        context['varsity_team_results'] = obj.team_results.filter(
+            type_of_place=Debater.VARSITY
+        ).order_by(
+            'place'
+        )
+
+        context['novice_team_results'] = obj.team_results.filter(
+            type_of_place=Debater.NOVICE
+        ).order_by(
+            'place'
+        )
+
+        return context
 
 
 class TournamentUpdateView(CustomUpdateView):
