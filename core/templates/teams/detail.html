@@ -22,7 +22,7 @@
 		<td>
 		    <ul>
 			{% for debater in object.debaters.all %}
-			    <li>{{ debater.name }} ({{ debater.school.name }})</li>
+			    <li><a href="{{ debater.get_absolute_url }}">{{ debater.name }}</a> (<a href="{{ debater.school.get_absolute_url }}">{{ debater.school.name }}</a>)</li>
 			{% endfor %}
 		    </ul>
 		</td>

@@ -9,7 +9,8 @@ class Team(models.Model):
     name = models.CharField(max_length=128,
                             blank=False)
 
-    debaters = models.ManyToManyField(Debater)
+    debaters = models.ManyToManyField(Debater,
+                                      related_name='teams')
 
     def update_name(self):
         school_name = ''

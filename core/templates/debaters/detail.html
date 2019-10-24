@@ -28,3 +28,16 @@
 	</tbody>
     </table>
 {% endblock %}
+
+{% block left_column %}
+    <div class="card mb-2">
+	<div class="card-body">
+	    <h5 class="card-title">Teams</h5>
+	    <hr />
+	    {% for team in object.teams.all %}
+		<a href="{{ team.get_absolute_url }}">{{ team }}</a>
+		<br>
+	    {% endfor %}
+	</div>
+    </div>
+{% endblock %}

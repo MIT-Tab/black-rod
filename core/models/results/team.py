@@ -1,5 +1,6 @@
 from django.db import models
 
+from core.models.team import Team
 from core.models.debater import Debater
 from core.models.tournament import Tournament
 
@@ -8,9 +9,11 @@ class TeamResult(models.Model):
     tournament = models.ForeignKey(Tournament,
                                    on_delete=models.CASCADE,
                                    related_name='team_results')
-    
-    debaters = models.ManyToManyField(Debater)
 
+    team = models.ForeignKey(Team,
+                             on_delete=models.CASCADE,
+                             related_name='team_results')
+    
     type_of_place = models.IntegerField(choices=Debater.STATUS,
                                         default=Debater.VARSITY)
 
