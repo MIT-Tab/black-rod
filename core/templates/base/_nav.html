@@ -18,7 +18,7 @@
 			</a>
 			<div class="dropdown-menu">
 			    {% for menu in item.submenu %}
-				<a class="dropdown-item {% if item.selected %}active{% endif %}" href="{{ menu.url }}">{{ menu.name }}</a>
+				<a class="dropdown-item {% if menu.selected %}active{% endif %}" href="{{ menu.url }}">{{ menu.name }}</a>
 			    {% endfor %}
 			</div>
 		    </li>

@@ -4,6 +4,7 @@ from django.views.generic import (
     UpdateView,
     DeleteView
 )
+from django.contrib.auth.mixins import PermissionRequiredMixin
 
 import django_tables2 as tables
 from django_filters.views import FilterView
@@ -14,8 +15,24 @@ class CustomTable(tables.Table):
         per_page = 10
 
 
-class CustomMixin():
+class CustomMixin(PermissionRequiredMixin):
     buttons = []
+
+    permission_type = ''
+
+    public_view = False
+
+    def has_permission(self, *args, **kwargs):
+        if self.public_view:
+            return True
+        return super().has_permission(*args, **kwargs)
+
+    def get_permission_required(self):
+        if self.permission_required is None:
+            self.permission_required = 'core.%s_%s' % (self.permission_type,
+                                                       self.model._meta.model_name)
+
+        return super().get_permission_required()
 
     def get_context_data(self, *args, **kwargs):
         context = super().get_context_data(*args, **kwargs)
@@ -25,20 +42,34 @@ class CustomMixin():
         return context
 
 class CustomListView(CustomMixin, tables.SingleTableMixin, FilterView):
-    pass
+    permission_type = 'view'
 
 
 class CustomCreateView(CustomMixin, CreateView):
-    pass
+    permission_type = 'add'
 
 
 class CustomDetailView(CustomMixin, DetailView):
-    pass
+    permission_type = 'view'
 
 
 class CustomUpdateView(CustomMixin, UpdateView):
-    pass
+    permission_type = 'change'
 
 
 class CustomDeleteView(CustomMixin, DeleteView):
-    pass
+    permission_type = 'delete'
+
+
+class MarkerColumn(tables.Column):
+    number = ''
+
+    def __init__(self, number, *args, **kwargs):
+        self.number = number
+        super().__init__(*args, **kwargs)
+        
+    def render(self, record):
+        if getattr(record, 'marker_%s' % (self.number,)) == 0 or not getattr(record, 'tournament_%s' % (self.number,)):
+            return ''
+        return '%s (%s)' % (getattr(record, 'marker_%s' % (self.number,)),
+                            getattr(record, 'tournament_%s' % (self.number,)))

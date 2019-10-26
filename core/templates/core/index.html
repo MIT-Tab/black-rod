@@ -1,13 +1,27 @@
 {% extends "base/base.html" %}
 
 {% block content %}
-    <div class="row m-5">
-	<div class="col">
-	    <div class="card">
-		<div class="card-body">
-		    <h2 class="card-title">TOTY</h2>
-		    <small>Team of the Year</small>
-		    <hr />
+    <div class="card m-5">
+	<div class="card-body">
+	    <h5 class="card-title pb-2">OTYs
+		<ul class="nav nav-pills float-right" id="oty_pills" roll="tablist">
+		    <li class="nav-item pr-2">
+			<a class="nav-link active" id="toty_button" data-toggle="tab" href="#toty">TOTY</a>
+		    </li>
+		    <li class="nav-item pr-2">
+			<a class="nav-link" id="soty_button" data-toggle="tab" href="#soty">SOTY</a>
+		    </li>
+		    <li class="nav-item pr-2">
+			<a class="nav-link" id="noty_button" data-toggle="tab" href="#noty">NOTY</a>
+		    </li>
+		    <li class="nav-item pr-2">
+			<a class="nav-link" id="coty_button" data-toggle="tab" href="#coty">COTY</a>
+		    </li>			    
+		</ul>
+	    </h5>
+	    <hr />
+	    <div class="tab-content" id="results">
+		<div class="tab-pane fade show active" id="toty" role="tabpanel">
 		    <table class="table table-bordered">
 			<thead>
 			    <th scope="col">#</th>
@@ -18,40 +32,98 @@
 			<tbody>
 			    {% for team in toty %}
 				<tr>
-				    <td>{{ forloop.counter }}</td>
-				    <td>{{ team.school.name }}</td>
-				    <td>{{ team.debaters|join:", " }}</td>
+				    <td>{{ team.place }}</td>
+				    <td><a href="{{ team.team.get_absolute_url }}">{{ team.team.name }}</a></td>
+				    <td>{{ team.team.debaters_display|safe }}</td>
 				    <td>{{ team.points }}</td>
+				</tr>
+			    {% empty %}
+				<tr>
+				    <td colspan="4" class="shaded">
+					<center>There are no TOTY results yet</center>
+				    </td>
 				</tr>
 			    {% endfor %}
 			</tbody>
 		    </table>
 		</div>
+		<div class="tab-pane fade" id="soty" role="tabpanel">
+		    <table class="table table-bordered">
+			<thead>
+			    <th scope="col">#</th>
+			    <th scope="col">Debater</th>
+			    <th scope="col">School</th>
+			    <th scope="col">Points</th>
+			</thead>
+			<tbody>
+			    {% for speaker in soty %}
+				<tr>
+				    <td>{{ speaker.place }}</td>
+				    <td><a href="{% url 'core:debater_detail' pk=speaker.debater.id %}">{{ speaker.debater.name }}</a></td>
+				    <td><a href={% url 'core:school_detail' pk=speaker.debater.school.id %}>{{ speaker.debater.school.name }}</a></td>
+				    <td>{{ speaker.points }}</td>
+				</tr>
+			    {% empty %}
+				<tr>
+				    <td colspan="4" class="shaded">
+					<center>There are no SOTY results yet</center>
+				    </td>
+				</tr>
+			    {% endfor %}
+			</tbody>
+		    </table>		    
+		</div>
+		<div class="tab-pane fade" id="coty" role="tabpanel">
+		    <table class="table table-bordered">
+			<thead>
+			    <th scope="col">#</th>
+			    <th scope="col">School</th>
+			    <th scope="col">Points</th>
+			</thead>
+			<tbody>
+			    {% for school in coty %}
+				<tr>
+				    <td>{{ school.place }}</td>
+				    <td><a href="{{ school.school.get_absolute_url }}">{{ school.school.name }}</a></td>
+				    <td>{{ school.points }}</td>
+				</tr>
+			    {% empty %}
+				<tr>
+				    <td colspan="4" class="shaded">
+					<center>There are no COTY results yet</center>
+				    </td>
+				</tr>
+			    {% endfor %}
+			</tbody>
+		    </table>
+		</div>
+		<div class="tab-pane fade" id="noty" role="tabpanel">
+		    <table class="table table-bordered">
+			<thead>
+			    <th scope="col">#</th>
+			    <th scope="col">Debater</th>
+			    <th scope="col">School</th>
+			    <th scope="col">Points</th>
+			</thead>
+			<tbody>
+			    {% for speaker in noty %}
+				<tr>
+				    <td>{{ speaker.place }}</td>
+				    <td><a href="{% url 'core:debater_detail' pk=speaker.debater.id %}">{{ speaker.debater.name }}</a></td>
+				    <td><a href={% url 'core:school_detail' pk=speaker.debater.school.id %}>{{ speaker.debater.school.name }}</a></td>
+				    <td>{{ speaker.points }}</td>
+				</tr>
+			    {% empty %}
+				<tr>
+				    <td colspan="4" class="shaded">
+					<center>There are no NOTY results yet</center>
+				    </td>
+				</tr>
+			    {% endfor %}
+			</tbody>
+		    </table>
+		</div>	
 	    </div>
 	</div>
-	<div class="col">
-	    <div class="card">
-		<div class="card-body">
-		    <h2 class="card-title">SOTY</h2>
-		    <small>Speaker of the Year</small></h2>
-		</div>
-	    </div>
-	</div>
-	<div class="col">
-	    <div class="card">
-		<div class="card-body">
-		    <h2 class="card-title">COTY</h2>
-		    <small>Club of the Year</small>
-		</div>
-	    </div>
-	</div>
-	<div class="col">
-	    <div class="card">
-		<div class="card-body">
-		    <h2 class="card-title">NOTY</h2>
-		    <small>Novice of the Year</small>
-		</div>
-	    </div>
-	</div>	
     </div>
 {% endblock %}

@@ -1,6 +1,8 @@
 from django.urls import reverse_lazy
 from django.db.models import Q
 
+from django.conf import settings
+
 from django_filters import FilterSet
 
 from dal import autocomplete
@@ -16,6 +18,9 @@ from core.utils.generics import (
     CustomDeleteView
 )
 from core.models.debater import Debater
+from core.models.results.team import TeamResult
+from core.models.standings.toty import TOTY
+
 from core.forms import DebaterForm
 
 
@@ -44,6 +49,7 @@ class DebaterTable(CustomTable):
 
 
 class DebaterListView(CustomListView):
+    public_view = True
     model = Debater
     table_class = DebaterTable
     template_name = 'debaters/list.html'
@@ -61,6 +67,7 @@ class DebaterListView(CustomListView):
 
 
 class DebaterDetailView(CustomDetailView):
+    public_view = True
     model = Debater
     template_name = 'debaters/detail.html'
 
@@ -81,12 +88,103 @@ class DebaterDetailView(CustomDetailView):
         },
     ]
 
+    def get_context_data(self, *args, **kwargs):
+        context = super().get_context_data(*args, **kwargs)
+
+        tournaments = [result.tournament \
+                       for result in TeamResult.objects.filter(
+                               team__debaters=self.object
+                       ).all()]
+        tournaments += [result.tournament \
+                        for result in self.object.speaker_results.all()]
+
+        tournaments = list(set(tournaments))
+
+        seasons = [tournament.season for tournament in tournaments]
+        seasons = list(set(seasons))
+
+        seasons.sort(key=lambda season: season, reverse=True)
+        current_season = self.request.GET.get('season', seasons[0])
+
+        seasons = [season \
+                   for season in settings.SEASONS if season[0] in seasons]
+
+        seasons.sort(key=lambda season: season[0], reverse=True)
+
+        context['seasons'] = seasons
+
+        context['current_season'] = current_season
+
+        tournaments = [tournament \
+                       for tournament in tournaments if tournament.season == current_season]
+
+        tournaments.sort(key=lambda tournament: tournament.date, reverse=True)
+
+        tournament_render = []
+
+        for tournament in tournaments:
+            to_add = {}
+            to_add['tournament'] = tournament
+            to_append = []
+
+            to_append += [('team', result) \
+                          for result in TeamResult.objects.filter(
+                                  team__debaters=self.object
+                          ).filter(
+                              tournament=tournament
+                          ).all()]
+            to_append += [('speaker', result) \
+                          for result in self.object.speaker_results.filter(
+                                  tournament=tournament
+                          ).all()]
+
+            to_add['data'] = to_append
+
+            tournament_render.append(to_add)
+
+        context['results'] = tournament_render        
+
+        context['totys'] = TOTY.objects.filter(
+            team__debaters=self.object
+        ).order_by(
+            '-season'
+        )
+
+        context['sotys'] = self.object.soty.order_by(
+            '-season'
+        )
+
+        context['notys'] = self.object.noty.order_by(
+            '-season'
+        )
+
+        return context
+
 
 class DebaterUpdateView(CustomUpdateView):
     model = Debater
 
     form_class = DebaterForm
     template_name = 'debaters/update.html'
+
+    def get_context_data(self, *args, **kwargs):
+        context = super().get_context_data(*args, **kwargs)
+
+        context['totys'] = TOTY.objects.filter(
+            team__debaters=self.object
+        ).order_by(
+            '-season'
+        )
+
+        context['sotys'] = self.object.soty.order_by(
+            '-season'
+        )
+
+        context['notys'] = self.object.noty.order_by(
+            '-season'
+        )
+
+        return context    
 
 
 class DebaterCreateView(CustomCreateView):
@@ -104,11 +202,17 @@ class DebaterDeleteView(CustomDeleteView):
 
 
 class DebaterAutocomplete(autocomplete.Select2QuerySetView):
+    def get_result_label(self, record):
+        return '<%s> %s (%s)' % (record.id,
+                                 record.name,
+                                 record.school.name)
+    
     def get_queryset(self):
         qs = Debater.objects.all()
 
         if self.q:
-            query = Q(first_name=self.q) | Q(last_name=self.q)
+            query = Q(first_name__icontains=self.q) | \
+                    Q(last_name__icontains=self.q)
             qs = qs.filter(query)
 
         school = self.forwarded.get('school', None)

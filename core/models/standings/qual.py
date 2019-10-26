@@ -3,6 +3,7 @@ from django.db import models
 from django.conf import settings
 
 from core.models.debater import Debater
+from core.models.tournament import Tournament
 from core.models.standings.base import AbstractStanding
 
 
@@ -11,7 +12,7 @@ class QUAL(AbstractStanding):
                                 on_delete=models.CASCADE,
                                 related_name='quals')
 
-    AUTOQUAL = 0
+    POINTS = 0
     BRANDEIS = 1
     YALE = 2
     NORTHAMS = 3
@@ -20,7 +21,7 @@ class QUAL(AbstractStanding):
     NAUDC = 6
 
     QUAL_TYPES = (
-        (AUTOQUAL, 'Autoqual'),
+        (POINTS, 'Points'),
         (BRANDEIS, 'Brandeis IV'),
         (YALE, 'Yale IV'),
         (NORTHAMS, 'NorthAms'),
@@ -30,7 +31,13 @@ class QUAL(AbstractStanding):
     )
 
     qual_type = models.IntegerField(choices=QUAL_TYPES,
-                                    default=AUTOQUAL)
+                                    default=POINTS)
+
+    tournament = models.ForeignKey(Tournament,
+                                   on_delete=models.CASCADE,
+                                   related_name='quals',
+                                   blank=True,
+                                   null=True)
 
     class Meta:
         unique_together = ('season', 'debater', 'qual_type')
