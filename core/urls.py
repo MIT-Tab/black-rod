@@ -9,6 +9,11 @@ import core.views.debater_views as debater_views
 import core.views.tournament_views as tournament_views
 import core.views.team_views as team_views
 
+import core.views.soty_views as soty_views
+import core.views.toty_views as toty_views
+import core.views.noty_views as noty_views
+import core.views.coty_views as coty_views
+
 app_name = 'core'
 
 urlpatterns = [
@@ -85,6 +90,24 @@ urlpatterns = [
          name='tournament_delete'),
     path('core/tournaments/create',
          tournament_views.TournamentCreateView.as_view(),
-         name='tournament_create')    
-    
+         name='tournament_create'),
+    path('core/tournaments/autocomplete',
+         tournament_views.TournamentAutocomplete.as_view(),
+         name='tournament_autocomplete'),
+    path('core/tournaments/data_entry',
+         tournament_views.TournamentDataEntryWizardView.as_view(),
+         name='tournament_dataentry'),
+
+    path('core/soty',
+         soty_views.SOTYListView.as_view(),
+         name='soty'),
+    path('core/toty',
+         toty_views.TOTYListView.as_view(),
+         name='toty'),
+    path('core/noty',
+         noty_views.NOTYListView.as_view(),
+         name='noty'),
+    path('core/coty',
+         coty_views.COTYListView.as_view(),
+         name='coty')
 ]

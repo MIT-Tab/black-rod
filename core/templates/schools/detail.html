@@ -1,5 +1,7 @@
 {% extends 'base/detail.html' %}
 
+{% load tags %}
+
 {% block title %}{{ object }}{% endblock %}
 
 {% block detail_view %}
@@ -23,4 +25,65 @@
 	    </tr>
 	</tbody>
     </table>
+{% endblock %}
+
+{% block left_column %}
+    <div class="card mb-2">
+	<div class="card-body">
+	    <h5 class="card-title">COTY</h5>
+	    <hr />
+	    <table class="table table-bordered table-hover table-striped">
+		<thead>
+		    <th>Place</th>
+		    <th>Season</th>
+		    <th>Points</th>
+		</thead>
+		<tbody>
+		    {% for coty in cotys %}
+			<tr>
+			    <td>{{ coty.place }}</td>
+			    <td>{{ coty.get_season_display }}</td>
+			    <td>{{ coty.points }}</td>
+			</tr>
+		    {% endfor %}
+		</tbody>
+	    </table>
+	</div>
+    </div>
+{% endblock %}
+
+{% block added_information_view %}
+    <div class="card">
+	<div class="card-body">
+	    <h5 class="card-title pb-2">COTY Breakdown
+		<ul class="nav nav-pills float-right">
+		    <li class="nav-item dropdown">
+			<a class="nav-link dropdown-toggle active" data-toggle="dropdown" href="#" role="button" aria-haspopup="true" aria-expanded="false">{% for season in seasons %}{% if season.0 == current_season %}{{ season.1 }}{% endif %}{% endfor %}</a>
+			<div class="dropdown-menu">
+			    {% for season in seasons %}
+				<a class="dropdown-item {% if season.0 == current_season %}active{% endif %}" href="{{ request.path }}?season={{ season.0 }}">{{ season.1 }}</a>
+			    {% endfor %}
+			</div>
+		    </li>
+		</ul>
+	    </h5>
+	    <hr />
+	    <table class="table table-bordered table-hover table-striped">
+		<thead>
+		    <th>Debater</th>
+		    <th>Points (Contribution)</th>
+		    <th>Auto-Quals</th>
+		</thead>
+		<tbody>
+		    {% for debater in debaters %}
+			<tr>
+			    <td>{% if debater.qualled %}<b>{% endif %}<a href="{{ debater.debater.get_absolute_url }}">{{ debater.debater.name }}</a>{% if debater.qualled %}*</b>{% endif %}</td>
+			    <td>{{ debater.points }} ({{ debater|qual_contribution:current_season }})</td>
+			    <td>{{ debater.debater|qual_display:current_season }}</td>
+			</tr>
+		    {% endfor %}
+		</tbody>
+	    </table>
+	</div>
+    </div>
 {% endblock %}

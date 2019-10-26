@@ -2,6 +2,8 @@ from django.urls import reverse_lazy
 
 from django_filters import FilterSet
 
+from django.db.models import Q
+
 from dal import autocomplete
 
 from django_tables2 import Column
@@ -38,6 +40,7 @@ class TeamTable(CustomTable):
 
 
 class TeamListView(CustomListView):
+    public_view = True
     model = Team
     table_class = TeamTable
     template_name = 'teams/list.html'
@@ -55,6 +58,7 @@ class TeamListView(CustomListView):
 
 
 class TeamDetailView(CustomDetailView):
+    public_view = True    
     model = Team
     template_name = 'teams/detail.html'
 
@@ -75,6 +79,19 @@ class TeamDetailView(CustomDetailView):
         },
     ]
 
+    def get_context_data(self, *args, **kwargs):
+        context = super().get_context_data(*args, **kwargs)
+
+        context['team_results'] = self.object.team_results.order_by(
+            '-tournament__date'
+        )
+
+        context['totys'] = self.object.toty.order_by(
+            '-season'
+        )
+
+        return context
+
 
 class TeamUpdateView(CustomUpdateView):
     model = Team
@@ -89,6 +106,19 @@ class TeamUpdateView(CustomUpdateView):
         form.instance.save()
 
         return to_return
+
+    def get_context_data(self, *args, **kwargs):
+        context = super().get_context_data(*args, **kwargs)
+
+        context['team_results'] = self.object.team_results.order_by(
+            '-tournament__date'
+        )
+
+        context['totys'] = self.object.toty.order_by(
+            '-season'
+        )
+
+        return context    
     
 
 class TeamCreateView(CustomCreateView):
@@ -114,10 +144,16 @@ class TeamDeleteView(CustomDeleteView):
 
 
 class TeamAutocomplete(autocomplete.Select2QuerySetView):
+    def get_result_label(self, record):
+        return '<%s> %s (%s)' % (record.id,
+                                 record.name,
+                                 ', '.join([d.name for d in record.debaters.all()]))
+    
     def get_queryset(self):
         qs = Team.objects.all()
 
         if self.q:
-            qs = qs.filter(name=self.q)
+            query = Q(name__icontains=self.q)
+            qs = qs.filter(query)
 
         return qs

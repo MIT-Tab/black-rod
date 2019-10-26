@@ -29,4 +29,8 @@ $theme-colors: (
     margin-top: 5px !important;
 }
 
+.shaded {
+    background-color: rgba(0, 0, 0, 0.05);
+}
+
 @import "node_modules/bootstrap/scss/bootstrap";

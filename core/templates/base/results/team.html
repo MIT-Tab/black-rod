@@ -9,7 +9,7 @@
 	    <tr>
 		<td>{{ result.place }}</td>
 		<td><a href="{% url 'core:team_detail' pk=result.team.id %}">{{ result.team }}</a></td>
-		<td>{{ result.team.debaters.all|join:", " }}</td>
+		<td>{{ result.team.debaters_display|safe }}</td>
 	    </tr>
 	{% empty %}
 	    <tr>

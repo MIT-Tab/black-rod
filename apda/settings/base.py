@@ -46,6 +46,7 @@ INSTALLED_APPS = [
     'crispy_forms',
     'import_export',
     'django_tables2',
+    'formtools',
 
     'core',
 ]
@@ -161,8 +162,9 @@ SEASONS = (
     ('2021', '2021-2022')
 )
 
-DEFAULT_SEASON = '2018'
-CURRENT_SEASON = '2018'
+DEFAULT_SEASON = '2019'
+CURRENT_SEASON = '2019'
+QUAL_BAR = 18
 
 WEBPACK_LOADER = {
     'DEFAULT': {
@@ -186,25 +188,55 @@ NAV_MENU_LEFT = [
         'url': 'core:index'
     },
     {
-        'name': 'Standings',
-        'url': 'core/',
+        'name': 'Results',
+        'url': '/asdfa',
         'submenu': [
             {
                 'name': 'Schools',
                 'url': 'core:school_list',
+                'root': True
             },
             {
                 'name': 'Debaters',
                 'url': 'core:debater_list',
+                'root': True
             },
             {
                 'name': 'Tournaments',
                 'url': 'core:tournament_list',
+                'root': True
             },
             {
                 'name': 'Teams',
                 'url': 'core:team_list',
+                'root': True
             },            
+        ]
+    },
+    {
+        'name': 'Standings',
+        'url': '/asdfa',
+        'submenu': [
+            {
+                'name': 'SOTY',
+                'url': 'core:soty',
+                'root': True
+            },
+            {
+                'name': 'NOTY',
+                'url': 'core:noty',
+                'root': True
+            },
+            {
+                'name': 'TOTY',
+                'url': 'core:toty',
+                'root': True
+            },
+            {
+                'name': 'COTY',
+                'url': 'core:coty',
+                'root': True
+            },
         ]
     },
     {
@@ -224,6 +256,7 @@ NAV_MENU_LEFT = [
     }
 ]
 
+LOGIN_URL = '/auth/login'
 LOGIN_REDIRECT_URL = '/'
 LOGOUT_REDIRECT_URL = '/'
 
