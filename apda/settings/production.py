@@ -12,3 +12,5 @@ DATABASES = {
         'PORT': '',
     }
 }
+
+ALLOWED_HOSTS = ['50.116.54.146']
