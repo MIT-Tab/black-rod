@@ -214,9 +214,12 @@ class DebaterAutocomplete(autocomplete.Select2QuerySetView):
         qs = Debater.objects.all()
 
         if self.q:
-            query = Q(first_name__icontains=self.q) | \
-                    Q(last_name__icontains=self.q)
-            qs = qs.filter(query)
+            query = Q()
+            for query in self.q.split():
+                query = Q(first_name__icontains=query) | \
+                        Q(last_name__icontains=query)
+
+            qs = qs.filter(query).distinct()
 
         school = self.forwarded.get('school', None)
 

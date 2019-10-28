@@ -20,7 +20,7 @@ class DebaterForm(forms.ModelForm):
 
     class Meta:
         model = Debater
-        fields = ('first_name', 'last_name', 'school', 'status')
+        fields = ('first_name', 'last_name', 'school')
 
 
 class TournamentForm(forms.ModelForm):
@@ -71,23 +71,32 @@ class TournamentSelectionForm(forms.Form):
     )
 
 
-class TeamResultForm(forms.ModelForm):
-    team = forms.ModelChoiceField(
-        label="",
-        queryset=Team.objects.all(),
-        widget=autocomplete.ModelSelect2(url='core:team_autocomplete')
+class TeamResultForm(forms.Form):
+    debater_one = forms.ModelChoiceField(
+        label="Debater One",
+        queryset=Debater.objects.all(),
+        widget=autocomplete.ModelSelect2(url='core:debater_autocomplete'),
+        required=False
     )
-    
+
+    debater_two = forms.ModelChoiceField(
+        label="Debater Two",
+        queryset=Debater.objects.all(),
+        widget=autocomplete.ModelSelect2(url='core:debater_autocomplete'),
+        required=False
+    )
+
     class Meta:
         model = TeamResult
-        fields = ('team',)
+        fields = []
 
 
 class SpeakerResultForm(forms.ModelForm):
     speaker = forms.ModelChoiceField(
         label="",
         queryset=Debater.objects.all(),
-        widget=autocomplete.ModelSelect2(url='core:debater_autocomplete')
+        widget=autocomplete.ModelSelect2(url='core:debater_autocomplete'),
+        required=False
     )
 
     class Meta:

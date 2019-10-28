@@ -1,0 +1,28 @@
+{% extends 'tournaments/data_entry.html' %}
+
+{% load crispy_forms_tags %}
+
+{% block root_data_entry %}
+    {{ wizard.form.media }}
+    <div class="card" style="width: 100%;">
+	<div class="card-body">
+	    <h5 class="card-title pb-2">{{ title }} <div class="float-right">Step {{ wizard.steps.step1 }} of {{ wizard.steps.count }}</div></h5>
+	    <form action="" method="POST" novalidate>
+		{% csrf_token %}
+		{{ wizard.management_form }}
+		{% block data_entry_block %}
+		    {% if wizard.form.forms %}
+			{{ wizard.form.management_form }}
+			{% for form in wizard.form.forms %}
+			    {{ form|crispy }}
+			{% endfor %}
+		    {% else %}
+			{{ wizard.form|crispy }}
+		    {% endif %}
+		{% endblock %}
+		
+		<input type="submit" class="btn btn-primary float-right" value="Save and Continue"/>
+	    </form>
+	</div>
+    </div>
+{% endblock %}

@@ -55,7 +55,7 @@
 		    {% for toty in totys %}
 			<tr>
 			    <td>{{ toty.place }}</td>
-			    <td>{{ toty.get_season_display }}</td>
+			    <td><a href="{% url 'core:toty' %}?season={{ toty.season }}">{{ toty.get_season_display }}</a></td>
 			    <td>{{ toty.points }}</td>
 			</tr>
 		    {% empty %}

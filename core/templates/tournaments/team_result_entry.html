@@ -13,7 +13,8 @@
 	    {% for form in wizard.form.forms %}
 		<tr>
 		    <td><b><center>{{ forloop.counter }}</center></b></td>
-		    <td>{{ form|crispy }}</td>
+		    <td>{{ form.debater_one|as_crispy_field }}
+			{{ form.debater_two|as_crispy_field }}</td>
 		</tr>
 	    {% endfor %}
 	</tbody>
