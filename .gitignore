@@ -22,4 +22,3 @@ static_root/*
 # Webpacks
 node_modules/
 *webpack_bundles/
-webpack-stats*.json
