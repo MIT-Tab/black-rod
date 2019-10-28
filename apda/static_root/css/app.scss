@@ -1,0 +1,36 @@
+$theme-colors: (
+  "primary": #4D7EA8,
+  "danger": #A31621,
+  "success": #70A363,
+  "secondary": #668586,
+  "info": #E8E8E8,
+);
+
+.select2 {
+    width: 100% !important;
+}
+.select2-container .select2-selection--single {
+    height: 42px !important;
+}
+
+.select2-container .select2-selection--multiple {
+    padding-top: 0px;
+}
+
+.select2-selection__choice {
+    margin-top: 8px !important;
+}
+
+.select-checkbox a {
+    padding-left: 5px;
+}
+
+.select2-selection__choice {
+    margin-top: 5px !important;
+}
+
+.shaded {
+    background-color: rgba(0, 0, 0, 0.05);
+}
+
+@import "node_modules/bootstrap/scss/bootstrap";
