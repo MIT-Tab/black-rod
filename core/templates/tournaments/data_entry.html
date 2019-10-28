@@ -44,7 +44,7 @@
 		</div>
 	    </div>
 	    <div class="col-lg-4">
-		<div class="card sticky-top" style="top: 30px;">
+		<div class="card sticky-top mb-2" style="top: 30px;">
 		    <div class="card-body">
 			<h5 class="card-title">Create Debater</h5>
 			<form id="debater_create_form">
@@ -52,6 +52,14 @@
 			    {{ debater_form|crispy }}
 			    <input class="btn btn-primary" id="create_debater" value="Create" type="submit">
 			</form>
+		    </div>
+		</div>
+		<div class="card sticky-top" style="top: 415px;">
+		    <div class="card-body">
+			<h5 class="card-title">Created Debaters</h5>
+			<ul id="new_debaters">
+			    
+			</ul>
 		    </div>
 		</div>
 	    </div>
