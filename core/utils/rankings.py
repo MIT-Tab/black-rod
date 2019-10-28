@@ -324,11 +324,14 @@ def redo_rankings(rankings):
             continue
 
         if rankings.filter(points=ranking.points).count() > 1:
+            next_place = place
             for tied_ranking in rankings.filter(points=ranking.points):
-                ranking.place = place
-                ranking.tied = True
-                ranking.save()
-                handled_through_tie += [ranking]
+                tied_ranking.place = place
+                tied_ranking.tied = True
+                tied_ranking.save()
+                handled_through_tie += [tied_ranking]
+                next_place += 1
+            place = next_place - 1
         else:
             ranking.tied = False
             ranking.place = place
