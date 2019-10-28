@@ -1,6 +1,6 @@
 ```
 git clone <black-rod repo>
-cd mit-tab
+cd black-rod
 
 # make sure to use python3 for the virtualenv
 virtualenv venv
