@@ -104,7 +104,10 @@ class DebaterDetailView(CustomDetailView):
         seasons = list(set(seasons))
 
         seasons.sort(key=lambda season: season, reverse=True)
-        current_season = self.request.GET.get('season', seasons[0])
+        current_season = settings.CURRENT_SEASON
+
+        if not len(seasons) == 0:
+            current_season = self.request.GET.get('season', seasons[0])
 
         seasons = [season \
                    for season in settings.SEASONS if season[0] in seasons]
