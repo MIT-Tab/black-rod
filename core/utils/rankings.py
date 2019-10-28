@@ -196,6 +196,14 @@ def update_qual_points(team):
         if not debater.school.included_in_oty:
             continue
 
+        if len(markers) == 0:
+            continue
+
+        points = sum([marker[0] for marker in markers])
+
+        if points <= 0:
+            continue
+
         coty = QualPoints.objects.filter(
             season=settings.CURRENT_SEASON
         ).filter(
@@ -207,7 +215,6 @@ def update_qual_points(team):
                 season=settings.CURRENT_SEASON,
                 debater=debater)
 
-        points = sum([marker[0] for marker in markers])
         coty.points = points
 
         if points >= settings.QUAL_BAR:
@@ -269,6 +276,10 @@ def redo_rankings(rankings):
     place = 1
 
     for ranking in rankings:
+        if ranking.points == 0:
+            ranking.delete()
+            continue
+        
         ranking.place = place
         ranking.save()
 

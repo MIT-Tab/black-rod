@@ -94,8 +94,8 @@ class SpeakerResultForm(forms.ModelForm):
         model = SpeakerResult
         fields = ('speaker',)
 
-VarsityTeamResultFormset = formset_factory(TeamResultForm, extra=16)
-NoviceTeamResultFormset = formset_factory(TeamResultForm, extra=8)
+VarsityTeamResultFormset = formset_factory(TeamResultForm, extra=16, max_num=16)
+NoviceTeamResultFormset = formset_factory(TeamResultForm, extra=8, max_num=8)
 
-VarsitySpeakerResultFormset = formset_factory(SpeakerResultForm, extra=10)
-NoviceSpeakerResultFormset = formset_factory(SpeakerResultForm, extra=10)
+VarsitySpeakerResultFormset = formset_factory(SpeakerResultForm, extra=10, max_num=10)
+NoviceSpeakerResultFormset = formset_factory(SpeakerResultForm, extra=10, max_num=10)

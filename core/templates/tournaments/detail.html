@@ -2,6 +2,11 @@
 
 {% block title %}{{ object }}{% endblock %}
 
+{% block extra_buttons %}
+    <a href="{% url 'core:tournament_dataentry' %}?tournament={{ object.id }}" class="btn btn-sm mr-1 btn-primary float-right">Enter Results</a>
+{% endblock %}
+    
+
 {% block detail_view %}
     <table class="table table-bordered">
 	<thead>

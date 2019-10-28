@@ -153,7 +153,12 @@ class TeamAutocomplete(autocomplete.Select2QuerySetView):
         qs = Team.objects.all()
 
         if self.q:
-            query = Q(name__icontains=self.q)
-            qs = qs.filter(query)
+            query = Q()
+            for term in self.q.split():
+                query = query | \
+                        Q(name__icontains=term) | \
+                        Q(debaters__first_name__icontains=term) | \
+                        Q(debaters__last_name__icontains=term)
+            qs = qs.filter(query).distinct()
 
         return qs

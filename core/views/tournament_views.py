@@ -233,6 +233,59 @@ class TournamentDataEntryWizardView(CustomMixin, SessionWizardView):
 
         return super().get_template_names()
 
+    def get_form_initial(self, step):
+        storage_data = None
+        tournament = None
+
+        form_kwargs = super().get_form_initial(step)
+
+        initial = []
+        
+        if not step == '0':
+            storage_data = self.storage.get_step_data('0')
+
+            tournament = Tournament.objects.get(id=int(storage_data.get('0-tournament')))
+
+        if step == '0' and 'tournament' in self.request.GET:
+            tournament = Tournament.objects.filter(id=int(self.request.GET.get('tournament'))).first()
+
+            if tournament:
+                initial = {'tournament': tournament}
+
+        if step == '1':
+            results = TeamResult.objects.filter(tournament=tournament,
+                                                type_of_place=Debater.VARSITY)
+
+            for i in range(1, 17):
+                if results.filter(place=i).exists():
+                    initial += [{'team': results.filter(place=i).first().team}]
+            
+        if step == '2':
+            results = SpeakerResult.objects.filter(tournament=tournament,
+                                                type_of_place=Debater.VARSITY)
+
+            for i in range(1, 11):
+                if results.filter(place=i).exists():
+                    initial += [{'speaker': results.filter(place=i).first().debater}]
+
+        if step == '3':
+            results = TeamResult.objects.filter(tournament=tournament,
+                                                type_of_place=Debater.NOVICE)
+
+            for i in range(1, 9):
+                if results.filter(place=i).exists():
+                    initial += [{'team': results.filter(place=i).first().team}]
+
+        if step == '4':
+            results = SpeakerResult.objects.filter(tournament=tournament,
+                                                   type_of_place=Debater.NOVICE)
+
+            for i in range(1, 17):
+                if results.filter(place=i).exists():
+                    initial += [{'speaker': results.filter(place=i).first().debater}]
+
+        return initial
+
     def get_context_data(self, *args, **kwargs):
         context = super().get_context_data(*args, **kwargs)
 

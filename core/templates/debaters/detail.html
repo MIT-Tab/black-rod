@@ -63,6 +63,10 @@
 			    <td>{{ toty.get_season_display }}</td>
 			    <td>{{ toty.points }}</td>
 			</tr>
+		    {% empty %}
+			<tr>
+			    <td colspan="4"><center>This debater has never been on the TOTY board.</center></td>
+			</tr>
 		    {% endfor %}
 		</tbody>
 	    </table>
@@ -80,6 +84,10 @@
 				    <td>{{ soty.place }}</td>
 				    <td>{{ soty.get_season_display }}</td>
 				    <td>{{ soty.points }}</td>
+				</tr>
+			    {% empty %}
+				<tr>
+				    <td colspan="3"><center>This debater has never been on the SOTY board.</center></td>
 				</tr>
 			    {% endfor %}
 			</tbody>
@@ -99,6 +107,10 @@
 				    <td>{{ noty.place }}</td>
 				    <td>{{ noty.get_season_display }}</td>
 				    <td>{{ noty.points }}</td>
+				</tr>
+			    {% empty %}
+				<tr>
+				    <td colspan="3"><center>This debater has never been on the NOTY board.</center></td>
 				</tr>
 			    {% endfor %}
 			</tbody>
