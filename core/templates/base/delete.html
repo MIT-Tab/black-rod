@@ -9,6 +9,10 @@
 		    <form action="" method="POST" novalidate>
 			{% csrf_token %}
 			<p>Are you sure you want to delete "{{ object }}"?</p>
+			<p>Be very <b>VERY</b> careful with this power.  <i>Related objects may be deleted as well.</i></p>
+			<p>This is worth restating.</p>
+			<p><i>Related objects <b>may</b> be <u>deleted</u> as well.</i></p>
+			<p>If you are <b>at all</b> unsure, please <b>DO NOT</b> click the red button.</p>
 			<input type="submit" class="btn btn-danger" value="Delete">
 			<a class="btn btn-info" href="{{ object.get_absolute_url }}">No</a>
 		    </form>
