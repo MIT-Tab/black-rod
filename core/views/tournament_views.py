@@ -38,8 +38,10 @@ from core.utils.rankings import (
     update_noty,
     update_qual_points,
 )
+from core.utils.team import get_or_create_team_for_debaters
 
 from core.forms import (
+    DebaterForm,
     TournamentForm,
     TournamentSelectionForm,
     
@@ -222,6 +224,8 @@ class TournamentDataEntryWizardView(CustomMixin, SessionWizardView):
     template_name = 'tournaments/data_entry.html'
 
     def get_template_names(self):
+        if self.steps.current == '0':
+            return ['tournaments/tournament_entry.html']
         if self.steps.current == '1':
             return ['tournaments/team_result_entry.html']
         if self.steps.current == '2':
@@ -258,7 +262,8 @@ class TournamentDataEntryWizardView(CustomMixin, SessionWizardView):
 
             for i in range(1, 17):
                 if results.filter(place=i).exists():
-                    initial += [{'team': results.filter(place=i).first().team}]
+                    initial += [{'debater_one': results.filter(place=i).first().team.debaters.first(),
+                                 'debater_two': results.filter(place=i).first().team.debaters.last()}]
             
         if step == '2':
             results = SpeakerResult.objects.filter(tournament=tournament,
@@ -274,7 +279,8 @@ class TournamentDataEntryWizardView(CustomMixin, SessionWizardView):
 
             for i in range(1, 9):
                 if results.filter(place=i).exists():
-                    initial += [{'team': results.filter(place=i).first().team}]
+                    initial += [{'debater_one': results.filter(place=i).first().team.debaters.first(),
+                                 'debater_two': results.filter(place=i).first().team.debaters.last()}]
 
         if step == '4':
             results = SpeakerResult.objects.filter(tournament=tournament,
@@ -290,6 +296,7 @@ class TournamentDataEntryWizardView(CustomMixin, SessionWizardView):
         context = super().get_context_data(*args, **kwargs)
 
         context['title'] = self.step_names[self.steps.current]
+        context['debater_form'] = DebaterForm()
 
         return context
 
@@ -320,12 +327,24 @@ class TournamentDataEntryWizardView(CustomMixin, SessionWizardView):
         
         ## VARSITY TEAM AWARDS ##
         for i in range(len(form_dict['1'].cleaned_data)):
-            if not 'team' in form_dict['1'].cleaned_data[i]:
+            if not 'debater_one' in form_dict['1'].cleaned_data[i] or \
+               not 'debater_two' in form_dict['1'].cleaned_data[i]:
+                continue
+
+            if not form_dict['1'].cleaned_data[i]['debater_one'] or \
+               not form_dict['1'].cleaned_data[i]['debater_two']:
+                continue
+
+            team = get_or_create_team_for_debaters(
+                form_dict['1'].cleaned_data[i]['debater_one'],
+                form_dict['1'].cleaned_data[i]['debater_two']
+            )
+
+            if not team:
                 continue
 
             place = i + 1
             type_of_place = Debater.VARSITY
-            team = form_dict['1'].cleaned_data[i]['team']
 
             TeamResult.objects.create(tournament=tournament,
                                       team=team,
@@ -334,16 +353,6 @@ class TournamentDataEntryWizardView(CustomMixin, SessionWizardView):
 
             teams_to_update += [team]
 
-            for debater in team.debaters.all():
-                if not debater.school.included_in_oty:
-                    continue
-
-                if place <= tournament.autoqual_bar:
-                    qual = QUAL.objects.create(season=settings.CURRENT_SEASON,
-                                               tournament=tournament,
-                                               qual_type=tournament.qual_type,
-                                               debater=debater)
-
         for i in range(len(form_dict['2'].cleaned_data)):
             if not 'speaker' in form_dict['2'].cleaned_data[i]:
                 continue
@@ -351,6 +360,9 @@ class TournamentDataEntryWizardView(CustomMixin, SessionWizardView):
             place = i + 1
             type_of_place = Debater.VARSITY
             speaker = form_dict['2'].cleaned_data[i]['speaker']
+
+            if not speaker:
+                continue
 
             SpeakerResult.objects.create(tournament=tournament,
                                          debater=speaker,
@@ -361,17 +373,31 @@ class TournamentDataEntryWizardView(CustomMixin, SessionWizardView):
 
 
         for i in range(len(form_dict['3'].cleaned_data)):
-            if not 'team' in form_dict['3'].cleaned_data[i]:
+            if not 'debater_one' in form_dict['3'].cleaned_data[i] or \
+               not 'debater_two' in form_dict['3'].cleaned_data[i]:
+                continue
+
+            if not form_dict['3'].cleaned_data[i]['debater_one'] or \
+               not form_dict['3'].cleaned_data[i]['debater_two']:
+                continue
+
+            team = get_or_create_team_for_debaters(
+                form_dict['3'].cleaned_data[i]['debater_one'],
+                form_dict['3'].cleaned_data[i]['debater_two']
+            )
+
+            if not team:
                 continue
 
             place = i + 1
             type_of_place = Debater.NOVICE
-            team = form_dict['3'].cleaned_data[i]['team']
 
             TeamResult.objects.create(tournament=tournament,
                                       team=team,
                                       type_of_place=type_of_place,
                                       place=place)
+
+            teams_to_update += [team]
 
         for i in range(len(form_dict['4'].cleaned_data)):
             if not 'speaker' in form_dict['4'].cleaned_data[i]:
@@ -380,6 +406,9 @@ class TournamentDataEntryWizardView(CustomMixin, SessionWizardView):
             place = i + 1
             type_of_place = Debater.NOVICE
             speaker = form_dict['4'].cleaned_data[i]['speaker']
+
+            if not speaker:
+                continue
 
             SpeakerResult.objects.create(tournament=tournament,
                                          debater=speaker,
@@ -392,20 +421,17 @@ class TournamentDataEntryWizardView(CustomMixin, SessionWizardView):
         speakers_to_update = list(set(speakers_to_update))
         novices_to_update = list(set(novices_to_update))
 
-        if update_otys:
-            for team in teams_to_update:
-                if tournament.toty:
-                    update_toty(team)
-                if tournament.qual:
-                    update_qual_points(team)
-            for debater in speakers_to_update:
-                if tournament.soty:
-                    update_soty(debater)
-            for debater in novices_to_update:
-                if tournament.noty:
-                    update_noty(debater)
+        print ('TEAMS TO UPDATE: %s' % (teams_to_update,))
 
         if update_otys:
+            for team in teams_to_update:
+                update_toty(team)
+                update_qual_points(team)
+            for debater in speakers_to_update:
+                update_soty(debater)
+            for debater in novices_to_update:
+                update_noty(debater)
+
             redo_rankings(TOTY.objects.filter(season=settings.CURRENT_SEASON))
             redo_rankings(SOTY.objects.filter(season=settings.CURRENT_SEASON))
             redo_rankings(NOTY.objects.filter(season=settings.CURRENT_SEASON))

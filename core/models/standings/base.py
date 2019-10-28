@@ -37,6 +37,8 @@ class AbstractStanding(models.Model):
 
     objects = StandingsManager()
     all_objects = AllSeasonManager()
+
+    tied = models.BooleanField(default=False)
     
 
     
