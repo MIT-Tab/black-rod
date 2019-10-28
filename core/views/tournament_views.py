@@ -65,7 +65,7 @@ class TournamentFilter(FilterSet):
             'toty': ['exact'],
             'soty': ['exact'],
             'noty': ['exact'],
-            'qual_bar': ['exact'],
+            'autoqual_bar': ['exact'],
         }
 
 
@@ -84,7 +84,7 @@ class TournamentTable(CustomTable):
                   'toty',
                   'soty',
                   'noty',
-                  'qual_bar')
+                  'autoqual_bar')
 
 
 class TournamentListView(CustomListView):
@@ -282,7 +282,10 @@ class TournamentDataEntryWizardView(CustomMixin, SessionWizardView):
             teams_to_update += [team]
 
             for debater in team.debaters.all():
-                if place <= tournament.qual_bar:
+                if not debater.school.included_in_oty:
+                    continue
+
+                if place <= tournament.autoqual_bar:
                     qual = QUAL.objects.create(season=settings.CURRENT_SEASON,
                                                tournament=tournament,
                                                qual_type=tournament.qual_type,

@@ -41,7 +41,7 @@ class TournamentForm(forms.ModelForm):
                   'noty',
                   'soty',
                   'toty',
-                  'qual_bar',
+                  'autoqual_bar',
                   'qual_type')
 
 

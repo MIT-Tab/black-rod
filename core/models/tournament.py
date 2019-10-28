@@ -54,9 +54,9 @@ class Tournament(models.Model):
                                verbose_name='TOTY',
                                help_text='Does this tournament give TOTY points?')
 
-    qual_bar = models.IntegerField(default=0,
-                                   verbose_name='Qual Bar',
-                                   help_text='If this tournament gives autoquals, this value represents the highest place that receivs the autoqual')
+    autoqual_bar = models.IntegerField(default=0,
+                                       verbose_name='Autoqual Bar',
+                                       help_text='If this tournament gives autoquals, this value represents the highest place that receivs the autoqual')
 
     # REPEATED TO PREVENT CIRCULAR IMPORTS
     POINTS = 0

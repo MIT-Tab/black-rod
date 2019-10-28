@@ -11,6 +11,9 @@ from core.models.standings.qual import QUAL
 def update_toty(team):
     num_schools = len(list(set([d.school for d in team.debaters.all()])))
 
+    if not team.debaters.first().school.included_in_oty:
+        return
+
     if num_schools > 1:
         return
 
