@@ -13,10 +13,10 @@ from core.models import (
 
 
 def index(request):
-    toty = TOTY.objects.filter(season=settings.CURRENT_SEASON).order_by('-points').all()
-    coty = COTY.objects.filter(season=settings.CURRENT_SEASON).order_by('-points').all()
-    soty = SOTY.objects.filter(season=settings.CURRENT_SEASON).order_by('-points').all()
-    noty = NOTY.objects.filter(season=settings.CURRENT_SEASON).order_by('-points').all()
+    toty = TOTY.objects.filter(season=settings.CURRENT_SEASON).order_by('-points').all()[:10]
+    coty = COTY.objects.filter(season=settings.CURRENT_SEASON).order_by('-points').all()[:10]
+    soty = SOTY.objects.filter(season=settings.CURRENT_SEASON).order_by('-points').all()[:10]
+    noty = NOTY.objects.filter(season=settings.CURRENT_SEASON).order_by('-points').all()[:10]
 
     
     return render(request,

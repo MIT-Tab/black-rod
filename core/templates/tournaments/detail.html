@@ -2,6 +2,11 @@
 
 {% block title %}{{ object }}{% endblock %}
 
+{% block extra_buttons %}
+    <a href="{% url 'core:tournament_dataentry' %}?tournament={{ object.id }}" class="btn btn-sm mr-1 btn-primary float-right">Enter Results</a>
+{% endblock %}
+    
+
 {% block detail_view %}
     <table class="table table-bordered">
 	<thead>
@@ -19,7 +24,7 @@
 	    </tr>
 	    <tr>
 		<td>Host School</td>
-		<td>{{ object.host.name }}</td>
+		<td>{% if object.host %}<a href="{{ object.get_absolute_url }}">{{ object.host.name }}</a>{% else %}Unlinked{% endif %}</td>
 	    </tr>
 	    <tr>
 		<td>Date</td>
@@ -36,14 +41,14 @@
 		<td>Teams</td>
 		<td>{{ object.num_teams }}</td>
 	    </tr>
-	    <tr>
+	    <!--<tr>
 		<td>Novice Teams</td>
 		<td>{{ object.num_novice_teams }}</td>
-	    </tr>
-	    <tr>
+	    </tr>-->
+	    <!--<tr>
 		<td>Debaters</td>
 		<td>{{ object.num_debaters }}</td>
-	    </tr>
+	    </tr>-->
 	    <tr>
 		<td>Novice Debaters</td>
 		<td>{{ object.num_novice_debaters }}</td>
@@ -65,9 +70,59 @@
 		<td>{{ object.noty|yesno:"Yes,No" }}</td>
 	    </tr>
 	    <tr>
-		<td>Qual Bar</td>
-		<td>{{ object.qual_bar }}</td>
+		<td>Autoqual Bar</td>
+		<td>{% if object.qual_bar == 0 %}None{% else %}{{ object.qual_bar }}{% endif %}</td>
 	    </tr>
 	</tbody>
     </table>
+{% endblock %}
+
+{% block added_information_view %}
+    <div class="card">
+	<div class="card-body">
+	    <h5 class="card-title pb-2">Team Results
+		<ul class="nav nav-pills float-right" id="results_pills" roll="tablist">
+		    <li class="nav-item">
+			<a class="nav-link active" id="varsity_button" data-toggle="tab" href="#varsity">Varsity</a>
+		    </li>
+		    <li class="nav-item">
+			<a class="nav-link" id="novice_button" data-toggle="tab" href="#novice">Novice</a>
+		    </li>		
+		</ul>
+	    </h5>
+	    <hr />
+	    <div class="tab-content" id="results">
+		<div class="tab-pane fade show active" id="varsity" role="tabpanel">
+		    {% include 'base/results/team.html' with results=varsity_team_results %}
+		</div>
+		<div class="tab-pane fade" id="novice" role="tabpanel">
+		    {% include 'base/results/team.html' with results=novice_team_results %}
+		</div>
+	    </div>
+	</div>
+    </div>
+    <div class="card mt-3">
+	<div class="card-body">
+	    <h5 class="card-title pb-2">Speaker Results
+		<ul class="nav nav-pills float-right" id="results_pills" roll="tablist">
+		    <li class="nav-item">
+			<a class="nav-link active" id="speakers_varsity_button" data-toggle="tab" href="#varsity_speakers">Varsity</a>
+		    </li>
+		    <li class="nav-item">
+			<a class="nav-link" id="speakers_novice_button" data-toggle="tab" href="#novice_speakers">Novice</a>
+		    </li>		
+		</ul>
+	    </h5>
+	    <hr />
+	    <div class="tab-content" id="results">
+		<div class="tab-pane fade show active" id="varsity_speakers" role="tabpanel">
+		    {% include 'base/results/speaker.html' with results=varsity_speaker_results %}
+		</div>
+		<div class="tab-pane fade" id="novice_speakers" role="tabpanel">
+		    {% include 'base/results/speaker.html' with results=novice_speaker_results %}
+		</div>
+	    </div>
+	</div>
+    </div>    
+    
 {% endblock %}

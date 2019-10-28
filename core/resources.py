@@ -16,3 +16,43 @@ class DebaterResource(resources.ModelResource):
 class TournamentResource(resources.ModelResource):
     class Meta:
         model = Tournament
+
+
+class TeamResource(resources.ModelResource):
+    class Meta:
+        model = Team
+
+
+class TeamResultResource(resources.ModelResource):
+    class Meta:
+        model = TeamResult
+
+
+class SpeakerResultResource(resources.ModelResource):
+    class Meta:
+        model = SpeakerResult
+
+
+class NOTYResource(resources.ModelResource):
+    class Meta:
+        model = NOTY
+
+
+class SOTYResource(resources.ModelResource):
+    class Meta:
+        model = SOTY
+
+
+class TOTYResource(resources.ModelResource):
+    class Meta:
+        model = TOTY
+
+
+class COTYResource(resources.ModelResource):
+    class Meta:
+        model = COTY
+
+
+class QualPointsResource(resources.ModelResource):
+    class Meta:
+        model = QualPoints

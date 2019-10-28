@@ -1,6 +1,8 @@
 from django.db import models
 from django.conf import settings
 
+from core.models.tournament import Tournament
+
 
 class StandingsManager(models.Manager):
     def get_queryset(self):
@@ -26,6 +28,8 @@ class AbstractStanding(models.Model):
                               default=settings.DEFAULT_SEASON,
                               max_length=16)
 
+    place = models.IntegerField(default=-1)
+
     points = models.FloatField(default=-1)
 
     class Meta:
@@ -33,3 +37,6 @@ class AbstractStanding(models.Model):
 
     objects = StandingsManager()
     all_objects = AllSeasonManager()
+    
+
+    

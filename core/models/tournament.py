@@ -4,7 +4,8 @@ from django.conf import settings
 
 from core.utils.points import (
     team_points_for_size,
-    speaker_points_for_size
+    speaker_points_for_size,
+    novice_points_for_size
 )
 from core.models.school import School
 
@@ -53,9 +54,31 @@ class Tournament(models.Model):
                                verbose_name='TOTY',
                                help_text='Does this tournament give TOTY points?')
 
-    qual_bar = models.IntegerField(default=0,
-                                   verbose_name='Qual Bar',
-                                   help_text='If this tournament gives autoquals, this value represents the highest place that receivs the autoqual')
+    autoqual_bar = models.IntegerField(default=0,
+                                       verbose_name='Autoqual Bar',
+                                       help_text='If this tournament gives autoquals, this value represents the highest place that receivs the autoqual')
+
+    # REPEATED TO PREVENT CIRCULAR IMPORTS
+    POINTS = 0
+    BRANDEIS = 1
+    YALE = 2
+    NORTHAMS = 3
+    EXPANSION = 4
+    WORLDS = 5
+    NAUDC = 6
+
+    QUAL_TYPES = (
+        (POINTS, 'Points'),
+        (BRANDEIS, 'Brandeis IV'),
+        (YALE, 'Yale IV'),
+        (NORTHAMS, 'NorthAms'),
+        (EXPANSION, 'Expansion'),
+        (WORLDS, 'Worlds'),
+        (NAUDC, 'NAUDC')
+    )
+    qual_type = models.IntegerField(choices=QUAL_TYPES,
+                                    default=POINTS,
+                                    help_text='This only needs be set if the qual_bar is NOT 0, ie there is a special qual bar')
 
 
     def get_qualled(self, place):
@@ -84,7 +107,7 @@ class Tournament(models.Model):
         if not self.soty:
             return 0
 
-        return speaker_points_for_size(self.num_debaters,
+        return speaker_points_for_size(self.num_teams,
                                        place)
 
 
@@ -92,8 +115,8 @@ class Tournament(models.Model):
         if not self.noty:
             return 0
 
-        return speaker_points_for_size(self.num_novice_debaters,
-                                       place)
+        return novice_points_for_size(self.num_novice_debaters,
+                                      place)
 
     def get_absolute_url(self):
         return reverse('core:tournament_detail', kwargs={'pk': self.id})
@@ -107,9 +130,13 @@ class Tournament(models.Model):
         if self.name == '':
             previous_tournaments = Tournament.objects.filter(
                 season=self.season
+            ).filter(
+                host=self.host
             ).exclude(
                 id=self.id
             ).count()
+
+            print (previous_tournaments)
             
             suffix = ' '
             
@@ -119,3 +146,6 @@ class Tournament(models.Model):
             self.name = self.host.name + suffix
 
         super().save(*args, **kwargs)
+
+    class Meta:
+        ordering = ('-season', '-date')

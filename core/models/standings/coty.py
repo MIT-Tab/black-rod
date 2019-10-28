@@ -13,3 +13,4 @@ class COTY(AbstractStanding):
 
     class Meta:
         unique_together = ('season', 'school')
+        ordering = ('place',)

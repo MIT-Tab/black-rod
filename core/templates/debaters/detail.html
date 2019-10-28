@@ -19,7 +19,7 @@
 	    </tr>
 	    <tr>
 		<td>School</td>
-		<td>{{ object.school.name }}</td>
+		<td><a href={% url 'core:school_detail' pk=object.school.id %}>{{ object.school.name }}</a></td>
 	    </tr>
 	    <tr>
 		<td>Status</td>
@@ -27,4 +27,168 @@
 	    </tr>
 	</tbody>
     </table>
+{% endblock %}
+
+{% block left_column %}
+    <div class="card mt-3 mb-3">
+	<div class="card-body">
+	    <h5 class="card-title pb-2">OTYS
+		<ul class="nav nav-pills float-right" id="otys_pills" roll="tablist">
+		    <li class="nav-item">
+			<a class="nav-link active" id="_TOTY" data-toggle="tab" href="#toty">TOTY</a>
+		    </li>
+		    <li class="nav-item">
+			<a class="nav-link" id="_SOTY" data-toggle="tab" href="#soty">SOTY</a>
+		    </li>
+		    <li class="nav-item">
+			<a class="nav-link" id="_NOTY" data-toggle="tab" href="#noty">NOTY</a>
+		    </li>
+		</ul>
+	    </h5>
+	    <hr />
+	    <div class="tab-content" id="otys">
+		<div class="tab-pane fade show active" id="toty" role="tabpanel">
+	    <table class="table table-bordered table-hover table-striped">
+		<thead>
+		    <th>Place</th>
+		    <th>Team</th>
+		    <th>Season</th>
+		    <th>Points</th>
+		</thead>
+		<tbody>
+		    {% for toty in totys %}
+			<tr>
+			    <td>{{ toty.place }}</td>
+			    <td><a href="{{ toty.team.get_absolute_url }}">{{ toty.team.name }}</a></td>
+			    <td>{{ toty.get_season_display }}</td>
+			    <td>{{ toty.points }}</td>
+			</tr>
+		    {% empty %}
+			<tr>
+			    <td colspan="4"><center>This debater has never been on the TOTY board.</center></td>
+			</tr>
+		    {% endfor %}
+		</tbody>
+	    </table>
+		</div>
+		<div class="tab-pane fade" id="soty" role="tabpanel">
+		    <table class="table table-bordered table-hover table-striped">
+			<thead>
+			    <th>Place</th>
+			    <th>Season</th>
+			    <th>Points</th>
+			</thead>
+			<tbody>
+			    {% for soty in sotys %}
+				<tr>
+				    <td>{{ soty.place }}</td>
+				    <td>{{ soty.get_season_display }}</td>
+				    <td>{{ soty.points }}</td>
+				</tr>
+			    {% empty %}
+				<tr>
+				    <td colspan="3"><center>This debater has never been on the SOTY board.</center></td>
+				</tr>
+			    {% endfor %}
+			</tbody>
+		    </table>
+		    
+		</div>
+		<div class="tab-pane fade" id="noty" role="tabpanel">
+		    <table class="table table-bordered table-hover table-striped">
+			<thead>
+			    <th>Place</th>
+			    <th>Season</th>
+			    <th>Points</th>
+			</thead>
+			<tbody>
+			    {% for noty in notys %}
+				<tr>
+				    <td>{{ noty.place }}</td>
+				    <td>{{ noty.get_season_display }}</td>
+				    <td>{{ noty.points }}</td>
+				</tr>
+			    {% empty %}
+				<tr>
+				    <td colspan="3"><center>This debater has never been on the NOTY board.</center></td>
+				</tr>
+			    {% endfor %}
+			</tbody>
+		    </table>
+		</div>		
+	    </div>
+	</div>
+    </div>    
+    
+    <div class="card mb-2">
+	<div class="card-body">
+	    <h5 class="card-title">Teams</h5>
+	    <hr />
+	    <ul>
+		{% for team in object.teams.all %}
+		    <li>
+			<a href="{{ team.get_absolute_url }}">{{ team }}</a>
+			<ul>
+			    <li>
+				{{ team.debaters_display|safe }}
+			    </li>
+			</ul>
+		    </li>
+		{% endfor %}
+	    </ul>
+	</div>
+    </div>
+{% endblock %}
+
+{% block added_information_view %}
+    <div class="card">
+	<div class="card-body">
+	    <h5 class="card-title pb-2">Results
+		<ul class="nav nav-pills float-right">
+		    <li class="nav-item dropdown">
+			<a class="nav-link dropdown-toggle active" data-toggle="dropdown" href="#" role="button" aria-haspopup="true" aria-expanded="false">{% for season in seasons %}{% if season.0 == current_season %}{{ season.1 }}{% endif %}{% endfor %}</a>
+			<div class="dropdown-menu">
+			    {% for season in seasons %}
+				<a class="dropdown-item {% if season.0 == current_season %}active{% endif %}" href="{{ request.path }}?season={{ season.0 }}">{{ season.1 }}</a>
+			    {% endfor %}
+			</div>
+		    </li>
+		</ul>
+	    </h5>
+	    <hr />
+	    <table class="table table-bordered">
+		<tbody>
+		    {% for tournament in results %}
+			<tr class="shaded">
+			    <td colspan="2"><a href="{{ tournament.tournament.get_absolute_url }}">{{ tournament.tournament.name }}</a></td>
+			    <td>{{ tournament.tournament.date }}</td>
+			    <td>{{ tournament.tournament.get_season_display }}</td>
+			</tr>
+			{% for type, award in tournament.data %}
+			    <tr>
+				{% if type == 'team' %}
+				    <td></td>
+				    <td>{{ award.get_type_of_place_display }} Team Award</td>
+				    <td>Place: {{ award.place }}</td>
+				    <td>
+					<a href="{{ award.team.get_absolute_url }}">{{ award.team }}</a>
+					<br>
+					{{ award.team.debaters_display|safe }}</td>
+				{% endif %}
+				{% if type == 'speaker' %}
+				    <td></td>
+				    <td>{{ award.get_type_of_place_display }} Speaker Award</td>
+				    <td>Place: {{ award.place }}</td>
+				    <td><a href="{{ award.debater.get_absolute_url }}">{{ award.debater }}</a></td>
+				{% endif %}
+			    </tr>
+			{% endfor %}
+			{% if not forloop.last %}
+			    <tr><td colspan="4"></td></tr>
+			{% endif %}
+		    {% endfor %}
+		</tbody>
+	    </table>
+	</div>
+    </div>
 {% endblock %}

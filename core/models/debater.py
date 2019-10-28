@@ -1,5 +1,6 @@
 from django.db import models
 from django.shortcuts import reverse
+from django.conf import settings
 
 from .school import School
 
@@ -37,3 +38,21 @@ class Debater(models.Model):
 
     def __str__(self):
         return self.name
+
+
+class QualPoints(models.Model):
+    # THIS IS FUNCTIONALLY QUAL POINTS (EXCLUDED 6 FOR QUALLING ITSELF)
+
+    debater = models.ForeignKey(Debater,
+                                on_delete=models.CASCADE,
+                                related_name='qual_points')
+
+    points = models.FloatField(default=0)
+
+    season = models.CharField(choices=settings.SEASONS,
+                              default=settings.DEFAULT_SEASON,
+                              max_length=16)
+
+    @property
+    def qualled(self):
+        return self.debater.quals.filter(season=self.season).exists()

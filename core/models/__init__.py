@@ -1,5 +1,5 @@
 from .user import User
-from .debater import Debater
+from .debater import Debater, QualPoints
 from .team import Team
 from .school import School
 from .tournament import Tournament
@@ -16,6 +16,7 @@ from .standings.toty import TOTY
 __all__ = [
     'User', 
     'Debater',
+    'QualPoints',
     'School',
     'Team',
     'Tournament',

@@ -1,17 +1,19 @@
 {% extends 'base/base.html' %}
 
 {% block content %}
-    <div class="row m-5">
+    <div class="row mt-5 ml-2 mr-2 mb-5">
 	<div class="col-lg-4">
 	    <div class="card mb-2">
 		<div class="card-body">
 		    <h5 class="card-title">{{ object }}
 			{% include 'base/_buttons.html' %}
+			{% block extra_buttons %}{% endblock %}
 		    </h5>
 		    <hr />
 		    {% block detail_view %}In Progress{% endblock %}
 		</div>
 	    </div>
+	    {% block left_column %}{% endblock %}
 	</div>
 	<div class="col-lg-8">
 	    {% block added_information_view %}In Progress{% endblock %}
