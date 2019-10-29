@@ -26,3 +26,8 @@ def partner_display(team, debater):
                                                           partner.name,
                                                           partner.school.get_absolute_url,
                                                           partner.school.name)
+
+@register.filter
+def school(team):
+    return '<a href="%s">%s</a>' % (team.debaters.first().school.get_absolute_url(),
+                                    team.debaters.first().school.name)
