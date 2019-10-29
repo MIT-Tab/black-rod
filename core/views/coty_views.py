@@ -10,7 +10,8 @@ from django_tables2 import Column
 from core.utils.generics import (
     CustomTable,
     CustomListView,
-    MarkerColumn
+    MarkerColumn,
+    PlaceColumn
 )
 from core.models.standings.coty import COTY
 
@@ -26,6 +27,8 @@ class COTYFilter(FilterSet):
 
 class COTYTable(CustomTable):
     school = Column(verbose_name='School', accessor='school.name', linkify=lambda record: record.school.get_absolute_url())
+
+    place = PlaceColumn()
     
     class Meta:
         model = COTY

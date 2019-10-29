@@ -32,7 +32,7 @@
 			<tbody>
 			    {% for team in toty %}
 				<tr>
-				    <td>{{ team.place }}</td>
+				    <td>{% if team.tied %}T-{% endif %}{{ team.place }}</td>
 				    <td><a href="{{ team.team.get_absolute_url }}">{{ team.team.name }}</a></td>
 				    <td>{{ team.team.debaters_display|safe }}</td>
 				    <td>{{ team.points }}</td>
@@ -58,7 +58,7 @@
 			<tbody>
 			    {% for speaker in soty %}
 				<tr>
-				    <td>{{ speaker.place }}</td>
+				    <td>{% if speaker.tied %}T-{% endif %}{{ speaker.place }}</td>
 				    <td><a href="{% url 'core:debater_detail' pk=speaker.debater.id %}">{{ speaker.debater.name }}</a></td>
 				    <td><a href={% url 'core:school_detail' pk=speaker.debater.school.id %}>{{ speaker.debater.school.name }}</a></td>
 				    <td>{{ speaker.points }}</td>
@@ -83,7 +83,7 @@
 			<tbody>
 			    {% for school in coty %}
 				<tr>
-				    <td>{{ school.place }}</td>
+				    <td>{% if school.tied %}T-{% endif %}{{ school.place }}</td>
 				    <td><a href="{{ school.school.get_absolute_url }}">{{ school.school.name }}</a></td>
 				    <td>{{ school.points }}</td>
 				</tr>
@@ -108,7 +108,7 @@
 			<tbody>
 			    {% for speaker in noty %}
 				<tr>
-				    <td>{{ speaker.place }}</td>
+				    <td>{% if speaker.tied %}T-{% endif %}{{ speaker.place }}</td>
 				    <td><a href="{% url 'core:debater_detail' pk=speaker.debater.id %}">{{ speaker.debater.name }}</a></td>
 				    <td><a href={% url 'core:school_detail' pk=speaker.debater.school.id %}>{{ speaker.debater.school.name }}</a></td>
 				    <td>{{ speaker.points }}</td>
