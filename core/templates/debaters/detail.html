@@ -159,7 +159,7 @@
 		    {% for tournament in results %}
 			<tr class="shaded">
 			    <td colspan="2"><a href="{{ tournament.tournament.get_absolute_url }}">{{ tournament.tournament.name }}</a></td>
-			    <td>{{ tournament.tournament.date|date:'M d' }}</td>
+			    <td>{{ tournament.tournament.date|date:'M j' }}</td>
 			    <td {% if not tournament.team %}colspan="2"{% endif %}>{{ tournament.tournament.get_season_display }}</td>
 			    {% if tournament.team %}<td>Partner: {{ tournament.team|partner_display:object|safe }}</td>{% endif %}
 			</tr>

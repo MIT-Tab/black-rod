@@ -11,7 +11,7 @@
 	    <tr>
 		<td>{{ result.place }}</td>
 		<td><a href="{% url 'core:tournament_detail' pk=result.tournament.id %}">{{ result.tournament.name }}</a></td>
-		<td>{{ result.tournament.date|date:"M d" }}</td>
+		<td>{{ result.tournament.date|date:"M j" }}</td>
 		<td>{{ result.tournament.get_season_display }}</td>
 		<td>{{ result.get_type_of_place_display }}
 	    </tr>
