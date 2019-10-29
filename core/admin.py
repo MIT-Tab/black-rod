@@ -53,6 +53,10 @@ class QualPointsAdmin(ImportExportModelAdmin):
     resource_class = QualPointsResource
 
 
+class QUALAdmin(ImportExportModelAdmin):
+    resource_class = QUALResource
+
+
 admin.site.register(User, UserAdmin)
 
 admin.site.register(School, SchoolAdmin)
@@ -67,3 +71,4 @@ admin.site.register(NOTY, NOTYAdmin)
 admin.site.register(TOTY, TOTYAdmin)
 admin.site.register(COTY, COTYAdmin)
 admin.site.register(QualPoints, QualPointsAdmin)
+admin.site.register(QUAL, QUALAdmin)
