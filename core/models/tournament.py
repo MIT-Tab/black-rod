@@ -136,8 +136,6 @@ class Tournament(models.Model):
                 id=self.id
             ).count()
 
-            print (previous_tournaments)
-            
             suffix = ' '
             
             if previous_tournaments:
@@ -148,4 +146,4 @@ class Tournament(models.Model):
         super().save(*args, **kwargs)
 
     class Meta:
-        ordering = ('-season', '-date')
+        ordering = ('date',)

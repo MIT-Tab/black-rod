@@ -2,6 +2,8 @@ from django.urls import reverse_lazy
 from django.shortcuts import redirect
 from django.conf import settings
 
+from django.http import QueryDict
+
 from django_filters import FilterSet
 
 from dal import autocomplete
@@ -53,6 +55,17 @@ from core.forms import (
 
 
 class TournamentFilter(FilterSet):
+    def __init__(self, data=None, *args, **kwargs):
+        if not data:
+            data = QueryDict('season=%s' % (settings.CURRENT_SEASON,))
+        if data is not None:
+            data = data.copy()
+
+            if not 'season' in data or data['season'] == '':
+                data['season'] = settings.CURRENT_SEASON
+
+        super().__init__(data, *args, **kwargs)
+
     class Meta:
         model = Tournament
         fields = {
