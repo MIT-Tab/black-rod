@@ -42,12 +42,12 @@
 				    <td>{% if team.tied %}T-{% endif %}{{ team.place }}</td>
 				    <td>{{ team.team|school|safe }}</td>
 				    <td>{{ team.team.debaters_display|safe }}</td>
-				    <td>{{ team.points }}</td>
-				    <td>{% if not team.marker_one == 0 %}{{ team.marker_one }} ({{ team.tournament_one.name }}){% endif %}</td>
-				    <td>{% if not team.marker_two == 0 %}{{ team.marker_two }} ({{ team.tournament_two.name }}){% endif %}</td>
-				    <td>{% if not team.marker_three == 0 %}{{ team.marker_three }} ({{ team.tournament_three.name }}){% endif %}</td>
-				    <td>{% if not team.marker_four == 0 %}{{ team.marker_four }} ({{ team.tournament_four.name }}){% endif %}</td>
-				    <td>{% if not team.marker_five == 0 %}{{ team.marker_five }} ({{ team.tournament_five.name }}){% endif %}</td>
+				    <td>{{ team.points|floatformat:"-2" }}</td>
+				    <td>{% if not team.marker_one == 0 %}{{ team.marker_one|floatformat:"-2" }} ({{ team.tournament_one.name }}){% endif %}</td>
+				    <td>{% if not team.marker_two == 0 %}{{ team.marker_two|floatformat:"-2" }} ({{ team.tournament_two.name }}){% endif %}</td>
+				    <td>{% if not team.marker_three == 0 %}{{ team.marker_three|floatformat:"-2" }} ({{ team.tournament_three.name }}){% endif %}</td>
+				    <td>{% if not team.marker_four == 0 %}{{ team.marker_four|floatformat:"-2" }} ({{ team.tournament_four.name }}){% endif %}</td>
+				    <td>{% if not team.marker_five == 0 %}{{ team.marker_five|floatformat:"-2" }} ({{ team.tournament_five.name }}){% endif %}</td>
 				</tr>
 			    {% empty %}
 				<tr>
@@ -80,13 +80,13 @@
 				    <td>{% if speaker.tied %}T-{% endif %}{{ speaker.place }}</td>
 				    <td><a href="{% url 'core:debater_detail' pk=speaker.debater.id %}">{{ speaker.debater.name }}</a></td>
 				    <td><a href={% url 'core:school_detail' pk=speaker.debater.school.id %}>{{ speaker.debater.school.name }}</a></td>
-				    <td>{{ speaker.points }}</td>
-				    <td>{% if not speaker.marker_one == 0 %}{{ speaker.marker_one }} ({{ speaker.tournament_one.name }}){% endif %}</td>
-				    <td>{% if not speaker.marker_two == 0 %}{{ speaker.marker_two }} ({{ speaker.tournament_two.name }}){% endif %}</td>
-				    <td>{% if not speaker.marker_three == 0 %}{{ speaker.marker_three }} ({{ speaker.tournament_three.name }}){% endif %}</td>
-				    <td>{% if not speaker.marker_four == 0 %}{{ speaker.marker_four }} ({{ speaker.tournament_four.name }}){% endif %}</td>
-				    <td>{% if not speaker.marker_five == 0 %}{{ speaker.marker_five }} ({{ speaker.tournament_five.name }}){% endif %}</td>
-				    <td>{% if not speaker.marker_six == 0 %}{{ speaker.marker_six }} ({{ speaker.tournament_six.name }}){% endif %}</td>				    
+				    <td>{{ speaker.points|floatformat:"-2" }}</td>
+				    <td>{% if not speaker.marker_one == 0 %}{{ speaker.marker_one|floatformat:"-2" }} ({{ speaker.tournament_one.name }}){% endif %}</td>
+				    <td>{% if not speaker.marker_two == 0 %}{{ speaker.marker_two|floatformat:"-2" }} ({{ speaker.tournament_two.name }}){% endif %}</td>
+				    <td>{% if not speaker.marker_three == 0 %}{{ speaker.marker_three|floatformat:"-2" }} ({{ speaker.tournament_three.name }}){% endif %}</td>
+				    <td>{% if not speaker.marker_four == 0 %}{{ speaker.marker_four|floatformat:"-2" }} ({{ speaker.tournament_four.name }}){% endif %}</td>
+				    <td>{% if not speaker.marker_five == 0 %}{{ speaker.marker_five|floatformat:"-2" }} ({{ speaker.tournament_five.name }}){% endif %}</td>
+				    <td>{% if not speaker.marker_six == 0 %}{{ speaker.marker_six|floatformat:"-2" }} ({{ speaker.tournament_six.name }}){% endif %}</td>				    
 				</tr>
 			    {% empty %}
 				<tr>
@@ -111,7 +111,7 @@
 				<tr>
 				    <td>{% if school.tied %}T-{% endif %}{{ school.place }}</td>
 				    <td><a href="{{ school.school.get_absolute_url }}">{{ school.school.name }}</a></td>
-				    <td>{{ school.points }}</td>
+				    <td>{{ school.points|floatformat:"-2" }}</td>
 				</tr>
 			    {% empty %}
 				<tr>
@@ -143,12 +143,12 @@
 				    <td>{% if speaker.tied %}T-{% endif %}{{ speaker.place }}</td>
 				    <td><a href="{% url 'core:debater_detail' pk=speaker.debater.id %}">{{ speaker.debater.name }}</a></td>
 				    <td><a href={% url 'core:school_detail' pk=speaker.debater.school.id %}>{{ speaker.debater.school.name }}</a></td>
-				    <td>{{ speaker.points }}</td>
-				    <td>{% if not speaker.marker_one == 0 %}{{ speaker.marker_one }} ({{ speaker.tournament_one.name }}){% endif %}</td>
-				    <td>{% if not speaker.marker_two == 0 %}{{ speaker.marker_two }} ({{ speaker.tournament_two.name }}){% endif %}</td>
-				    <td>{% if not speaker.marker_three == 0 %}{{ speaker.marker_three }} ({{ speaker.tournament_three.name }}){% endif %}</td>
-				    <td>{% if not speaker.marker_four == 0 %}{{ speaker.marker_four }} ({{ speaker.tournament_four.name }}){% endif %}</td>
-				    <td>{% if not speaker.marker_five == 0 %}{{ speaker.marker_five }} ({{ speaker.tournament_five.name }}){% endif %}</td>				    
+				    <td>{{ speaker.points|floatformat:"-2" }}</td>
+				    <td>{% if not speaker.marker_one == 0 %}{{ speaker.marker_one|floatformat:"-2" }} ({{ speaker.tournament_one.name }}){% endif %}</td>
+				    <td>{% if not speaker.marker_two == 0 %}{{ speaker.marker_two|floatformat:"-2" }} ({{ speaker.tournament_two.name }}){% endif %}</td>
+				    <td>{% if not speaker.marker_three == 0 %}{{ speaker.marker_three|floatformat:"-2" }} ({{ speaker.tournament_three.name }}){% endif %}</td>
+				    <td>{% if not speaker.marker_four == 0 %}{{ speaker.marker_four|floatformat:"-2" }} ({{ speaker.tournament_four.name }}){% endif %}</td>
+				    <td>{% if not speaker.marker_five == 0 %}{{ speaker.marker_five|floatformat:"-2" }} ({{ speaker.tournament_five.name }}){% endif %}</td>				    
 				</tr>
 			    {% empty %}
 				<tr>

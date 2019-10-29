@@ -11,7 +11,8 @@ from core.utils.generics import (
     CustomTable,
     CustomListView,
     MarkerColumn,
-    PlaceColumn
+    PlaceColumn,
+    PointsColumn
 )
 from core.models.standings.soty import SOTY
 
@@ -29,6 +30,8 @@ class SOTYFilter(FilterSet):
 
 class SOTYTable(CustomTable):
     place = PlaceColumn()
+
+    points = PointsColumn()    
 
     marker_one = MarkerColumn(number='one', verbose_name='1')
     marker_two = MarkerColumn(number='two', verbose_name='2')

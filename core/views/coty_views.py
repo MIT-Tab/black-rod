@@ -11,7 +11,8 @@ from core.utils.generics import (
     CustomTable,
     CustomListView,
     MarkerColumn,
-    PlaceColumn
+    PlaceColumn,
+    PointsColumn
 )
 from core.models.standings.coty import COTY
 
@@ -29,6 +30,8 @@ class COTYTable(CustomTable):
     school = Column(verbose_name='School', accessor='school.name', linkify=lambda record: record.school.get_absolute_url())
 
     place = PlaceColumn()
+
+    points = PointsColumn()
     
     class Meta:
         model = COTY
