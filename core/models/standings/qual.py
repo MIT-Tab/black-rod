@@ -19,6 +19,9 @@ class QUAL(AbstractStanding):
     EXPANSION = 4
     WORLDS = 5
     NAUDC = 6
+    PROAMS = 7
+    NATIONALS = 8
+    NOVICE = 9
 
     QUAL_TYPES = (
         (POINTS, 'Points'),
@@ -27,7 +30,10 @@ class QUAL(AbstractStanding):
         (NORTHAMS, 'NorthAms'),
         (EXPANSION, 'Expansion'),
         (WORLDS, 'Worlds'),
-        (NAUDC, 'NAUDC')
+        (NAUDC, 'NAUDC'),
+        (PROAMS, 'ProAms'),
+        (NATIONALS, 'Nationals'),
+        (NOVICE, 'Novice'),
     )
 
     qual_type = models.IntegerField(choices=QUAL_TYPES,
