@@ -1,5 +1,7 @@
 from django import template
 
+from core.models import QualPoints
+
 register = template.Library()
 
 
@@ -17,6 +19,19 @@ def qual_contribution(debater, season):
 
     return min(66,
                points)
+
+
+@register.filter
+def relevant_debaters(school, season):
+    return QualPoints.objects.filter(
+        debater__school=school
+    ).filter(
+        season=season
+    ).filter(
+        points__gt=0
+    ).order_by(
+        '-points'
+    )
 
 
 @register.filter
