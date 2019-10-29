@@ -73,3 +73,10 @@ class MarkerColumn(tables.Column):
             return ''
         return '%s (%s)' % (getattr(record, 'marker_%s' % (self.number,)),
                             getattr(record, 'tournament_%s' % (self.number,)))
+
+
+class PlaceColumn(tables.Column):
+    def render(self, record):
+        if record.tied:
+            return 'T-%s' % (record.place,)
+        return '%s' % (record.place,)
