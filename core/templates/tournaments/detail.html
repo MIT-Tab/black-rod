@@ -33,10 +33,10 @@
 		<td>Season</td>
 		<td>{{ object.get_season_display }}</td>
 	    </tr>
-	    <tr>
+	    <!--<tr>
 		<td>Num Rounds</td>
 		<td>{{ object.num_rounds }}</td>
-	    </tr>
+	    </tr>-->
 	    <tr>
 		<td>Teams</td>
 		<td>{{ object.num_teams }}</td>
@@ -44,8 +44,8 @@
 	    <!--<tr>
 		<td>Novice Teams</td>
 		<td>{{ object.num_novice_teams }}</td>
-	    </tr>-->
-	    <!--<tr>
+	    </tr>
+	    <tr>
 		<td>Debaters</td>
 		<td>{{ object.num_debaters }}</td>
 	    </tr>-->
@@ -53,7 +53,7 @@
 		<td>Novice Debaters</td>
 		<td>{{ object.num_novice_debaters }}</td>
 	    </tr>
-	    <tr>
+	    <!--<tr>
 		<td>Qual</td>
 		<td>{{ object.qual|yesno:"Yes,No" }}</td>
 	    </tr>
@@ -72,7 +72,7 @@
 	    <tr>
 		<td>Autoqual Bar</td>
 		<td>{% if object.qual_bar == 0 %}None{% else %}{{ object.qual_bar }}{% endif %}</td>
-	    </tr>
+	    </tr>-->
 	</tbody>
     </table>
 {% endblock %}
