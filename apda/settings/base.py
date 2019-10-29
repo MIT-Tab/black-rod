@@ -187,6 +187,7 @@ NAV_MENU_LEFT = [
     },
     {
         'name': 'Results',
+        'validators': ['menu_generator.validators.is_authenticated'],
         'url': '/asdfa',
         'submenu': [
             {
@@ -210,6 +211,12 @@ NAV_MENU_LEFT = [
                 'root': True
             },            
         ]
+    },
+    {
+        'name': 'Results',
+        'validators': ['menu_generator.validators.is_anonymous'],
+        'url': 'core:tournament_list',
+        'root': True
     },
     {
         'name': 'Standings',
