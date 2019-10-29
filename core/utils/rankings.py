@@ -11,9 +11,7 @@ from core.models.standings.coty import COTY
 from core.models.standings.qual import QUAL
 
 def update_toty(team):
-    num_schools = len(list(set([d.school for d in team.debaters.all()])))
-
-    if num_schools > 1:
+    if team.hybrid:
         return
 
     if team.debaters.count() == 0:

@@ -41,31 +41,33 @@
 {% endblock %}
 
 {% block left_column %}
-    <div class="card">
-	<div class="card-body">
-	    <h5 class="card-title pb-2"><a href="{% url 'core:toty' %}">TOTY</a></h5>
-	    <hr />
-	    <table class="table table-bordered table-hover table-striped">
-		<thead>
-		    <th>Place</th>
-		    <th>Season</th>
-		    <th>Points</th>
-		</thead>
-		<tbody>
-		    {% for toty in totys %}
-			<tr>
-			    <td>{{ toty.place }}</td>
-			    <td><a href="{% url 'core:toty' %}?season={{ toty.season }}">{{ toty.get_season_display }}</a></td>
-			    <td>{{ toty.points }}</td>
-			</tr>
-		    {% empty %}
-			<tr>
-			    <td colspan="3"><center>This team has never been on the TOTY board.</center></td>
-			</tr>
-		    {% endfor %}
-		</tbody>
-	    </table>
+    {% if not object.hybrid %}
+	<div class="card">
+	    <div class="card-body">
+		<h5 class="card-title pb-2"><a href="{% url 'core:toty' %}">TOTY</a></h5>
+		<hr />
+		<table class="table table-bordered table-hover table-striped">
+		    <thead>
+			<th>Place</th>
+			<th>Season</th>
+			<th>Points</th>
+		    </thead>
+		    <tbody>
+			{% for toty in totys %}
+			    <tr>
+				<td>{{ toty.place }}</td>
+				<td><a href="{% url 'core:toty' %}?season={{ toty.season }}">{{ toty.get_season_display }}</a></td>
+				<td>{{ toty.points }}</td>
+			    </tr>
+			{% empty %}
+			    <tr>
+				<td colspan="3"><center>This team has never been on the TOTY board.</center></td>
+			    </tr>
+			{% endfor %}
+		    </tbody>
+		</table>
+	    </div>
 	</div>
-    </div>
+    {% endif %}
 {% endblock %}
 
