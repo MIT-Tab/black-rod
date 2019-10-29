@@ -56,7 +56,6 @@ class TournamentFilter(FilterSet):
     class Meta:
         model = Tournament
         fields = {
-            'id': ['exact'],
             'name': ['icontains'],
             'season': ['exact'],
             'qual_type': ['exact'],
@@ -64,14 +63,11 @@ class TournamentFilter(FilterSet):
 
 
 class TournamentTable(CustomTable):
-    id = Column(linkify=True)
-
     name = Column(linkify=True)
 
     class Meta:
         model = Tournament
-        fields = ('id',
-                  'name',
+        fields = ('name',
                   'date',
                   'season',
                   'num_teams',

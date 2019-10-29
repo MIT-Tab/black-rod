@@ -5,19 +5,15 @@
 	<th>Date</th>
 	<th>Season</th>
 	<th>Type</th>
-	<th>Team</th>
-	<th>Debaters</th>
     </thead>
     <tbody>
 	{% for result in results %}
 	    <tr>
 		<td>{{ result.place }}</td>
 		<td><a href="{% url 'core:tournament_detail' pk=result.tournament.id %}">{{ result.tournament.name }}</a></td>
-		<td>{{ result.tournament.date }}</td>
+		<td>{{ result.tournament.date|date:"M d" }}</td>
 		<td>{{ result.tournament.get_season_display }}</td>
 		<td>{{ result.get_type_of_place_display }}
-		<td><a href="{% url 'core:team_detail' pk=result.team.id %}">{{ result.team }}</a></td>
-		<td>{{ result.team.debaters_display|safe }}</td>
 	    </tr>
 	{% empty %}
 	    <tr>
