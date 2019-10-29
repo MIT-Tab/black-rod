@@ -108,6 +108,9 @@ class DebaterDetailView(CustomDetailView):
         if not len(seasons) == 0:
             current_season = self.request.GET.get('season', seasons[0])
 
+        if current_season == '':
+            current_season = seasons[0]
+
         seasons = [season \
                    for season in settings.SEASONS if season[0] in seasons]
 

@@ -79,7 +79,8 @@ class SchoolDetailView(CustomDetailView):
     ]
 
     def get(self, request, *args, **kwargs):
-        if not 'season' in self.request.GET:
+        season = self.request.GET.get('season', '')
+        if season == '':
             return redirect(
                 reverse('core:school_detail',
                         kwargs={'pk': self.get_object().id}) + '?season=%s' % (settings.CURRENT_SEASON,))
