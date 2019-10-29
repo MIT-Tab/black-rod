@@ -59,15 +59,7 @@ class TournamentFilter(FilterSet):
             'id': ['exact'],
             'name': ['icontains'],
             'season': ['exact'],
-            'num_teams': ['gt'],
-            'num_novice_teams': ['gt'],
-            'num_debaters': ['gt'],
-            'num_novice_debaters': ['gt'],
-            'qual': ['exact'],
-            'toty': ['exact'],
-            'soty': ['exact'],
-            'noty': ['exact'],
-            'autoqual_bar': ['exact'],
+            'qual_type': ['exact'],
         }
 
 

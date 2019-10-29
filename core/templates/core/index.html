@@ -22,12 +22,17 @@
 	    <hr />
 	    <div class="tab-content" id="results">
 		<div class="tab-pane fade show active" id="toty" role="tabpanel">
-		    <table class="table table-bordered">
+		    <table class="table table-bordered table-striped">
 			<thead>
 			    <th scope="col">#</th>
 			    <th scope="col">Team</th>
 			    <th scope="col">Debaters</th>
 			    <th scope="col">Points</th>
+			    <th scope="col">1</th>
+			    <th scope="col">2</th>
+			    <th scope="col">3</th>
+			    <th scope="col">4</th>
+			    <th scope="col">5</th>			    
 			</thead>
 			<tbody>
 			    {% for team in toty %}
@@ -36,10 +41,15 @@
 				    <td><a href="{{ team.team.get_absolute_url }}">{{ team.team.name }}</a></td>
 				    <td>{{ team.team.debaters_display|safe }}</td>
 				    <td>{{ team.points }}</td>
+				    <td>{% if not team.marker_one == 0 %}{{ team.marker_one }} ({{ team.tournament_one.name }}){% endif %}</td>
+				    <td>{% if not team.marker_two == 0 %}{{ team.marker_two }} ({{ team.tournament_two.name }}){% endif %}</td>
+				    <td>{% if not team.marker_three == 0 %}{{ team.marker_three }} ({{ team.tournament_three.name }}){% endif %}</td>
+				    <td>{% if not team.marker_four == 0 %}{{ team.marker_four }} ({{ team.tournament_four.name }}){% endif %}</td>
+				    <td>{% if not team.marker_five == 0 %}{{ team.marker_five }} ({{ team.tournament_five.name }}){% endif %}</td>
 				</tr>
 			    {% empty %}
 				<tr>
-				    <td colspan="4" class="shaded">
+				    <td colspan="9" class="shaded">
 					<center>There are no TOTY results yet</center>
 				    </td>
 				</tr>
@@ -49,12 +59,18 @@
 		    <a href="{% url 'core:toty' %}">See entire standings</a>
 		</div>
 		<div class="tab-pane fade" id="soty" role="tabpanel">
-		    <table class="table table-bordered">
+		    <table class="table table-bordered table-striped">
 			<thead>
 			    <th scope="col">#</th>
 			    <th scope="col">Debater</th>
 			    <th scope="col">School</th>
 			    <th scope="col">Points</th>
+			    <th scop="col">1</th>
+			    <th scop="col">2</th>
+			    <th scop="col">3</th>
+			    <th scop="col">4</th>
+			    <th scop="col">5</th>
+			    <th scop="col">6</th>			    
 			</thead>
 			<tbody>
 			    {% for speaker in soty %}
@@ -63,10 +79,16 @@
 				    <td><a href="{% url 'core:debater_detail' pk=speaker.debater.id %}">{{ speaker.debater.name }}</a></td>
 				    <td><a href={% url 'core:school_detail' pk=speaker.debater.school.id %}>{{ speaker.debater.school.name }}</a></td>
 				    <td>{{ speaker.points }}</td>
+				    <td>{% if not speaker.marker_one == 0 %}{{ speaker.marker_one }} ({{ speaker.tournament_one.name }}){% endif %}</td>
+				    <td>{% if not speaker.marker_two == 0 %}{{ speaker.marker_two }} ({{ speaker.tournament_two.name }}){% endif %}</td>
+				    <td>{% if not speaker.marker_three == 0 %}{{ speaker.marker_three }} ({{ speaker.tournament_three.name }}){% endif %}</td>
+				    <td>{% if not speaker.marker_four == 0 %}{{ speaker.marker_four }} ({{ speaker.tournament_four.name }}){% endif %}</td>
+				    <td>{% if not speaker.marker_five == 0 %}{{ speaker.marker_five }} ({{ speaker.tournament_five.name }}){% endif %}</td>
+				    <td>{% if not speaker.marker_six == 0 %}{{ speaker.marker_six }} ({{ speaker.tournament_six.name }}){% endif %}</td>				    
 				</tr>
 			    {% empty %}
 				<tr>
-				    <td colspan="4" class="shaded">
+				    <td colspan="10" class="shaded">
 					<center>There are no SOTY results yet</center>
 				    </td>
 				</tr>
@@ -76,7 +98,7 @@
 		    <a href="{% url 'core:soty' %}">See entire standings</a>
 		</div>
 		<div class="tab-pane fade" id="coty" role="tabpanel">
-		    <table class="table table-bordered">
+		    <table class="table table-bordered table-striped">
 			<thead>
 			    <th scope="col">#</th>
 			    <th scope="col">School</th>
@@ -101,12 +123,17 @@
 		    <a href="{% url 'core:coty' %}">See entire standings</a>
 		</div>
 		<div class="tab-pane fade" id="noty" role="tabpanel">
-		    <table class="table table-bordered">
+		    <table class="table table-bordered table-striped">
 			<thead>
 			    <th scope="col">#</th>
 			    <th scope="col">Debater</th>
 			    <th scope="col">School</th>
 			    <th scope="col">Points</th>
+			    <th scope="col">1</th>
+			    <th scope="col">2</th>
+			    <th scope="col">3</th>
+			    <th scope="col">4</th>
+			    <th scope="col">5</th>			    
 			</thead>
 			<tbody>
 			    {% for speaker in noty %}
@@ -115,10 +142,15 @@
 				    <td><a href="{% url 'core:debater_detail' pk=speaker.debater.id %}">{{ speaker.debater.name }}</a></td>
 				    <td><a href={% url 'core:school_detail' pk=speaker.debater.school.id %}>{{ speaker.debater.school.name }}</a></td>
 				    <td>{{ speaker.points }}</td>
+				    <td>{% if not speaker.marker_one == 0 %}{{ speaker.marker_one }} ({{ speaker.tournament_one.name }}){% endif %}</td>
+				    <td>{% if not speaker.marker_two == 0 %}{{ speaker.marker_two }} ({{ speaker.tournament_two.name }}){% endif %}</td>
+				    <td>{% if not speaker.marker_three == 0 %}{{ speaker.marker_three }} ({{ speaker.tournament_three.name }}){% endif %}</td>
+				    <td>{% if not speaker.marker_four == 0 %}{{ speaker.marker_four }} ({{ speaker.tournament_four.name }}){% endif %}</td>
+				    <td>{% if not speaker.marker_five == 0 %}{{ speaker.marker_five }} ({{ speaker.tournament_five.name }}){% endif %}</td>				    
 				</tr>
 			    {% empty %}
 				<tr>
-				    <td colspan="4" class="shaded">
+				    <td colspan="9" class="shaded">
 					<center>There are no NOTY results yet</center>
 				    </td>
 				</tr>
