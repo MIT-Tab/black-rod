@@ -47,6 +47,7 @@ INSTALLED_APPS = [
     'import_export',
     'django_tables2',
     'formtools',
+    'haystack',
 
     'core',
 ]
@@ -187,6 +188,7 @@ NAV_MENU_LEFT = [
     },
     {
         'name': 'Results',
+        'validators': ['menu_generator.validators.is_authenticated'],
         'url': '/asdfa',
         'submenu': [
             {
@@ -210,6 +212,12 @@ NAV_MENU_LEFT = [
                 'root': True
             },            
         ]
+    },
+    {
+        'name': 'Results',
+        'validators': ['menu_generator.validators.is_anonymous'],
+        'url': 'core:tournament_list',
+        'root': True
     },
     {
         'name': 'Standings',
@@ -259,3 +267,10 @@ LOGIN_REDIRECT_URL = '/'
 LOGOUT_REDIRECT_URL = '/'
 
 DJANGO_TABLES2_TEMPLATE = 'base/table.html'
+
+HAYSTACK_CONNECTIONS = {
+    'default': {
+        'ENGINE': 'haystack.backends.whoosh_backend.WhooshEngine',
+        'PATH': os.path.join(BASE_DIR, 'whoosh_index'),
+    },
+}
