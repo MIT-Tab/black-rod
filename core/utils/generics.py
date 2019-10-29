@@ -4,6 +4,7 @@ from django.views.generic import (
     UpdateView,
     DeleteView
 )
+from django.template.defaultfilters import floatformat
 from django.contrib.auth.mixins import PermissionRequiredMixin
 
 import django_tables2 as tables
@@ -71,7 +72,7 @@ class MarkerColumn(tables.Column):
     def render(self, record):
         if getattr(record, 'marker_%s' % (self.number,)) == 0 or not getattr(record, 'tournament_%s' % (self.number,)):
             return ''
-        return '%s (%s)' % (getattr(record, 'marker_%s' % (self.number,)),
+        return '%s (%s)' % (floatformat(getattr(record, 'marker_%s' % (self.number,)), "-2"),
                             getattr(record, 'tournament_%s' % (self.number,)))
 
 
@@ -80,3 +81,8 @@ class PlaceColumn(tables.Column):
         if record.tied:
             return 'T-%s' % (record.place,)
         return '%s' % (record.place,)
+
+
+class PointsColumn(tables.Column):
+    def render(self, record):
+        return '%s' % (floatformat(record.points, "-2"),)

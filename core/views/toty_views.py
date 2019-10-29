@@ -11,7 +11,8 @@ from core.utils.generics import (
     CustomTable,
     CustomListView,
     MarkerColumn,
-    PlaceColumn
+    PlaceColumn,
+    PointsColumn
 )
 from core.models.standings.toty import TOTY
 
@@ -27,6 +28,8 @@ class TOTYFilter(FilterSet):
 
 class TOTYTable(CustomTable):
     place = PlaceColumn()
+
+    points = PointsColumn()
 
     marker_one = MarkerColumn(number='one', verbose_name='1')
     marker_two = MarkerColumn(number='two', verbose_name='2')

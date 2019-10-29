@@ -11,7 +11,8 @@ from core.utils.generics import (
     CustomTable,
     CustomListView,
     MarkerColumn,
-    PlaceColumn
+    PlaceColumn,
+    PointsColumn
 )
 from core.models.standings.noty import NOTY
 
@@ -29,6 +30,8 @@ class NOTYFilter(FilterSet):
 
 class NOTYTable(CustomTable):
     place = PlaceColumn()
+
+    points = PointsColumn()
 
     marker_one = MarkerColumn(number='one', verbose_name='1')
     marker_two = MarkerColumn(number='two', verbose_name='2')
