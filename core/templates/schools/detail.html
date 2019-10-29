@@ -77,7 +77,7 @@
 		<tbody>
 		    {% for debater in debaters %}
 			<tr>
-			    <td>{% if debater.qualled %}<b>{% endif %}<a href="{{ debater.debater.get_absolute_url }}">{{ debater.debater.name }}</a>{% if debater.qualled %}*</b>{% endif %}</td>
+			    <td>{% if debater.qualled %}<b>{% endif %}<a href="{{ debater.debater.get_absolute_url }}?season={{ request.GET.season }}">{{ debater.debater.name }}</a>{% if debater.qualled %}*</b>{% endif %}</td>
 			    <td>{{ debater.points }} ({{ debater|qual_contribution:current_season }})</td>
 			    <td>{{ debater.debater|qual_display:current_season }}</td>
 			</tr>

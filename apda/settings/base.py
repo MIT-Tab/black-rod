@@ -220,32 +220,6 @@ NAV_MENU_LEFT = [
         'root': True
     },
     {
-        'name': 'Standings',
-        'url': '/asdfa',
-        'submenu': [
-            {
-                'name': 'TOTY',
-                'url': 'core:toty',
-                'root': True
-            },
-            {
-                'name': 'SOTY',
-                'url': 'core:soty',
-                'root': True
-            },
-            {
-                'name': 'NOTY',
-                'url': 'core:noty',
-                'root': True
-            },
-            {
-                'name': 'COTY',
-                'url': 'core:coty',
-                'root': True
-            },
-        ]
-    },
-    {
         'name': 'Admin',
         'url': '/admin/',
         'validators': ['menu_generator.validators.is_superuser']

@@ -18,7 +18,15 @@
 		    </li>
 		    <li class="nav-item pr-2">
 			<a class="nav-link" id="coty_button" data-toggle="tab" href="#coty">Club of the Year</a>
-		    </li>			    
+		    </li>
+		    <li class="nav-item dropdown">
+			<a class="nav-link dropdown-toggle active" data-toggle="dropdown" href="#" role="button" aria-haspopup="true" aria-expanded="false">{% for season in seasons %}{% if season.0 == current_season %}{{ season.1 }}{% endif %}{% endfor %}</a>
+			<div class="dropdown-menu">
+			    {% for season in seasons %}
+				<a class="dropdown-item {% if season.0 == current_season %}active{% endif %}" href="{{ request.path }}?season={{ season.0 }}">{{ season.1 }}</a>
+			    {% endfor %}
+			</div>
+		    </li>
 		</ul>
 	    </h5>
 	    <div class="tab-content" id="results">
@@ -42,11 +50,11 @@
 				    <td>{{ team.team|school|safe }}</td>
 				    <td>{{ team.team.debaters_display|safe }}</td>
 				    <td>{{ team.points|floatformat:"-2" }}</td>
-				    <td>{% if not team.marker_one == 0 %}{{ team.marker_one|floatformat:"-2" }} ({{ team.tournament_one.name }}){% endif %}</td>
-				    <td>{% if not team.marker_two == 0 %}{{ team.marker_two|floatformat:"-2" }} ({{ team.tournament_two.name }}){% endif %}</td>
-				    <td>{% if not team.marker_three == 0 %}{{ team.marker_three|floatformat:"-2" }} ({{ team.tournament_three.name }}){% endif %}</td>
-				    <td>{% if not team.marker_four == 0 %}{{ team.marker_four|floatformat:"-2" }} ({{ team.tournament_four.name }}){% endif %}</td>
-				    <td>{% if not team.marker_five == 0 %}{{ team.marker_five|floatformat:"-2" }} ({{ team.tournament_five.name }}){% endif %}</td>
+				    <td>{% if not team.marker_one == 0 %}{{ team.marker_one|floatformat:"-2" }} (<a href="{{ team.tournament_one.get_absolute_url }}">{{ team.tournament_one.name }}</a>){% endif %}</td>
+				    <td>{% if not team.marker_two == 0 %}{{ team.marker_two|floatformat:"-2" }} (<a href="{{ team.tournament_one.get_absolute_url }}">{{ team.tournament_two.name }}</a>){% endif %}</td>
+				    <td>{% if not team.marker_three == 0 %}{{ team.marker_three|floatformat:"-2" }} (<a href="{{ team.tournament_one.get_absolute_url }}">{{ team.tournament_three.name }}</a>){% endif %}</td>
+				    <td>{% if not team.marker_four == 0 %}{{ team.marker_four|floatformat:"-2" }} (<a href="{{ team.tournament_one.get_absolute_url }}">{{ team.tournament_four.name }}</a>){% endif %}</td>
+				    <td>{% if not team.marker_five == 0 %}{{ team.marker_five|floatformat:"-2" }} (<a href="{{ team.tournament_one.get_absolute_url }}">{{ team.tournament_five.name }}</a>){% endif %}</td>
 				</tr>
 			    {% empty %}
 				<tr>
@@ -57,7 +65,6 @@
 			    {% endfor %}
 			</tbody>
 		    </table>
-		    <a href="{% url 'core:toty' %}">See entire standings</a>
 		</div>
 		<div class="tab-pane fade" id="soty" role="tabpanel">
 		    <table class="table table-bordered table-striped">
@@ -80,12 +87,12 @@
 				    <td><a href="{% url 'core:debater_detail' pk=speaker.debater.id %}">{{ speaker.debater.name }}</a></td>
 				    <td><a href={% url 'core:school_detail' pk=speaker.debater.school.id %}>{{ speaker.debater.school.name }}</a></td>
 				    <td>{{ speaker.points|floatformat:"-2" }}</td>
-				    <td>{% if not speaker.marker_one == 0 %}{{ speaker.marker_one|floatformat:"-2" }} ({{ speaker.tournament_one.name }}){% endif %}</td>
-				    <td>{% if not speaker.marker_two == 0 %}{{ speaker.marker_two|floatformat:"-2" }} ({{ speaker.tournament_two.name }}){% endif %}</td>
-				    <td>{% if not speaker.marker_three == 0 %}{{ speaker.marker_three|floatformat:"-2" }} ({{ speaker.tournament_three.name }}){% endif %}</td>
-				    <td>{% if not speaker.marker_four == 0 %}{{ speaker.marker_four|floatformat:"-2" }} ({{ speaker.tournament_four.name }}){% endif %}</td>
-				    <td>{% if not speaker.marker_five == 0 %}{{ speaker.marker_five|floatformat:"-2" }} ({{ speaker.tournament_five.name }}){% endif %}</td>
-				    <td>{% if not speaker.marker_six == 0 %}{{ speaker.marker_six|floatformat:"-2" }} ({{ speaker.tournament_six.name }}){% endif %}</td>				    
+				    <td>{% if not speaker.marker_one == 0 %}{{ speaker.marker_one|floatformat:"-2" }} (<a href="{{ speaker.tournament_one.get_absolute_url }}">{{ speaker.tournament_one.name }}</a>){% endif %}</td>
+				    <td>{% if not speaker.marker_two == 0 %}{{ speaker.marker_two|floatformat:"-2" }} (<a href="{{ speaker.tournament_two.get_absolute_url }}">{{ speaker.tournament_two.name }}</a>){% endif %}</td>
+				    <td>{% if not speaker.marker_three == 0 %}{{ speaker.marker_three|floatformat:"-2" }} (<a href="{{ speaker.tournament_three.get_absolute_url }}">{{ speaker.tournament_three.name }}</a>){% endif %}</td>
+				    <td>{% if not speaker.marker_four == 0 %}{{ speaker.marker_four|floatformat:"-2" }} (<a href="{{ speaker.tournament_four.get_absolute_url }}">{{ speaker.tournament_four.name }}</a>){% endif %}</td>
+				    <td>{% if not speaker.marker_five == 0 %}{{ speaker.marker_five|floatformat:"-2" }} (<a href="{{ speaker.tournament_five.get_absolute_url }}">{{ speaker.tournament_five.name }}</a>){% endif %}</td>
+				    <td>{% if not speaker.marker_six == 0 %}{{ speaker.marker_six|floatformat:"-2" }} (<a href="{{ speaker.tournament_six.get_absolute_url }}">{{ speaker.tournament_six.name }}</a>){% endif %}</td>				    
 				</tr>
 			    {% empty %}
 				<tr>
@@ -96,7 +103,6 @@
 			    {% endfor %}
 			</tbody>
 		    </table>
-		    <a href="{% url 'core:soty' %}">See entire standings</a>
 		</div>
 		<div class="tab-pane fade" id="coty" role="tabpanel">
 		    <table class="table table-bordered table-striped">
@@ -109,7 +115,7 @@
 			    {% for school in coty %}
 				<tr>
 				    <td>{% if school.tied %}T-{% endif %}{{ school.place }}</td>
-				    <td><a href="{{ school.school.get_absolute_url }}">{{ school.school.name }}</a></td>
+				    <td><a href="{{ school.school.get_absolute_url }}?season={{ request.GET.season }}">{{ school.school.name }}</a></td>
 				    <td>{{ school.points|floatformat:"-2" }}</td>
 				</tr>
 			    {% empty %}
@@ -121,7 +127,6 @@
 			    {% endfor %}
 			</tbody>
 		    </table>
-		    <a href="{% url 'core:coty' %}">See entire standings</a>
 		</div>
 		<div class="tab-pane fade" id="noty" role="tabpanel">
 		    <table class="table table-bordered table-striped">
@@ -143,11 +148,11 @@
 				    <td><a href="{% url 'core:debater_detail' pk=speaker.debater.id %}">{{ speaker.debater.name }}</a></td>
 				    <td><a href={% url 'core:school_detail' pk=speaker.debater.school.id %}>{{ speaker.debater.school.name }}</a></td>
 				    <td>{{ speaker.points|floatformat:"-2" }}</td>
-				    <td>{% if not speaker.marker_one == 0 %}{{ speaker.marker_one|floatformat:"-2" }} ({{ speaker.tournament_one.name }}){% endif %}</td>
-				    <td>{% if not speaker.marker_two == 0 %}{{ speaker.marker_two|floatformat:"-2" }} ({{ speaker.tournament_two.name }}){% endif %}</td>
-				    <td>{% if not speaker.marker_three == 0 %}{{ speaker.marker_three|floatformat:"-2" }} ({{ speaker.tournament_three.name }}){% endif %}</td>
-				    <td>{% if not speaker.marker_four == 0 %}{{ speaker.marker_four|floatformat:"-2" }} ({{ speaker.tournament_four.name }}){% endif %}</td>
-				    <td>{% if not speaker.marker_five == 0 %}{{ speaker.marker_five|floatformat:"-2" }} ({{ speaker.tournament_five.name }}){% endif %}</td>				    
+				    <td>{% if not speaker.marker_one == 0 %}{{ speaker.marker_one|floatformat:"-2" }} (<a href="{{ speaker.tournament_one.get_absolute_url }}">{{ speaker.tournament_one.name }}</a>){% endif %}</td>
+				    <td>{% if not speaker.marker_two == 0 %}{{ speaker.marker_two|floatformat:"-2" }} (<a href="{{ speaker.tournament_two.get_absolute_url }}">({{ speaker.tournament_two.name }}</a>){% endif %}</td>
+				    <td>{% if not speaker.marker_three == 0 %}{{ speaker.marker_three|floatformat:"-2" }} (<a href="{{ speaker.tournament_three.get_absolute_url }}">{{ speaker.tournament_three.name }}</a>){% endif %}</td>
+				    <td>{% if not speaker.marker_four == 0 %}{{ speaker.marker_four|floatformat:"-2" }} (<a href="{{ speaker.tournament_four.get_absolute_url }}">{{ speaker.tournament_four.name }}</a>){% endif %}</td>
+				    <td>{% if not speaker.marker_five == 0 %}{{ speaker.marker_five|floatformat:"-2" }} (<a href="{{ speaker.tournament_five.get_absolute_url }}">{{ speaker.tournament_five.name }}</a>){% endif %}</td>
 				</tr>
 			    {% empty %}
 				<tr>
@@ -158,7 +163,6 @@
 			    {% endfor %}
 			</tbody>
 		    </table>
-		    <a href="{% url 'core:noty' %}">See entire standings</a>
 		</div>	
 	    </div>
 	</div>
