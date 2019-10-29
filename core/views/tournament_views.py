@@ -71,12 +71,8 @@ class TournamentTable(CustomTable):
                   'date',
                   'season',
                   'num_teams',
-                  'num_novice_debaters',
-                  'qual',
-                  'toty',
-                  'soty',
-                  'noty',
-                  'autoqual_bar')
+                  'num_novice_debaters')
+
 
 
 class TournamentListView(CustomListView):
