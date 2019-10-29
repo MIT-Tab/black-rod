@@ -49,15 +49,6 @@ class TeamListView(CustomListView):
 
     filterset_class = TeamFilter
 
-    buttons = [
-        {
-            'name': 'Create',
-            'href': reverse_lazy('core:team_create'),
-            'perm': 'core.add_team',
-            'class': 'btn-success'
-        }
-    ]
-
 
 class TeamDetailView(CustomDetailView):
     public_view = True    
@@ -123,21 +114,6 @@ class TeamUpdateView(CustomUpdateView):
 
         return context    
     
-
-class TeamCreateView(CustomCreateView):
-    model = Team
-
-    form_class = TeamForm
-    template_name = 'teams/create.html'
-
-    def form_valid(self, form):
-        to_return = super().form_valid(form)
-
-        form.instance.update_name()
-        form.instance.save()
-
-        return to_return
-
 
 class TeamDeleteView(CustomDeleteView):
     model = Team
