@@ -138,11 +138,11 @@ class DebaterDetailView(CustomDetailView):
                                   team__debaters=self.object
                           ).filter(
                               tournament=tournament
-                          ).order_by('type_of_place').all()]
+                          ).order_by('-type_of_place').all()]
             to_append += [('speaker', result) \
                           for result in self.object.speaker_results.filter(
                                   tournament=tournament
-                          ).order_by('type_of_place').all()]
+                          ).order_by('-type_of_place').all()]
 
             team_result = TeamResult.objects.filter(
                 team__debaters=self.object
