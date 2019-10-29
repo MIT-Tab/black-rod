@@ -24,20 +24,16 @@ class TeamFilter(FilterSet):
     class Meta:
         model = Team
         fields = {
-            'id': ['exact'],
             'name': ['icontains'],
          }
 
 
 class TeamTable(CustomTable):
-    id = Column(linkify=True)
-
     name = Column(linkify=True)
 
     class Meta:
         model = Team
-        fields = ('id',
-                  'name',
+        fields = ('name',
                   'debaters')
 
 
