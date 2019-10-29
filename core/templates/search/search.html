@@ -11,7 +11,7 @@
 		<tbody>
 		    {% for result in page.object_list %}
 			<tr>
-			    <td><a href="{{ result.object.get_absolute_url }}">{{ result.object.name }}</a> (<a href="{{ result.objects.school.get_absolute_url }}">{{ result.object.school.name }}</a>) </td>
+			    <td><a href="{{ result.object.get_absolute_url }}">{{ result.object.name }}</a> (<a href="{{ result.object.school.get_absolute_url }}">{{ result.object.school.name }}</a>) </td>
 			</tr>
 		    {% empty %}
 			<tr class="shaded">
