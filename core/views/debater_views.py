@@ -28,6 +28,7 @@ class DebaterFilter(FilterSet):
     class Meta:
         model = Debater
         fields = {
+            'id': ['exact'],
             'first_name': ['icontains'],
             'last_name': ['icontains'],
             'school__name': ['icontains'],
@@ -36,12 +37,15 @@ class DebaterFilter(FilterSet):
 
 
 class DebaterTable(CustomTable):
+    id = Column(linkify=True)
+
     first_name = Column(linkify=True)
     last_name = Column(linkify=True)
 
     class Meta:
         model = Debater
-        fields = ('first_name',
+        fields = ('id',
+                  'first_name',
                   'last_name',
                   'school.name',
                   'status')
