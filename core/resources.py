@@ -56,3 +56,8 @@ class COTYResource(resources.ModelResource):
 class QualPointsResource(resources.ModelResource):
     class Meta:
         model = QualPoints
+
+
+class QUALResource(resources.ModelResource):
+    class Meta:
+        model = QUAL
