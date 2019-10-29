@@ -36,6 +36,12 @@ class Team(models.Model):
     def toty_points(self):
         return sum([t.points for t in self.toty.all()])
 
+    @property
+    def hybrid(self):
+        schools = list(set([d.school for d in self.debaters.all()]))
+
+        return len(schools) == 2
+
     def get_absolute_url(self):
         return reverse('core:team_detail', kwargs={'pk': self.id})
 
