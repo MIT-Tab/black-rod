@@ -24,7 +24,7 @@
 	    </tr>
 	    <tr>
 		<td>Host School</td>
-		<td>{% if object.host %}<a href="{{ object.get_absolute_url }}">{{ object.host.name }}</a>{% else %}Unlinked{% endif %}</td>
+		<td>{% if object.host %}<a href="{{ object.host.get_absolute_url }}">{{ object.host.name }}</a>{% else %}Unlinked{% endif %}</td>
 	    </tr>
 	    <tr>
 		<td>Date</td>
