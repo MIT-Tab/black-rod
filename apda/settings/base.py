@@ -183,7 +183,7 @@ NAV_MENU_RIGHT = [
 
 NAV_MENU_LEFT = [
     {
-        'name': 'Home',
+        'name': 'Standings',
         'url': 'core:index'
     },
     {
