@@ -27,12 +27,12 @@ class SchoolFilter(FilterSet):
         fields = {
             'id': ['exact'],
             'name': ['icontains'],
-            'included_in_oty': ['exact'],
         }
 
 
 class SchoolTable(CustomTable):
     id = Column(linkify=True)
+    included_in_oty = Column(verbose_name='APDA Member?')
 
     class Meta:
         model = School

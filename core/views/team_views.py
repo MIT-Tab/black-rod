@@ -83,11 +83,12 @@ class TeamDetailView(CustomDetailView):
         context = super().get_context_data(*args, **kwargs)
 
         context['team_results'] = self.object.team_results.order_by(
-            '-tournament__date'
+            'tournament__date'
         )
 
         context['totys'] = self.object.toty.order_by(
-            '-season'
+            '-points',
+            'season'
         )
 
         return context

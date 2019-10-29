@@ -158,8 +158,6 @@ SEASONS = (
     ('2017', '2017-2018'),
     ('2018', '2018-2019'),
     ('2019', '2019-2020'),
-    ('2020', '2020-2021'),
-    ('2021', '2021-2022')
 )
 
 DEFAULT_SEASON = '2019'
@@ -218,6 +216,11 @@ NAV_MENU_LEFT = [
         'url': '/asdfa',
         'submenu': [
             {
+                'name': 'TOTY',
+                'url': 'core:toty',
+                'root': True
+            },
+            {
                 'name': 'SOTY',
                 'url': 'core:soty',
                 'root': True
@@ -225,11 +228,6 @@ NAV_MENU_LEFT = [
             {
                 'name': 'NOTY',
                 'url': 'core:noty',
-                'root': True
-            },
-            {
-                'name': 'TOTY',
-                'url': 'core:toty',
                 'root': True
             },
             {
