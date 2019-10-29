@@ -1,0 +1,45 @@
+{% extends 'base/base.html' %}
+
+{% block content %}
+    <div class="card mt-5 mb-5 mr-2 ml-2">
+	<div class="card-body">
+	    <h5 class="card-title">Search Results</h5>
+	    <table class="table table-bordered table-striped table-hover">
+		<thead>
+		    <th>Result</th>
+		</thead>
+		<tbody>
+		    {% for result in page.object_list %}
+			<tr>
+			    <td><a href="{{ result.object.get_absolute_url }}">{{ result.object.name }}</a></td>
+			</tr>
+		    {% empty %}
+			<tr class="shaded">
+			    <td><center>No search results.</center></td>
+			</tr>
+		    {% endfor %}
+		</tbody>
+	    </table>
+	    {% if page.has_previous or page.has_next %}
+		<nav aria-label="Table navigation">
+		    <ul class="pagination justify-content-left">
+			{% if page.has_previous %}
+			    <li class="previous page-item">
+				<a href="?q={{ query }}&page={{ page.previous_page_number }}" class="page-link">
+				    <span aria-hidden="true">&laquo;</span>
+			    </a>
+			    </li>
+			{% endif %}
+			{% if page.has_next %}
+			    <li class="next page-item">
+				<a href="?q={{ query }}&page={{ page.next_page_number }}" class="page-link">
+				    <span aria-hidden="true">&raquo;</span>
+				</a>
+			    </li>
+			{% endif %}
+		    </ul>
+		</nav>
+	    {% endif %}
+	</div>
+    </div>
+{% endblock %}
