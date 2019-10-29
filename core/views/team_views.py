@@ -32,6 +32,8 @@ class TeamFilter(FilterSet):
 class TeamTable(CustomTable):
     id = Column(linkify=True)
 
+    name = Column(linkify=True)
+
     class Meta:
         model = Team
         fields = ('id',

@@ -17,3 +17,12 @@ def qual_contribution(debater, season):
 
     return min(66,
                points)
+
+
+@register.filter
+def partner_display(team, debater):
+    partner = team.debaters.exclude(id=debater.id).first()
+    return '<a href="%s">%s</a> (<a href="%s">%s</a>)' % (partner.get_absolute_url(),
+                                                          partner.name,
+                                                          partner.school.get_absolute_url,
+                                                          partner.school.name)

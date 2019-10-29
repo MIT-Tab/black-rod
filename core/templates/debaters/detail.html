@@ -1,5 +1,7 @@
 {% extends 'base/detail.html' %}
 
+{% load tags %}
+
 {% block title %}{{ object }}{% endblock %}
 
 {% block detail_view %}
@@ -121,12 +123,12 @@
 	    <h5 class="card-title">Teams</h5>
 	    <hr />
 	    <ul>
-		{% for team in object.teams.all %}
+		{% for team in teams %}
 		    <li>
-			<a href="{{ team.get_absolute_url }}">{{ team }}</a>
+			<a href="{{ team.0.get_absolute_url }}">{{ team.0 }}</a> ({{ team.1 }})
 			<ul>
 			    <li>
-				{{ team.debaters_display|safe }}
+				{{ team.0.debaters_display|safe }}
 			    </li>
 			</ul>
 		    </li>
@@ -157,30 +159,29 @@
 		    {% for tournament in results %}
 			<tr class="shaded">
 			    <td colspan="2"><a href="{{ tournament.tournament.get_absolute_url }}">{{ tournament.tournament.name }}</a></td>
-			    <td>{{ tournament.tournament.date }}</td>
-			    <td>{{ tournament.tournament.get_season_display }}</td>
+			    <td>{{ tournament.tournament.date|date:'M d' }}</td>
+			    <td {% if not tournament.team %}colspan="2"{% endif %}>{{ tournament.tournament.get_season_display }}</td>
+			    {% if tournament.team %}<td>Partner: {{ tournament.team|partner_display:object|safe }}</td>{% endif %}
 			</tr>
 			{% for type, award in tournament.data %}
-			    <tr>
+			    <tr">
 				{% if type == 'team' %}
 				    <td></td>
-				    <td>{{ award.get_type_of_place_display }} Team Award</td>
-				    <td>Place: {{ award.place }}</td>
-				    <td>
+				    <td class="short-row">{{ award.get_type_of_place_display }} Team Award</td>
+				    <td class="short-row">{{ award.place }}</td>
+				    <td colspan="2" class="short-row">
 					<a href="{{ award.team.get_absolute_url }}">{{ award.team }}</a>
-					<br>
-					{{ award.team.debaters_display|safe }}</td>
+				    </td>
 				{% endif %}
 				{% if type == 'speaker' %}
 				    <td></td>
-				    <td>{{ award.get_type_of_place_display }} Speaker Award</td>
-				    <td>Place: {{ award.place }}</td>
-				    <td><a href="{{ award.debater.get_absolute_url }}">{{ award.debater }}</a></td>
+				    <td class="short-row">{{ award.get_type_of_place_display }} Speaker Award</td>
+				    <td class="short-row" colspan="3">{{ award.place }}</td>
 				{% endif %}
 			    </tr>
 			{% endfor %}
 			{% if not forloop.last %}
-			    <tr><td colspan="4"></td></tr>
+			    <tr><td colspan="5"></td></tr>
 			{% endif %}
 		    {% endfor %}
 		</tbody>

@@ -33,4 +33,9 @@ $theme-colors: (
     background-color: rgba(0, 0, 0, 0.05);
 }
 
+.short-row {
+    padding-top: 4px !important;
+    padding-bottom: 4px !important;    
+}
+
 @import "node_modules/bootstrap/scss/bootstrap";

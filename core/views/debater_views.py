@@ -39,6 +39,9 @@ class DebaterFilter(FilterSet):
 class DebaterTable(CustomTable):
     id = Column(linkify=True)
 
+    first_name = Column(linkify=True)
+    last_name = Column(linkify=True)
+
     class Meta:
         model = Debater
         fields = ('id',
@@ -121,7 +124,7 @@ class DebaterDetailView(CustomDetailView):
         tournaments = [tournament \
                        for tournament in tournaments if tournament.season == current_season]
 
-        tournaments.sort(key=lambda tournament: tournament.date, reverse=True)
+        tournaments.sort(key=lambda tournament: tournament.date)
 
         tournament_render = []
 
@@ -135,12 +138,21 @@ class DebaterDetailView(CustomDetailView):
                                   team__debaters=self.object
                           ).filter(
                               tournament=tournament
-                          ).all()]
+                          ).order_by('type_of_place').all()]
             to_append += [('speaker', result) \
                           for result in self.object.speaker_results.filter(
                                   tournament=tournament
-                          ).all()]
+                          ).order_by('type_of_place').all()]
 
+            team_result = TeamResult.objects.filter(
+                team__debaters=self.object
+            ).filter(
+                tournament=tournament
+            ).first()
+
+            team = None if not team_result else team_result.team
+
+            to_add['team'] = team
             to_add['data'] = to_append
 
             tournament_render.append(to_add)
@@ -150,16 +162,24 @@ class DebaterDetailView(CustomDetailView):
         context['totys'] = TOTY.objects.filter(
             team__debaters=self.object
         ).order_by(
-            '-season'
+            'place',
+            'season'
         )
 
         context['sotys'] = self.object.soty.order_by(
-            '-season'
+            'place',
+            'season'
         )
 
         context['notys'] = self.object.noty.order_by(
-            '-season'
+            'place',
+            'season'
         )
+
+        teams = [(team, team.toty_points) for team in self.object.teams.all()]
+        teams.sort(key=lambda team: team[1], reverse=True)
+
+        context['teams'] = teams
 
         return context
 
@@ -176,16 +196,24 @@ class DebaterUpdateView(CustomUpdateView):
         context['totys'] = TOTY.objects.filter(
             team__debaters=self.object
         ).order_by(
-            '-season'
+            'place',
+            'season'
         )
 
         context['sotys'] = self.object.soty.order_by(
-            '-season'
+            'place',
+            'season'
         )
 
         context['notys'] = self.object.noty.order_by(
-            '-season'
+            'place',
+            'season'
         )
+
+        teams = [(team, team.toty_points) for team in self.object.teams.all()]
+        teams.sort(key=lambda team: team[1], reverse=True)
+
+        context['teams'] = teams
 
         return context    
 
