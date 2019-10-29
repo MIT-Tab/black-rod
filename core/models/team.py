@@ -32,6 +32,10 @@ class Team(models.Model):
         return ', '.join(['<a href="%s">%s</a>' % (debater.get_absolute_url(),
                                                    debater.name) for debater in self.debaters.all()])
 
+    @property
+    def toty_points(self):
+        return sum([t.points for t in self.toty.all()])
+
     def get_absolute_url(self):
         return reverse('core:team_detail', kwargs={'pk': self.id})
 

@@ -3,7 +3,7 @@
 {% block content %}
     <div class="card m-5">
 	<div class="card-body">
-	    <h5 class="card-title pb-2">OTYs
+	    <h5 class="card-title pb-2 text-white">OTYs
 		<ul class="nav nav-pills float-right" id="oty_pills" roll="tablist">
 		    <li class="nav-item pr-2">
 			<a class="nav-link active" id="toty_button" data-toggle="tab" href="#toty">TOTY</a>
@@ -25,7 +25,7 @@
 		    <table class="table table-bordered">
 			<thead>
 			    <th scope="col">#</th>
-			    <th scope="col">School</th>
+			    <th scope="col">Team</th>
 			    <th scope="col">Debaters</th>
 			    <th scope="col">Points</th>
 			</thead>
@@ -46,6 +46,7 @@
 			    {% endfor %}
 			</tbody>
 		    </table>
+		    <a href="{% url 'core:toty' %}">See entire standings</a>
 		</div>
 		<div class="tab-pane fade" id="soty" role="tabpanel">
 		    <table class="table table-bordered">
@@ -71,7 +72,8 @@
 				</tr>
 			    {% endfor %}
 			</tbody>
-		    </table>		    
+		    </table>
+		    <a href="{% url 'core:soty' %}">See entire standings</a>
 		</div>
 		<div class="tab-pane fade" id="coty" role="tabpanel">
 		    <table class="table table-bordered">
@@ -96,6 +98,7 @@
 			    {% endfor %}
 			</tbody>
 		    </table>
+		    <a href="{% url 'core:coty' %}">See entire standings</a>
 		</div>
 		<div class="tab-pane fade" id="noty" role="tabpanel">
 		    <table class="table table-bordered">
@@ -122,6 +125,7 @@
 			    {% endfor %}
 			</tbody>
 		    </table>
+		    <a href="{% url 'core:noty' %}">See entire standings</a>
 		</div>	
 	    </div>
 	</div>

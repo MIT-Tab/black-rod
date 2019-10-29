@@ -74,6 +74,8 @@ class TournamentFilter(FilterSet):
 class TournamentTable(CustomTable):
     id = Column(linkify=True)
 
+    name = Column(linkify=True)
+
     class Meta:
         model = Tournament
         fields = ('id',
