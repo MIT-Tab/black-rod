@@ -47,6 +47,7 @@ INSTALLED_APPS = [
     'import_export',
     'django_tables2',
     'formtools',
+    'haystack',
 
     'core',
 ]
@@ -259,3 +260,10 @@ LOGIN_REDIRECT_URL = '/'
 LOGOUT_REDIRECT_URL = '/'
 
 DJANGO_TABLES2_TEMPLATE = 'base/table.html'
+
+HAYSTACK_CONNECTIONS = {
+    'default': {
+        'ENGINE': 'haystack.backends.whoosh_backend.WhooshEngine',
+        'PATH': os.path.join(BASE_DIR, 'whoosh_index'),
+    },
+}
