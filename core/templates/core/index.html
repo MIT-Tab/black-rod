@@ -109,18 +109,22 @@
 			<thead>
 			    <th scope="col">#</th>
 			    <th scope="col">School</th>
-			    <th scope="col" colspan="2">Points</th>
+			    <th scope="col">Points</th>
+			    <th scope="col">Debater (Qualled*)</th>
+			    <th scope="col">Points (Contribution)</th>
+			    <th scope="col">Auto-Quals</th>
 			</thead>
 			<tbody>
 			    {% for school in coty %}
 				<tr class="shaded">
 				    <td>{% if school.tied %}T-{% endif %}{{ school.place }}</td>
 				    <td><a href="{{ school.school.get_absolute_url }}?season={{ request.GET.season }}">{{ school.school.name }}</a></td>
-				    <td colspan="2">{{ school.points|floatformat:"-2" }}</td>
+				    <td>{{ school.points|floatformat:"-2" }}</td>
+				    <td colspan="3"></td>
 				</tr>
 				{% for debater in school.school|relevant_debaters:current_season %}
 				    <tr>
-					<td></td>
+					{% if forloop.first %}<td colspan="3" rowspan="{{ forloop.revcounter }}"></td>{% endif %}
 					<td class="short-row">{% if debater.qualled %}<b>{% endif %}<a href="{{ debater.debater.get_absolute_url }}?season={{ current_season }}">{{ debater.debater.name }}</a>{% if debater.qualled %}*</b>{% endif %}</td>
 					<td class="short-row">{{ debater.points }} ({{ debater|qual_contribution:current_season }})</td>
 					<td class="short-row">{{ debater.debater|qual_display:current_season }}</td>
