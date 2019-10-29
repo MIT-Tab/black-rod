@@ -10,7 +10,8 @@ from django_tables2 import Column
 from core.utils.generics import (
     CustomTable,
     CustomListView,
-    MarkerColumn
+    MarkerColumn,
+    PlaceColumn
 )
 from core.models.standings.toty import TOTY
 
@@ -25,6 +26,8 @@ class TOTYFilter(FilterSet):
 
 
 class TOTYTable(CustomTable):
+    place = PlaceColumn()
+
     marker_one = MarkerColumn(number='one', verbose_name='1')
     marker_two = MarkerColumn(number='two', verbose_name='2')
     marker_three = MarkerColumn(number='three', verbose_name='3')
