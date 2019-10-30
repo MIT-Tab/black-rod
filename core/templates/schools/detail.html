@@ -28,28 +28,30 @@
 {% endblock %}
 
 {% block left_column %}
-    <div class="card mb-2">
-	<div class="card-body">
-	    <h5 class="card-title">COTY</h5>
-	    <hr />
-	    <table class="table table-bordered table-hover table-striped">
-		<thead>
-		    <th>Place</th>
-		    <th>Season</th>
-		    <th>Points</th>
-		</thead>
-		<tbody>
-		    {% for coty in cotys %}
-			<tr>
-			    <td>{{ coty.place }}</td>
-			    <td><a href="{% url 'core:index' %}?season={{ coty.season }}&default=coty">{{ coty.get_season_display }}</a></td>
-			    <td>{{ coty.points }}</td>
-			</tr>
-		    {% endfor %}
-		</tbody>
-	    </table>
+    {% if cotys|length > 0 %}
+	<div class="card mb-2">
+	    <div class="card-body">
+		<h5 class="card-title">COTY</h5>
+		<hr />
+		<table class="table table-bordered table-hover table-striped">
+		    <thead>
+			<th>Place</th>
+			<th>Season</th>
+			<th>Points</th>
+		    </thead>
+		    <tbody>
+			{% for coty in cotys %}
+			    <tr>
+				<td>{{ coty.place }}</td>
+				<td><a href="{% url 'core:index' %}?season={{ coty.season }}&default=coty">{{ coty.get_season_display }}</a></td>
+				<td>{{ coty.points }}</td>
+			    </tr>
+			{% endfor %}
+		    </tbody>
+		</table>
+	    </div>
 	</div>
-    </div>
+    {% endif %}
     <div class="card mb-2">
 	<div class="card-body">
 	    <h5 class="card-title">Hosted Tournaments</h5>

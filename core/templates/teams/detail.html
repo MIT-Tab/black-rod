@@ -41,7 +41,7 @@
 {% endblock %}
 
 {% block left_column %}
-    {% if not object.hybrid %}
+    {% if not object.hybrid and totys|length > 0 %}
 	<div class="card">
 	    <div class="card-body">
 		<h5 class="card-title pb-2"><a href="{% url 'core:index' %}?default=toty">TOTY</a></h5>

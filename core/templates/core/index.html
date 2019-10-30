@@ -120,7 +120,7 @@
 				    <td>{% if school.tied %}T-{% endif %}{{ school.place }}</td>
 				    <td><a href="{{ school.school.get_absolute_url }}?season={{ request.GET.season }}">{{ school.school.name }}</a></td>
 				    <td>{{ school.points|floatformat:"-2" }}</td>
-				    <td colspan="3"><a href=#">Click to expand</a></td>
+				    <td colspan="3"><a href="#">Click to expand / collapse</a></td>
 				</tr>
 			    </tbody>
 			    <tbody id="coty_{{ forloop.counter }}" class="collapse">
