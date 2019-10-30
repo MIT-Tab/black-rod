@@ -115,11 +115,11 @@
 			</thead>
 			{% for school in coty %}
 			    <tbody>
-				<tr class="clickable" data-toggle="collapse" data-target="#coty_{{ forloop.counter }}" style="cursor: pointer;">
+				<tr class="clickable {% if not forloop.counter|divisibleby:2 %}shaded{% endif %}" data-toggle="collapse" data-target="#coty_{{ forloop.counter }}" style="cursor: pointer;">
 				    <td>{% if school.tied %}T-{% endif %}{{ school.place }}</td>
 				    <td><a href="{{ school.school.get_absolute_url }}?season={{ request.GET.season }}">{{ school.school.name }}</a></td>
 				    <td>{{ school.points|floatformat:"-2" }}</td>
-				    <td colspan="3"></td>
+				    <td colspan="3"><a href=#">Click to expand</a></td>
 				</tr>
 			    </tbody>
 			    <tbody id="coty_{{ forloop.counter }}" class="collapse">
