@@ -1,6 +1,6 @@
 from django import template
 
-from core.models import QualPoints
+from core.utils.rankings import get_relevant_debaters
 
 register = template.Library()
 
@@ -23,16 +23,7 @@ def qual_contribution(debater, season):
 
 @register.filter
 def relevant_debaters(school, season):
-    return QualPoints.objects.filter(
-        debater__school=school
-    ).filter(
-        season=season
-    ).filter(
-        points__gt=0
-    ).order_by(
-        '-points'
-    )
-
+    return get_relevant_debaters(school, season)
 
 @register.filter
 def partner_display(team, debater):
