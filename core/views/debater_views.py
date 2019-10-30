@@ -1,5 +1,6 @@
 from django.urls import reverse_lazy
 from django.db.models import Q
+from django.http import HttpResponse
 
 from django.conf import settings
 
@@ -226,6 +227,13 @@ class DebaterCreateView(CustomCreateView):
 
     form_class = DebaterForm
     template_name = 'debaters/create.html'
+
+    def post(self, *args, **kwargs):
+        to_return = super().post(*args, **kwargs)
+
+        if 'ajax' in self.request.POST:
+            return HttpResponse(self.object.id)
+        return to_return
 
 
 class DebaterDeleteView(CustomDeleteView):
