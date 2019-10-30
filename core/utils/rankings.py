@@ -10,6 +10,40 @@ from core.models.standings.noty import NOTY
 from core.models.standings.coty import COTY
 from core.models.standings.qual import QUAL
 
+
+def get_relevant_debaters(school, season):
+    qualled_debaters = [q.debater for q in QUAL.objects.filter(debater__school=school,
+                                                               season=season)]
+
+    qual_points = QualPoints.objects.filter(
+        debater__school=school
+    ).filter(
+        season=season
+    ).order_by(
+        '-points'
+    )
+
+    to_return = []
+    handled_debaters = []
+
+    for qual_point in qual_points:
+        if qual_point.points > 0 or qual_point.debater in qualled_debaters:
+            to_return += [qual_point]
+            handled_debaters.append(qual_point.debater)
+
+    for debater in qualled_debaters:
+        if debater in handled_debaters:
+            continue
+
+        qual_point = QualPoints.objects.create(debater=debater,
+                                               points=0,
+                                               season=season)
+
+        to_return += [qual_point]
+
+    return to_return
+    
+
 def update_toty(team):
     if team.hybrid:
         return

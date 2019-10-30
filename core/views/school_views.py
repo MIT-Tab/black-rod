@@ -17,6 +17,7 @@ from core.utils.generics import (
     CustomDetailView,
     CustomDeleteView
 )
+from core.utils.rankings import get_relevant_debaters
 from core.models.school import School
 from core.models.debater import QualPoints
 
@@ -96,15 +97,8 @@ class SchoolDetailView(CustomDetailView):
             '-season'
         )
 
-        context['debaters'] = QualPoints.objects.filter(
-            debater__school=self.object
-        ).filter(
-            season=self.request.GET.get('season')
-        ).filter(
-            points__gt=0
-        ).order_by(
-            '-points'
-        )
+        context['debaters'] = get_relevant_debaters(self.object,
+                                                    self.request.GET.get('season'))
 
         context['seasons'] = settings.SEASONS
         context['current_season'] = self.request.GET.get('season')
