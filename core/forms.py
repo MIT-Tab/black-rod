@@ -32,16 +32,10 @@ class TournamentForm(forms.ModelForm):
     class Meta:
         model = Tournament
         fields = ('host',
-                  'num_rounds',            
                   'season',
                   'date',
                   'num_teams',
                   'num_novice_debaters',
-                  'qual',
-                  'noty',
-                  'soty',
-                  'toty',
-                  'autoqual_bar',
                   'qual_type')
 
 
