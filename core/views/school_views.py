@@ -103,6 +103,8 @@ class SchoolDetailView(CustomDetailView):
         context['seasons'] = settings.SEASONS
         context['current_season'] = self.request.GET.get('season')
 
+        context['tournaments'] = self.object.hosted_tournaments.order_by('-date')
+
         return context
 
 
@@ -118,6 +120,8 @@ class SchoolUpdateView(CustomUpdateView):
         context['cotys'] = self.object.coty.order_by(
             '-season'
         )
+
+        context['tournaments'] = self.object.hosted_tournaments.order_by('-date')        
 
         return context
 
