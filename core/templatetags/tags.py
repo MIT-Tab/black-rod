@@ -6,6 +6,11 @@ register = template.Library()
 
 
 @register.filter
+def range_filter(start, end):
+    return range(start, end)
+
+
+@register.filter
 def qual_display(debater, season):
     return ', '.join([qual.get_qual_type_display() for qual in debater.quals.filter(season=season).all() if qual.qual_type > 0])
 

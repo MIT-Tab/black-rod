@@ -1,6 +1,10 @@
+from datetime import timedelta
+
 from django.urls import reverse_lazy
 from django.shortcuts import redirect
 from django.conf import settings
+
+from django.views.generic import TemplateView
 
 from django.http import QueryDict
 
@@ -45,7 +49,7 @@ from core.utils.team import get_or_create_team_for_debaters
 from core.forms import (
     DebaterForm,
     TournamentForm,
-    TournamentSelectionForm,
+   TournamentSelectionForm,
     
     VarsityTeamResultFormset,
     NoviceTeamResultFormset,
@@ -213,6 +217,79 @@ class TournamentAutocomplete(autocomplete.Select2QuerySetView):
             qs = qs.filter(name__icontains=self.q)
 
         return qs
+
+
+class ScheduleView(TemplateView):
+    template_name = 'tournaments/schedule.html'
+
+    def get_context_data(self, *args, **kwargs):
+        context = super().get_context_data(*args, **kwargs)
+
+        current_season = self.request.GET.get('season', settings.CURRENT_SEASON)
+        seasons = settings.SEASONS
+
+        context['current_season'] = current_season
+        context['seasons'] = seasons
+
+        tournaments = Tournament.objects.filter(season=current_season)
+
+        season_display = 'UNKNOWN'
+
+        if tournaments.count() > 0:
+            season_display = tournaments.first().get_season_display()
+
+        context['season_display'] = season_display
+
+        months = {}
+
+        for tournament in tournaments:
+            if tournament.date.month in months:
+                months[tournament.date.month] += [tournament]
+            else:
+                months[tournament.date.month] = [tournament]
+
+        to_return = []
+
+        for month, tournaments in months.items():
+            to_add = {
+                'month': month,
+                'display': tournaments[0].date.strftime('%B'),
+                'year': tournaments[0].date.year
+            }
+
+            weeks = []
+
+            tournaments.sort(key=lambda tournament: tournament.date.day)
+
+            current_week = {
+                'date': tournaments[0].date.day,
+                'one_more': (tournaments[0].date + timedelta(days=1)).day,
+                'tournaments': []
+            }
+
+            for tournament in tournaments:
+                if not current_week['date'] == tournament.date.day:
+                    weeks.append(current_week)
+                    current_week = {}
+                
+                if not 'date' in current_week:
+                    current_week['date'] = tournament.date.day
+                    current_week['one_more'] = (tournament.date + timedelta(days=1)).day
+                    current_week['tournaments'] = []
+
+                current_week['tournaments'].append(tournament)
+
+            weeks.append(current_week)
+
+            weeks.sort(key=lambda week: week['date'])
+            to_add['weeks'] = weeks
+
+            to_return += [to_add]
+
+        to_return.sort(key=lambda weeks: (weeks['year'], weeks['month']))
+        context['tournaments'] = to_return
+
+        return context
 
 
 class TournamentDataEntryWizardView(CustomMixin, SessionWizardView):
@@ -432,8 +509,6 @@ class TournamentDataEntryWizardView(CustomMixin, SessionWizardView):
         teams_to_update = list(set(teams_to_update))
         speakers_to_update = list(set(speakers_to_update))
         novices_to_update = list(set(novices_to_update))
-
-        print ('TEAMS TO UPDATE: %s' % (teams_to_update,))
 
         if update_otys:
             for team in teams_to_update:
