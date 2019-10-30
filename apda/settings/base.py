@@ -40,6 +40,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'django.contrib.humanize',
 
     'webpack_loader',
     'menu_generator',
@@ -175,9 +176,6 @@ WEBPACK_LOADER = {
 
 AUTH_USER_MODEL = 'core.User'
 
-NAV_MENU_RIGHT = [
-]
-
 NAV_MENU_LEFT = [
     {
         'name': 'Standings',
@@ -214,6 +212,11 @@ NAV_MENU_LEFT = [
         'name': 'Results',
         'validators': ['menu_generator.validators.is_anonymous'],
         'url': 'core:tournament_list',
+        'root': True
+    },
+    {
+        'name': 'Schedule',
+        'url': 'core:schedule_view',
         'root': True
     },
     {
