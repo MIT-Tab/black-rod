@@ -1,6 +1,8 @@
 from django.db import models
 from django.shortcuts import reverse
 
+from django.utils.html import format_html
+
 from django.conf import settings
 
 from .school import School
@@ -29,8 +31,8 @@ class Team(models.Model):
 
     @property
     def debaters_display(self):
-        return ', '.join(['<a href="%s">%s</a>' % (debater.get_absolute_url(),
-                                                   debater.name) for debater in self.debaters.all()])
+        return format_html(' and '.join(['<a href="%s">%s</a>' % (debater.get_absolute_url(),
+                                                                  debater.name) for debater in self.debaters.all()]))
 
     @property
     def toty_points(self):

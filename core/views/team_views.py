@@ -4,6 +4,8 @@ from django_filters import FilterSet
 
 from django.db.models import Q
 
+from django.utils.html import format_html
+
 from dal import autocomplete
 
 from django_tables2 import Column
@@ -37,7 +39,7 @@ class TeamTable(CustomTable):
         model = Team
         fields = ('id',
                   'name',
-                  'debaters')
+                  'debaters_display')
 
 
 class TeamListView(CustomListView):
