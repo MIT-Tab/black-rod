@@ -43,12 +43,14 @@ class DebaterTable(CustomTable):
     first_name = Column(linkify=True)
     last_name = Column(linkify=True)
 
+    school_name = Column(verbose_name='School',accessor='school.name')
+
     class Meta:
         model = Debater
         fields = ('id',
                   'first_name',
                   'last_name',
-                  'school.name',
+                  'school_name',
                   'status')
 
 

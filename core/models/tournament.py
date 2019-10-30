@@ -66,6 +66,9 @@ class Tournament(models.Model):
     EXPANSION = 4
     WORLDS = 5
     NAUDC = 6
+    PROAMS = 7
+    NATIONALS = 8
+    NOVICE = 9
 
     QUAL_TYPES = (
         (POINTS, 'Regular (Points)'),
@@ -74,8 +77,80 @@ class Tournament(models.Model):
         (NORTHAMS, 'NorthAms'),
         (EXPANSION, 'Expansion'),
         (WORLDS, 'Worlds'),
-        (NAUDC, 'NAUDC')
+        (NAUDC, 'NAUDC'),
+        (PROAMS, 'ProAms'),
+        (NATIONALS, 'Nationals'),
+        (NOVICE, 'Novice'),
     )
+
+    TOURNAMENT_TYPES = {
+        POINTS: {
+            'toty': True,
+            'soty': True,
+            'noty': True,
+            'qual': True,
+        },
+        BRANDEIS: {
+            'toty': False,
+            'soty': False,
+            'noty': False,
+            'qual': False,
+            'autoqual_bar': 4
+        },
+        YALE: {
+            'toty': False,
+            'soty': False,
+            'noty': False,
+            'qual': False,
+            'autoqual_bar': 8
+        },
+        NORTHAMS: {
+            'toty': False,
+            'soty': False,
+            'noty': False,
+            'qual': False,
+            'autoqual_bar': 8
+        },
+        EXPANSION: {
+            'toty': True,
+            'soty': True,
+            'noty': True,
+            'qual': True,
+            'autoqual_bar': 1
+        },
+        WORLDS: {
+            'toty': False,
+            'soty': False,
+            'noty': False,
+            'qual': False,
+            'autoqual_bar': 48
+        },
+        NAUDC: {
+            'toty': False,
+            'soty': False,
+            'noty': False,
+            'qual': False,
+            'autoqual_bar': 8
+        },
+        PROAMS: {
+            'toty': False,
+            'soty': True,
+            'noty': False,
+            'qual': False,
+        },
+        NATIONALS: {
+            'toty': False,
+            'soty': False,
+            'noty': False,
+            'qual': False,
+        },
+        NOVICE: {
+            'toty': False,
+            'soty': False,
+            'noty': False,
+            'qual': False,
+        }
+    }
     qual_type = models.IntegerField(choices=QUAL_TYPES,
                                     default=POINTS,
                                     verbose_name='Tournament Type')
@@ -142,6 +217,14 @@ class Tournament(models.Model):
                 suffix += 'I' * (previous_tournaments + 1)
             
             self.name = self.host.name + suffix
+
+        if self.qual_type in self.TOURNAMENT_TYPES:
+            print (self.TOURNAMENT_TYPES[self.qual_type])
+            for key, value in self.TOURNAMENT_TYPES[self.qual_type].items():
+                if key == 'noty' and self.date.month < 10 and str(self.date.year) == self.season:
+                    setattr(self, key, False)
+                else:
+                    setattr(self, key, value)
 
         super().save(*args, **kwargs)
 
