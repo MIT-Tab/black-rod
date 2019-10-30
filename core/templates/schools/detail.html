@@ -42,7 +42,7 @@
 		    {% for coty in cotys %}
 			<tr>
 			    <td>{{ coty.place }}</td>
-			    <td><a href="{% url 'core:coty' %}?season={{ coty.season }}">{{ coty.get_season_display }}</a></td>
+			    <td><a href="{% url 'core:index' %}?season={{ coty.season }}&default=coty">{{ coty.get_season_display }}</a></td>
 			    <td>{{ coty.points }}</td>
 			</tr>
 		    {% endfor %}

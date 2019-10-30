@@ -16,6 +16,8 @@ def index(request):
     seasons = settings.SEASONS
     current_season = request.GET.get('season', settings.CURRENT_SEASON)
 
+    default = request.GET.get('default', 'toty')
+
     toty = TOTY.objects.filter(season=current_season).order_by('-points').all()
     coty = COTY.objects.filter(season=current_season).order_by('-points').all()
     soty = SOTY.objects.filter(season=current_season).order_by('-points').all()

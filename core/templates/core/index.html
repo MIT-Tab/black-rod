@@ -8,28 +8,29 @@
 	    <h5 class="card-title pb-3 text-white">
 		<ul class="nav nav-pills nav-fill" id="oty_pills" roll="tablist">
 		    <li class="nav-item pr-2">
-			<a class="nav-link active" id="toty_button" data-toggle="tab" href="#toty">Team of the Year</a>
+			<a class="nav-link {% if default == 'toty' %}active{% endif %}" id="toty_button" data-toggle="tab" href="#toty">Team of the Year</a>
 		    </li>
 		    <li class="nav-item pr-2">
-			<a class="nav-link" id="soty_button" data-toggle="tab" href="#soty">Speaker of the Year</a>
+			<a class="nav-link {% if default == 'soty' %}active{% endif %}" id="soty_button" data-toggle="tab" href="#soty">Speaker of the Year</a>
 		    </li>
 		    <li class="nav-item pr-2">
-			<a class="nav-link" id="noty_button" data-toggle="tab" href="#noty">Novice of the Year</a>
+			<a class="nav-link {% if default == 'noty' %}active{% endif %}" id="noty_button" data-toggle="tab" href="#noty">Novice of the Year</a>
 		    </li>
 		    <li class="nav-item pr-2">
-			<a class="nav-link" id="coty_button" data-toggle="tab" href="#coty">Club of the Year</a>
+			<a class="nav-link {% if default == 'coty' %}active{% endif %}" id="coty_button" data-toggle="tab" href="#coty">Club of the Year</a>
 		    </li>
 		    <li class="nav-item dropdown">
 			<a class="nav-link dropdown-toggle active" data-toggle="dropdown" href="#" role="button" aria-haspopup="true" aria-expanded="false">{% for season in seasons %}{% if season.0 == current_season %}{{ season.1 }}{% endif %}{% endfor %}</a>
 			<div class="dropdown-menu">
-			    {% for season in seasons %}				<a class="dropdown-item {% if season.0 == current_season %}active{% endif %}" href="{{ request.path }}?season={{ season.0 }}">{{ season.1 }}</a>
+			    {% for season in seasons %}
+				<a class="dropdown-item {% if season.0 == current_season %}active{% endif %}" href="{{ request.path }}?season={{ season.0 }}&default={{ default }}">{{ season.1 }}</a>
 			    {% endfor %}
 			</div>
 		    </li>
 		</ul>
 	    </h5>
 	    <div class="tab-content" id="results">
-		<div class="tab-pane fade show active table-responsive" id="toty" role="tabpanel">
+		<div class="tab-pane fade table-responsive {% if default == 'toty' %}active show{% endif %}" id="toty" role="tabpanel">
 		    <table class="table table-bordered table-striped">
 			<thead>
 			    <th scope="col">#</th>
@@ -46,7 +47,7 @@
 			    {% for team in toty %}
 				<tr>
 				    <td>{% if team.tied %}T-{% endif %}{{ team.place }}</td>
-				    <td>{{ team.team|school|safe }}</td>
+				    <td><a href="{{ team.team.get_absolute_url }}">{{ team.team.name }}</a></td>
 				    <td>{{ team.team.debaters_display|safe }}</td>
 				    <td>{{ team.points|floatformat:"-2" }}</td>
 				    <td>{% if not team.marker_one == 0 %}{{ team.marker_one|floatformat:"-2" }} (<a href="{{ team.tournament_one.get_absolute_url }}">{{ team.tournament_one.name }}</a>){% endif %}</td>
@@ -65,7 +66,7 @@
 			</tbody>
 		    </table>
 		</div>
-		<div class="tab-pane fade table-responsive" id="soty" role="tabpanel">
+		<div class="tab-pane fade table-responsive {% if default == 'soty' %}active show{% endif %}" id="soty" role="tabpanel">
 		    <table class="table table-bordered table-striped">
 			<thead>
 			    <th scope="col">#</th>
@@ -103,7 +104,7 @@
 			</tbody>
 		    </table>
 		</div>
-		<div class="tab-pane fade table-responsive" id="coty" role="tabpanel">
+		<div class="tab-pane fade table-responsive {% if default == 'coty' %}active show{% endif %}" id="coty" role="tabpanel">
 		    <table class="table table-bordered">
 			<thead>
 			    <th scope="col" width="10%">#</th>
@@ -142,7 +143,7 @@
 			</tbody>
 		    </table>
 		</div>
-		<div class="tab-pane fade table-responsive" id="noty" role="tabpanel">
+		<div class="tab-pane fade table-responsive {% if default == 'noty' %}active show{% endif %}" id="noty" role="tabpanel">
 		    <table class="table table-bordered table-striped">
 			<thead>
 			    <th scope="col">#</th>
