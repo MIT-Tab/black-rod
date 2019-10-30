@@ -50,6 +50,33 @@
 	    </table>
 	</div>
     </div>
+    <div class="card mb-2">
+	<div class="card-body">
+	    <h5 class="card-title">Hosted Tournaments</h5>
+	    <hr />
+	    <table class="table table-bordered table-hover table-striped">
+		<thead>
+		    <th>Name</th>
+		    <th>Date</th>
+		    <th>Season</th>
+		</thead>
+		<tbody>
+		    {{ object.host }}
+		    {% for tournament in object.hosted_tournaments.all %}
+			<tr>
+			    <td><a href="{{ tournament.get_absolute_url }}">{{ tournament.name }}</a></td>
+			    <td>{{ tournament.date|date:"M j" }}</td>
+			    <td>{{ tournament.get_season_display }}</td>
+			</tr>
+		    {% empty %}
+			<tr class="shaded">
+			    <td colspan="3"><center>This school has not hosted any tournaments!</center></td>
+			</tr>
+		    {% endfor %}
+		</tbody>
+	    </table>
+	</div>
+    </div>
 {% endblock %}
 
 {% block added_information_view %}
