@@ -10,7 +10,8 @@
 		    <li class="nav-item dropdown">
 			<a class="nav-link dropdown-toggle active float-right" data-toggle="dropdown" href="#" role="button" aria-haspopup="true" aria-expanded="false">{% for season in seasons %}{% if season.0 == current_season %}{{ season.1 }}{% endif %}{% endfor %}</a>
 			<div class="dropdown-menu">
-			    {% for season in seasons %}				<a class="dropdown-item {% if season.0 == current_season %}active{% endif %}" href="{{ request.path }}?season={{ season.0 }}">{{ season.1 }}</a>
+			    {% for season in seasons %}
+				<a class="dropdown-item {% if season.0 == current_season %}active{% endif %}" href="{{ request.path }}?season={{ season.0 }}">{{ season.1 }}</a>
 			    {% endfor %}
 			</div>
 		    </li>
@@ -25,7 +26,7 @@
 			    {% for tournament in week.tournaments %}
 				<td width="22%"><a href="{{ tournament.get_absolute_url }}">{{ tournament.name }}</a></td>
 				{% if forloop.last %}
-				    {% for i in forloop.counter|range_filter:4 %}
+				    {% for i in forloop.counter|range_filter:3 %}
 					<td width="22%"></td>
 				    {% endfor %}
 				{% endif %}
