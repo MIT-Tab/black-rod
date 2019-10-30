@@ -30,8 +30,8 @@
 {% block left_column %}
     <div class="card mt-3 mb-3">
 	<div class="card-body">
-	    <h5 class="card-title pb-2">OTYS
-		<ul class="nav nav-pills float-right" id="otys_pills" roll="tablist">
+	    <h5 class="card-title pb-2">
+		<ul class="nav nav-pills nav-fill" id="otys_pills" roll="tablist">
 		    <li class="nav-item">
 			<a class="nav-link active" id="_TOTY" data-toggle="tab" href="#toty">TOTY</a>
 		    </li>
@@ -43,7 +43,6 @@
 		    </li>
 		</ul>
 	    </h5>
-	    <hr />
 	    <div class="tab-content" id="otys">
 		<div class="tab-pane fade show active" id="toty" role="tabpanel">
 	    <table class="table table-bordered table-hover table-striped">
@@ -120,17 +119,12 @@
     
     <div class="card mb-2">
 	<div class="card-body">
-	    <h5 class="card-title">Teams</h5>
+	    <h5 class="card-title">Partners</h5>
 	    <hr />
 	    <ul>
 		{% for team in teams %}
 		    <li>
-			<a href="{{ team.0.get_absolute_url }}">{{ team.0 }}</a> ({{ team.1 }})
-			<ul>
-			    <li>
-				{{ team.0.debaters_display|safe }}
-			    </li>
-			</ul>
+			{{ team.0|partner_name:object|safe }} (<a href="{{ team.0.get_absolute_url }}">{{ team.0 }}</a>)
 		    </li>
 		{% endfor %}
 	    </ul>

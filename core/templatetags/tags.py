@@ -30,8 +30,14 @@ def partner_display(team, debater):
     partner = team.debaters.exclude(id=debater.id).first()
     return '<a href="%s">%s</a> (<a href="%s">%s</a>)' % (partner.get_absolute_url(),
                                                           partner.name,
-                                                          partner.school.get_absolute_url,
+                                                          partner.school.get_absolute_url(),
                                                           partner.school.name)
+
+@register.filter
+def partner_name(team, debater):
+    partner = team.debaters.exclude(id=debater.id).first()
+    return '<a href="%s">%s</a>' % (partner.get_absolute_url(),
+                                    partner.name)
 
 @register.filter
 def school(team):

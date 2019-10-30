@@ -22,8 +22,7 @@
 		    <li class="nav-item dropdown">
 			<a class="nav-link dropdown-toggle active" data-toggle="dropdown" href="#" role="button" aria-haspopup="true" aria-expanded="false">{% for season in seasons %}{% if season.0 == current_season %}{{ season.1 }}{% endif %}{% endfor %}</a>
 			<div class="dropdown-menu">
-			    {% for season in seasons %}
-				<a class="dropdown-item {% if season.0 == current_season %}active{% endif %}" href="{{ request.path }}?season={{ season.0 }}">{{ season.1 }}</a>
+			    {% for season in seasons %}				<a class="dropdown-item {% if season.0 == current_season %}active{% endif %}" href="{{ request.path }}?season={{ season.0 }}">{{ season.1 }}</a>
 			    {% endfor %}
 			</div>
 		    </li>
@@ -37,11 +36,11 @@
 			    <th scope="col">School</th>
 			    <th scope="col">Debaters</th>
 			    <th scope="col">Points</th>
-			    <th scope="col">1</th>
-			    <th scope="col">2</th>
-			    <th scope="col">3</th>
-			    <th scope="col">4</th>
-			    <th scope="col">5</th>			    
+			    <th scope="col"><center>1</center></th>
+			    <th scope="col"><center>2</center></th>
+			    <th scope="col"><center>3</center></th>
+			    <th scope="col"><center>4</center></th>
+			    <th scope="col"><center>5</center></th>			    
 			</thead>
 			<tbody>
 			    {% for team in toty %}
@@ -73,12 +72,12 @@
 			    <th scope="col">Debater</th>
 			    <th scope="col">School</th>
 			    <th scope="col">Points</th>
-			    <th scop="col">1</th>
-			    <th scop="col">2</th>
-			    <th scop="col">3</th>
-			    <th scop="col">4</th>
-			    <th scop="col">5</th>
-			    <th scop="col">6</th>			    
+			    <th scop="col"><center>1</center></th>
+			    <th scop="col"><center>2</center></th>
+			    <th scop="col"><center>3</center></th>
+			    <th scop="col"><center>4</center></th>
+			    <th scop="col"><center>5</center></th>
+			    <th scop="col"><center>6</center></th>
 			</thead>
 			<tbody>
 			    {% for speaker in soty %}
@@ -147,11 +146,11 @@
 			    <th scope="col">Debater</th>
 			    <th scope="col">School</th>
 			    <th scope="col">Points</th>
-			    <th scope="col">1</th>
-			    <th scope="col">2</th>
-			    <th scope="col">3</th>
-			    <th scope="col">4</th>
-			    <th scope="col">5</th>			    
+			    <th scope="col"><center>1</center></th>
+			    <th scope="col"><center>2</center></th>
+			    <th scope="col"><center>3</center></th>
+			    <th scope="col"><center>4</center></th>
+			    <th scope="col"><center>5</center></th>			    
 			</thead>
 			<tbody>
 			    {% for speaker in noty %}
