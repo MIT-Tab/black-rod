@@ -62,7 +62,7 @@
 		</thead>
 		<tbody>
 		    {{ object.host }}
-		    {% for tournament in object.hosted_tournaments.all %}
+		    {% for tournament in tournaments %}
 			<tr>
 			    <td><a href="{{ tournament.get_absolute_url }}">{{ tournament.name }}</a></td>
 			    <td>{{ tournament.date|date:"M j" }}</td>

@@ -5,6 +5,10 @@ html {
     transform-origin: 0 0;
 }
 
+.no-padding {
+    padding: 0px !important;
+}
+
 $theme-colors: (
   "primary": #4D7EA8,
   "danger": #A31621,

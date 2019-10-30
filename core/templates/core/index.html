@@ -113,14 +113,16 @@
 			    <th scope="col">Points (Contribution)</th>
 			    <th scope="col">Auto-Quals</th>
 			</thead>
-			<tbody>
-			    {% for school in coty %}
-				<tr class="shaded">
+			{% for school in coty %}
+			    <tbody>
+				<tr class="clickable" data-toggle="collapse" data-target="#coty_{{ forloop.counter }}" style="cursor: pointer;">
 				    <td>{% if school.tied %}T-{% endif %}{{ school.place }}</td>
 				    <td><a href="{{ school.school.get_absolute_url }}?season={{ request.GET.season }}">{{ school.school.name }}</a></td>
 				    <td>{{ school.points|floatformat:"-2" }}</td>
 				    <td colspan="3"></td>
 				</tr>
+			    </tbody>
+			    <tbody id="coty_{{ forloop.counter }}" class="collapse">
 				{% for debater in school.school|relevant_debaters:current_season %}
 				    <tr>
 					{% if forloop.first %}<td colspan="3" rowspan="{{ forloop.revcounter }}"></td>{% endif %}
@@ -129,9 +131,10 @@
 					<td class="short-row">{{ debater.debater|qual_display:current_season }}</td>
 				    </tr>
 				{% endfor %}
+			    </tbody>
 			    {% empty %}
 				<tr>
-				    <td colspan="4" class="shaded">
+				    <td colspan="6" class="shaded">
 					<center>There are no COTY results yet</center>
 				    </td>
 				</tr>
