@@ -1,13 +1,4 @@
-html {
-    width: 120%;
-    height: 83%;
-    transform: scale(.83);
-    transform-origin: 0 0;
-}
-
-.no-padding {
-    padding: 0px !important;
-}
+$font-size-base: .9rem;
 
 $theme-colors: (
   "primary": #4D7EA8,
@@ -47,6 +38,10 @@ $theme-colors: (
 .short-row {
     padding-top: 4px !important;
     padding-bottom: 4px !important;    
+}
+
+.no-padding {
+    padding: 0px !important;
 }
 
 @import "node_modules/bootstrap/scss/bootstrap";

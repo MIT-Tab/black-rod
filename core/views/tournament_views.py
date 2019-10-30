@@ -200,6 +200,15 @@ class TournamentAutocomplete(autocomplete.Select2QuerySetView):
     def get_queryset(self):
         qs = Tournament.objects.all()
 
+        ids = []
+
+        for item in qs:
+            if item.team_results.count() == 0 and \
+               item.speaker_results.count() == 0:
+                ids += [item.id]
+
+        qs = qs.filter(id__in=ids)
+
         if self.q:
             qs = qs.filter(name__icontains=self.q)
 

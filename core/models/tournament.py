@@ -68,7 +68,7 @@ class Tournament(models.Model):
     NAUDC = 6
 
     QUAL_TYPES = (
-        (POINTS, 'Points'),
+        (POINTS, 'Regular (Points)'),
         (BRANDEIS, 'Brandeis IV'),
         (YALE, 'Yale IV'),
         (NORTHAMS, 'NorthAms'),
@@ -78,7 +78,7 @@ class Tournament(models.Model):
     )
     qual_type = models.IntegerField(choices=QUAL_TYPES,
                                     default=POINTS,
-                                    help_text='This only needs be set if the qual_bar is NOT 0, ie there is a special qual bar')
+                                    verbose_name='Tournament Type')
 
 
     def get_qualled(self, place):
