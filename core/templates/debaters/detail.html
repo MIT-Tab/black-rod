@@ -28,95 +28,102 @@
 {% endblock %}
 
 {% block left_column %}
-    <div class="card mt-3 mb-3">
-	<div class="card-body">
-	    <h5 class="card-title pb-2">
-		<ul class="nav nav-pills nav-fill" id="otys_pills" roll="tablist">
-		    <li class="nav-item">
-			<a class="nav-link active" id="_TOTY" data-toggle="tab" href="#toty">TOTY</a>
-		    </li>
-		    <li class="nav-item">
-			<a class="nav-link" id="_SOTY" data-toggle="tab" href="#soty">SOTY</a>
-		    </li>
-		    <li class="nav-item">
-			<a class="nav-link" id="_NOTY" data-toggle="tab" href="#noty">NOTY</a>
-		    </li>
-		</ul>
-	    </h5>
-	    <div class="tab-content" id="otys">
-		<div class="tab-pane fade show active" id="toty" role="tabpanel">
-	    <table class="table table-bordered table-hover table-striped">
-		<thead>
-		    <th>Place</th>
-		    <th>Team</th>
-		    <th>Season</th>
-		    <th>Points</th>
-		</thead>
-		<tbody>
-		    {% for toty in totys %}
-			<tr>
-			    <td>{{ toty.place }}</td>
-			    <td><a href="{{ toty.team.get_absolute_url }}">{{ toty.team.name }}</a></td>
-			    <td><a href="{% url 'core:index' %}?season={{ toty.season }}&default=toty">{{ toty.get_season_display }}</a></td>
-			    <td>{{ toty.points }}</td>
-			</tr>
-		    {% empty %}
-			<tr>
-			    <td colspan="4"><center>This debater has never been on the TOTY board.</center></td>
-			</tr>
-		    {% endfor %}
-		</tbody>
-	    </table>
+    {% if totys|length > 0 or sotys|length > 0 or notys|length > 0 %}
+	<div class="card mt-3 mb-3">
+	    <div class="card-body">
+		<h5 class="card-title pb-2">
+		    <ul class="nav nav-pills nav-fill" id="otys_pills" roll="tablist">
+			{% if totys|length > 0 %}
+			    <li class="nav-item">
+				<a class="nav-link active" id="_TOTY" data-toggle="tab" href="#toty">TOTY</a>
+			    </li>
+			{% endif %}
+			{% if sotys|length > 0 %}
+			    <li class="nav-item">
+				<a class="nav-link {% if totys|length == 0 %}active{% endif %}" id="_SOTY" data-toggle="tab" href="#soty">SOTY</a>
+			    </li>
+			{% endif %}
+			{% if notys|length > 0 %}
+			    <li class="nav-item">
+				<a class="nav-link {% if totys|length == 0 and sotys|length == 0 %}active{% endif %}" id="_NOTY" data-toggle="tab" href="#noty">NOTY</a>
+			    </li>
+			{% endif %}
+		    </ul>
+		</h5>
+		<div class="tab-content" id="otys">
+		    <div class="tab-pane fade {% if totys|length > 0 %}active show{% endif %}" id="toty" role="tabpanel">
+			<table class="table table-bordered table-hover table-striped">
+			    <thead>
+				<th>Place</th>
+				<th>Team</th>
+				<th>Season</th>
+				<th>Points</th>
+			    </thead>
+			    <tbody>
+				{% for toty in totys %}
+				    <tr>
+					<td>{{ toty.place }}</td>
+					<td><a href="{{ toty.team.get_absolute_url }}">{{ toty.team.name }}</a></td>
+					<td><a href="{% url 'core:index' %}?season={{ toty.season }}&default=toty">{{ toty.get_season_display }}</a></td>
+					<td>{{ toty.points }}</td>
+				    </tr>
+				{% empty %}
+				    <tr>
+					<td colspan="4"><center>This debater has never been on the TOTY board.</center></td>
+				    </tr>
+				{% endfor %}
+			    </tbody>
+			</table>
+		    </div>
+		    <div class="tab-pane fade {% if sotys|length > 0 and totys|length == 0 %}active show{% endif %}" id="soty" role="tabpanel">
+			<table class="table table-bordered table-hover table-striped">
+			    <thead>
+				<th>Place</th>
+				<th>Season</th>
+				<th>Points</th>
+			    </thead>
+			    <tbody>
+				{% for soty in sotys %}
+				    <tr>
+					<td>{{ soty.place }}</td>
+					<td><a href="{% url 'core:index' %}?season={{ soty.season }}&default=soty">{{ soty.get_season_display }}</a></td>
+					<td>{{ soty.points }}</td>
+				    </tr>
+				{% empty %}
+				    <tr>
+					<td colspan="3"><center>This debater has never been on the SOTY board.</center></td>
+				    </tr>
+				{% endfor %}
+			    </tbody>
+			</table>
+			
+		    </div>
+		    <div class="tab-pane fade {% if totys|length == 0 and sotys|length == 0 %}show active{% endif %}" id="noty" role="tabpanel">
+			<table class="table table-bordered table-hover table-striped">
+			    <thead>
+				<th>Place</th>
+				<th>Season</th>
+				<th>Points</th>
+			    </thead>
+			    <tbody>
+				{% for noty in notys %}
+				    <tr>
+					<td>{{ noty.place }}</td>
+					<td><a href="{% url 'core:index' %}?season={{ noty.season }}&default=noty">{{ noty.get_season_display }}</a></td>
+					<td>{{ noty.points }}</td>
+				    </tr>
+				{% empty %}
+				    <tr>
+					<td colspan="3"><center>This debater has never been on the NOTY board.</center></td>
+				    </tr>
+				{% endfor %}
+			    </tbody>
+			</table>
+		    </div>		
 		</div>
-		<div class="tab-pane fade" id="soty" role="tabpanel">
-		    <table class="table table-bordered table-hover table-striped">
-			<thead>
-			    <th>Place</th>
-			    <th>Season</th>
-			    <th>Points</th>
-			</thead>
-			<tbody>
-			    {% for soty in sotys %}
-				<tr>
-				    <td>{{ soty.place }}</td>
-				    <td><a href="{% url 'core:index' %}?season={{ soty.season }}&default=soty">{{ soty.get_season_display }}</a></td>
-				    <td>{{ soty.points }}</td>
-				</tr>
-			    {% empty %}
-				<tr>
-				    <td colspan="3"><center>This debater has never been on the SOTY board.</center></td>
-				</tr>
-			    {% endfor %}
-			</tbody>
-		    </table>
-		    
-		</div>
-		<div class="tab-pane fade" id="noty" role="tabpanel">
-		    <table class="table table-bordered table-hover table-striped">
-			<thead>
-			    <th>Place</th>
-			    <th>Season</th>
-			    <th>Points</th>
-			</thead>
-			<tbody>
-			    {% for noty in notys %}
-				<tr>
-				    <td>{{ noty.place }}</td>
-				    <td><a href="{% url 'core:index' %}?season={{ noty.season }}&default=noty">{{ noty.get_season_display }}</a></td>
-				    <td>{{ noty.points }}</td>
-				</tr>
-			    {% empty %}
-				<tr>
-				    <td colspan="3"><center>This debater has never been on the NOTY board.</center></td>
-				</tr>
-			    {% endfor %}
-			</tbody>
-		    </table>
-		</div>		
 	    </div>
-	</div>
-    </div>    
-    
+	</div>    
+    {% endif %}
     <div class="card mb-2">
 	<div class="card-body">
 	    <h5 class="card-title">Partners</h5>
