@@ -44,7 +44,7 @@
 			    <tr>
 				<td>{{ coty.place }}</td>
 				<td><a href="{% url 'core:index' %}?season={{ coty.season }}&default=coty">{{ coty.get_season_display }}</a></td>
-				<td>{{ coty.points }}</td>
+				<td>{{ coty.points|number }}</td>
 			    </tr>
 			{% endfor %}
 		    </tbody>
@@ -107,7 +107,7 @@
 		    {% for debater in debaters %}
 			<tr>
 			    <td>{% if debater.qualled %}<b>{% endif %}<a href="{{ debater.debater.get_absolute_url }}?season={{ request.GET.season }}">{{ debater.debater.name }}</a>{% if debater.qualled %}*</b>{% endif %}</td>
-			    <td>{{ debater.points }} ({{ debater|qual_contribution:current_season }})</td>
+			    <td>{{ debater.points|number }} ({{ debater|qual_contribution:current_season|number }})</td>
 			    <td>{{ debater.debater|qual_display:current_season }}</td>
 			</tr>
 		    {% endfor %}

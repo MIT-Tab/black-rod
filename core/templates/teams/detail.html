@@ -1,5 +1,7 @@
 {% extends 'base/detail.html' %}
 
+{% load tags %}
+
 {% block title %}{{ object }}{% endblock %}
 
 {% block detail_view %}
@@ -57,7 +59,7 @@
 			    <tr>
 				<td>{{ toty.place }}</td>
 				<td><a href="{% url 'core:index' %}?season={{ toty.season }}&default=toty">{{ toty.get_season_display }}</a></td>
-				<td>{{ toty.points }}</td>
+				<td>{{ toty.points|number }}</td>
 			    </tr>
 			{% empty %}
 			    <tr>

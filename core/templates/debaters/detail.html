@@ -65,7 +65,7 @@
 					<td>{{ toty.place }}</td>
 					<td><a href="{{ toty.team.get_absolute_url }}">{{ toty.team.name }}</a></td>
 					<td><a href="{% url 'core:index' %}?season={{ toty.season }}&default=toty">{{ toty.get_season_display }}</a></td>
-					<td>{{ toty.points }}</td>
+					<td>{{ toty.points|number }}</td>
 				    </tr>
 				{% empty %}
 				    <tr>
@@ -87,7 +87,7 @@
 				    <tr>
 					<td>{{ soty.place }}</td>
 					<td><a href="{% url 'core:index' %}?season={{ soty.season }}&default=soty">{{ soty.get_season_display }}</a></td>
-					<td>{{ soty.points }}</td>
+					<td>{{ soty.points|number }}</td>
 				    </tr>
 				{% empty %}
 				    <tr>
@@ -110,7 +110,7 @@
 				    <tr>
 					<td>{{ noty.place }}</td>
 					<td><a href="{% url 'core:index' %}?season={{ noty.season }}&default=noty">{{ noty.get_season_display }}</a></td>
-					<td>{{ noty.points }}</td>
+					<td>{{ noty.points|number }}</td>
 				    </tr>
 				{% empty %}
 				    <tr>
