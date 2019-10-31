@@ -35,10 +35,15 @@ $(document).ready(() => {
   $('#create_debater').click((event) => {
     event.preventDefault();
 
-    $.post('/core/debaters/create', $('#debater_create_form').serialize()).done((data) => {
-      $('#new_debaters').append('<li>' + $('#id_first_name').val() + ' ' + $('#id_last_name').val() + ' (' + $('#select2-id_school-container').html().split('; ')[1] + ') <a href="/core/debaters/' + data + '/delete" class="delete_button">Delete</a>');
-      $('#id_first_name').val('');
-      $('#id_last_name').val('');
+    var to_serialize = $('#debater_create_form').serialize()
+    to_serialize = to_serialize + "&first_name=" + $('#id_name').val().split(' ')[0];
+    to_serialize = to_serialize + "&last_name=" + $('#id_name').val().split(' ')[1];
+
+    console.log(to_serialize);
+
+    $.post('/core/debaters/create', to_serialize).done((data) => {
+      $('#new_debaters').append('<li>' + $('#id_name').val().split(' ')[0] + ' ' + $('#id_name').val().split(' ')[1] + ' (' + $('#select2-id_school-container').html().split('; ')[1] + ') <a href="/core/debaters/' + data + '/delete" class="delete_button">Delete</a>');
+      $('#id_name').val('');
       $('#id_school').empty().trigger('change');
       update_delete_listeners();
     });
