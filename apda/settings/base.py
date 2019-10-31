@@ -26,6 +26,7 @@ SECRET_KEY = '3j$y%c@9o%b-1mf$n=$bps=qvt^ls!l_5juf+%1_&w46t$1-q*'
 DEBUG = True
 
 ALLOWED_HOSTS = []
+BASE_URL = '50.116.54.146'
 
 
 # Application definition
