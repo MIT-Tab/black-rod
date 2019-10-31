@@ -4,11 +4,12 @@ from django.views.generic import (
     UpdateView,
     DeleteView
 )
-from django.template.defaultfilters import floatformat
 from django.contrib.auth.mixins import PermissionRequiredMixin
 
 import django_tables2 as tables
 from django_filters.views import FilterView
+
+from core.templatetags.tags import number
 
 
 class CustomTable(tables.Table):
@@ -85,4 +86,4 @@ class PlaceColumn(tables.Column):
 
 class PointsColumn(tables.Column):
     def render(self, record):
-        return '%s' % (floatformat(record.points, "-2"),)
+        return '%s' % (number(record.points),)

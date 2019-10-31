@@ -1,8 +1,15 @@
+from decimal import *
+
 from django import template
 
 from core.utils.rankings import get_relevant_debaters
 
 register = template.Library()
+
+
+@register.filter
+def number(num):
+    return Decimal(num).normalize()
 
 
 @register.filter
