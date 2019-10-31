@@ -41,6 +41,9 @@ def partner_display(team, debater):
 @register.filter
 def partner_name(team, debater):
     partner = team.debaters.exclude(id=debater.id).first()
+
+    if not partner:
+        'NO PARTNER'
     return '<a href="%s">%s</a>' % (partner.get_absolute_url(),
                                     partner.name)
 
