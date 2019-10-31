@@ -160,6 +160,8 @@ SEASONS = (
     #('2003', '2003-04'),
 )
 
+HAYSTACK_SIGNAL_PROCESSOR = 'haystack.signals.RealtimeSignalProcessor'
+
 DEFAULT_SEASON = '2019'
 CURRENT_SEASON = '2019'
 QUAL_BAR = 18
