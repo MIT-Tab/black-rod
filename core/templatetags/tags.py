@@ -33,6 +33,9 @@ def relevant_debaters(school, season):
 @register.filter
 def partner_display(team, debater):
     partner = team.debaters.exclude(id=debater.id).first()
+
+    if not partner:
+        return 'NO PARTNER'
     return '<a href="%s">%s</a> (<a href="%s">%s</a>)' % (partner.get_absolute_url(),
                                                           partner.name,
                                                           partner.school.get_absolute_url(),
@@ -43,7 +46,7 @@ def partner_name(team, debater):
     partner = team.debaters.exclude(id=debater.id).first()
 
     if not partner:
-        'NO PARTNER'
+        return 'NO PARTNER'
     return '<a href="%s">%s</a>' % (partner.get_absolute_url(),
                                     partner.name)
 
