@@ -182,7 +182,7 @@
 		    {% endcache %}
 		</div>
 		<div class="tab-pane fade table-responsive {% if default == 'noty' %}active show{% endif %}" id="noty" role="tabpanel">
-		    {% cache None noty current_season %}
+		    {#{% cache None noty current_season %}#}
 			<h5>
 			    <ul class="nav nav-pills float-right pb-3" id="oty_pills" roll="tablist">
 				<li class="nav-item dropdown">
@@ -230,7 +230,7 @@
 				{% endfor %}
 			    </tbody>
 			</table>
-		    {% endcache %}
+{#		    {% endcache %}#}
 		</div>	
 	    </div>
 	</div>
