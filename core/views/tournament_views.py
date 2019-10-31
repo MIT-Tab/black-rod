@@ -62,11 +62,6 @@ class TournamentFilter(FilterSet):
     def __init__(self, data=None, *args, **kwargs):
         if not data:
             data = QueryDict('season=%s' % (settings.CURRENT_SEASON,))
-        if data is not None:
-            data = data.copy()
-
-            if not 'season' in data or data['season'] == '':
-                data['season'] = settings.CURRENT_SEASON
 
         super().__init__(data, *args, **kwargs)
 
