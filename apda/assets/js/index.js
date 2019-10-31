@@ -19,6 +19,11 @@ function getCookie(name) {
 }
 
 $(document).ready(() => {
+  $('#expandAll').on('click', function(e) {
+    e.preventDefault();
+    $('.collapse').toggleClass('show');
+  });
+  
   $('#create_debater').click((event) => {
     event.preventDefault();
 
@@ -41,3 +46,4 @@ function update_delete_listeners() {
     });
   });
 }
+
