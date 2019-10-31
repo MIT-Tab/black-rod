@@ -226,6 +226,9 @@ class Tournament(models.Model):
     def __str__(self):
         return self.name
 
+    @property
+    def display(self):
+        return self.name.split(' (')[0]
 
     def save(self, *args, **kwargs):
         if self.name == '':
