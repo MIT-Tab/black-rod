@@ -390,7 +390,7 @@ def redo_rankings(rankings, season=settings.CURRENT_SEASON):
         place += 1
 
     key = make_template_fragment_key(cache_type, [season])
-    print ('CLEARING: %s' % (key,))
+    print ('CLEARING: %s (%s)' % (key,season))
     cache.delete(key)
 
     contents = urllib.request.urlopen(settings.BASE_URL + reverse('core:index') + '?season=%s' % (season,)).read()
