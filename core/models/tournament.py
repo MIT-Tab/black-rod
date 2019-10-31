@@ -63,11 +63,13 @@ class Tournament(models.Model):
     NONE = 0
     ELECTIONS = 1
     MEETING = 2
+    GM = 3
 
     NAME_SUFFIXES = (
         (NONE, ''),
         (ELECTIONS, ' (Elections)'),
-        (MEETING, ' (APDA Meeting)')
+        (MEETING, ' (APDA Meeting)'),
+        (GM, ' (Gender Minority)'),
     )
 
     name_suffix = models.IntegerField(default=NONE,
