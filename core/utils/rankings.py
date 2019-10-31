@@ -1,3 +1,5 @@
+import urllib.request
+
 from django.conf import settings
 
 from django.core.cache import cache
@@ -387,3 +389,5 @@ def redo_rankings(rankings, season=settings.CURRENT_SEASON):
 
     key = make_template_fragment_key(cache_type, [season])
     cache.delete(key)
+
+    contents = urllib.request.urlopen(reverse('core:index') + '?season=%s' % (season,)).read()
