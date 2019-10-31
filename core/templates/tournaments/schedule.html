@@ -19,7 +19,7 @@
 	    </h5>
 	    {% for month in tournaments %}
 		<h6>{{ month.display }}</h6>
-		<table class="table table-bordered">
+		<table class="table table-bordered table-striped table-hover">
 		    {% for week in month.weeks %}
 			<tr>
 			    <td width="12%">{{ week.date|ordinal }} - {{ week.one_more|ordinal }}</td>
