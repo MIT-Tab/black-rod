@@ -514,9 +514,9 @@ class TournamentDataEntryWizardView(CustomMixin, SessionWizardView):
             for debater in novices_to_update:
                 update_noty(debater)
 
-            redo_rankings(TOTY.objects.filter(season=settings.CURRENT_SEASON))
-            redo_rankings(SOTY.objects.filter(season=settings.CURRENT_SEASON))
-            redo_rankings(NOTY.objects.filter(season=settings.CURRENT_SEASON))
-            redo_rankings(COTY.objects.filter(season=settings.CURRENT_SEASON))
+            redo_rankings(TOTY.objects.filter(season=settings.CURRENT_SEASON), season=settings.CURRENT_SEASON)
+            redo_rankings(SOTY.objects.filter(season=settings.CURRENT_SEASON), season=settings.CURRENT_SEASON)
+            redo_rankings(NOTY.objects.filter(season=settings.CURRENT_SEASON), season=settings.CURRENT_SEASON)
+            redo_rankings(COTY.objects.filter(season=settings.CURRENT_SEASON), season=settings.CURRENT_SEASON)
             
         return redirect('core:tournament_detail', pk=tournament.id)
