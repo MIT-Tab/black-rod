@@ -271,7 +271,7 @@ def update_qual_points(team):
         ).delete()
 
         for result in results:
-            if result.place < result.tournament.autoqual_bar:
+            if result.place <= result.tournament.autoqual_bar:
                 qual = QUAL.objects.create(season=settings.CURRENT_SEASON,
                                            tournament=result.tournament,
                                            qual_type=result.tournament.qual_type,
