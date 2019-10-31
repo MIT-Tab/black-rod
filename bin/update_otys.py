@@ -13,7 +13,7 @@ for debater in Debater.objects.all():
     update_noty(debater)
 
 
-redo_rankings(TOTY.objects.filter(season=settings.CURRENT_SEASON).all())
-redo_rankings(NOTY.objects.filter(season=settings.CURRENT_SEASON).all())
-redo_rankings(COTY.objects.filter(season=settings.CURRENT_SEASON).all())
-redo_rankings(SOTY.objects.filter(season=settings.CURRENT_SEASON).all())
+redo_rankings(TOTY.objects.filter(season=settings.CURRENT_SEASON, cache_type='toty').all())
+redo_rankings(NOTY.objects.filter(season=settings.CURRENT_SEASON, cache_type='noty').all())
+redo_rankings(COTY.objects.filter(season=settings.CURRENT_SEASON, cache_type='coty').all())
+redo_rankings(SOTY.objects.filter(season=settings.CURRENT_SEASON, cache_type='soty').all())
