@@ -341,7 +341,7 @@ def update_qual_points(team):
         coty.save()
 
 
-def redo_rankings(rankings):
+def redo_rankings(rankings, season=settings.CURRENT_SEASON):
     handled_through_tie = []
 
     rankings = rankings.order_by(
@@ -385,5 +385,5 @@ def redo_rankings(rankings):
 
         place += 1
 
-    key = make_template_fragment_key(cache_type, [rankings.first().season])
+    key = make_template_fragment_key(cache_type, [season])
     cache.delete(key)
