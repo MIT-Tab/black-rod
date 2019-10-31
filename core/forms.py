@@ -36,7 +36,8 @@ class TournamentForm(forms.ModelForm):
                   'date',
                   'num_teams',
                   'num_novice_debaters',
-                  'qual_type')
+                  'qual_type',
+                  'name_suffix')
 
 
 class TeamForm(forms.ModelForm):

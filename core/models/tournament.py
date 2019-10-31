@@ -28,7 +28,8 @@ class Tournament(models.Model):
                               max_length=16)
 
     num_teams = models.IntegerField(null=False,
-                                    verbose_name='Teams')
+                                    verbose_name='Teams',
+                                    default=-1)
     num_novice_teams = models.IntegerField(null=False,
                                            verbose_name='Novice Teams',
                                            default=-1)
@@ -37,7 +38,8 @@ class Tournament(models.Model):
                                        verbose_name='Debaters',
                                        default=-1)
     num_novice_debaters = models.IntegerField(null=False,
-                                              verbose_name='Novice Debaters')
+                                              verbose_name='Novice Debaters',
+                                              default=-1)
 
     date = models.DateField(blank=False)
 
@@ -57,6 +59,19 @@ class Tournament(models.Model):
     autoqual_bar = models.IntegerField(default=0,
                                        verbose_name='Autoqual Bar',
                                        help_text='If this tournament gives autoquals, this value represents the highest place that receivs the autoqual')
+
+    NONE = 0
+    ELECTIONS = 1
+    MEETING = 2
+
+    NAME_SUFFIXES = (
+        (NONE, ''),
+        (ELECTIONS, ' (Elections)'),
+        (MEETING, ' (Meeting')
+    )
+
+    name_suffix = models.IntegerField(default=NONE,
+                                      choices=NAME_SUFFIXES)
 
     # REPEATED TO PREVENT CIRCULAR IMPORTS
     POINTS = 0
@@ -95,60 +110,69 @@ class Tournament(models.Model):
             'soty': False,
             'noty': False,
             'qual': False,
-            'autoqual_bar': 4
+            'autoqual_bar': 4,
+            'suffix': ' IV',
         },
         YALE: {
             'toty': False,
             'soty': False,
             'noty': False,
             'qual': False,
-            'autoqual_bar': 8
+            'autoqual_bar': 8,
+            'suffix': ' IV',
         },
         NORTHAMS: {
             'toty': False,
             'soty': False,
             'noty': False,
             'qual': False,
-            'autoqual_bar': 8
+            'autoqual_bar': 8,
+            'suffix': ' NorthAms',
         },
         EXPANSION: {
             'toty': True,
             'soty': True,
             'noty': True,
             'qual': True,
-            'autoqual_bar': 1
+            'autoqual_bar': 1,
+            'suffix': ' (Expansion)'
         },
         WORLDS: {
             'toty': False,
             'soty': False,
             'noty': False,
             'qual': False,
-            'autoqual_bar': 48
+            'autoqual_bar': 48,
+            'suffix': ' (Worlds)',
         },
         NAUDC: {
             'toty': False,
             'soty': False,
             'noty': False,
             'qual': False,
-            'autoqual_bar': 8
+            'autoqual_bar': 8,
+            'suffix': ' NAUDC'
         },
         PROAMS: {
             'toty': False,
             'soty': True,
             'noty': False,
             'qual': False,
+            'suffix': ' ProAms'
         },
         NATIONALS: {
             'toty': False,
             'soty': False,
             'noty': False,
             'qual': False,
+            'suffix': ' Nationals'
         },
         NOVICE: {
             'toty': False,
             'soty': False,
             'noty': False,
             'qual': False,
+            'suffix': ' Novice'
         }
     }
     qual_type = models.IntegerField(choices=QUAL_TYPES,
@@ -211,15 +235,17 @@ class Tournament(models.Model):
                 id=self.id
             ).count()
 
-            suffix = ' '
+            suffix = ''
             
-            if previous_tournaments:
+            if self.qual_type == self.POINTS and previous_tournaments:
+                suffix += ' '
                 suffix += 'I' * (previous_tournaments + 1)
+            elif self.qual_type in self.TOURNAMENT_TYPES:
+                suffix += self.TOURNAMENT_TYPES[self.qual_type]['suffix']
             
-            self.name = self.host.name + suffix
+            self.name = self.host.name + suffix + self.get_name_suffix_display()
 
         if self.qual_type in self.TOURNAMENT_TYPES:
-            print (self.TOURNAMENT_TYPES[self.qual_type])
             for key, value in self.TOURNAMENT_TYPES[self.qual_type].items():
                 if key == 'noty' and self.date.month < 10 and str(self.date.year) == self.season:
                     setattr(self, key, False)
