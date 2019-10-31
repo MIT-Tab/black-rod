@@ -1,6 +1,7 @@
 {% extends "base/base.html" %}
 
 {% load tags %}
+{% load cache %}
 
 {% block content %}
     <div class="card m-5">
@@ -19,120 +20,156 @@
 		    <li class="nav-item pr-2">
 			<a class="nav-link {% if default == 'coty' %}active{% endif %}" id="coty_button" data-toggle="tab" href="#coty">Club of the Year</a>
 		    </li>
-		    <li class="nav-item dropdown">
-			<a class="nav-link dropdown-toggle active" data-toggle="dropdown" href="#" role="button" aria-haspopup="true" aria-expanded="false">{% for season in seasons %}{% if season.0 == current_season %}{{ season.1 }}{% endif %}{% endfor %}</a>
-			<div class="dropdown-menu">
-			    {% for season in seasons %}
-				<a class="dropdown-item {% if season.0 == current_season %}active{% endif %}" href="{{ request.path }}?season={{ season.0 }}&default={{ default }}">{{ season.1 }}</a>
-			    {% endfor %}
-			</div>
-		    </li>
 		</ul>
 	    </h5>
+	    <hr />
 	    <div class="tab-content" id="results">
 		<div class="tab-pane fade table-responsive {% if default == 'toty' %}active show{% endif %}" id="toty" role="tabpanel">
-		    <table class="table table-bordered table-striped">
-			<thead>
-			    <th scope="col">#</th>
-			    <th scope="col">School</th>
-			    <th scope="col">Debaters</th>
-			    <th scope="col">Points</th>
-			    <th scope="col"><center>1</center></th>
-			    <th scope="col"><center>2</center></th>
-			    <th scope="col"><center>3</center></th>
-			    <th scope="col"><center>4</center></th>
-			    <th scope="col"><center>5</center></th>			    
-			</thead>
-			<tbody>
-			    {% for team in toty %}
-				<tr>
-				    <td>{% if team.tied %}T-{% endif %}{{ team.place }}</td>
-				    <td><a href="{{ team.team.get_absolute_url }}">{{ team.team.name }}</a></td>
-				    <td>{{ team.team.debaters_display|safe }}</td>
-				    <td>{{ team.points|floatformat:"-2" }}</td>
-				    <td>{% if not team.marker_one == 0 %}{{ team.marker_one|floatformat:"-2" }} (<a href="{{ team.tournament_one.get_absolute_url }}">{{ team.tournament_one.name }}</a>){% endif %}</td>
-				    <td>{% if not team.marker_two == 0 %}{{ team.marker_two|floatformat:"-2" }} (<a href="{{ team.tournament_one.get_absolute_url }}">{{ team.tournament_two.name }}</a>){% endif %}</td>
-				    <td>{% if not team.marker_three == 0 %}{{ team.marker_three|floatformat:"-2" }} (<a href="{{ team.tournament_one.get_absolute_url }}">{{ team.tournament_three.name }}</a>){% endif %}</td>
-				    <td>{% if not team.marker_four == 0 %}{{ team.marker_four|floatformat:"-2" }} (<a href="{{ team.tournament_one.get_absolute_url }}">{{ team.tournament_four.name }}</a>){% endif %}</td>
-				    <td>{% if not team.marker_five == 0 %}{{ team.marker_five|floatformat:"-2" }} (<a href="{{ team.tournament_one.get_absolute_url }}">{{ team.tournament_five.name }}</a>){% endif %}</td>
-				</tr>
-			    {% empty %}
-				<tr>
-				    <td colspan="9" class="shaded">
-					<center>There are no TOTY results yet</center>
-				    </td>
-				</tr>
-			    {% endfor %}
-			</tbody>
-		    </table>
-		</div>
-		<div class="tab-pane fade table-responsive {% if default == 'soty' %}active show{% endif %}" id="soty" role="tabpanel">
-		    <table class="table table-bordered table-striped">
-			<thead>
-			    <th scope="col">#</th>
-			    <th scope="col">Debater</th>
-			    <th scope="col">School</th>
-			    <th scope="col">Points</th>
-			    <th scop="col"><center>1</center></th>
-			    <th scop="col"><center>2</center></th>
-			    <th scop="col"><center>3</center></th>
-			    <th scop="col"><center>4</center></th>
-			    <th scop="col"><center>5</center></th>
-			    <th scop="col"><center>6</center></th>
-			</thead>
-			<tbody>
-			    {% for speaker in soty %}
-				<tr>
-				    <td>{% if speaker.tied %}T-{% endif %}{{ speaker.place }}</td>
-				    <td><a href="{% url 'core:debater_detail' pk=speaker.debater.id %}">{{ speaker.debater.name }}</a></td>
-				    <td><a href={% url 'core:school_detail' pk=speaker.debater.school.id %}>{{ speaker.debater.school.name }}</a></td>
-				    <td>{{ speaker.points|floatformat:"-2" }}</td>
-				    <td>{% if not speaker.marker_one == 0 %}{{ speaker.marker_one|floatformat:"-2" }} (<a href="{{ speaker.tournament_one.get_absolute_url }}">{{ speaker.tournament_one.name }}</a>){% endif %}</td>
-				    <td>{% if not speaker.marker_two == 0 %}{{ speaker.marker_two|floatformat:"-2" }} (<a href="{{ speaker.tournament_two.get_absolute_url }}">{{ speaker.tournament_two.name }}</a>){% endif %}</td>
-				    <td>{% if not speaker.marker_three == 0 %}{{ speaker.marker_three|floatformat:"-2" }} (<a href="{{ speaker.tournament_three.get_absolute_url }}">{{ speaker.tournament_three.name }}</a>){% endif %}</td>
-				    <td>{% if not speaker.marker_four == 0 %}{{ speaker.marker_four|floatformat:"-2" }} (<a href="{{ speaker.tournament_four.get_absolute_url }}">{{ speaker.tournament_four.name }}</a>){% endif %}</td>
-				    <td>{% if not speaker.marker_five == 0 %}{{ speaker.marker_five|floatformat:"-2" }} (<a href="{{ speaker.tournament_five.get_absolute_url }}">{{ speaker.tournament_five.name }}</a>){% endif %}</td>
-				    <td>{% if not speaker.marker_six == 0 %}{{ speaker.marker_six|floatformat:"-2" }} (<a href="{{ speaker.tournament_six.get_absolute_url }}">{{ speaker.tournament_six.name }}</a>){% endif %}</td>				    
-				</tr>
-			    {% empty %}
-				<tr>
-				    <td colspan="10" class="shaded">
-					<center>There are no SOTY results yet</center>
-				    </td>
-				</tr>
-			    {% endfor %}
-			</tbody>
-		    </table>
-		</div>
-		<div class="tab-pane fade table-responsive {% if default == 'coty' %}active show{% endif %}" id="coty" role="tabpanel">
-		    <table class="table table-bordered">
-			<thead>
-			    <th scope="col" width="10%">#</th>
-			    <th scope="col" width="20%">School</th>
-			    <th scope="col" width="10%">Points</th>
-			    <th scope="col" width="30%">Debater (qualified for the National Championship*)</th>
-			    <th scope="col" width="10%">Points (Contribution)</th>
-			    <th scope="col" width="20%">Auto-Quals</th>
-			</thead>
-			{% for school in coty %}
+		    {% cache None toty current_season %}
+			<h5>
+			    <ul class="nav nav-pills float-right pb-3" id="oty_pills" roll="tablist">
+				<li class="nav-item dropdown">
+				    <a class="nav-link dropdown-toggle active" data-toggle="dropdown" href="#" role="button" aria-haspopup="true" aria-expanded="false">{% for season in seasons %}{% if season.0 == current_season %}{{ season.1 }}{% endif %}{% endfor %}</a>
+				    <div class="dropdown-menu">
+					{% for season in seasons %}
+					    <a class="dropdown-item {% if season.0 == current_season %}active{% endif %}" href="{{ request.path }}?season={{ season.0 }}&default=toty">{{ season.1 }}</a>
+					{% endfor %}
+				    </div>
+				</li>
+			    </ul>
+			</h5>
+			<table class="table table-bordered table-striped">
+			    <thead>
+				<th scope="col">#</th>
+				<th scope="col">School</th>
+				<th scope="col">Debaters</th>
+				<th scope="col">Points</th>
+				<th scope="col"><center>1</center></th>
+				<th scope="col"><center>2</center></th>
+				<th scope="col"><center>3</center></th>
+				<th scope="col"><center>4</center></th>
+				<th scope="col"><center>5</center></th>			    
+			    </thead>
 			    <tbody>
-				<tr class="clickable {% if not forloop.counter|divisibleby:2 %}shaded{% endif %}" data-toggle="collapse" data-target="#coty_{{ forloop.counter }}" style="cursor: pointer;">
-				    <td>{% if school.tied %}T-{% endif %}{{ school.place }}</td>
-				    <td><a href="{{ school.school.get_absolute_url }}?season={{ request.GET.season }}">{{ school.school.name }}</a></td>
-				    <td>{{ school.points|floatformat:"-2" }}</td>
-				    <td colspan="3"><a href="#">Click to expand / collapse</a></td>
-				</tr>
-			    </tbody>
-			    <tbody id="coty_{{ forloop.counter }}" class="collapse">
-				{% for debater in school.school|relevant_debaters:current_season %}
+				{% for team in toty %}
 				    <tr>
-					{% if forloop.first %}<td colspan="3" rowspan="{{ forloop.revcounter }}"></td>{% endif %}
-					<td class="short-row">{% if debater.qualled %}<b>{% endif %}<a href="{{ debater.debater.get_absolute_url }}?season={{ current_season }}">{{ debater.debater.name }}</a>{% if debater.qualled %}*</b>{% endif %}</td>
-					<td class="short-row">{{ debater.points }} ({{ debater|qual_contribution:current_season }})</td>
-					<td class="short-row">{{ debater.debater|qual_display:current_season }}</td>
+					<td>{% if team.tied %}T-{% endif %}{{ team.place }}</td>
+					<td><a href="{{ team.team.get_absolute_url }}">{{ team.team.name }}</a></td>
+					<td>{{ team.team.debaters_display|safe }}</td>
+					<td>{{ team.points|floatformat:"-2" }}</td>
+					<td>{% if not team.marker_one == 0 %}{{ team.marker_one|floatformat:"-2" }} (<a href="{{ team.tournament_one.get_absolute_url }}">{{ team.tournament_one.name }}</a>){% endif %}</td>
+					<td>{% if not team.marker_two == 0 %}{{ team.marker_two|floatformat:"-2" }} (<a href="{{ team.tournament_one.get_absolute_url }}">{{ team.tournament_two.name }}</a>){% endif %}</td>
+					<td>{% if not team.marker_three == 0 %}{{ team.marker_three|floatformat:"-2" }} (<a href="{{ team.tournament_one.get_absolute_url }}">{{ team.tournament_three.name }}</a>){% endif %}</td>
+					<td>{% if not team.marker_four == 0 %}{{ team.marker_four|floatformat:"-2" }} (<a href="{{ team.tournament_one.get_absolute_url }}">{{ team.tournament_four.name }}</a>){% endif %}</td>
+					<td>{% if not team.marker_five == 0 %}{{ team.marker_five|floatformat:"-2" }} (<a href="{{ team.tournament_one.get_absolute_url }}">{{ team.tournament_five.name }}</a>){% endif %}</td>
+				    </tr>
+				{% empty %}
+				    <tr>
+					<td colspan="9" class="shaded">
+					    <center>There are no TOTY results yet</center>
+					</td>
 				    </tr>
 				{% endfor %}
 			    </tbody>
+			</table>
+		    {% endcache %}
+		</div>
+		<div class="tab-pane fade table-responsive {% if default == 'soty' %}active show{% endif %}" id="soty" role="tabpanel">
+		    {% cache None soty current_season %}
+			<h5>
+			    <ul class="nav nav-pills float-right pb-3" id="oty_pills" roll="tablist">
+				<li class="nav-item dropdown">
+				    <a class="nav-link dropdown-toggle active" data-toggle="dropdown" href="#" role="button" aria-haspopup="true" aria-expanded="false">{% for season in seasons %}{% if season.0 == current_season %}{{ season.1 }}{% endif %}{% endfor %}</a>
+				    <div class="dropdown-menu">
+					{% for season in seasons %}
+					    <a class="dropdown-item {% if season.0 == current_season %}active{% endif %}" href="{{ request.path }}?season={{ season.0 }}&default=soty">{{ season.1 }}</a>
+					{% endfor %}
+				    </div>
+				</li>
+			    </ul>
+			</h5>
+			
+			<table class="table table-bordered table-striped">
+			    <thead>
+				<th scope="col">#</th>
+				<th scope="col">Debater</th>
+				<th scope="col">School</th>
+				<th scope="col">Points</th>
+				<th scop="col"><center>1</center></th>
+				<th scop="col"><center>2</center></th>
+				<th scop="col"><center>3</center></th>
+				<th scop="col"><center>4</center></th>
+				<th scop="col"><center>5</center></th>
+				<th scop="col"><center>6</center></th>
+			    </thead>
+			    <tbody>
+				{% for speaker in soty %}
+				    <tr>
+					<td>{% if speaker.tied %}T-{% endif %}{{ speaker.place }}</td>
+					<td><a href="{% url 'core:debater_detail' pk=speaker.debater.id %}">{{ speaker.debater.name }}</a></td>
+					<td><a href={% url 'core:school_detail' pk=speaker.debater.school.id %}>{{ speaker.debater.school.name }}</a></td>
+					<td>{{ speaker.points|floatformat:"-2" }}</td>
+					<td>{% if not speaker.marker_one == 0 %}{{ speaker.marker_one|floatformat:"-2" }} (<a href="{{ speaker.tournament_one.get_absolute_url }}">{{ speaker.tournament_one.name }}</a>){% endif %}</td>
+					<td>{% if not speaker.marker_two == 0 %}{{ speaker.marker_two|floatformat:"-2" }} (<a href="{{ speaker.tournament_two.get_absolute_url }}">{{ speaker.tournament_two.name }}</a>){% endif %}</td>
+					<td>{% if not speaker.marker_three == 0 %}{{ speaker.marker_three|floatformat:"-2" }} (<a href="{{ speaker.tournament_three.get_absolute_url }}">{{ speaker.tournament_three.name }}</a>){% endif %}</td>
+					<td>{% if not speaker.marker_four == 0 %}{{ speaker.marker_four|floatformat:"-2" }} (<a href="{{ speaker.tournament_four.get_absolute_url }}">{{ speaker.tournament_four.name }}</a>){% endif %}</td>
+					<td>{% if not speaker.marker_five == 0 %}{{ speaker.marker_five|floatformat:"-2" }} (<a href="{{ speaker.tournament_five.get_absolute_url }}">{{ speaker.tournament_five.name }}</a>){% endif %}</td>
+					<td>{% if not speaker.marker_six == 0 %}{{ speaker.marker_six|floatformat:"-2" }} (<a href="{{ speaker.tournament_six.get_absolute_url }}">{{ speaker.tournament_six.name }}</a>){% endif %}</td>				    
+				    </tr>
+				{% empty %}
+				    <tr>
+					<td colspan="10" class="shaded">
+					    <center>There are no SOTY results yet</center>
+					</td>
+				    </tr>
+				{% endfor %}
+			    </tbody>
+			</table>
+		    {% endcache %}
+		</div>
+		<div class="tab-pane fade table-responsive {% if default == 'coty' %}active show{% endif %}" id="coty" role="tabpanel">
+		    {% cache None coty current_season %}
+			<h5>
+			    <ul class="nav nav-pills float-right pb-3" id="oty_pills" roll="tablist">
+				<li class="nav-item dropdown">
+				    <a class="nav-link dropdown-toggle active" data-toggle="dropdown" href="#" role="button" aria-haspopup="true" aria-expanded="false">{% for season in seasons %}{% if season.0 == current_season %}{{ season.1 }}{% endif %}{% endfor %}</a>
+				    <div class="dropdown-menu">
+					{% for season in seasons %}
+					    <a class="dropdown-item {% if season.0 == current_season %}active{% endif %}" href="{{ request.path }}?season={{ season.0 }}&default=coty">{{ season.1 }}</a>
+					{% endfor %}
+				    </div>
+				</li>
+			    </ul>
+			</h5>
+			
+			<table class="table table-bordered">
+			    <thead>
+				<th scope="col" width="10%">#</th>
+				<th scope="col" width="20%">School</th>
+				<th scope="col" width="10%">Points</th>
+				<th scope="col" width="30%">Debater (qualified for the National Championship*)</th>
+				<th scope="col" width="10%">Points (Contribution)</th>
+				<th scope="col" width="20%">Auto-Quals</th>
+			    </thead>
+			    {% for school in coty %}
+				<tbody>
+				    <tr class="clickable {% if not forloop.counter|divisibleby:2 %}shaded{% endif %}" data-toggle="collapse" data-target="#coty_{{ forloop.counter }}" style="cursor: pointer;">
+					<td>{% if school.tied %}T-{% endif %}{{ school.place }}</td>
+					<td><a href="{{ school.school.get_absolute_url }}?season={{ request.GET.season }}">{{ school.school.name }}</a></td>
+					<td>{{ school.points|floatformat:"-2" }}</td>
+					<td colspan="3"><a href="#">Click to expand / collapse</a></td>
+				    </tr>
+				</tbody>
+				<tbody id="coty_{{ forloop.counter }}" class="collapse">
+				    {% for debater in school.school|relevant_debaters:current_season %}
+					<tr>
+					    {% if forloop.first %}<td colspan="3" rowspan="{{ forloop.revcounter }}"></td>{% endif %}
+					    <td class="short-row">{% if debater.qualled %}<b>{% endif %}<a href="{{ debater.debater.get_absolute_url }}?season={{ current_season }}">{{ debater.debater.name }}</a>{% if debater.qualled %}*</b>{% endif %}</td>
+					    <td class="short-row">{{ debater.points }} ({{ debater|qual_contribution:current_season }})</td>
+					    <td class="short-row">{{ debater.debater|qual_display:current_season }}</td>
+					</tr>
+				    {% endfor %}
+				</tbody>
 			    {% empty %}
 				<tr>
 				    <td colspan="6" class="shaded">
@@ -140,44 +177,60 @@
 				    </td>
 				</tr>
 			    {% endfor %}
-			</tbody>
-		    </table>
+			    </tbody>
+			</table>
+		    {% endcache %}
 		</div>
 		<div class="tab-pane fade table-responsive {% if default == 'noty' %}active show{% endif %}" id="noty" role="tabpanel">
-		    <table class="table table-bordered table-striped">
-			<thead>
-			    <th scope="col">#</th>
-			    <th scope="col">Debater</th>
-			    <th scope="col">School</th>
-			    <th scope="col">Points</th>
-			    <th scope="col"><center>1</center></th>
-			    <th scope="col"><center>2</center></th>
-			    <th scope="col"><center>3</center></th>
-			    <th scope="col"><center>4</center></th>
-			    <th scope="col"><center>5</center></th>			    
-			</thead>
-			<tbody>
-			    {% for speaker in noty %}
-				<tr>
-				    <td>{% if speaker.tied %}T-{% endif %}{{ speaker.place }}</td>
-				    <td><a href="{% url 'core:debater_detail' pk=speaker.debater.id %}">{{ speaker.debater.name }}</a></td>
-				    <td><a href={% url 'core:school_detail' pk=speaker.debater.school.id %}>{{ speaker.debater.school.name }}</a></td>
-				    <td>{{ speaker.points|floatformat:"-2" }}</td>
-				    <td>{% if not speaker.marker_one == 0 %}{{ speaker.marker_one|floatformat:"-2" }} (<a href="{{ speaker.tournament_one.get_absolute_url }}">{{ speaker.tournament_one.name }}</a>){% endif %}</td>
-				    <td>{% if not speaker.marker_two == 0 %}{{ speaker.marker_two|floatformat:"-2" }} (<a href="{{ speaker.tournament_two.get_absolute_url }}">({{ speaker.tournament_two.name }}</a>){% endif %}</td>
-				    <td>{% if not speaker.marker_three == 0 %}{{ speaker.marker_three|floatformat:"-2" }} (<a href="{{ speaker.tournament_three.get_absolute_url }}">{{ speaker.tournament_three.name }}</a>){% endif %}</td>
-				    <td>{% if not speaker.marker_four == 0 %}{{ speaker.marker_four|floatformat:"-2" }} (<a href="{{ speaker.tournament_four.get_absolute_url }}">{{ speaker.tournament_four.name }}</a>){% endif %}</td>
-				    <td>{% if not speaker.marker_five == 0 %}{{ speaker.marker_five|floatformat:"-2" }} (<a href="{{ speaker.tournament_five.get_absolute_url }}">{{ speaker.tournament_five.name }}</a>){% endif %}</td>
-				</tr>
-			    {% empty %}
-				<tr>
-				    <td colspan="9" class="shaded">
-					<center>There are no NOTY results yet</center>
-				    </td>
-				</tr>
-			    {% endfor %}
-			</tbody>
-		    </table>
+		    {% cache None noty current_season %}
+			<h5>
+			    <ul class="nav nav-pills float-right pb-3" id="oty_pills" roll="tablist">
+				<li class="nav-item dropdown">
+				    <a class="nav-link dropdown-toggle active" data-toggle="dropdown" href="#" role="button" aria-haspopup="true" aria-expanded="false">{% for season in seasons %}{% if season.0 == current_season %}{{ season.1 }}{% endif %}{% endfor %}</a>
+				    <div class="dropdown-menu">
+					{% for season in seasons %}
+					    <a class="dropdown-item {% if season.0 == current_season %}active{% endif %}" href="{{ request.path }}?season={{ season.0 }}&default=noty">{{ season.1 }}</a>
+					{% endfor %}
+				    </div>
+				</li>
+			    </ul>
+			</h5>
+			
+			<table class="table table-bordered table-striped">
+			    <thead>
+				<th scope="col">#</th>
+				<th scope="col">Debater</th>
+				<th scope="col">School</th>
+				<th scope="col">Points</th>
+				<th scope="col"><center>1</center></th>
+				<th scope="col"><center>2</center></th>
+				<th scope="col"><center>3</center></th>
+				<th scope="col"><center>4</center></th>
+				<th scope="col"><center>5</center></th>			    
+			    </thead>
+			    <tbody>
+				{% for speaker in noty %}
+				    <tr>
+					<td>{% if speaker.tied %}T-{% endif %}{{ speaker.place }}</td>
+					<td><a href="{% url 'core:debater_detail' pk=speaker.debater.id %}">{{ speaker.debater.name }}</a></td>
+					<td><a href={% url 'core:school_detail' pk=speaker.debater.school.id %}>{{ speaker.debater.school.name }}</a></td>
+					<td>{{ speaker.points|floatformat:"-2" }}</td>
+					<td>{% if not speaker.marker_one == 0 %}{{ speaker.marker_one|floatformat:"-2" }} (<a href="{{ speaker.tournament_one.get_absolute_url }}">{{ speaker.tournament_one.name }}</a>){% endif %}</td>
+					<td>{% if not speaker.marker_two == 0 %}{{ speaker.marker_two|floatformat:"-2" }} (<a href="{{ speaker.tournament_two.get_absolute_url }}">({{ speaker.tournament_two.name }}</a>){% endif %}</td>
+					<td>{% if not speaker.marker_three == 0 %}{{ speaker.marker_three|floatformat:"-2" }} (<a href="{{ speaker.tournament_three.get_absolute_url }}">{{ speaker.tournament_three.name }}</a>){% endif %}</td>
+					<td>{% if not speaker.marker_four == 0 %}{{ speaker.marker_four|floatformat:"-2" }} (<a href="{{ speaker.tournament_four.get_absolute_url }}">{{ speaker.tournament_four.name }}</a>){% endif %}</td>
+					<td>{% if not speaker.marker_five == 0 %}{{ speaker.marker_five|floatformat:"-2" }} (<a href="{{ speaker.tournament_five.get_absolute_url }}">{{ speaker.tournament_five.name }}</a>){% endif %}</td>
+				    </tr>
+				{% empty %}
+				    <tr>
+					<td colspan="9" class="shaded">
+					    <center>There are no NOTY results yet</center>
+					</td>
+				    </tr>
+				{% endfor %}
+			    </tbody>
+			</table>
+		    {% endcache %}
 		</div>	
 	    </div>
 	</div>
