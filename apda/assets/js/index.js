@@ -1,6 +1,9 @@
 import "bootstrap";
 
+import "../../../node_modules/bootstrap-datepicker/build/build.less"
 import "../css/app.scss";
+
+import "bootstrap-datepicker";
 
 function getCookie(name) {
     var cookieValue = null;
@@ -34,6 +37,12 @@ $(document).ready(() => {
       $('#id_school').empty().trigger('change');
       update_delete_listeners();
     });
+  });
+
+  $('#id_date').datepicker({
+    'format': 'mm/dd/yyyy',
+    'startDate': '-3d'
+
   });
 });
 
