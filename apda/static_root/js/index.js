@@ -26,6 +26,11 @@ $(document).ready(() => {
     e.preventDefault();
     $('.collapse').toggleClass('show');
   });
+
+  $('.clickable').on('click', function(e) {
+    e.preventDefault();
+    $($(this).data('newtarget')).toggleClass('show');
+  });
   
   $('#create_debater').click((event) => {
     event.preventDefault();
