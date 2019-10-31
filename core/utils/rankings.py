@@ -241,17 +241,10 @@ def update_qual_points(team):
         results = TeamResult.objects.filter(
             tournament__season=settings.CURRENT_SEASON
         ).filter(
-            tournament__qual=True
-        ).filter(
             type_of_place=Debater.VARSITY
         ).filter(
             team__debaters=debater
         )
-
-        markers = [(result.tournament.get_qual_points(result.place), result) \
-                   for result in results]
-        
-        markers.sort(key=lambda marker: marker[0], reverse=True)
 
         if not debater.school.included_in_oty:
             QUAL.objects.filter(
@@ -276,6 +269,15 @@ def update_qual_points(team):
                                            tournament=result.tournament,
                                            qual_type=result.tournament.qual_type,
                                            debater=debater)
+
+        results = results.filter(
+            tournament__qual=True
+        )
+
+        markers = [(result.tournament.get_qual_points(result.place), result) \
+                   for result in results]
+        
+        markers.sort(key=lambda marker: marker[0], reverse=True)
         
         points = sum([marker[0] for marker in markers])
 
