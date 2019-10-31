@@ -6,7 +6,7 @@
 {% block content %}
     <div class="card m-5">
 	<div class="card-body">
-	    <h5 class="card-title pb-3 text-white">
+	    <h5 class="card-title text-white">
 		<ul class="nav nav-pills nav-fill" id="oty_pills" roll="tablist">
 		    <li class="nav-item pr-2">
 			<a class="nav-link {% if default == 'toty' %}active{% endif %}" id="toty_button" data-toggle="tab" href="#toty">Team of the Year</a>
@@ -22,7 +22,6 @@
 		    </li>
 		</ul>
 	    </h5>
-	    <hr />
 	    <div class="tab-content" id="results">
 		<div class="tab-pane fade table-responsive {% if default == 'toty' %}active show{% endif %}" id="toty" role="tabpanel">
 		    {% cache None toty current_season %}

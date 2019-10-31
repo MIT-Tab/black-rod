@@ -1,5 +1,8 @@
 from django.conf import settings
 
+from django.core.cache import cache
+from django.core.cache.utils import make_template_fragment_key
+
 from core.models.debater import Debater, QualPoints
 
 from core.models.results.team import TeamResult
@@ -347,7 +350,18 @@ def redo_rankings(rankings):
 
     place = 1
 
+    cache_type = 'toty'
+
     for ranking in rankings:
+        if isinstance(ranking, TOTY):
+            cache_type = 'toty'
+        elif isinstance(ranking, SOTY):
+            cache_type = 'soty'
+        elif isinstance(ranking, NOTY):
+            cache_type = 'noty'
+        elif isinstance(ranking, COTY):
+            cache_type = 'coty'
+
         if ranking in handled_through_tie:
             continue
 
@@ -370,3 +384,6 @@ def redo_rankings(rankings):
             ranking.save()
 
         place += 1
+
+    key = make_template_fragment_key(cache_type, [rankings.first().season])
+    cache.delete(key)
