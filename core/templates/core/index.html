@@ -215,7 +215,7 @@
 					<td><a href={% url 'core:school_detail' pk=speaker.debater.school.id %}>{{ speaker.debater.school.name }}</a></td>
 					<td>{{ speaker.points|number }}</td>
 					<td>{% if not speaker.marker_one == 0 %}{{ speaker.marker_one|number }} (<a href="{{ speaker.tournament_one.get_absolute_url }}">{{ speaker.tournament_one.name }}</a>){% endif %}</td>
-					<td>{% if not speaker.marker_two == 0 %}{{ speaker.marker_two|number }} (<a href="{{ speaker.tournament_two.get_absolute_url }}">({{ speaker.tournament_two.name }}</a>){% endif %}</td>
+					<td>{% if not speaker.marker_two == 0 %}{{ speaker.marker_two|number }} (<a href="{{ speaker.tournament_two.get_absolute_url }}">{{ speaker.tournament_two.name }}</a>){% endif %}</td>
 					<td>{% if not speaker.marker_three == 0 %}{{ speaker.marker_three|number }} (<a href="{{ speaker.tournament_three.get_absolute_url }}">{{ speaker.tournament_three.name }}</a>){% endif %}</td>
 					<td>{% if not speaker.marker_four == 0 %}{{ speaker.marker_four|number }} (<a href="{{ speaker.tournament_four.get_absolute_url }}">{{ speaker.tournament_four.name }}</a>){% endif %}</td>
 					<td>{% if not speaker.marker_five == 0 %}{{ speaker.marker_five|number }} (<a href="{{ speaker.tournament_five.get_absolute_url }}">{{ speaker.tournament_five.name }}</a>){% endif %}</td>

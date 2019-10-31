@@ -78,51 +78,71 @@
 {% endblock %}
 
 {% block added_information_view %}
-    <div class="card">
+    {% if varsity_team_results|length > 0 or novice_team_results|length > 0 %}
+    <div class="card mb-3">
 	<div class="card-body">
 	    <h5 class="card-title pb-2">Team Results
 		<ul class="nav nav-pills float-right" id="results_pills" roll="tablist">
+		    {% if varsity_team_results|length > 0 %}
 		    <li class="nav-item">
 			<a class="nav-link active" id="varsity_button" data-toggle="tab" href="#varsity">Varsity</a>
 		    </li>
+		    {% endif %}
+		    {% if novice_team_results|length > 0 %}
 		    <li class="nav-item">
 			<a class="nav-link" id="novice_button" data-toggle="tab" href="#novice">Novice</a>
-		    </li>		
+		    </li>
+		    {% endif %}
 		</ul>
 	    </h5>
 	    <hr />
 	    <div class="tab-content" id="results">
+		{% if varsity_team_results|length > 0 %}
 		<div class="tab-pane fade show active" id="varsity" role="tabpanel">
 		    {% include 'base/results/team.html' with results=varsity_team_results %}
 		</div>
+		{% endif %}
+		{% if novice_team_results|length > 0 %}
 		<div class="tab-pane fade" id="novice" role="tabpanel">
 		    {% include 'base/results/team.html' with results=novice_team_results %}
 		</div>
+		{% endif %}
 	    </div>
 	</div>
     </div>
-    <div class="card mt-3">
+    {% endif %}
+    {% if varsity_speaker_results|length > 0 or novice_speaker_results|length > 0 %}
+    <div class="card">
 	<div class="card-body">
 	    <h5 class="card-title pb-2">Speaker Results
 		<ul class="nav nav-pills float-right" id="results_pills" roll="tablist">
+		    {% if varsity_speaker_results|length > 0 %}
 		    <li class="nav-item">
 			<a class="nav-link active" id="speakers_varsity_button" data-toggle="tab" href="#varsity_speakers">Varsity</a>
 		    </li>
+		    {% endif %}
+		    {% if novice_sepaker_results|length > 0 %}
 		    <li class="nav-item">
 			<a class="nav-link" id="speakers_novice_button" data-toggle="tab" href="#novice_speakers">Novice</a>
-		    </li>		
+		    </li>
+		    {% endif %}
 		</ul>
 	    </h5>
 	    <hr />
 	    <div class="tab-content" id="results">
+		{% if varsity_speaker_results|length > 0 %}
 		<div class="tab-pane fade show active" id="varsity_speakers" role="tabpanel">
 		    {% include 'base/results/speaker.html' with results=varsity_speaker_results %}
 		</div>
+		{% endif %}
+		{% if novice_speaker_results|length > 0 %}
 		<div class="tab-pane fade" id="novice_speakers" role="tabpanel">
 		    {% include 'base/results/speaker.html' with results=novice_speaker_results %}
 		</div>
+		{% endif %}
 	    </div>
 	</div>
-    </div>    
+    </div>
+    {% endif %}
     
 {% endblock %}
