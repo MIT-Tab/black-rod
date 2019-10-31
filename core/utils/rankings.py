@@ -345,7 +345,7 @@ def update_qual_points(team):
         coty.save()
 
 
-def redo_rankings(rankings, season=settings.CURRENT_SEASON):
+def redo_rankings(rankings, season=settings.CURRENT_SEASON, cache_type='toty'):
     handled_through_tie = []
 
     rankings = rankings.order_by(
@@ -354,19 +354,7 @@ def redo_rankings(rankings, season=settings.CURRENT_SEASON):
 
     place = 1
 
-    cache_type = 'toty'
-
     for ranking in rankings:
-        print (isinstance(ranking, NOTY))
-        if isinstance(ranking, TOTY):
-            cache_type = 'toty'
-        elif isinstance(ranking, SOTY):
-            cache_type = 'soty'
-        elif isinstance(ranking, NOTY):
-            cache_type = 'noty'
-        elif isinstance(ranking, COTY):
-            cache_type = 'coty'
-
         if ranking in handled_through_tie:
             continue
 
