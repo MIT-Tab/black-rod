@@ -214,7 +214,7 @@ def update_noty(debater):
             season=settings.CURRENT_SEASON,
             debater=debater)
 
-    labels = ['one', 'two', 'three', 'four', 'five', 'six']
+    labels = ['one', 'two', 'three', 'four', 'five']
 
     points = sum([marker[0] for marker in markers])
     noty.points = points
@@ -357,6 +357,7 @@ def redo_rankings(rankings, season=settings.CURRENT_SEASON):
     cache_type = 'toty'
 
     for ranking in rankings:
+        print (isinstance(ranking, NOTY))
         if isinstance(ranking, TOTY):
             cache_type = 'toty'
         elif isinstance(ranking, SOTY):
