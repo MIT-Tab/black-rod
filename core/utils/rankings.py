@@ -256,6 +256,10 @@ def update_qual_points(team):
                 season=settings.CURRENT_SEASON,
                 debater__school=debater.school
             ).delete()
+
+            COTY.objects.filter(
+                school=debater.school
+            ).delete()
             continue
         
         QUAL.objects.filter(
