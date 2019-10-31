@@ -14,3 +14,10 @@ DATABASES = {
 }
 
 ALLOWED_HOSTS = ['50.116.54.146']
+
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.memcached.MemcachedCache',
+        'LOCATION': '127.0.0.1:11211',
+    }
+}
