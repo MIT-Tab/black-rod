@@ -6,6 +6,8 @@ from django.conf import settings
 
 from django_filters import FilterSet
 
+from haystack.query import SearchQuerySet
+
 from dal import autocomplete
 
 from django_tables2 import Column
@@ -252,15 +254,17 @@ class DebaterAutocomplete(autocomplete.Select2QuerySetView):
                                  record.school.name)
     
     def get_queryset(self):
-        qs = Debater.objects.all()
-
+        qs = None
+        if not self.q:
+            qs = Debater.objects
         if self.q:
-            query = Q()
-            for query in self.q.split():
-                query = Q(first_name__icontains=query) | \
-                        Q(last_name__icontains=query)
+            qs = SearchQuerySet().models(Debater).filter(content=self.q)
 
-            qs = qs.filter(query).distinct()
+            qs = [q.pk for q in qs.all()]
+
+            qs = Debater.objects.filter(id__in=qs)
+
+        qs = qs.order_by('-pk')
 
         school = self.forwarded.get('school', None)
 
