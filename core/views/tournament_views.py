@@ -114,6 +114,19 @@ class TournamentListView(CustomListView):
         }
     ]
 
+    def get_queryset(self, *args, **kwargs):
+        qs = super().get_queryset(*args, **kwargs)
+
+        ids = []
+
+        for q in qs:
+            if q.team_results.count() > 0 or q.speaker_results.count() > 0:
+                ids += [q.id]
+
+        qs = qs.filter(id__in=ids)
+
+        return qs
+
 
 class TournamentDetailView(CustomDetailView):
     public_view = True    
