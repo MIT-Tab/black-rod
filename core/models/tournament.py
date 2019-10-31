@@ -240,7 +240,7 @@ class Tournament(models.Model):
             if self.qual_type == self.POINTS and previous_tournaments:
                 suffix += ' '
                 suffix += 'I' * (previous_tournaments + 1)
-            elif self.qual_type in self.TOURNAMENT_TYPES:
+            elif self.qual_type in self.TOURNAMENT_TYPES and not self.qual_type == self.POINTS:
                 suffix += self.TOURNAMENT_TYPES[self.qual_type]['suffix']
             
             self.name = self.host.name + suffix + self.get_name_suffix_display()
