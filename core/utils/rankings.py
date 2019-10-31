@@ -2,6 +2,8 @@ import urllib.request
 
 from django.conf import settings
 
+from django.shortcuts import reverse
+
 from django.core.cache import cache
 from django.core.cache.utils import make_template_fragment_key
 
