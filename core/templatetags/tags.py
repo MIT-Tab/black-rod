@@ -9,7 +9,8 @@ register = template.Library()
 
 @register.filter
 def number(num):
-    return Decimal(num).normalize()
+    num = Decimal(num).normalize()
+    return num
 
 
 @register.filter
