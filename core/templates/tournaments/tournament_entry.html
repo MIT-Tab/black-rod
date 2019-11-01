@@ -22,6 +22,20 @@
 		{% endblock %}
 		
 		<input type="submit" class="btn btn-primary float-right" value="Save and Continue"/>
+		{% if wizard.steps.prev %}
+		    <button name="wizard_goto_step"
+				  type="submit"
+				  class="btn btn-outline-secondary float-right mr-2"
+				  value="{{ wizard.steps.prev }}">
+			Prev
+		    </button>
+		    <button name="wizard_goto_step"
+				  type="submit"
+				  class="btn btn-outline float-right mr-2"
+				  value="{{ wizard.steps.first }}">
+			First
+		    </button>
+		{% endif %}
 	    </form>
 	</div>
     </div>
