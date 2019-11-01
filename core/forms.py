@@ -59,6 +59,11 @@ class TeamForm(forms.ModelForm):
             )
 
 
+class TournamentDetailForm(forms.Form):
+    num_teams = forms.IntegerField(label="Number of teams")
+    num_novices = forms.IntegerField(label="Number of novices")
+
+
 class TournamentSelectionForm(forms.Form):
     tournament = forms.ModelChoiceField(
         queryset=Tournament.objects.all(),
