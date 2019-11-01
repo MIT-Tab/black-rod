@@ -165,7 +165,7 @@
 					<tr>
 					    {% if forloop.first %}<td colspan="3" rowspan="{{ forloop.revcounter }}"></td>{% endif %}
 					    <td class="short-row">{% if debater.qualled %}<b>{% endif %}<a href="{{ debater.debater.get_absolute_url }}?season={{ current_season }}">{{ debater.debater.name }}</a>{% if debater.qualled %}*</b>{% endif %}</td>
-					    <td class="short-row">{{ debater.points }} ({{ debater|qual_contribution:current_season }})</td>
+					    <td class="short-row">{{ debater.points|number }} ({{ debater|qual_contribution:current_season|number }})</td>
 					    <td class="short-row">{{ debater.debater|qual_display:current_season }}</td>
 					</tr>
 				    {% endfor %}
