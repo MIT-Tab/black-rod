@@ -288,7 +288,7 @@ class ScheduleView(TemplateView):
 
                 current_week['tournaments'].append(tournament)
 
-            current_week['tournaments'].sort(key=lambda tournament: tournament.qual_type)
+            current_week['tournaments'].sort(key=lambda tournament: (1 if tournament.qual_type == 1 or tournament.qual_type == 2 else 0, tournament.qual_type))
             weeks.append(current_week)
 
             weeks.sort(key=lambda week: week['date'])
