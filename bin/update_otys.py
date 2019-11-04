@@ -16,10 +16,10 @@ for debater in Debater.objects.all():
 
 
 print ('Ranking TOTY')
-redo_rankings(TOTY.objects.filter(season=settings.CURRENT_SEASON, cache_type='toty').all())
+redo_rankings(TOTY.objects.filter(season=settings.CURRENT_SEASON).all(),cache_type='toty')
 print ('Ranking NOTY')
-redo_rankings(NOTY.objects.filter(season=settings.CURRENT_SEASON, cache_type='noty').all())
+redo_rankings(NOTY.objects.filter(season=settings.CURRENT_SEASON).all(), cache_type='noty')
 print ('Ranking COTY')
-redo_rankings(COTY.objects.filter(season=settings.CURRENT_SEASON, cache_type='coty').all())
+redo_rankings(COTY.objects.filter(season=settings.CURRENT_SEASON).all(), cache_type='coty')
 print ('Ranking SOTY')
-redo_rankings(SOTY.objects.filter(season=settings.CURRENT_SEASON, cache_type='soty').all())
+redo_rankings(SOTY.objects.filter(season=settings.CURRENT_SEASON).all(), cache_type='soty')
