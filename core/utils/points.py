@@ -11,6 +11,7 @@ def team_points_for_size(num_teams, place):
             return 8
         if place == 2:
             return 4
+        return 0
 
     if num_teams < 72:
         if place == 1:
@@ -21,6 +22,7 @@ def team_points_for_size(num_teams, place):
             return 3 + .75 * math.floor((num_teams - 16) / 8)
         if place < 9:
             return .5 * math.floor((num_teams - 16) / 8)
+        return 0
 
     if num_teams < 80:
         if place == 1:
@@ -33,6 +35,7 @@ def team_points_for_size(num_teams, place):
             return 3.5
         if place < 17:
             return .75
+        return 0
 
     if place == 1:
         return 20
