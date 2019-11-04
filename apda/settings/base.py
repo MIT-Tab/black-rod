@@ -228,6 +228,10 @@ NAV_MENU_LEFT = [
         'validators': ['menu_generator.validators.is_superuser']
     },
     {
+        'name': 'apda.online',
+        'url': 'http://apda.online'
+    },
+    {
         'name': 'Login',
         'url': '/auth/login/',
         'validators': ['menu_generator.validators.is_anonymous']
