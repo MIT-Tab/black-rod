@@ -253,7 +253,7 @@ def update_noty(debater):
 
 
 def update_qual_points(team):
-    if not team.team_results.count() == 0:
+    if team.team_results.count() == 0:
         team.delete()
         return
     
