@@ -42,6 +42,15 @@ def get_relevant_debaters(school, season):
         if debater in handled_debaters:
             continue
 
+        qual_point = QualPoints.objects.filter(
+            debater=debater
+        ).filter(
+            season=season
+        )
+
+        if qual_point.exists():
+            continue
+
         qual_point = QualPoints.objects.create(debater=debater,
                                                points=0,
                                                season=season)
