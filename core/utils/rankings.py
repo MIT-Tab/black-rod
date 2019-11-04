@@ -269,6 +269,8 @@ def update_qual_points(team):
             debater=debater
         ).delete()
 
+        qual = None
+
         for result in results:
             if result.place <= result.tournament.autoqual_bar:
                 qual = QUAL.objects.create(season=settings.CURRENT_SEASON,
