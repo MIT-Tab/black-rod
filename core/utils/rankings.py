@@ -292,7 +292,7 @@ def update_qual_points(team):
         ).first()
 
         if points <= 0:
-            if qual_points:
+            if qual_points and not qual:
                 qual_points.delete()
 
             continue
@@ -301,6 +301,14 @@ def update_qual_points(team):
             qual_points = QualPoints.objects.create(
                 season=settings.CURRENT_SEASON,
                 debater=debater)
+
+        QualPoints.objects.filter(
+            season=settings.CURRENT_SEASON
+        ).filter(
+            debater=debater
+        ).exclude(
+            id=qual_points.id
+        ).delete()
             
         qual_points.points = points
         qual_points.save()
