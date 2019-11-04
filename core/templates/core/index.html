@@ -57,10 +57,10 @@
 					<td>{{ team.team.debaters_display|safe }}</td>
 					<td>{{ team.points|number }}</td>
 					<td>{% if not team.marker_one == 0 %}{{ team.marker_one|number }} (<a href="{{ team.tournament_one.get_absolute_url }}">{{ team.tournament_one.display }}</a>){% endif %}</td>
-					<td>{% if not team.marker_two == 0 %}{{ team.marker_two|number }} (<a href="{{ team.tournament_one.get_absolute_url }}">{{ team.tournament_two.display }}</a>){% endif %}</td>
-					<td>{% if not team.marker_three == 0 %}{{ team.marker_three|number }} (<a href="{{ team.tournament_one.get_absolute_url }}">{{ team.tournament_three.display }}</a>){% endif %}</td>
-					<td>{% if not team.marker_four == 0 %}{{ team.marker_four|number }} (<a href="{{ team.tournament_one.get_absolute_url }}">{{ team.tournament_four.display }}</a>){% endif %}</td>
-					<td>{% if not team.marker_five == 0 %}{{ team.marker_five|number }} (<a href="{{ team.tournament_one.get_absolute_url }}">{{ team.tournament_five.display }}</a>){% endif %}</td>
+					<td>{% if not team.marker_two == 0 %}{{ team.marker_two|number }} (<a href="{{ team.tournament_two.get_absolute_url }}">{{ team.tournament_two.display }}</a>){% endif %}</td>
+					<td>{% if not team.marker_three == 0 %}{{ team.marker_three|number }} (<a href="{{ team.tournament_three.get_absolute_url }}">{{ team.tournament_three.display }}</a>){% endif %}</td>
+					<td>{% if not team.marker_four == 0 %}{{ team.marker_four|number }} (<a href="{{ team.tournament_four.get_absolute_url }}">{{ team.tournament_four.display }}</a>){% endif %}</td>
+					<td>{% if not team.marker_five == 0 %}{{ team.marker_five|number }} (<a href="{{ team.tournament_five.get_absolute_url }}">{{ team.tournament_five.display }}</a>){% endif %}</td>
 				    </tr>
 				{% empty %}
 				    <tr>
