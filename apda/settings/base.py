@@ -164,7 +164,7 @@ HAYSTACK_SIGNAL_PROCESSOR = 'haystack.signals.RealtimeSignalProcessor'
 
 DEFAULT_SEASON = '2019'
 CURRENT_SEASON = '2019'
-QUAL_BAR = 18
+QUAL_BAR = 16.5
 
 WEBPACK_LOADER = {
     'DEFAULT': {

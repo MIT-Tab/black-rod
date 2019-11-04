@@ -54,6 +54,10 @@ def get_relevant_debaters(school, season):
     
 
 def update_toty(team):
+    if team.team_results.count() == 0:
+        team.delete()
+        return
+    
     if team.hybrid:
         return
 
@@ -120,6 +124,11 @@ def update_toty(team):
 
 
 def update_soty(debater):
+    if not any([team.team_results.count() > 0 for team in debater.teams.all()]) and \
+       debater.speaker_results.count() == 0:
+        debater.delete()
+        return
+    
     if not debater.school.included_in_oty:
         SOTY.objects.filter(
             season=settings.CURRENT_SEASON,
@@ -179,6 +188,11 @@ def update_soty(debater):
 
 
 def update_noty(debater):
+    if not any([team.team_results.count() > 0 for team in debater.teams.all()]) and \
+       debater.speaker_results.count() == 0:
+        debater.delete()
+        return
+    
     if not debater.school.included_in_oty:
         NOTY.objects.filter(
             season=settings.CURRENT_SEASON,
@@ -239,6 +253,10 @@ def update_noty(debater):
 
 
 def update_qual_points(team):
+    if not team.team_results.count() == 0:
+        team.delete()
+        return
+    
     for debater in team.debaters.all():
         results = TeamResult.objects.filter(
             tournament__season=settings.CURRENT_SEASON
