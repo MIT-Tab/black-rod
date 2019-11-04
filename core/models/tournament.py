@@ -235,8 +235,10 @@ class Tournament(models.Model):
             season=self.season
         ).filter(
             host=self.host
+        ).filter(
+            qual_type=self.qual_type
         ).exclude(
-        id=self.id
+            id=self.id
         ).count()
         
         suffix = ''
