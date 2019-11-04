@@ -36,21 +36,12 @@ def get_relevant_debaters(school, season):
     handled_debaters = []
 
     for qual_point in qual_points:
-        if (qual_point.points > 0 or qual_point.debater in qualled_debaters) and not qual_point.debater in handled_debaters:
+        if (qual_point.points > 0 or qual_point.debater in qualled_debaters):
             to_return += [qual_point]
             handled_debaters.append(qual_point.debater)
 
     for debater in qualled_debaters:
         if debater in handled_debaters:
-            continue
-
-        qual_point = QualPoints.objects.filter(
-            debater=debater
-        ).filter(
-            season=season
-        )
-
-        if qual_point.exists():
             continue
 
         qual_point = QualPoints.objects.create(debater=debater,
@@ -313,14 +304,6 @@ def update_qual_points(team):
                 season=settings.CURRENT_SEASON,
                 debater=debater)
 
-        QualPoints.objects.filter(
-            season=settings.CURRENT_SEASON
-        ).filter(
-            debater=debater
-        ).exclude(
-            id=qual_points.id
-        ).delete()
-            
         qual_points.points = points
         qual_points.save()
         
