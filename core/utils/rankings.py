@@ -292,6 +292,9 @@ def update_qual_points(team):
         ).first()
 
         if points <= 0:
+            if qual_points:
+                qual_points.delete()
+
             continue
         
         if not qual_points:
