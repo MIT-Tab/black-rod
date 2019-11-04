@@ -237,6 +237,8 @@ class Tournament(models.Model):
             host=self.host
         ).filter(
             qual_type=self.qual_type
+        ).filter(
+            date__lt=self.date
         ).exclude(
             id=self.id
         ).count()
