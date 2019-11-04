@@ -13,7 +13,7 @@ DATABASES = {
     }
 }
 
-ALLOWED_HOSTS = ['50.116.54.146']
+ALLOWED_HOSTS = ['50.116.54.146', 'results.apda.online']
 
 CACHES = {
     'default': {
