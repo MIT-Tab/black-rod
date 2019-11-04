@@ -231,24 +231,23 @@ class Tournament(models.Model):
         return self.name.split(' (')[0]
 
     def save(self, *args, **kwargs):
-        if self.name == '':
-            previous_tournaments = Tournament.objects.filter(
-                season=self.season
-            ).filter(
-                host=self.host
-            ).exclude(
-                id=self.id
-            ).count()
-
-            suffix = ''
+        previous_tournaments = Tournament.objects.filter(
+            season=self.season
+        ).filter(
+            host=self.host
+        ).exclude(
+        id=self.id
+        ).count()
+        
+        suffix = ''
+        
+        if self.qual_type == self.POINTS and previous_tournaments:
+            suffix += ' '
+            suffix += 'I' * (previous_tournaments + 1)
+        elif self.qual_type in self.TOURNAMENT_TYPES and not self.qual_type == self.POINTS:
+            suffix += self.TOURNAMENT_TYPES[self.qual_type]['suffix']
             
-            if self.qual_type == self.POINTS and previous_tournaments:
-                suffix += ' '
-                suffix += 'I' * (previous_tournaments + 1)
-            elif self.qual_type in self.TOURNAMENT_TYPES and not self.qual_type == self.POINTS:
-                suffix += self.TOURNAMENT_TYPES[self.qual_type]['suffix']
-            
-            self.name = self.host.name + suffix + self.get_name_suffix_display()
+        self.name = self.host.name + suffix + self.get_name_suffix_display()
 
         if self.qual_type in self.TOURNAMENT_TYPES:
             for key, value in self.TOURNAMENT_TYPES[self.qual_type].items():
