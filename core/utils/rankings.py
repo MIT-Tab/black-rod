@@ -22,6 +22,8 @@ def get_relevant_debaters(school, season):
     qualled_debaters = [q.debater for q in QUAL.objects.filter(debater__school=school,
                                                                season=season)]
 
+    qualled_debaters = list(set(qualled_debaters))
+
     qual_points = QualPoints.objects.filter(
         debater__school=school
     ).filter(
