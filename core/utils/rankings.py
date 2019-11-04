@@ -36,7 +36,7 @@ def get_relevant_debaters(school, season):
     handled_debaters = []
 
     for qual_point in qual_points:
-        if qual_point.points > 0 or qual_point.debater in qualled_debaters:
+        if (qual_point.points > 0 or qual_point.debater in qualled_debaters) and not qual_point.debater in handled_debaters:
             to_return += [qual_point]
             handled_debaters.append(qual_point.debater)
 
