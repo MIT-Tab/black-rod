@@ -228,6 +228,10 @@ NAV_MENU_LEFT = [
         'validators': ['menu_generator.validators.is_superuser']
     },
     {
+        'name': 'Feedback',
+        'url': 'https://forms.gle/b5P8mU8inAerZVY58'
+    },
+    {
         'name': 'apda.online',
         'url': 'http://apda.online',
     },

@@ -54,7 +54,8 @@ from core.forms import (
     VarsityTeamResultFormset,
     NoviceTeamResultFormset,
     VarsitySpeakerResultFormset,
-    NoviceSpeakerResultFormset
+    NoviceSpeakerResultFormset,
+    TournamentImportForm
 )
 
 
@@ -300,6 +301,19 @@ class ScheduleView(TemplateView):
         context['tournaments'] = to_return
 
         return context
+
+
+class TournamentImportWizardView(CustomMixin, SessionWizardView):
+    permission_required = 'core.change_tournament'
+
+    form_list = [
+        TournamentImportForm
+    ]
+    template_name = 'tournaments/data_entry.html'
+
+    def done(self, form_list, form_dict, **kwargs):
+        print ('hi')
+        return redirect('/')
 
 
 class TournamentDataEntryWizardView(CustomMixin, SessionWizardView):

@@ -64,6 +64,10 @@ class TournamentDetailForm(forms.Form):
     num_novices = forms.IntegerField(label="Number of novices")
 
 
+class TournamentImportForm(forms.Form):
+    url = forms.CharField(label='URL', help_text='Please enter the URL for the tournament without any trailing slashes.  For example: "mit.nu-tab.com"')
+
+
 class TournamentSelectionForm(forms.Form):
     tournament = forms.ModelChoiceField(
         queryset=Tournament.objects.all(),
