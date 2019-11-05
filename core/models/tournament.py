@@ -63,13 +63,11 @@ class Tournament(models.Model):
     NONE = 0
     ELECTIONS = 1
     MEETING = 2
-    GM = 3
 
     NAME_SUFFIXES = (
         (NONE, ''),
         (ELECTIONS, ' (Elections)'),
         (MEETING, ' (APDA Meeting)'),
-        (GM, ' (Gender Minority)'),
     )
 
     name_suffix = models.IntegerField(default=NONE,
@@ -86,6 +84,7 @@ class Tournament(models.Model):
     PROAMS = 7
     NATIONALS = 8
     NOVICE = 9
+    GENDER_MINORITY = 10
 
     QUAL_TYPES = (
         (POINTS, 'Regular (Points)'),
@@ -98,6 +97,7 @@ class Tournament(models.Model):
         (PROAMS, 'ProAms'),
         (NATIONALS, 'Nationals'),
         (NOVICE, 'Novice'),
+        (GENDER_MINORITY, 'Gender Minority')
     )
 
     TOURNAMENT_TYPES = {
@@ -145,7 +145,7 @@ class Tournament(models.Model):
             'noty': False,
             'qual': False,
             'autoqual_bar': 48,
-            'suffix': ' (Worlds)',
+            'suffix': ' (WUDC)',
         },
         NAUDC: {
             'toty': False,
@@ -158,8 +158,8 @@ class Tournament(models.Model):
         PROAMS: {
             'toty': False,
             'soty': True,
-            'noty': False,
-            'qual': False,
+            'noty': True,
+            'qual': True,
             'suffix': ' ProAms'
         },
         NATIONALS: {
@@ -175,7 +175,14 @@ class Tournament(models.Model):
             'noty': False,
             'qual': False,
             'suffix': ' Novice'
-        }
+        },
+        GENDER_MINORITY: {
+            'toty': False,
+            'soty': False,
+            'noty': False,
+            'qual': True,
+            'suffix': ' (Gender Minority)'
+        },
     }
     qual_type = models.IntegerField(choices=QUAL_TYPES,
                                     default=POINTS,
