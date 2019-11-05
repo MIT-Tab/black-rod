@@ -74,6 +74,10 @@ class DebaterListView(CustomListView):
     ]
 
 
+def num_distinct_tournaments(team):
+    return len(list(set([result.tournament.id for result in team.team_results.all()])))
+
+
 class DebaterDetailView(CustomDetailView):
     public_view = True
     model = Debater
@@ -185,7 +189,7 @@ class DebaterDetailView(CustomDetailView):
         )
 
         teams = [team for team in self.object.teams.all()]
-        teams.sort(key=lambda team: team.team_results.count(), reverse=True)
+        teams.sort(key=lambda team: (num_distinct_tournaments(team), team.toty_points), reverse=True)
 
         context['teams'] = teams
 
@@ -219,7 +223,7 @@ class DebaterUpdateView(CustomUpdateView):
         )
 
         teams = [team for team in self.object.teams.all()]
-        teams.sort(key=lambda team: team.team_results.count(), reverse=True)
+        teams.sort(key=lambda team: (num_distinct_tournaments(team), team.toty_points), reverse=True)
 
         context['teams'] = teams
 
