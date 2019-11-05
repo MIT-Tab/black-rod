@@ -131,7 +131,7 @@
 	    <ul>
 		{% for team in teams %}
 		    <li>
-			{{ team|partner_name:object|safe }} (<a href="{{ team.get_absolute_url }}">{{ team }}</a>)
+			{{ team.0|partner_name:object|safe }} (<a href="{{ team.0.get_absolute_url }}">{{ team.0 }}</a>)
 		    </li>
 		{% endfor %}
 	    </ul>
