@@ -1,0 +1,25 @@
+{% extends 'tournaments/tournament_entry.html' %}
+
+{% load crispy_forms_tags %}
+
+{% block data_entry_block %}
+    {{ wizard.form.management_form }}
+    <div class="alert alert-primary mt-3">
+	<p>If there is no school selected in the right column, then a new school will be created with the name in the left column.  If a school is selected, then all instances of the left school in the database will be linked to the school indicated in the right column.</p>
+    </div>
+    <table class="table table-bordered">
+	<thead>
+	    <th>Name from NU Tab</th>
+	    <th>School to Link it to</th>
+	</thead>
+	<tbody>
+	    {% for form in wizard.form.forms %}
+		<tr>
+		    {{ form.id|as_crispy_field }}
+		    <td>{{ form.server_name|as_crispy_field }}</td>
+		    <td>{{ form.school|as_crispy_field }}</td>
+		</tr>
+	    {% endfor %}
+	</tbody>
+    </table>
+{% endblock %}

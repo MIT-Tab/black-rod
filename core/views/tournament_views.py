@@ -1,3 +1,5 @@
+import requests
+
 from datetime import timedelta
 
 from django.urls import reverse_lazy
@@ -27,6 +29,7 @@ from core.utils.generics import (
 )
 from core.models.tournament import Tournament
 from core.models.debater import Debater
+from core.models.school import School
 
 from core.models.results.team import TeamResult
 from core.models.results.speaker import SpeakerResult
@@ -44,6 +47,11 @@ from core.utils.rankings import (
     update_noty,
     update_qual_points,
 )
+from core.utils.import_management import (
+    get_dict,
+    get_num_teams,
+    get_num_novice_debaters
+)
 from core.utils.team import get_or_create_team_for_debaters
 
 from core.forms import (
@@ -55,7 +63,9 @@ from core.forms import (
     NoviceTeamResultFormset,
     VarsitySpeakerResultFormset,
     NoviceSpeakerResultFormset,
-    TournamentImportForm
+    TournamentImportForm,
+    SchoolReconciliationFormset,
+    DebaterReconciliationFormset
 )
 
 
@@ -112,6 +122,12 @@ class TournamentListView(CustomListView):
             'href': reverse_lazy('core:tournament_dataentry'),
             'perm': 'core.change_tournament',
             'class': 'btn-primary'
+        },
+        {
+            'name': 'Import Results',
+            'href': reverse_lazy('core:tournament_import'),
+            'perm': 'core.change_tournament',
+            'class': 'btn-info'
         }
     ]
 
@@ -303,16 +319,129 @@ class ScheduleView(TemplateView):
         return context
 
 
+CREATE = 0
+LINK = 1
+
+
 class TournamentImportWizardView(CustomMixin, SessionWizardView):
     permission_required = 'core.change_tournament'
 
     form_list = [
-        TournamentImportForm
+        TournamentSelectionForm,
+        TournamentImportForm,
+        TournamentDetailForm,
+        SchoolReconciliationFormset,
+        DebaterReconciliationFormset
     ]
-    template_name = 'tournaments/data_entry.html'
+    template_name = 'tournaments/tournament_entry.html'
+
+    def get_template_names(self):
+        if self.steps.current == '3':
+            return ['tournaments/school_reconciliation.html']
+
+        return super().get_template_names()
+
+
+    def get_form_initial(self, step):
+        storage_data = None
+        tournament = None
+
+        initial = []
+
+        tournament = None
+        
+        if step == '0' and 'tournament' in self.request.GET:
+            tournament = Tournament.objects.filter(id=int(self.request.GET.get('tournament'))).first()
+
+            if tournament:
+                initial = {'tournament': tournament}
+
+        elif step != '0':
+            storage_data = self.storage.get_step_data('0')
+            
+            tournament = Tournament.objects.get(id=storage_data.get('0-tournament'))
+
+        if step == '2':
+            storage_data = self.storage.get_step_data('1')            
+            response = get_dict(storage_data.get('response'))
+
+            initial = {
+                'num_teams': get_num_teams(response['teams'],
+                                           int(response['num_rounds'])),
+                'num_novices': get_num_novice_debaters(response['teams'],
+                                                       int(response['num_rounds']))
+            }
+
+        if step == '3':
+            storage_data = self.storage.get_step_data('1')
+            response = get_dict(storage_data.get('response'))
+
+            initial = []
+
+            for school in response['schools']:
+                to_add = {
+                    'id': school['id'],
+                    'server_name': school['name']
+                }
+                school = School.objects.filter(name=school['name'].strip())
+
+                if school.exists():
+                    to_add['school'] = school.first()
+
+                initial += [to_add]
+
+        if step == '4':
+            storage_data = self.storage.get_step_data('1')
+            response = get_dict(storage_data.get('response'))
+
+            initial = []
+
+            for team in response['teams']:
+                for debater in team['debaters']:
+                    pass
+
+        return initial
+
+    def get_response(self, url):
+        url = url + '/json'
+
+        request = requests.get(url)
+
+        return request.content
+
+    def get_form_step_data(self, form):
+        to_return = form.data.copy()
+
+        if self.steps.current == '1':
+            response = self.get_response(form.cleaned_data['url'])
+
+            to_return['response'] = response
+
+        if self.steps.current == '3':
+            storage_data = self.storage.get_step_data('1')
+            response = get_dict(storage_data.get('response'))
+
+            school_actions = {}
+
+            for data in form.cleaned_data:
+                if not 'id' in data:
+                    continue
+
+                to_add = {
+                    'action': CREATE if not data['school'] else LINK,
+                    'id': int(data['id']),
+                    'name': data['server_name'],
+                    'school': data['school'].id if data['school'] else -1
+                }
+
+                school_actions.append(to_add)
+
+            to_return['schools'] = school_actions
+            print (school_actions)
+
+        return to_return
 
     def done(self, form_list, form_dict, **kwargs):
-        print ('hi')
         return redirect('/')
 
 

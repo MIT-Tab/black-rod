@@ -3,6 +3,9 @@ from dal import autocomplete
 from django import forms
 from django.forms import formset_factory
 
+from django.core.validators import URLValidator
+from django.core.exceptions import ValidationError
+
 from core.models.debater import Debater
 from core.models.school import School
 from core.models.tournament import Tournament
@@ -65,7 +68,9 @@ class TournamentDetailForm(forms.Form):
 
 
 class TournamentImportForm(forms.Form):
-    url = forms.CharField(label='URL', help_text='Please enter the URL for the tournament without any trailing slashes.  For example: "mit.nu-tab.com"')
+    url = forms.CharField(label='URL',
+                          help_text='Please enter the URL for the tournament without any trailing slashes but including http://.  For example: "http://mit.nu-tab.com"',
+                          validators=[URLValidator()])
 
 
 class TournamentSelectionForm(forms.Form):
@@ -112,3 +117,38 @@ NoviceTeamResultFormset = formset_factory(TeamResultForm, extra=8, max_num=8)
 
 VarsitySpeakerResultFormset = formset_factory(SpeakerResultForm, extra=10, max_num=10)
 NoviceSpeakerResultFormset = formset_factory(SpeakerResultForm, extra=10, max_num=10)
+
+
+class SchoolReconciliationForm(forms.Form):
+    id = forms.FloatField(widget=forms.HiddenInput())
+
+    server_name = forms.CharField(label='Server School Name')
+
+    school = forms.ModelChoiceField(
+        queryset=School.objects.all(),
+        widget=autocomplete.ModelSelect2(url='core:school_autocomplete'),
+        required=False
+    )
+
+
+class DebaterReconciliationForm(forms.Form):
+    id = forms.FloatField(widget=forms.HiddenInput())
+    action = forms.FloatField(widget=forms.HiddenInput())
+
+    server_name = forms.CharField(label='Server Debater Name')
+    server_school_name = forms.CharField(label='Server School Name')
+
+    school = forms.ModelChoiceField(
+        queryset=School.objects.all(),
+        widget=autocomplete.ModelSelect2(url='core:school_autocomplete')
+    )
+
+    debater = forms.ModelChoiceField(
+        queryset=Debater.objects.all(),
+        widget=autocomplete.ModelSelect2(url='core:debater_autocomplete'),
+        required=False
+    )
+
+
+SchoolReconciliationFormset = formset_factory(SchoolReconciliationForm)
+DebaterReconciliationFormset = formset_factory(DebaterReconciliationForm)
