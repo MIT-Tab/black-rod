@@ -97,6 +97,9 @@ urlpatterns = [
     path('core/tournaments/data_entry',
          tournament_views.TournamentDataEntryWizardView.as_view(),
          name='tournament_dataentry'),
+    path('core/tournaments/data_import',
+         tournament_views.TournamentImportWizardView.as_view(),
+         name='tournament_import'),
 
     path('core/soty',
          soty_views.SOTYListView.as_view(),
