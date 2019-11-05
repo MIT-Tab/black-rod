@@ -218,8 +218,8 @@ class DebaterUpdateView(CustomUpdateView):
             'season'
         )
 
-        teams = [(team, team.toty_points) for team in self.object.teams.all()]
-        teams.sort(key=lambda team: team[0].team_results.count(), reverse=True)
+        teams = [team for team in self.object.teams.all()]
+        teams.sort(key=lambda team: team.team_results.count(), reverse=True)
 
         context['teams'] = teams
 
