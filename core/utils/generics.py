@@ -73,7 +73,7 @@ class MarkerColumn(tables.Column):
     def render(self, record):
         if getattr(record, 'marker_%s' % (self.number,)) == 0 or not getattr(record, 'tournament_%s' % (self.number,)):
             return ''
-        return '%s (%s)' % (floatformat(getattr(record, 'marker_%s' % (self.number,)), "-2"),
+        return '%s (%s)' % (number(getattr(record, 'marker_%s' % (self.number,)), "-2"),
                             getattr(record, 'tournament_%s' % (self.number,)))
 
 
