@@ -1,0 +1,40 @@
+{% extends 'tournaments/tournament_entry.html' %}
+
+{% load crispy_forms_tags %}
+
+{% block data_entry_block %}
+    {{ wizard.form.management_form }}
+    <div class="alert alert-primary mt-3">
+	<p>If there is no debater selected in the right column, then a new debater will be created with the name in the left column and the school selected in the right column.  If a debater is selected, then all instances of the left debater in the database will be linked to the debater (and school) indicated in the right column.  If the (new) debater belongs to a new school, then you can leave the school field in the right column blank, it will know from the previous screen to create the school, and then link appropriately.</p>
+    </div>
+    <table class="table table-bordered">
+	<thead>
+	    <th>Name from NU Tab</th>
+	    <th>Debater to Link it to</th>
+	</thead>
+	<tbody>
+	    {% for form in wizard.form.forms %}
+		<tr>
+		    {{ form.id|as_crispy_field }}
+		    {{ form.school_id|as_crispy_field }}
+		    {{ form.status|as_crispy_field }}
+		    <td>
+			<div class="row">
+			    <div class="col">
+				{{ form.server_school_name|as_crispy_field }}
+			    </div>
+			    <div class="col">
+				{{ form.server_hybrid_school_name|as_crispy_field }}
+			    </div>
+			</div>
+			{{ form.server_name|as_crispy_field }}
+		    </td>
+		    <td>
+			{{ form.school|as_crispy_field }}
+			{{ form.debater|as_crispy_field }}
+		    </td>
+		</tr>
+	    {% endfor %}
+	</tbody>
+    </table>
+{% endblock %}

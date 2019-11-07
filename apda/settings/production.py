@@ -21,3 +21,11 @@ CACHES = {
         'LOCATION': '127.0.0.1:11211',
     }
 }
+
+import sentry_sdk
+from sentry_sdk.integrations.django import DjangoIntegration
+
+sentry_sdk.init(
+    dsn="https://6c6eb92f6b7248a9a37e4b255eab4962@sentry.io/1811674",
+    integrations=[DjangoIntegration()]
+)

@@ -8,6 +8,51 @@ register = template.Library()
 
 
 @register.filter
+def wl(round, team):
+    gov_wins = [1, 3, 6]
+    opp_wins = [2, 4, 6]
+
+    if round.gov == team and round.victor in gov_wins:
+        if round.victor == 3:
+            return 'WF'
+        if round.victor == 6:
+            return 'AW'
+        return 'W'
+
+    if round.opp == team and round.victor in opp_wins:
+        if round.victor == 4:
+            return 'WF'
+        if round.victor == 6:
+            return 'AW'
+        return 'W'
+
+    if round.victor == 5:
+        return 'AL'
+    if round.victor > 2:
+        return 'LF'
+    return 'L'
+
+
+@register.filter
+def opponent(round, team):
+    if round.gov == team:
+        return round.opp
+    return round.gov
+
+
+@register.filter
+def opponent_url(round, team):
+    return opponent(round, team).get_absolute_url()
+
+
+@register.filter
+def opponent_side(round, team):
+    if round.gov == team:
+        return 'OPP'
+    return 'GOV'
+
+
+@register.filter
 def number(num):
     num = Decimal(num).normalize()
     return num

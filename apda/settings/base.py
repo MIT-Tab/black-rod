@@ -265,3 +265,5 @@ CACHES = {
         'BACKEND': 'django.core.cache.backends.dummy.DummyCache',
     }
 }
+
+DATA_UPLOAD_MAX_NUMBER_FIELDS = 10240

@@ -20,6 +20,8 @@ from core.utils.generics import (
     CustomDetailView,
     CustomDeleteView
 )
+from core.utils.rounds import get_tab_card_data
+from core.models.round import Round
 from core.models.debater import Debater
 from core.models.results.team import TeamResult
 from core.models.standings.toty import TOTY
@@ -103,12 +105,19 @@ class DebaterDetailView(CustomDetailView):
     def get_context_data(self, *args, **kwargs):
         context = super().get_context_data(*args, **kwargs)
 
+        tournaments = []
+
         tournaments = [result.tournament \
                        for result in TeamResult.objects.filter(
                                team__debaters=self.object
                        ).all()]
         tournaments += [result.tournament \
                         for result in self.object.speaker_results.all()]
+
+        if 'all' in self.request.GET:
+            for team in self.object.teams.all():
+                tournaments += [round.tournament for round in team.govs.all()]
+                tournaments += [round.tournament for round in team.opps.all()]
 
         tournaments = list(set(tournaments))
 
@@ -162,10 +171,30 @@ class DebaterDetailView(CustomDetailView):
                 tournament=tournament
             ).first()
 
+            gov_round = Round.objects.filter(
+                gov__debaters=self.object
+            ).filter(
+                tournament=tournament
+            )
+
+            opp_round = Round.objects.filter(
+                opp__debaters=self.object
+            ).filter(
+                tournament=tournament
+            )
+
+            # THIS IS WHERE YOU HAVE TO CHANGE THINGS #
             team = None if not team_result else team_result.team
+
+            if not team and (gov_round.exists() or opp_round.exists()):
+                if gov_round.exists():
+                    team = gov_round.first().gov
+                else:
+                    team = opp_round.first().opp
 
             to_add['team'] = team
             to_add['data'] = to_append
+            to_add['tab_card'] = get_tab_card_data(team, tournament)
 
             tournament_render.append(to_add)
 
