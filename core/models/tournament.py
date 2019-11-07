@@ -250,25 +250,21 @@ class Tournament(models.Model):
             id=self.id
         ).count()
         
-        future_tournaments = Tournament.objects.filter(
+        samehost_tournaments = Tournament.objects.filter(
             season=self.season
         ).filter(
             host=self.host
         ).filter(
             qual_type=self.qual_type
-        ).filter(
-            date__gt=self.date
         ).exclude(
             id=self.id
         ).count()
         
         suffix = ''
         
-        if self.qual_type == self.POINTS and previous_tournaments:
-            suffix += ' '
-            suffix += 'I' * (previous_tournaments + 1)
-        elif self.qual_type == self.POINTS and future_tournaments:
+        if self.qual_type == self.POINTS and samehost_tournaments:
             suffix += ' I'
+            suffix += 'I' * (previous_tournaments)
         elif self.qual_type in self.TOURNAMENT_TYPES and not self.qual_type == self.POINTS:
             suffix += self.TOURNAMENT_TYPES[self.qual_type]['suffix']
             
