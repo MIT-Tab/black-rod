@@ -54,7 +54,7 @@ def get_relevant_debaters(school, season):
     
 
 def update_toty(team):
-    if team.team_results.count() == 0:
+    if team.team_results.count() == 0 and team.govs.count() == 0 and team.opps.count():
         team.delete()
         return
     
@@ -124,7 +124,7 @@ def update_toty(team):
 
 
 def update_soty(debater):
-    if not any([team.team_results.count() > 0 for team in debater.teams.all()]) and \
+    if not any([team.team_results.count() > 0 or team.govs.count() > 0 or team.opps.count() > 0 for team in debater.teams.all()]) and \
        debater.speaker_results.count() == 0:
         debater.delete()
         return
@@ -188,7 +188,7 @@ def update_soty(debater):
 
 
 def update_noty(debater):
-    if not any([team.team_results.count() > 0 for team in debater.teams.all()]) and \
+    if not any([team.team_results.count() > 0 or team.govs.count() > 0 or team.opps.count() > 0 for team in debater.teams.all()]) and \
        debater.speaker_results.count() == 0:
         debater.delete()
         return

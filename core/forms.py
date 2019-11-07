@@ -133,22 +133,28 @@ class SchoolReconciliationForm(forms.Form):
 
 class DebaterReconciliationForm(forms.Form):
     id = forms.FloatField(widget=forms.HiddenInput())
-    action = forms.FloatField(widget=forms.HiddenInput())
+    school_id = forms.FloatField(widget=forms.HiddenInput())
+    status = forms.FloatField(widget=forms.HiddenInput())
 
     server_name = forms.CharField(label='Server Debater Name')
-    server_school_name = forms.CharField(label='Server School Name')
+    server_school_name = forms.CharField(label='Server School Name',
+                                         disabled=True)
+    server_hybrid_school_name = forms.CharField(label='Server Hybrid School Name',
+                                                disabled=True,
+                                                required=False)
 
     school = forms.ModelChoiceField(
         queryset=School.objects.all(),
-        widget=autocomplete.ModelSelect2(url='core:school_autocomplete')
+        widget=autocomplete.ModelSelect2(url='core:school_autocomplete'),
+        required=False
     )
 
     debater = forms.ModelChoiceField(
         queryset=Debater.objects.all(),
-        widget=autocomplete.ModelSelect2(url='core:debater_autocomplete'),
+        widget=autocomplete.ModelSelect2(url='core:debater_autocomplete', forward=['school']),
         required=False
     )
 
 
-SchoolReconciliationFormset = formset_factory(SchoolReconciliationForm)
-DebaterReconciliationFormset = formset_factory(DebaterReconciliationForm)
+SchoolReconciliationFormset = formset_factory(SchoolReconciliationForm, extra=0)
+DebaterReconciliationFormset = formset_factory(DebaterReconciliationForm, extra=0)

@@ -5,12 +5,15 @@ from datetime import timedelta
 from django.urls import reverse_lazy
 from django.shortcuts import redirect
 from django.conf import settings
+from django.db.models import Q
 
 from django.views.generic import TemplateView
 
 from django.http import QueryDict
 
 from django_filters import FilterSet
+
+from haystack.query import SearchQuerySet
 
 from dal import autocomplete
 
@@ -48,9 +51,16 @@ from core.utils.rankings import (
     update_qual_points,
 )
 from core.utils.import_management import (
+    CREATE, LINK,
     get_dict,
     get_num_teams,
-    get_num_novice_debaters
+    get_num_novice_debaters,
+    clean_keys,
+    create_schools,
+    create_debaters,
+    create_teams,
+    create_rounds,
+    create_round_stats
 )
 from core.utils.team import get_or_create_team_for_debaters
 
@@ -319,10 +329,6 @@ class ScheduleView(TemplateView):
         return context
 
 
-CREATE = 0
-LINK = 1
-
-
 class TournamentImportWizardView(CustomMixin, SessionWizardView):
     permission_required = 'core.change_tournament'
 
@@ -338,6 +344,8 @@ class TournamentImportWizardView(CustomMixin, SessionWizardView):
     def get_template_names(self):
         if self.steps.current == '3':
             return ['tournaments/school_reconciliation.html']
+        if self.steps.current == '4':
+            return ['tournaments/debater_reconciliation.html']
 
         return super().get_template_names()
 
@@ -394,11 +402,43 @@ class TournamentImportWizardView(CustomMixin, SessionWizardView):
             storage_data = self.storage.get_step_data('1')
             response = get_dict(storage_data.get('response'))
 
+            storage_data = self.storage.get_step_data('3')
+            schools = clean_keys(storage_data.get('schools'))
+
             initial = []
 
             for team in response['teams']:
                 for debater in team['debaters']:
-                    pass
+                    found_debater = SearchQuerySet().models(Debater).filter(
+                        content=debater['name']
+                    )
+
+                    school = School.objects.filter(id=schools[team['school_id']]['school']).first()
+
+                    found_debater = [result.object for result in found_debater.all() if result.object]
+                    found_debater = [obj for obj in found_debater if \
+                                     obj.school.id==schools[team['school_id']]['school'] or \
+                                     obj.school.id==schools[team['hybrid_school_id']]['school']]
+
+                    found_debater = found_debater[0] if len(found_debater) > 0 else None
+
+                    hybrid_name = ''
+
+                    names = schools[team['school_id']]['name']
+
+                    if schools[team['hybrid_school_id']]['name'] != '':
+                        hybrid_name = schools[team['hybrid_school_id']]['name']
+
+                    initial += [{
+                        'id': debater['id'],
+                        'school_id': str(team['school_id']),
+                        'server_name': debater['name'],
+                        'server_school_name': names,
+                        'status': 0 if debater['status'] else 1,
+                        'server_hybrid_school_name': hybrid_name,
+                        'school': found_debater.school if found_debater else school,
+                        'debater': found_debater
+                    }]
 
         return initial
 
@@ -421,28 +461,71 @@ class TournamentImportWizardView(CustomMixin, SessionWizardView):
             storage_data = self.storage.get_step_data('1')
             response = get_dict(storage_data.get('response'))
 
-            school_actions = {}
+            school_actions = {-1: {'school': -1, 'name': ''}}
 
             for data in form.cleaned_data:
                 if not 'id' in data:
                     continue
 
-                to_add = {
+                school_actions[int(data['id'])] = {
                     'action': CREATE if not data['school'] else LINK,
                     'id': int(data['id']),
                     'name': data['server_name'],
                     'school': data['school'].id if data['school'] else -1
                 }
 
-                school_actions.append(to_add)
-
             to_return['schools'] = school_actions
-            print (school_actions)
+
+        if self.steps.current == '4':
+            storage_data = self.storage.get_step_data('1')
+            response = get_dict(storage_data.get('response'))
+
+            debater_actions = {-1: {'debater': -1, 'name': ''}}
+
+            for data in form.cleaned_data:
+                if not 'id' in data:
+                    continue
+
+                debater_actions[int(data['id'])] = {
+                    'action': CREATE if not data['debater'] else LINK,
+                    'id': int(data['id']),
+                    'name': data['server_name'],
+                    'debater': data['debater'].id if data['debater'] else -1,
+                    'school': data['school'].id if data['school'] else -1,
+                    'school_id': int(data['school_id']),
+                    'status': int(data['status'])
+                }
+
+            to_return['debaters'] = debater_actions
 
         return to_return
 
     def done(self, form_list, form_dict, **kwargs):
-        return redirect('/')
+        storage_data = self.storage.get_step_data('1')            
+        response = get_dict(storage_data.get('response'))
+        
+        storage_data = self.storage.get_step_data('3')
+        schools = clean_keys(storage_data.get('schools'))
+
+        storage_data = self.storage.get_step_data('4')
+        debaters = clean_keys(storage_data.get('debaters'))
+
+        school_actions = create_schools(schools)
+        debater_actions = create_debaters(school_actions, debaters)
+        team_actions = create_teams(debater_actions, response['teams'])
+
+        storage_data = self.storage.get_step_data('0')
+        tournament = Tournament.objects.get(id=int(storage_data.get('0-tournament')))
+
+        storage_data = self.storage.get_step_data('2')
+        tournament.num_teams = int(storage_data.get('2-num_teams'))
+        tournament.num_novice_debaters = int(storage_data.get('2-num_novices'))
+        tournament.save()
+
+        round_actions = create_rounds(team_actions, tournament, response['rounds'])
+        create_round_stats(debater_actions, round_actions, tournament, response['stats'])
+        
+        return redirect(tournament.get_absolute_url())
 
 
 class TournamentDataEntryWizardView(CustomMixin, SessionWizardView):
@@ -491,7 +574,6 @@ class TournamentDataEntryWizardView(CustomMixin, SessionWizardView):
         
         if not step == '0':
             storage_data = self.storage.get_step_data('0')
-
             tournament = Tournament.objects.get(id=int(storage_data.get('0-tournament')))
 
         if step == '0' and 'tournament' in self.request.GET:

@@ -18,7 +18,9 @@ from core.utils.generics import (
     CustomDetailView,
     CustomDeleteView
 )
+from core.utils.rounds import get_tab_card_data, get_record
 from core.models.team import Team
+from core.models.round import Round
 from core.forms import TeamForm
 
 
@@ -76,9 +78,44 @@ class TeamDetailView(CustomDetailView):
     def get_context_data(self, *args, **kwargs):
         context = super().get_context_data(*args, **kwargs)
 
-        context['team_results'] = self.object.team_results.order_by(
+        results = self.object.team_results.order_by(
             'tournament__date'
         )
+
+        to_return = []
+        tournaments_handled = []
+
+        for result in results:
+            to_return += [{
+                'type': 'award',
+                'result': result,
+                'record': get_record(result.tournament, self.object),                
+                'tab_card': get_tab_card_data(self.object, result.tournament),
+                'tournament': result.tournament
+            }]
+            tournaments_handled += [result.tournament]
+            
+        rounds = Round.objects.filter(
+            Q(gov=self.object) | Q(opp=self.object)
+        )
+
+        tournaments = []
+
+        if 'all' in self.request.GET:
+            tournaments = list(set([round.tournament for round in rounds]))
+
+        for tournament in tournaments:
+            if tournament in tournaments_handled:
+                continue
+
+            to_return += [{
+                'type': '',
+                'record': get_record(tournament, self.object),
+                'tab_card': get_tab_card_data(self.object, tournament),
+                'tournament': tournament
+            }]
+
+        context['team_results'] = to_return
 
         context['totys'] = self.object.toty.order_by(
             '-points',

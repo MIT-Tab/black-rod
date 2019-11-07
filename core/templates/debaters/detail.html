@@ -144,6 +144,16 @@
 	<div class="card-body">
 	    <h5 class="card-title pb-2">Results
 		<ul class="nav nav-pills float-right">
+		    {% if not 'all' in request.GET %}
+			<li clas="nav-item">
+			    <a class="nav-link" href="{{ request.path }}?season={{ current_season }}&all=1">All Results</a>
+			</li>
+		    {% else %}
+			<li clas="nav-item">
+			    <a class="nav-link" href="{{ request.path }}?season={{ current_season }}">Awards Only</a>
+			</li>
+		    {% endif %}
+			
 		    <li class="nav-item dropdown">
 			<a class="nav-link dropdown-toggle active" data-toggle="dropdown" href="#" role="button" aria-haspopup="true" aria-expanded="false">{% for season in seasons %}{% if season.0 == current_season %}{{ season.1 }}{% endif %}{% endfor %}</a>
 			<div class="dropdown-menu">
@@ -155,22 +165,69 @@
 		</ul>
 	    </h5>
 	    <hr />
+	    {% for tournament in results %}
+		{% if tournament.tab_card %}
+		    <div class="modal fade" id="tournament_{{ tournament.id }}">
+			<div class="modal-dialog modal-lg">
+			    <div class="modal-content">
+				<div class="modal-header">
+				    <h4 class="modal-title">Results</h4>
+				    <button type="button" class="close" data-dismiss="modal">&times;</button>
+				</div>
+				
+				<div class="modal-body">
+				    <table class="table table-bordered">
+					<thead>
+					    <th>Round Number</th>
+					    <th>Opponent</th>
+					    <th>W/L</th>
+					    {% for stat in tournament.tab_card.0.stats %}
+						<th><a href="{{ stat.debater.get_absolute_url }}">{{ stat.debater.name }}</a></th>
+					    {% endfor %}
+					</thead>
+					<tbody>
+					    {% for round in tournament.tab_card %}
+						<tr>
+						    <td>{{ round.round.round_number }}</td>
+						    <td><a href="{{ round.round|opponent_url:tournament.team }}">{{ round.round|opponent:tournament.team }}</a> ({{ round.round|opponent_side:tournament.team }})</td>
+						    <td>{{ round.round|wl:tournament.team }}</td>
+						    {% for stat in round.stats %}
+							<td>{{ stat.debater_role|upper }} / {{ stat.speaks|number }} / {{ stat.ranks|number }}</td>
+						    {% endfor %}
+						</tr>
+					    {% endfor %}
+					</tbody>
+				    </table>
+				</div>
+				<div class="modal-footer">
+				    <button type="button" class="btn btn-danger" data-dismiss="modal">Close</button>
+				</div>
+			    </div>
+			</div>
+		    </div>
+		{% endif %}
+	    {% endfor %}
 	    <table class="table table-bordered">
 		<tbody>
 		    {% for tournament in results %}
 			<tr class="shaded">
 			    <td colspan="2"><a href="{{ tournament.tournament.get_absolute_url }}">{{ tournament.tournament.name }}</a></td>
 			    <td>{{ tournament.tournament.date|date:'M j' }}</td>
-			    <td {% if not tournament.team %}colspan="2"{% endif %}>{{ tournament.tournament.get_season_display }}</td>
-			    {% if tournament.team %}<td>Partner: {{ tournament.team|partner_display:object|safe }}</td>{% endif %}
+			    <td {% if not tournament.team and not tournament.tab_card %}colspan="3"{% elif not tournament.team %}colspan="2"{% endif %}>{{ tournament.tournament.get_season_display }}</td>
+			    {% if tournament.team %}<td {% if not tournament.tab_card%}colspan="2"{% endif %}>Partner: {{ tournament.team|partner_display:object|safe }}</td>{% endif %}
+			    {% if tournament.tab_card %}
+				<td><button type="button" class="btn btn-link" data-toggle="modal" data-target="#tournament_{{ tournament.id }}">
+				    View Tab Card
+				</button></td>
+			    {% endif %}
 			</tr>
 			{% for type, award in tournament.data %}
-			    <tr">
+			    <tr>
 				{% if type == 'team' %}
 				    <td></td>
 				    <td class="short-row">{{ award.get_type_of_place_display }} Team Award</td>
 				    <td class="short-row">{{ award.place }}</td>
-				    <td colspan="2" class="short-row">
+				    <td colspan="{% if tournament.tab_card %}4{% else %}3{% endif %}" class="short-row">
 					<a href="{{ award.team.get_absolute_url }}">{{ award.team }}</a>
 				    </td>
 				{% endif %}
@@ -178,13 +235,10 @@
 				    <td></td>
 				    <td class="short-row">{{ award.get_type_of_place_display }} Speaker Award</td>
 				    <td class="short-row">{{ award.place }}</td>
-				    <td class="short-row" colspan="2"></td>
+				    <td class="short-row" colspan="{% if tournament.tab_card %}4{% else %}3{% endif %}"></td>
 				{% endif %}
 			    </tr>
 			{% endfor %}
-			<!--{% if not forloop.last %}
-			    <tr><td colspan="5"></td></tr>
-			{% endif %}-->
 		    {% endfor %}
 		</tbody>
 	    </table>

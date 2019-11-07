@@ -3,6 +3,7 @@ from .debater import Debater, QualPoints
 from .team import Team
 from .school import School
 from .tournament import Tournament
+from .round import Round, RoundStats
 
 from .results.speaker import SpeakerResult
 from .results.team import TeamResult
@@ -20,6 +21,8 @@ __all__ = [
     'School',
     'Team',
     'Tournament',
+    'Round',
+    'RoundStats',
 
     'SpeakerResult',
     'TeamResult',
