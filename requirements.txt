@@ -11,3 +11,4 @@ whoosh>=2.7.4
 django-haystack>=2.8.1
 python-memcached>=1.59
 requests>=2.22.0
+sentry-sdk>=0.13.1
