@@ -145,7 +145,7 @@ class Tournament(models.Model):
             'noty': False,
             'qual': False,
             'autoqual_bar': 48,
-            'suffix': ' (WUDC)',
+            'suffix': ' WUDC',
         },
         NAUDC: {
             'toty': False,
