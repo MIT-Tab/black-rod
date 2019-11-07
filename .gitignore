@@ -22,3 +22,6 @@ static_root/*
 # Webpacks
 node_modules/
 *webpack_bundles/
+
+# Whoosh
+apda/whoosh_index/

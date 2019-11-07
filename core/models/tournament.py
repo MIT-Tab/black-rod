@@ -145,7 +145,7 @@ class Tournament(models.Model):
             'noty': False,
             'qual': False,
             'autoqual_bar': 48,
-            'suffix': ' (WUDC)',
+            'suffix': ' WUDC',
         },
         NAUDC: {
             'toty': False,
@@ -250,11 +250,21 @@ class Tournament(models.Model):
             id=self.id
         ).count()
         
+        samehost_tournaments = Tournament.objects.filter(
+            season=self.season
+        ).filter(
+            host=self.host
+        ).filter(
+            qual_type=self.qual_type
+        ).exclude(
+            id=self.id
+        ).count()
+        
         suffix = ''
         
-        if self.qual_type == self.POINTS and previous_tournaments:
-            suffix += ' '
-            suffix += 'I' * (previous_tournaments + 1)
+        if self.qual_type == self.POINTS and samehost_tournaments:
+            suffix += ' I'
+            suffix += 'I' * previous_tournaments
         elif self.qual_type in self.TOURNAMENT_TYPES and not self.qual_type == self.POINTS:
             suffix += self.TOURNAMENT_TYPES[self.qual_type]['suffix']
             
