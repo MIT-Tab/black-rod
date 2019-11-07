@@ -264,7 +264,7 @@ class Tournament(models.Model):
         
         if self.qual_type == self.POINTS and samehost_tournaments:
             suffix += ' I'
-            suffix += 'I' * (previous_tournaments)
+            suffix += 'I' * previous_tournaments
         elif self.qual_type in self.TOURNAMENT_TYPES and not self.qual_type == self.POINTS:
             suffix += self.TOURNAMENT_TYPES[self.qual_type]['suffix']
             
