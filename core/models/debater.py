@@ -29,6 +29,13 @@ class Debater(models.Model):
     status = models.IntegerField(choices=STATUS,
                                  default=VARSITY)
 
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+
+        for team in self.teams.all():
+            team.update_name()
+            team.save()
+
     @property
     def name(self):
         name = '%s %s' % (self.first_name, self.last_name)
