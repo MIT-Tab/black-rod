@@ -1,7 +1,7 @@
 from .user import User
 from .debater import Debater, QualPoints
 from .team import Team
-from .school import School
+from .school import School, SchoolLookup
 from .tournament import Tournament
 from .round import Round, RoundStats
 
@@ -19,6 +19,7 @@ __all__ = [
     'Debater',
     'QualPoints',
     'School',
+    'SchoolLookup',
     'Team',
     'Tournament',
     'Round',
