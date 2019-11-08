@@ -5,7 +5,7 @@ DEBUG = False
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql_psycopg2',
-        'NAME': 'standings',
+        'NAME': 'black-rod',
         'USER': 'u_rodda',
         'PASSWORD': 'Cha1d234',
         'HOST': 'localhost',
@@ -13,7 +13,7 @@ DATABASES = {
     }
 }
 
-ALLOWED_HOSTS = ['50.116.54.146', 'results.apda.online']
+ALLOWED_HOSTS = ['45.33.76.223', 'blackrod.apda.online']
 
 CACHES = {
     'default': {
