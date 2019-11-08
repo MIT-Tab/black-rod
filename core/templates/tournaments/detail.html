@@ -1,10 +1,14 @@
 {% extends 'base/detail.html' %}
 
+{% load tags %}
+
 {% block title %}{{ object }}{% endblock %}
 
 {% block extra_buttons %}
-    <a href="{% url 'core:tournament_import' %}?tournament={{ object.id }}" class="btn btn-sm mr-1 btn-info float-right">Import Results</a>
-    <a href="{% url 'core:tournament_dataentry' %}?tournament={{ object.id }}" class="btn btn-sm mr-1 btn-primary float-right">Enter Results</a>
+    {% if 'core.change_tournament' in perms %}
+	<a href="{% url 'core:tournament_dataentry' %}?tournament={{ object.id }}" class="btn btn-sm mr-1 btn-primary float-right">Enter Results</a>
+	<a href="{% url 'core:tournament_import' %}?tournament={{ object.id }}" class="btn btn-sm mr-1 btn-info float-right">Import Results</a>
+    {% endif %}
 {% endblock %}
     
 
@@ -77,6 +81,70 @@
 	</tbody>
     </table>
 {% endblock %}
+
+{% block left_column %}
+    {% for team, tab_card in teams %}
+	<div class="modal fade" id="tournament_{{ team.id }}">
+	    <div class="modal-dialog modal-lg">
+		<div class="modal-content">
+		    <div class="modal-header">
+			<h4 class="modal-title">Results for {{ team.name }}</h4>
+			<button type="button" class="close" data-dismiss="modal">&times;</button>
+		    </div>
+		    
+		    <div class="modal-body">
+			<table class="table table-bordered">
+			    <thead>
+				<th>Round Number</th>
+				<th>Opponent</th>
+				<th>W/L</th>
+				{% for stat in tab_card.0.stats %}
+				    <th><a href="{{ stat.debater.get_absolute_url }}">{{ stat.debater.name }}</a></th>
+				{% endfor %}
+			    </thead>
+			    <tbody>
+				{% for round in tab_card %}
+				    <tr>
+					<td>{{ round.round.round_number }}</td>
+					<td><a href="{{ round.round|opponent_url:team }}">{{ round.round|opponent:team }}</a> ({{ round.round|opponent_side:team }})</td>
+					<td>{{ round.round|wl:team }}</td>
+					{% for stat in round.stats %}
+					    <td>{{ stat.debater_role|upper }} / {{ stat.speaks|number }} / {{ stat.ranks|number }}</td>
+					{% endfor %}
+				    </tr>
+				{% endfor %}
+			    </tbody>
+			</table>
+		    </div>
+		    <div class="modal-footer">
+			<button type="button" class="btn btn-danger" data-dismiss="modal">Close</button>
+		    </div>
+		</div>
+	    </div>
+	</div>
+    {% endfor %}
+    
+    {% if tab_cards_available %}
+	<div class="card mt-3 mb-3">
+	    <div class="card-body">
+		<h5 class="card-title pb-2">Teams
+		</h5>
+		<div class="form-group">
+		    <label>Search Tab Cards</label>
+		    <input type="text" class="form-control" id="teams" placeholder="Team Name">
+		</div>
+		<table id="team_list">
+		{% for team in teams %}
+		    <tr><td><button type="button" class="btn btn-link" data-toggle="modal" data-target="#tournament_{{ team.0.id }}">
+			{{ team.0.name }}
+		    </button></td></tr>
+		{% endfor %}
+		</table>
+	    </div>
+	</div>
+    {% endif %}
+{% endblock %}
+
 
 {% block added_information_view %}
     {% if varsity_team_results|length > 0 or novice_team_results|length > 0 %}

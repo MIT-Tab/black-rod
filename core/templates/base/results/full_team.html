@@ -51,7 +51,7 @@
 	<th>Date</th>
 	<th>Season</th>
 	<th>Type</th>
-	<th>Tab Card</th>
+	<!--<th>Tab Card</th>-->
     </thead>
     <tbody>
 	{% for result in results %}
@@ -70,14 +70,14 @@
 		    <td>{{ result.tournament.date|date:"M j" }}</td>
 		    <td colspan="2">{{ result.tournament.get_season_display }}</td>
 		{% endif %}	    
-		    <td>
-		    {% if result.tab_card %}<button type="button" class="btn btn-link" data-toggle="modal" data-target="#tournament_{{ result.tournament.id }}">
+		<!--<td>
+			{% if result.tab_card %}<button type="button" class="btn btn-link" data-toggle="modal" data-target="#tournament_{{ result.tournament.id }}">
 			View Tab Card
-		    </button>
+			     </button>
 		    {% else %}
-		    No Tab Card
+			No Tab Card
 		    {% endif %}
-		</td>
+		</td>-->
 	    </tr>
 	{% empty %}
 	    <tr>

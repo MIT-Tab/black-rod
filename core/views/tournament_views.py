@@ -33,6 +33,8 @@ from core.utils.generics import (
 from core.models.tournament import Tournament
 from core.models.debater import Debater
 from core.models.school import School
+from core.models.team import Team
+from core.models.round import Round
 
 from core.models.results.team import TeamResult
 from core.models.results.speaker import SpeakerResult
@@ -63,6 +65,7 @@ from core.utils.import_management import (
     create_round_stats
 )
 from core.utils.team import get_or_create_team_for_debaters
+from core.utils.rounds import get_tab_card_data
 
 from core.forms import (
     DebaterForm,
@@ -206,6 +209,14 @@ class TournamentDetailView(CustomDetailView):
             'place'
         )
 
+        context['tab_cards_available'] = Round.objects.filter(tournament=self.object).exists()
+
+        teams = Team.objects.filter(
+            Q(govs__tournament=self.object) | Q(opps__tournament=self.object)
+        ).distinct().all()
+
+        context['teams'] = [(team, get_tab_card_data(team, self.object)) for team in teams]
+                            
         return context
 
 

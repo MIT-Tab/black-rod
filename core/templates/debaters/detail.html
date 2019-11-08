@@ -144,7 +144,7 @@
 	<div class="card-body">
 	    <h5 class="card-title pb-2">Results
 		<ul class="nav nav-pills float-right">
-		    {% if not 'all' in request.GET %}
+		    <!--{% if not 'all' in request.GET %}
 			<li clas="nav-item">
 			    <a class="nav-link" href="{{ request.path }}?season={{ current_season }}&all=1">All Results</a>
 			</li>
@@ -152,7 +152,7 @@
 			<li clas="nav-item">
 			    <a class="nav-link" href="{{ request.path }}?season={{ current_season }}">Awards Only</a>
 			</li>
-		    {% endif %}
+		    {% endif %}-->
 			
 		    <li class="nav-item dropdown">
 			<a class="nav-link dropdown-toggle active" data-toggle="dropdown" href="#" role="button" aria-haspopup="true" aria-expanded="false">{% for season in seasons %}{% if season.0 == current_season %}{{ season.1 }}{% endif %}{% endfor %}</a>
@@ -216,9 +216,9 @@
 			    <td {% if not tournament.team and not tournament.tab_card %}colspan="3"{% elif not tournament.team %}colspan="2"{% endif %}>{{ tournament.tournament.get_season_display }}</td>
 			    {% if tournament.team %}<td {% if not tournament.tab_card%}colspan="2"{% endif %}>Partner: {{ tournament.team|partner_display:object|safe }}</td>{% endif %}
 			    {% if tournament.tab_card %}
-				<td><button type="button" class="btn btn-link" data-toggle="modal" data-target="#tournament_{{ tournament.id }}">
+				<td><!--<button type="button" class="btn btn-link" data-toggle="modal" data-target="#tournament_{{ tournament.id }}">
 				    View Tab Card
-				</button></td>
+				</button>--></td>
 			    {% endif %}
 			</tr>
 			{% for type, award in tournament.data %}
