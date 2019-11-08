@@ -159,7 +159,7 @@
 		    {% endif %}
 		    {% if novice_team_results|length > 0 %}
 		    <li class="nav-item">
-			<a class="nav-link" id="novice_button" data-toggle="tab" href="#novice">Novice</a>
+			<a class="nav-link {% if varsity_team_results|length == 0 %}active{% endif %}" id="novice_button" data-toggle="tab" href="#novice">Novice</a>
 		    </li>
 		    {% endif %}
 		</ul>
@@ -172,7 +172,7 @@
 		</div>
 		{% endif %}
 		{% if novice_team_results|length > 0 %}
-		<div class="tab-pane fade" id="novice" role="tabpanel">
+		<div class="tab-pane fade {% if varsity_team_results|length == 0 %}active{% endif %}" id="novice" role="tabpanel">
 		    {% include 'base/results/team.html' with results=novice_team_results %}
 		</div>
 		{% endif %}
@@ -192,7 +192,7 @@
 		    {% endif %}
 		    {% if novice_speaker_results|length > 0 %}
 		    <li class="nav-item">
-			<a class="nav-link" id="speakers_novice_button" data-toggle="tab" href="#novice_speakers">Novice</a>
+			<a class="nav-link {% if varsity_speaker_results|length == 0 %}active{% endif %}" id="speakers_novice_button" data-toggle="tab" href="#novice_speakers">Novice</a>
 		    </li>
 		    {% endif %}
 		</ul>
@@ -205,7 +205,7 @@
 		</div>
 		{% endif %}
 		{% if novice_speaker_results|length > 0 %}
-		<div class="tab-pane fade" id="novice_speakers" role="tabpanel">
+		<div class="tab-pane fade {% if varsity_speaker_results|length == 0 %}active{% endif %}" id="novice_speakers" role="tabpanel">
 		    {% include 'base/results/speaker.html' with results=novice_speaker_results %}
 		</div>
 		{% endif %}
