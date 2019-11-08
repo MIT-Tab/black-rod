@@ -8,6 +8,7 @@ import core.views.school_views as school_views
 import core.views.debater_views as debater_views
 import core.views.tournament_views as tournament_views
 import core.views.team_views as team_views
+import core.views.round_views as round_views
 
 import core.views.soty_views as soty_views
 import core.views.toty_views as toty_views
@@ -100,6 +101,10 @@ urlpatterns = [
     path('core/tournaments/data_import',
          tournament_views.TournamentImportWizardView.as_view(),
          name='tournament_import'),
+
+    path('core/rounds/<int:pk>',
+         round_views.RoundDetailView.as_view(),
+         name='round_detail'),
 
     path('core/soty',
          soty_views.SOTYListView.as_view(),

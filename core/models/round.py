@@ -1,4 +1,5 @@
 from django.db import models
+from django.shortcuts import reverse
 
 from .team import Team
 from .debater import Debater
@@ -41,6 +42,9 @@ class Round(models.Model):
                                  default=0)
 
     # JUDGES TO DO
+
+    def get_absolute_url(self):
+        return reverse('core:round_detail', kwargs={'pk': self.id})
 
 
 class RoundStats(models.Model):
