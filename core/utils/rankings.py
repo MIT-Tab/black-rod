@@ -109,6 +109,9 @@ def update_toty(team):
     for i in range(len(markers)):
         if not markers[i][1].tournament:
             continue
+
+        if i > 4:
+            continue
         
         setattr(toty,
                 'marker_%s' % (labels[i],),
@@ -172,6 +175,9 @@ def update_soty(debater):
     
     for i in range(len(markers)):
         if not markers[i][1].tournament:
+            continue
+
+        if i > 5:
             continue
         
         setattr(soty,
@@ -237,6 +243,9 @@ def update_noty(debater):
     
     for i in range(len(markers)):
         if not markers[i][1].tournament:
+            continue
+
+        if i > 4:
             continue
         
         setattr(noty,
