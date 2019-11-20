@@ -64,6 +64,7 @@ from core.utils.import_management import (
     create_rounds,
     create_round_stats,
     create_speaker_awards,
+    create_team_awards,
     lookup_school
 )
 from core.utils.team import get_or_create_team_for_debaters
