@@ -224,4 +224,35 @@ def create_speaker_awards(debater_completed_actions,
         update_noty(debater)
 
     redo_rankings(SOTY.objects.filter(season=settings.CURRENT_SEASON), season=settings.CURRENT_SEASON, cache_type='soty')
-    redo_rankings(NOTY.objects.filter(season=settings.CURRENT_SEASON), season=settings.CURRENT_SEASON, cache_type='noty')    
+    redo_rankings(NOTY.objects.filter(season=settings.CURRENT_SEASON), season=settings.CURRENT_SEASON, cache_type='noty')
+
+
+def create_team_awards(team_completed_actions,
+                       team_awards,
+                       type_of_result,
+                       tournament):
+    teams_changed = []
+    
+    to_delete = TeamResult.objects.filter(tournament=tournament,
+                                          type_of_place=type_of_result)
+    
+    for team in to_delete:
+        teams_changed += [team]
+        team.delete()
+
+    for award in team_awards[:16]:
+        team = Team.objects.get(id=team_completed_actions[award['team']])
+        TeamResult.objects.create(tournament=tournament,
+                                  team=team,
+                                  type_of_place=type_of_result,
+                                  place=award['place'])
+
+        teams_changed += [team]
+
+    for team in teams_changed:
+        update_toty(team)
+        update_qual_points(team)
+
+    redo_rankings(TOTY.objects.filter(season=settings.CURRENT_SEASON), season=settings.CURRENT_SEASON, cache_type='toty')
+    redo_rankings(COTY.objects.filter(season=settings.CURRENT_SEASON), season=settings.CURRENT_SEASON, cache_type='coty')    
+    

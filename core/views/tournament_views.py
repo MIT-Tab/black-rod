@@ -548,6 +548,16 @@ class TournamentImportWizardView(CustomMixin, SessionWizardView):
                               response['novice_speaker_results'],
                               Debater.NOVICE,
                               tournament)
+
+        create_team_awards(debater_actions,
+                              response['team_results'],
+                              Debater.VARSITY,
+                              tournament)
+
+        create_team_awards(debater_actions,
+                              response['novice_team_results'],
+                              Debater.NOVICE,
+                              tournament)
         
         return redirect(tournament.get_absolute_url())
 
