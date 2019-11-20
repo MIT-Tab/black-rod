@@ -237,7 +237,7 @@ def create_team_awards(team_completed_actions,
                                           type_of_place=type_of_result)
     
     for team in to_delete:
-        teams_changed += [team]
+        teams_changed += [team.team]
         team.delete()
 
     for award in team_awards[:16]:
