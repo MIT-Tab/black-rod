@@ -76,7 +76,11 @@
 			    View Tab Card
 			</button>
 		    {% else %}
-			No Tab Card
+			{% if not user.is_authenticated %}
+			    Not Authenticated
+			{% else %}
+			    No Tab Card
+			{% endif %}
 		    {% endif %}
 		</td>
 	    </tr>
