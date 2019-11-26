@@ -57,7 +57,7 @@ def get_num_novice_debaters(teams_list, num_rounds=5):
 
     return len([debater \
                 for debater in debaters \
-                if debater['num_rounds'] > math.ceil(num_rounds / 2)])
+                if debater['num_rounds'] > math.ceil(num_rounds / 2) and debater['status'] == 1])
 
 
 def clean_keys(d):
