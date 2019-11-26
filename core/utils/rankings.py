@@ -103,9 +103,7 @@ def update_toty(team):
 
     labels = ['one', 'two', 'three', 'four', 'five']
 
-    points = sum([marker[0] for marker in markers])
-    toty.points = points
-    
+    points = 0
     for i in range(len(markers)):
         if not markers[i][1].tournament:
             continue
@@ -120,7 +118,10 @@ def update_toty(team):
         setattr(toty,
                 'tournament_%s' % (labels[i],),
                 markers[i][1].tournament)
-        
+
+        points += markers[i][0]
+
+    toty.points = points
     toty.save()
 
     return toty
@@ -170,9 +171,7 @@ def update_soty(debater):
 
     labels = ['one', 'two', 'three', 'four', 'five', 'six']
 
-    points = sum([marker[0] for marker in markers])
-    soty.points = points
-    
+    points = 0
     for i in range(len(markers)):
         if not markers[i][1].tournament:
             continue
@@ -187,7 +186,10 @@ def update_soty(debater):
         setattr(soty,
                 'tournament_%s' % (labels[i],),
                 markers[i][1].tournament)
-        
+
+        points += markers[i][0]
+
+    soty.points = points
     soty.save()
 
     return soty
@@ -238,9 +240,7 @@ def update_noty(debater):
 
     labels = ['one', 'two', 'three', 'four', 'five']
 
-    points = sum([marker[0] for marker in markers])
-    noty.points = points
-    
+    points = 0
     for i in range(len(markers)):
         if not markers[i][1].tournament:
             continue
@@ -255,7 +255,10 @@ def update_noty(debater):
         setattr(noty,
                 'tournament_%s' % (labels[i],),
                 markers[i][1].tournament)
-        
+
+        points += markers[i][0]
+
+    noty.points = points
     noty.save()
 
     return noty
