@@ -105,7 +105,7 @@
 			    <tbody>
 				{% for round in tab_card %}
 				    <tr>
-					<td>{{ round.round.round_number }}</td>
+					<td><a href="{{ round.round.get_absolute_url }}">{{ round.round.round_number }}</a></td>
 					<td><a href="{{ round.round|opponent_url:team }}">{{ round.round|opponent:team }}</a> ({{ round.round|opponent_side:team }})</td>
 					<td>{{ round.round|wl:team }}</td>
 					{% for stat in round.stats %}
@@ -124,7 +124,7 @@
 	</div>
     {% endfor %}
     
-    <!--{% if tab_cards_available %}
+    {% if tab_cards_available and user.is_authenticated %}
 	<div class="card mt-3 mb-3">
 	    <div class="card-body">
 		<h5 class="card-title pb-2">Teams
@@ -142,7 +142,7 @@
 		</table>
 	    </div>
 	</div>
-    {% endif %}-->
+    {% endif %}
 {% endblock %}
 
 

@@ -1,7 +1,7 @@
 {% load tags %}
 
 {% for result in results %}
-    {% if result.tab_card %}
+    {% if result.tab_card and user.is_authenticated %}
 	<div class="modal fade" id="tournament_{{ result.tournament.id }}">
 	    <div class="modal-dialog modal-lg">
 		<div class="modal-content">
@@ -23,7 +23,7 @@
 			    <tbody>
 				{% for round in result.tab_card %}
 				    <tr>
-					<td>{{ round.round.round_number }}</td>
+					<td><a href="{{ round.round.get_absolute_url }}">{{ round.round.round_number }}</a></td>
 					<td><a href="{{ round.round|opponent_url:object.get_absolute_url }}">{{ round.round|opponent:object }}</a> ({{ round.round|opponent_side:object }})</td>
 					<td>{{ round.round|wl:object }}</td>
 					{% for stat in round.stats %}
@@ -51,7 +51,7 @@
 	<th>Date</th>
 	<th>Season</th>
 	<th>Type</th>
-	<!--<th>Tab Card</th>-->
+	<th>Tab Card</th>
     </thead>
     <tbody>
 	{% for result in results %}
@@ -70,14 +70,15 @@
 		    <td>{{ result.tournament.date|date:"M j" }}</td>
 		    <td colspan="2">{{ result.tournament.get_season_display }}</td>
 		{% endif %}	    
-		<!--<td>
-			{% if result.tab_card %}<button type="button" class="btn btn-link" data-toggle="modal" data-target="#tournament_{{ result.tournament.id }}">
-			View Tab Card
-			     </button>
+		<td>
+		    {% if result.tab_card and user.is_authenticated %}
+			<button type="button" class="btn btn-link" data-toggle="modal" data-target="#tournament_{{ result.tournament.id }}">
+			    View Tab Card
+			</button>
 		    {% else %}
 			No Tab Card
 		    {% endif %}
-		</td>-->
+		</td>
 	    </tr>
 	{% empty %}
 	    <tr>

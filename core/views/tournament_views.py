@@ -62,7 +62,10 @@ from core.utils.import_management import (
     create_debaters,
     create_teams,
     create_rounds,
-    create_round_stats
+    create_round_stats,
+    create_speaker_awards,
+    create_team_awards,
+    lookup_school
 )
 from core.utils.team import get_or_create_team_for_debaters
 from core.utils.rounds import get_tab_card_data
@@ -402,10 +405,11 @@ class TournamentImportWizardView(CustomMixin, SessionWizardView):
                     'id': school['id'],
                     'server_name': school['name']
                 }
-                school = School.objects.filter(name=school['name'].strip())
 
-                if school.exists():
-                    to_add['school'] = school.first()
+                school = lookup_school(school['name'].strip())
+
+                if school:
+                    to_add['school'] = school
 
                 initial += [to_add]
 
@@ -535,6 +539,26 @@ class TournamentImportWizardView(CustomMixin, SessionWizardView):
 
         round_actions = create_rounds(team_actions, tournament, response['rounds'])
         create_round_stats(debater_actions, round_actions, tournament, response['stats'])
+
+        create_speaker_awards(debater_actions,
+                              response['speaker_results'],
+                              Debater.VARSITY,
+                              tournament)
+
+        create_speaker_awards(debater_actions,
+                              response['novice_speaker_results'],
+                              Debater.NOVICE,
+                              tournament)
+
+        create_team_awards(team_actions,
+                           response['team_results'],
+                           Debater.VARSITY,
+                           tournament)
+        
+        create_team_awards(team_actions,
+                           response['novice_team_results'],
+                           Debater.NOVICE,
+                           tournament)
         
         return redirect(tournament.get_absolute_url())
 

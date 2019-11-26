@@ -62,6 +62,8 @@ admin.site.register(User, UserAdmin)
 admin.site.register(Round)
 admin.site.register(RoundStats)
 
+admin.site.register(SchoolLookup)
+
 admin.site.register(School, SchoolAdmin)
 admin.site.register(Debater, DebaterAdmin)
 admin.site.register(Tournament, TournamentAdmin)

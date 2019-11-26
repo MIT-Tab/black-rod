@@ -5,20 +5,20 @@ DEBUG = False
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql_psycopg2',
-        'NAME': 'standings',
-        'USER': 'rodda',
+        'NAME': 'black-rod',
+        'USER': 'u_rodda',
         'PASSWORD': 'Cha1d234',
         'HOST': 'localhost',
         'PORT': '',
     }
 }
 
-ALLOWED_HOSTS = ['50.116.54.146', 'results.apda.online']
+ALLOWED_HOSTS = ['45.33.76.223', 'blackrod.apda.online']
 
 CACHES = {
     'default': {
-        'BACKEND': 'django.core.cache.backends.memcached.MemcachedCache',
-        'LOCATION': '127.0.0.1:11211',
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'unique-snowflake',
     }
 }
 
