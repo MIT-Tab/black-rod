@@ -124,7 +124,7 @@
 	</div>
     {% endfor %}
     
-    {% if tab_cards_available %}
+    {% if tab_cards_available and user.is_authenticated %}
 	<div class="card mt-3 mb-3">
 	    <div class="card-body">
 		<h5 class="card-title pb-2">Teams

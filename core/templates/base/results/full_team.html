@@ -1,7 +1,7 @@
 {% load tags %}
 
 {% for result in results %}
-    {% if result.tab_card %}
+    {% if result.tab_card and user.is_authenticated %}
 	<div class="modal fade" id="tournament_{{ result.tournament.id }}">
 	    <div class="modal-dialog modal-lg">
 		<div class="modal-content">
@@ -71,7 +71,7 @@
 		    <td colspan="2">{{ result.tournament.get_season_display }}</td>
 		{% endif %}	    
 		<td>
-		    {% if result.tab_card %}
+		    {% if result.tab_card and user.is_authenticated %}
 			<button type="button" class="btn btn-link" data-toggle="modal" data-target="#tournament_{{ result.tournament.id }}">
 			    View Tab Card
 			</button>

@@ -166,7 +166,7 @@
 	    </h5>
 	    <hr />
 	    {% for tournament in results %}
-		{% if tournament.tab_card %}
+		{% if tournament.tab_card and user.is_authenticated %}
 		    <div class="modal fade" id="tournament_{{ tournament.id }}">
 			<div class="modal-dialog modal-lg">
 			    <div class="modal-content">
@@ -214,11 +214,13 @@
 			    <td colspan="2"><a href="{{ tournament.tournament.get_absolute_url }}">{{ tournament.tournament.name }}</a></td>
 			    <td>{{ tournament.tournament.date|date:'M j' }}</td>
 			    <td {% if not tournament.team and not tournament.tab_card %}colspan="3"{% elif not tournament.team %}colspan="2"{% endif %}>{{ tournament.tournament.get_season_display }}</td>
-			    {% if tournament.team %}<td {% if not tournament.tab_card%}colspan="2"{% endif %}>Partner: {{ tournament.team|partner_display:object|safe }}</td>{% endif %}
-			    {% if tournament.tab_card %}
-				<td><button type="button" class="btn btn-link" data-toggle="modal" data-target="#tournament_{{ tournament.id }}">
+			    {% if tournament.team %}<td {% if not tournament.tab_card or not user.is_authenticated %}colspan="2"{% endif %}>Partner: {{ tournament.team|partner_display:object|safe }}</td>{% endif %}
+			    {% if tournament.tab_card and user.is_authenticated %}
+				<td>
+				    <button type="button" class="btn btn-link" data-toggle="modal" data-target="#tournament_{{ tournament.id }}">
 				    View Tab Card
-				</button></td>
+				    </button>
+				</td>
 			    {% endif %}
 			</tr>
 			{% for type, award in tournament.data %}
@@ -227,7 +229,7 @@
 				    <td></td>
 				    <td class="short-row">{{ award.get_type_of_place_display }} Team Award</td>
 				    <td class="short-row">{{ award.place }}</td>
-				    <td colspan="{% if tournament.tab_card %}4{% else %}3{% endif %}" class="short-row">
+				    <td colspan="{% if tournament.tab_card and user.is_authenticated %}4{% else %}3{% endif %}" class="short-row">
 					<a href="{{ award.team.get_absolute_url }}">{{ award.team }}</a>
 				    </td>
 				{% endif %}
@@ -235,7 +237,7 @@
 				    <td></td>
 				    <td class="short-row">{{ award.get_type_of_place_display }} Speaker Award</td>
 				    <td class="short-row">{{ award.place }}</td>
-				    <td class="short-row" colspan="{% if tournament.tab_card %}4{% else %}3{% endif %}"></td>
+				    <td class="short-row" colspan="{% if tournament.tab_card and user.is_authenticated  %}4{% else %}3{% endif %}"></td>
 				{% endif %}
 			    </tr>
 			{% endfor %}
