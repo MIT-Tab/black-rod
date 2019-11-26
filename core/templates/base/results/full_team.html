@@ -58,7 +58,7 @@
 	    <tr>
 		{% if result.type == 'award' %}
 		    <td>{{ result.result.place }}</td>
-		    <td>{{ result.record }}</td>
+		    <td>{% if user.is_authenticated %}{{ result.record }}{% endif %}</td>
 		    <td><a href="{% url 'core:tournament_detail' pk=result.result.tournament.id %}">{{ result.result.tournament.name }}</a></td>
 		    <td>{{ result.result.tournament.date|date:"M j" }}</td>
 		    <td>{{ result.result.tournament.get_season_display }}</td>
