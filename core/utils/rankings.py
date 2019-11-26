@@ -373,7 +373,7 @@ def update_qual_points(team):
             debater__school=debater.school
         ).all()
 
-        relevant_qual_points = sum([q.points for q in relevant_qual_points])
+        relevant_qual_points = sum([max(60, q.points) for q in relevant_qual_points])
 
         qualled_debaters = [q.debater for q in QUAL.objects.filter(
             season=settings.CURRENT_SEASON
