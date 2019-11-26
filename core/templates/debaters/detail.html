@@ -144,14 +144,16 @@
 	<div class="card-body">
 	    <h5 class="card-title pb-2">Results
 		<ul class="nav nav-pills float-right">
-		    {% if not 'all' in request.GET %}
-			<li clas="nav-item">
-			    <a class="nav-link" href="{{ request.path }}?season={{ current_season }}&all=1">All Results</a>
-			</li>
-		    {% else %}
-			<li clas="nav-item">
-			    <a class="nav-link" href="{{ request.path }}?season={{ current_season }}">Awards Only</a>
-			</li>
+		    {% if user.is_authenticated %}
+			{% if not 'all' in request.GET %}
+			    <li clas="nav-item">
+				<a class="nav-link" href="{{ request.path }}?season={{ current_season }}&all=1">All Results</a>
+			    </li>
+			{% else %}
+			    <li clas="nav-item">
+				<a class="nav-link" href="{{ request.path }}?season={{ current_season }}">Awards Only</a>
+			    </li>
+			{% endif %}
 		    {% endif %}
 			
 		    <li class="nav-item dropdown">
