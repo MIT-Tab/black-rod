@@ -1,12 +1,30 @@
 import json
 import math
 
+from django.conf import settings
+
 from core.utils.team import get_or_create_team_for_debaters
 
-from core.models.school import School
+from core.models.school import School, SchoolLookup
 from core.models.debater import Debater
 from core.models.team import Team
 from core.models.round import Round, RoundStats
+
+from core.models.results.speaker import SpeakerResult
+from core.models.results.team import TeamResult
+
+from core.models.standings.toty import TOTY
+from core.models.standings.coty import COTY
+from core.models.standings.noty import NOTY
+from core.models.standings.soty import SOTY
+
+from core.utils.rankings import (
+    redo_rankings,
+    update_toty,
+    update_qual_points,
+    update_soty,
+    update_noty
+)
 
 
 CREATE = 0
@@ -51,6 +69,20 @@ def clean_keys(d):
     return new_dict
 
 
+def lookup_school(name):
+    school = School.objects.filter(name=name)
+
+    if school.exists():
+        return school.first()
+
+    lookup = SchoolLookup.objects.filter(server_name=name)
+
+    if lookup.exists():
+        return lookup.first().school
+
+    return None
+
+
 def create_schools(school_actions):
     completed_actions = {}
 
@@ -60,6 +92,19 @@ def create_schools(school_actions):
 
         if action['action'] == LINK:
             completed_actions[key] = action['school']
+
+            school = School.objects.get(id=action['school'])
+
+            if school.name == action['name']:
+                continue
+
+            lookup = SchoolLookup.objects.filter(server_name=action['name']).first()
+
+            if not lookup:
+                lookup = SchoolLookup(server_name=action['name'])
+
+            lookup.school = school
+            lookup.save()
 
         if action['action'] == CREATE:
             school = School.objects.create(name=action['name'])
@@ -150,3 +195,64 @@ def create_round_stats(debater_completed_actions, round_completed_actions, tourn
                                                speaks=round_stat['speaks'],
                                                ranks=round_stat['ranks'],
                                                debater_role=round_stat['role'])
+
+
+def create_speaker_awards(debater_completed_actions,
+                          speaker_awards,
+                          type_of_result,
+                          tournament):
+    debaters_changed = []
+
+    to_delete = SpeakerResult.objects.filter(tournament=tournament,
+                                             type_of_place=type_of_result)
+
+    for speaker in to_delete:
+        debaters_changed += [speaker.debater]
+        speaker.delete()
+
+    for award in speaker_awards[:10]:
+        debater = Debater.objects.get(id=debater_completed_actions[award['debater']])
+        SpeakerResult.objects.create(tournament=tournament,
+                                     debater=debater,
+                                     type_of_place=type_of_result,
+                                     place=award['place'])
+
+        debaters_changed += [debater]
+
+    for debater in debaters_changed:
+        update_soty(debater)
+        update_noty(debater)
+
+    redo_rankings(SOTY.objects.filter(season=settings.CURRENT_SEASON), season=settings.CURRENT_SEASON, cache_type='soty')
+    redo_rankings(NOTY.objects.filter(season=settings.CURRENT_SEASON), season=settings.CURRENT_SEASON, cache_type='noty')
+
+
+def create_team_awards(team_completed_actions,
+                       team_awards,
+                       type_of_result,
+                       tournament):
+    teams_changed = []
+    
+    to_delete = TeamResult.objects.filter(tournament=tournament,
+                                          type_of_place=type_of_result)
+    
+    for team in to_delete:
+        teams_changed += [team.team]
+        team.delete()
+
+    for award in team_awards[:16]:
+        team = Team.objects.get(id=team_completed_actions[award['team']])
+        TeamResult.objects.create(tournament=tournament,
+                                  team=team,
+                                  type_of_place=type_of_result,
+                                  place=award['place'])
+
+        teams_changed += [team]
+
+    for team in teams_changed:
+        update_toty(team)
+        update_qual_points(team)
+
+    redo_rankings(TOTY.objects.filter(season=settings.CURRENT_SEASON), season=settings.CURRENT_SEASON, cache_type='toty')
+    redo_rankings(COTY.objects.filter(season=settings.CURRENT_SEASON), season=settings.CURRENT_SEASON, cache_type='coty')    
+    

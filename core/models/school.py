@@ -16,3 +16,13 @@ class School(models.Model):
 
     def get_absolute_url(self):
         return reverse('core:school_detail', kwargs={'pk': self.id})
+
+
+class SchoolLookup(models.Model):
+    server_name = models.CharField(max_length=64,
+                                   blank=False,
+                                   unique=True)
+
+    school = models.ForeignKey(School,
+                               on_delete=models.CASCADE,
+                               related_name='school_lookups')

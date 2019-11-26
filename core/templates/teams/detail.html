@@ -38,7 +38,7 @@
 	<div class="card-body">
 	    <h5 class="card-title pb-2">Team Results
 		<ul class="nav nav-pills float-right">	    
-		    <!--{% if not 'all' in request.GET %}
+		    {% if not 'all' in request.GET %}
 			<li clas="nav-item">
 			    <a class="nav-link" href="{{ request.path }}?season={{ current_season }}&all=1">All Results</a>
 			</li>
@@ -46,7 +46,7 @@
 			<li clas="nav-item">
 			    <a class="nav-link" href="{{ request.path }}?season={{ current_season }}">Awards Only</a>
 			</li>
-		    {% endif %}-->
+		    {% endif %}
 		</ul>
 	    </h5>
 	    <hr />
