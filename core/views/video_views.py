@@ -26,6 +26,7 @@ from core.utils.generics import (
 
 from core.models.video import Video
 from core.forms import VideoForm, DebaterForm
+from core.utils.perms import has_perm
 
 from taggit.models import Tag
 
@@ -53,11 +54,12 @@ class VideoTable(CustomTable):
                   'pm',
                   'mg',
                   'lo',
-                  'mo')
+                  'mo',
+                  'permissions')
 
 
 class VideoListView(CustomListView):
-    public_view = False
+    public_view = True
     model = Video
     table_class = VideoTable
     template_name = 'videos/list.html'
@@ -103,6 +105,10 @@ class VideoDeleteView(CustomDeleteView):
 
 
 class VideoDetailView(CustomDetailView):
+    def has_permission(self, *args, **kwargs):
+        return has_perm(self.request.user,
+                        self.get_object())
+
     public_view = True
     model = Video
     template_name = 'videos/detail.html'
