@@ -117,7 +117,7 @@ class VideoDetailView(CustomDetailView):
         {
             'name': 'Delete',
             'href': 'core:video_delete',
-            'perm': 'core.del_video',
+            'perm': 'core.delete_video',
             'class': 'btn-danger',
             'include_pk': True
         },
