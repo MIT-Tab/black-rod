@@ -130,10 +130,10 @@ class VideoDetailView(CustomDetailView):
         embed = 'youtube' in self.object.link
 
         context['embed'] = embed
-        if embed:
-            context['embed_link'] = 'https://www.youtube.com/embed/%s' % (
-                parse_qs(urlparse.urlparse(self.object.link))['v'],
-            )
+        #if embed:
+        #    context['embed_link'] = 'https://www.youtube.com/embed/%s' % (
+        #        parse_qs(urlparse.urlparse(self.object.link))['v'],
+        #    )
 
         return context
 
