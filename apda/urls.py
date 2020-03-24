@@ -6,5 +6,7 @@ urlpatterns = [
     path('auth/', include('django.contrib.auth.urls')),
     path('search/', include('haystack.urls')),
 
+    path('summernote/', include('django_summernote.urls')),
+
     path('', include('core.urls'))
 ]

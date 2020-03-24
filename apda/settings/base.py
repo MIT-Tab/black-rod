@@ -50,6 +50,8 @@ INSTALLED_APPS = [
     'django_tables2',
     'formtools',
     'haystack',
+    'taggit',
+    'django_summernote',
 
     'core',
 ]
@@ -212,6 +214,12 @@ NAV_MENU_LEFT = [
         ]
     },
     {
+        'name': 'Videos',
+        'validators': ['menu_generator.validators.is_authenticated'],
+        'url': 'core:video_list',
+        'root': True
+    },
+    {
         'name': 'Results',
         'validators': ['menu_generator.validators.is_anonymous'],
         'url': 'core:tournament_list',
@@ -267,3 +275,12 @@ CACHES = {
 }
 
 DATA_UPLOAD_MAX_NUMBER_FIELDS = 10240
+
+SUMMERNOTE_THEME = 'lite'
+
+
+SUMMERNOTE_CONFIG = {
+    'summernote': {
+        'width': '100%',
+    }
+}

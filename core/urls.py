@@ -9,6 +9,7 @@ import core.views.debater_views as debater_views
 import core.views.tournament_views as tournament_views
 import core.views.team_views as team_views
 import core.views.round_views as round_views
+import core.views.video_views as video_views
 
 import core.views.soty_views as soty_views
 import core.views.toty_views as toty_views
@@ -73,6 +74,25 @@ urlpatterns = [
     path('core/teams/autocomplete',
          team_views.TeamAutocomplete.as_view(),
          name='team_autocomplete'),
+
+    path('core/videos/',
+         video_views.VideoListView.as_view(),
+         name='video_list'),
+    path('core/videos/<int:pk>',
+         video_views.VideoDetailView.as_view(),
+         name='video_detail'),
+    path('core/videos/<int:pk>/edit',
+         video_views.VideoUpdateView.as_view(),
+         name='video_update'),
+    path('core/videos/<int:pk>/delete',
+         video_views.VideoDeleteView.as_view(),
+         name='video_delete'),
+    path('core/videos/create',
+         video_views.VideoCreateView.as_view(),
+         name='video_create'),
+    path('core/videos/tags',
+         video_views.TagAutocomplete.as_view(create_field='name'),
+         name='tag_autocomplete'),
 
     path('core/tournaments/',
          tournament_views.TournamentListView.as_view(),
