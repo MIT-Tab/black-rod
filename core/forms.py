@@ -54,7 +54,7 @@ class VideoForm(forms.ModelForm):
             'lo': autocomplete.ModelSelect2(url='core:debater_autocomplete'),
             'mg': autocomplete.ModelSelect2(url='core:debater_autocomplete'),
             'mo': autocomplete.ModelSelect2(url='core:debater_autocomplete'),            
-            'tournament': autocomplete.ModelSelect2(url='core:tournament_autocomplete'),
+            'tournament': autocomplete.ModelSelect2(url='core:all_tournament_autocomplete'),
             'case': SummernoteInplaceWidget(),
             'description': SummernoteInplaceWidget(),
             'tags': autocomplete.TaggitSelect2(
