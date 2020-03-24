@@ -8,8 +8,9 @@ def has_perm(user, video):
     if video.permissions == Video.ALL:
         return True
 
-    if video.permissions == Video.ACCOUNTS_ONLY:
-        return True
+    if video.permissions == Video.ACCOUNTS_ONLY \
+       and user.is_authenticated():
+        return False
 
     if video.permissions == Video.DEBATERS_IN_ROUND:
         return False
