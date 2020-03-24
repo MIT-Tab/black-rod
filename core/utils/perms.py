@@ -5,6 +5,9 @@ def has_perm(user, video):
     if user.is_superuser:
         return True
 
+    if user.has_perm('core.view_video'):
+        return True
+
     if video.permissions == Video.ALL:
         return True
 
