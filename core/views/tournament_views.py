@@ -244,6 +244,21 @@ class TournamentDeleteView(CustomDeleteView):
     template_name = 'tournaments/delete.html'
 
 
+class AllTournamentAutocomplete(autocomplete.Select2QuerySetView):
+    def get_result_label(self, record):
+        return '<%s> %s (%s)' % (record.id,
+                                 record.name,
+                                 record.get_season_display())
+    
+    def get_queryset(self):
+        qs = Tournament.objects.all()
+
+        if self.q:
+            qs = qs.filter(name__icontains=self.q)
+
+        return qs
+
+
 class TournamentAutocomplete(autocomplete.Select2QuerySetView):
     def get_result_label(self, record):
         return '<%s> %s (%s)' % (record.id,
