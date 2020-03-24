@@ -89,3 +89,8 @@ class Video(models.Model):
 
     def get_absolute_url(self):
         return reverse('core:video_detail', kwargs={'pk': self.id})
+
+    def __str__(self):
+        return '%s / %s / %s' % (self.tournament.name,
+                                 self.tournament.get_season_display(),
+                                 self.get_round_display())

@@ -27,6 +27,7 @@ from core.models.results.team import TeamResult
 from core.models.standings.toty import TOTY
 
 from core.forms import DebaterForm
+from core.utils.perms import has_perm
 
 
 class DebaterFilter(FilterSet):
@@ -221,6 +222,15 @@ class DebaterDetailView(CustomDetailView):
         teams.sort(key=lambda team: (num_distinct_tournaments(team), team.toty_points), reverse=True)
 
         context['teams'] = teams
+
+        context['videos'] = []
+        context['videos'] += list(self.object.pm_videos.all())
+        context['videos'] += list(self.object.lo_videos.all())
+        context['videos'] += list(self.object.mg_videos.all())
+        context['videos'] += list(self.object.mo_videos.all())
+
+        context['videos'] = [video for video in context['videos']
+                             if has_perm(self.request.user, video)]
 
         return context
 
