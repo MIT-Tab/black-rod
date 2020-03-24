@@ -10,9 +10,15 @@ from core.models.debater import Debater
 from core.models.school import School
 from core.models.tournament import Tournament
 from core.models.team import Team
+from core.models.video import Video
 
 from core.models.results.team import TeamResult
 from core.models.results.speaker import SpeakerResult
+
+from crispy_forms.helper import FormHelper
+from crispy_forms.layout import Layout, Submit, Row, Column, Div
+
+from django_summernote.widgets import SummernoteInplaceWidget
 
 
 class DebaterForm(forms.ModelForm):
@@ -25,6 +31,74 @@ class DebaterForm(forms.ModelForm):
         model = Debater
         fields = ('first_name', 'last_name', 'school')
 
+
+class VideoForm(forms.ModelForm):
+    class Meta:
+        model = Video
+
+        fields = ('pm',
+                  'mg',
+                  'lo',
+                  'mo',
+                  'tournament',
+                  'round',
+                  'case',
+                  'description',
+                  'link',
+                  'password',
+                  'permissions',
+                  'tags')
+
+        widgets = {
+            'pm': autocomplete.ModelSelect2(url='core:debater_autocomplete'),
+            'lo': autocomplete.ModelSelect2(url='core:debater_autocomplete'),
+            'mg': autocomplete.ModelSelect2(url='core:debater_autocomplete'),
+            'mo': autocomplete.ModelSelect2(url='core:debater_autocomplete'),            
+            'tournament': autocomplete.ModelSelect2(url='core:tournament_autocomplete'),
+            'case': SummernoteInplaceWidget(),
+            'description': SummernoteInplaceWidget(),
+            'tags': autocomplete.TaggitSelect2(
+                'core:tag_autocomplete'
+            )
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.helper = FormHelper()
+        self.helper.layout = Layout(
+            Row(
+                Column('tournament',
+                       css_class='col-md-6'),
+                Column('round',
+                       css_class='col-md-6')
+            ),
+            Div(css_class='border-top my-3'),
+            Row(
+                Column('pm',
+                       'mg',
+                       css_class='col-md-6'),
+                Column('lo',
+                       'mo',
+                       css_class='col-md-6')
+            ),
+            Div(css_class='border-top my-3'),
+            Row(
+                Column('link',
+                       css_class='col-md-4'),
+                Column('password',
+                       css_class='col-md-4'),
+                Column('permissions',
+                       css_class='col-md-4'),
+            ),
+            Div(css_class='border-top my-3'),
+            Row(
+                'case',
+                'description',
+                'tags'
+            ),
+            Submit('Create', 'Create')
+        )
 
 class TournamentForm(forms.ModelForm):
     host = forms.ModelChoiceField(
