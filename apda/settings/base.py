@@ -215,6 +215,7 @@ NAV_MENU_LEFT = [
     },
     {
         'name': 'Videos',
+        'validators': ['menu_generator.validators.is_authenticated'],
         'url': 'core:video_list',
         'root': True
     },
