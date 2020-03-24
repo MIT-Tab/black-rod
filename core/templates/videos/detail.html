@@ -55,6 +55,12 @@
 {% block added_information_view %}
     <div class="card">
 	<div class="card-body">
+	    {% if embed %}
+		<iframe width="420"
+			height="315"
+			src="{{ embed_link }}">
+		</iframe>
+	    {% endif %}
 	    <h5 class="card-title pb-2">Video Descriptors</h5>
 	    <h6>Case:</h6>
 	    {% if object.case != '' %}{{ object.case|safe }}{% else %}There is no data in this field{% endif %}

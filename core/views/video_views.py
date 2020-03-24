@@ -1,3 +1,6 @@
+import urllib.parse as urlparse
+from urllib.parse import parse_qs
+
 from django.urls import reverse_lazy
 from django.db.models import Q
 from django.http import HttpResponse
@@ -120,6 +123,19 @@ class VideoDetailView(CustomDetailView):
             'include_pk': True
         },
     ]
+
+    def get_context_data(self, *args, **kwargs):
+        context = super().get_context_data(*args, **kwargs)
+
+        embed = 'youtube' in self.object.link
+
+        context['embed'] = embed
+        if embed:
+            context['embed_link'] = 'https://www.youtube.com/embed/%s' % (
+                parse_qs(urlparse.urlparse(self.object.link))['v'],
+            )
+
+        return context
 
 
 class TagAutocomplete(autocomplete.Select2QuerySetView):
