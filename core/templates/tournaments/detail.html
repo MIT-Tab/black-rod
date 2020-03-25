@@ -213,5 +213,41 @@
 	</div>
     </div>
     {% endif %}
-    
+    {% if object.videos.all|length > 0 %}
+	<div class="card">
+	    <div class="card-body">
+		<h5 class="card-title pb-2">Videos</h5>
+		<table class="table table-bordered">
+		    <thead>
+			<th>ID</th>
+			<th>Tournament</th>
+			<th>Round</th>
+			<th>PM</th>
+			<th>LO</th>
+			<th>MG</th>
+			<th>MO</th>
+			<th>Tags</th>
+		    </thead>
+		    <tbody>
+			{% for video in object.videos.all %}
+			    <tr>
+				<td><a href="{{ video.get_absolute_url }}">{{ video.id }}</a></td>
+				<td><a href="{{ video.tournament.get_absolute_url }}">{{ video.tournament.name }}</a> ({{ video.tournament.get_season_display }})</td>
+				<td><a href="{{ video.get_absolute_url }}">{{ video.get_round_display }}</a></td>
+				<td><a href="{{ video.pm.get_absolute_url }}">{{ video.pm }}</a></td>
+				<td><a href="{{ video.lo.get_absolute_url }}">{{ video.lo }}</a></td>
+				<td><a href="{{ video.mg.get_absolute_url }}">{{ video.mg }}</a></td>
+				<td><a href="{{ video.mo.get_absolute_url }}">{{ video.mo }}</a></td>
+				<td>{% for tag in video.tags.all %}{{ tag.name }}{% if not forloop.last %}, {% endif %}{% endfor %}</td>
+			    </tr>
+			{% empty %}
+			    <tr>
+				<td colspan="8"><center>There are no videos under this tournament visible to you</center></td>
+			    </tr>
+			{% endfor %}
+		    </tbody>
+		</table>
+	    </div>
+	</div>
+    {% endif %}
 {% endblock %}
