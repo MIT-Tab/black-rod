@@ -40,6 +40,7 @@ class Video(models.Model):
     ROUND_THREE = 3
     ROUND_FOUR = 4
     ROUND_FIVE = 5
+    ROUND_SIX = 6
     VO = 6
     VQ = 7
     VS = 8
@@ -47,6 +48,7 @@ class Video(models.Model):
     NQ = 10
     NS = 11
     NF = 12
+    DEMO = 13
     ROUNDS = (
         (UNKNOWN, 'UNKNOWN'),
         (ROUND_ONE, '1'),
@@ -54,13 +56,15 @@ class Video(models.Model):
         (ROUND_THREE, '3'),
         (ROUND_FOUR, '4'),
         (ROUND_FIVE, '5'),
+        (ROUND_SIX, '6'),
         (VO, 'Varsity Octafinals'),
         (VQ, 'Varsity Quarterfinals'),
         (VS, 'Varsity Semifinals'),
         (VF, 'Varsity Finals'),
         (NQ, 'Novice Quarterfinals'),
         (NS, 'Novice Semifinals'),
-        (NF, 'Novice Finals')
+        (NF, 'Novice Finals'),
+        (DEMO, 'Demo Round')
     )
 
     round = models.IntegerField(choices=ROUNDS,
