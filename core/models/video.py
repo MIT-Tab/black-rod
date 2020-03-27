@@ -40,7 +40,7 @@ class Video(models.Model):
     ROUND_THREE = 3
     ROUND_FOUR = 4
     ROUND_FIVE = 5
-    ROUND_SIX = 6
+    ROUND_SIX = 14
     VO = 6
     VQ = 7
     VS = 8
