@@ -4,6 +4,8 @@ from urllib.parse import parse_qs
 from django.urls import reverse_lazy
 from django.db.models import Q
 from django.http import HttpResponse
+from django.views import View
+from django.shortcuts import reverse, redirect
 
 from django.conf import settings
 
@@ -23,6 +25,7 @@ from core.utils.generics import (
     CustomDetailView,
     CustomDeleteView
 )
+from core.utils.filter import TagFilter
 
 from core.models.video import Video
 from core.forms import VideoForm, DebaterForm
@@ -32,13 +35,19 @@ from taggit.models import Tag
 
 
 class VideoFilter(FilterSet):
+    tags = TagFilter(field_name='tags__slug',
+                     widget=autocomplete.TaggitSelect2(
+                         'core:tag_autocomplete_no_create'
+                     )
+    )
+
     class Meta:
         model = Video
         fields = {
             'id': ['exact'],
             'tournament__name': ['icontains'],
             'tournament__season': ['exact'],
-            'round': ['exact']
+            'round': ['exact'],
         }
 
 
@@ -158,3 +167,8 @@ class TagAutocomplete(autocomplete.Select2QuerySetView):
             qs = qs.filter(name__istartswith=self.q)
 
         return qs
+
+
+class TagDetail(View):
+    def get(self, request, *args, **kwargs):
+        return redirect(reverse('core:video_list') + '?tags=' + kwargs['slug'])

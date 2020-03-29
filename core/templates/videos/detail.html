@@ -82,7 +82,7 @@
 	    {% if object.description != '' %}{{ object.description|safe }}{% else %}There is no data in this field{% endif %}
 	    <hr />
 	    <h6>Tags</h6>
-	    {% for tag in object.tags.all %}{{ tag.name }}{% if not forloop.last %}, {% endif %}{% endfor %}
+	    {% for tag in object.tags.all %}<a href="{% url 'core:tag_detail' tag.slug %}">{{ tag.name }}</a>{% if not forloop.last %}, {% endif %}{% endfor %}
 	</div>
     </div>
 {% endblock %}
