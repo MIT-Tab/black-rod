@@ -93,6 +93,12 @@ urlpatterns = [
     path('core/videos/tags',
          video_views.TagAutocomplete.as_view(create_field='name'),
          name='tag_autocomplete'),
+    path('core/videos/tags_no_create',
+         video_views.TagAutocomplete.as_view(),
+         name='tag_autocomplete_no_create'),
+    path('core/videos/tags/<str:slug>',
+         video_views.TagDetail.as_view(),
+         name='tag_detail'),
 
     path('core/tournaments/',
          tournament_views.TournamentListView.as_view(),

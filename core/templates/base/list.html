@@ -11,6 +11,7 @@
 		<div class="card-body">
 		    <h5 class="card-title">Search</h5>
 		    <form action="" method="GET">
+			{{ filter.form.media }}
 			{{ filter.form|crispy }}
 			<input type="submit" class="btn btn-info" value="Search">
 		    </form>

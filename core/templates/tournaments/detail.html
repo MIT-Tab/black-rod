@@ -238,7 +238,7 @@
 				<td><a href="{{ video.lo.get_absolute_url }}">{{ video.lo }}</a></td>
 				<td><a href="{{ video.mg.get_absolute_url }}">{{ video.mg }}</a></td>
 				<td><a href="{{ video.mo.get_absolute_url }}">{{ video.mo }}</a></td>
-				<td>{% for tag in video.tags.all %}{{ tag.name }}{% if not forloop.last %}, {% endif %}{% endfor %}</td>
+				<td>{% for tag in video.tags.all %}<a href="{% url 'core:tag_detail' tag.slug %}">{{ tag.name }}</a>{% if not forloop.last %}, {% endif %}{% endfor %}</td>
 			    </tr>
 			{% empty %}
 			    <tr>
