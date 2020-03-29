@@ -35,7 +35,7 @@ from taggit.models import Tag
 
 
 class VideoFilter(FilterSet):
-    tags = TagFilter(field_name='tags__slug',
+    tags = TagFilter(field_name='tags__name',
                      widget=autocomplete.TaggitSelect2(
                          'core:tag_autocomplete_no_create'
                      )
