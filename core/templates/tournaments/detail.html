@@ -223,8 +223,8 @@
 			<th>Tournament</th>
 			<th>Round</th>
 			<th>PM</th>
-			<th>LO</th>
 			<th>MG</th>
+			<th>LO</th>
 			<th>MO</th>
 			<th>Tags</th>
 		    </thead>
@@ -235,8 +235,8 @@
 				<td><a href="{{ video.tournament.get_absolute_url }}">{{ video.tournament.name }}</a> ({{ video.tournament.get_season_display }})</td>
 				<td><a href="{{ video.get_absolute_url }}">{{ video.get_round_display }}</a></td>
 				<td><a href="{{ video.pm.get_absolute_url }}">{{ video.pm }}</a></td>
-				<td><a href="{{ video.lo.get_absolute_url }}">{{ video.lo }}</a></td>
 				<td><a href="{{ video.mg.get_absolute_url }}">{{ video.mg }}</a></td>
+				<td><a href="{{ video.lo.get_absolute_url }}">{{ video.lo }}</a></td>				
 				<td><a href="{{ video.mo.get_absolute_url }}">{{ video.mo }}</a></td>
 				<td>{% for tag in video.tags.all %}<a href="{% url 'core:tag_detail' tag.name %}">{{ tag.name }}</a>{% if not forloop.last %}, {% endif %}{% endfor %}</td>
 			    </tr>
