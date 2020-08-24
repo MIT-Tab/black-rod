@@ -54,6 +54,7 @@ INSTALLED_APPS = [
     'django_summernote',
 
     'core',
+    'django_extensions'
 ]
 
 CRISPY_TEMPLATE_PACK = 'bootstrap4'
