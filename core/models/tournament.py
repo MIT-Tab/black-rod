@@ -230,7 +230,8 @@ class Tournament(models.Model):
         if not self.toty:
             return 0
 
-        return self.get_qual_points(place)
+        return team_points_for_size(self.num_teams,
+                                    place)
 
 
     def get_soty_points(self, place):
