@@ -90,6 +90,7 @@ class Tournament(models.Model):
     NOVICE = 9
     GENDER_MINORITY = 10
     ONLINE = 11
+    ONLINE_POINTS = 12
 
     QUAL_TYPES = (
         (POINTS, 'Regular (Points)'),
@@ -103,7 +104,8 @@ class Tournament(models.Model):
         (NATIONALS, 'Nationals'),
         (NOVICE, 'Novice'),
         (GENDER_MINORITY, 'Gender Minority'),
-        (ONLINE, 'Online')
+        (ONLINE, 'Online No Points'),
+        (ONLINE, 'Online Points')
     )
 
     TOURNAMENT_TYPES = {
@@ -194,8 +196,15 @@ class Tournament(models.Model):
             'soty': False,
             'noty': False,
             'qual': False,
+            'suffix': ' (Online No Points)'
+        },
+        ONLINE_POINTS: {
+            'toty': True,
+            'soty': True,
+            'noty': False,
+            'qual': False,
             'suffix': ' (Online)'
-        }
+        }        
     }
     qual_type = models.IntegerField(choices=QUAL_TYPES,
                                     default=POINTS,

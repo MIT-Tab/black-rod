@@ -50,9 +50,8 @@ $(document).ready(() => {
   });
 
   $('#id_date').datepicker({
-    'format': 'mm/dd/yyyy',
-    'startDate': '-3d'
-
+      'format': 'mm/dd/yyyy',
+      /* 'startDate': '-3d' */
   });
 
   $('#teams').on('keyup', team_search);
