@@ -105,7 +105,7 @@ class Tournament(models.Model):
         (NOVICE, 'Novice'),
         (GENDER_MINORITY, 'Gender Minority'),
         (ONLINE, 'Online No Points'),
-        (ONLINE, 'Online Points')
+        (ONLINE_POINTS, 'Online Points')
     )
 
     TOURNAMENT_TYPES = {
