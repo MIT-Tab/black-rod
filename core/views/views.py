@@ -34,6 +34,8 @@ def index(request):
             (season[0], season[1]) for season in seasons if season[0] in settings.ONLINE_SEASONS
         ]
 
+        online_qual_bar = settings.ONLINE_QUAL_BAR
+
     return render(request,
                   'core/index.html',
                   locals())
