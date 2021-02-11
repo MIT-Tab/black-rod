@@ -59,6 +59,9 @@ class Tournament(models.Model):
     toty = models.BooleanField(default=True,
                                verbose_name='TOTY',
                                help_text='Does this tournament give TOTY points?')
+    online_qual_points = models.BooleanField(default=False,
+                                             verbose_name='Online Qual Points',
+                                             help_text='Does this tournament give online qual points?')
 
     autoqual_bar = models.IntegerField(default=0,
                                        verbose_name='Autoqual Bar',
@@ -203,6 +206,7 @@ class Tournament(models.Model):
             'soty': True,
             'noty': False,
             'qual': False,
+            'online_qual_points': True,
             'suffix': ' (Online)'
         }        
     }
@@ -232,6 +236,10 @@ class Tournament(models.Model):
 
         return team_points_for_size(self.num_teams,
                                     place)
+
+
+    def get_online_qual_points(self, place):
+        return place
 
 
     def get_soty_points(self, place):

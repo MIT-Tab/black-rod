@@ -20,6 +20,11 @@
 		    <li class="nav-item pr-2">
 			<a class="nav-link {% if default == 'coty' %}active{% endif %}" id="coty_button" data-toggle="tab" href="#coty">Club of the Year</a>
 		    </li>
+                    {% if using_online_quals %}
+		        <li class="nav-item pr-2">
+			    <a class="nav-link {% if default == 'online_quals' %}active{% endif %}" id="online_qual_button" data-toggle="tab" href="#online_quals">Online Qualifier Points</a>
+		        </li>
+                    {% endif %}
 		</ul>
 	    </h5>
 	    <div class="tab-content" id="results">
@@ -231,7 +236,60 @@
 			    </tbody>
 			</table>
 		    {% endcache %}
-		</div>	
+		                </div>
+		<div class="tab-pane fade table-responsive {% if default == 'online_quals' %}active show{% endif %}" id="online_quals" role="tabpanel">
+		    {% cache None online_quals current_season %}
+			<h5>
+			    <ul class="nav nav-pills float-right pb-3" id="oty_pills" roll="tablist">
+				<li class="nav-item dropdown">
+				    <a class="nav-link dropdown-toggle active" data-toggle="dropdown" href="#" role="button" aria-haspopup="true" aria-expanded="false">{% for season in seasons %}{% if season.0 == current_season %}{{ season.1 }}{% endif %}{% endfor %}</a>
+				    <div class="dropdown-menu">
+					{% for season in online_seasons %}
+					    <a class="dropdown-item {% if season.0 == current_season %}active{% endif %}" href="{{ request.path }}?season={{ season.0 }}&default=online_quals">{{ season.1 }}</a>
+					{% endfor %}
+				    </div>
+				</li>
+			    </ul>
+			</h5>
+			
+			<table class="table table-bordered table-striped">
+			    <thead>
+				<th scope="col">#</th>
+				<th scope="col">Debater</th>
+				<th scope="col">School</th>
+				<th scope="col">Points</th>
+				<th scop="col"><center>1</center></th>
+				<th scop="col"><center>2</center></th>
+				<th scop="col"><center>3</center></th>
+				<th scop="col"><center>4</center></th>
+				<th scop="col"><center>5</center></th>
+				<th scop="col"><center>6</center></th>
+			    </thead>
+			    <tbody>
+				{% for speaker in online_quals %}
+				    <tr>
+					<td>{% if speaker.tied %}T-{% endif %}{{ speaker.place }}</td>
+					<td><a href="{% url 'core:debater_detail' pk=speaker.debater.id %}">{{ speaker.debater.name }}</a></td>
+					<td><a href={% url 'core:school_detail' pk=speaker.debater.school.id %}>{{ speaker.debater.school.name }}</a></td>
+					<td>{{ speaker.points|number }}</td>
+					<td>{% if not speaker.marker_one == 0 %}{{ speaker.marker_one|number }} (<a href="{{ speaker.tournament_one.get_absolute_url }}">{{ speaker.tournament_one.display }}</a>){% endif %}</td>
+					<td>{% if not speaker.marker_two == 0 %}{{ speaker.marker_two|number }} (<a href="{{ speaker.tournament_two.get_absolute_url }}">{{ speaker.tournament_two.display }}</a>){% endif %}</td>
+					<td>{% if not speaker.marker_three == 0 %}{{ speaker.marker_three|number }} (<a href="{{ speaker.tournament_three.get_absolute_url }}">{{ speaker.tournament_three.display }}</a>){% endif %}</td>
+					<td>{% if not speaker.marker_four == 0 %}{{ speaker.marker_four|number }} (<a href="{{ speaker.tournament_four.get_absolute_url }}">{{ speaker.tournament_four.display }}</a>){% endif %}</td>
+					<td>{% if not speaker.marker_five == 0 %}{{ speaker.marker_five|number }} (<a href="{{ speaker.tournament_five.get_absolute_url }}">{{ speaker.tournament_five.display }}</a>){% endif %}</td>
+					<td>{% if not speaker.marker_six == 0 %}{{ speaker.marker_six|number }} (<a href="{{ speaker.tournament_six.get_absolute_url }}">{{ speaker.tournament_six.display }}</a>){% endif %}</td>				    
+				    </tr>
+				{% empty %}
+				    <tr>
+					<td colspan="10" class="shaded">
+					    <center>There are no Online Qualifier Point results yet</center>
+					</td>
+				    </tr>
+				{% endfor %}
+			    </tbody>
+			</table>
+		    {% endcache %}
+		</div>
 	    </div>
 	</div>
     </div>

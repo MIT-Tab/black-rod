@@ -16,6 +16,7 @@ from core.models.standings.soty import SOTY
 from core.models.standings.noty import NOTY
 from core.models.standings.coty import COTY
 from core.models.standings.qual import QUAL
+from core.models.standings.online_qual import OnlineQUAL
 
 
 def get_relevant_debaters(school, season):
@@ -426,3 +427,78 @@ def redo_rankings(rankings, season=settings.CURRENT_SEASON, cache_type='toty'):
     cache.delete(key)
 
     contents = urllib.request.urlopen(settings.BASE_URL + reverse('core:index') + '?season=%s' % (season,)).read()
+
+    
+def update_online_quals(team):
+    if team.team_results.count() == 0 and team.govs.count() == 0 and team.opps.count():
+        team.delete()
+        return
+    
+    if team.hybrid:
+        return
+
+    if team.debaters.count() == 0:
+        return
+
+    if team.debaters.first() and \
+       not team.debaters.first().school.included_in_oty:
+        TOTY.objects.filter(
+            season=settings.CURRENT_SEASON,
+            team__debaters__school=team.debaters.first().school
+        ).delete()
+        return
+
+    results = team.team_results.filter(
+        tournament__season=settings.CURRENT_SEASON
+    ).filter(
+        tournament__online_qual_points=True
+    ).filter(
+        type_of_place=Debater.VARSITY
+    )
+
+    markers = [(result.tournament.get_online_qual_points(result.place), result) \
+               for result in results]
+    
+    markers.sort(key=lambda marker: marker[0], reverse=True)
+
+    for debater in team.debaters.all():
+        online_qual = OnlineQUAL.objects.filter(
+            season=settings.CURRENT_SEASON
+        ).filter(
+            debater=debater
+        ).first()
+        
+        if len(markers) == 0:
+            if online_qual:
+                online_qual.delete()
+            return
+        
+        if not online_qual:
+            online_qual = OnlineQUAL.objects.create(
+                season=settings.CURRENT_SEASON,
+                debater=debater)
+
+        labels = ['one', 'two', 'three', 'four', 'five', 'six']
+
+        points = 0
+        for i in range(len(markers)):
+            if not markers[i][1].tournament:
+                continue
+
+            if i > 5:
+                continue
+        
+            setattr(online_qual,
+                    'marker_%s' % (labels[i],),
+                    markers[i][0])
+            
+            setattr(online_qual,
+                    'tournament_%s' % (labels[i],),
+                    markers[i][1].tournament)
+
+            points += markers[i][0]
+
+        online_qual.points = points
+        online_qual.save()
+        
+    return True    

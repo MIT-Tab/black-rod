@@ -13,6 +13,7 @@ from .standings.noty import NOTY
 from .standings.qual import QUAL
 from .standings.soty import SOTY
 from .standings.toty import TOTY
+from .standings.online_qual import OnlineQUAL
 
 __all__ = [
     'User', 
@@ -32,5 +33,6 @@ __all__ = [
     'NOTY',
     'QUAL',
     'SOTY',
-    'TOTY'
+    'TOTY',
+    'OnlineQUAL'
 ]
