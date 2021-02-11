@@ -1,5 +1,20 @@
 import math
 
+def online_points(place):
+    if place == 1:
+        return 12.5
+    elif place == 2:
+        return 10
+    elif place < 5:
+        return 7.5
+    elif place < 9:
+        return 5
+    elif place < 17:
+        return 2.5
+    elif place < 33:
+        return 1.25
+    return 0
+
 def team_points_for_size(num_teams, place):
     toty = 0
 

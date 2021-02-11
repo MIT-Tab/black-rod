@@ -5,7 +5,8 @@ from django.conf import settings
 from core.utils.points import (
     team_points_for_size,
     speaker_points_for_size,
-    novice_points_for_size
+    novice_points_for_size,
+    online_points
 )
 from core.models.school import School
 
@@ -239,7 +240,7 @@ class Tournament(models.Model):
 
 
     def get_online_qual_points(self, place):
-        return place
+        return online_points(place)
 
 
     def get_soty_points(self, place):
