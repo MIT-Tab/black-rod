@@ -24,7 +24,8 @@ from core.utils.rankings import (
     update_toty,
     update_qual_points,
     update_soty,
-    update_noty
+    update_noty,
+    update_online_quals
 )
 
 
