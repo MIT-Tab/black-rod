@@ -17,6 +17,7 @@ from core.models.standings.toty import TOTY
 from core.models.standings.coty import COTY
 from core.models.standings.noty import NOTY
 from core.models.standings.soty import SOTY
+from core.models.standings.online_qual import OnlineQUAL
 
 from core.utils.rankings import (
     redo_rankings,
@@ -253,6 +254,10 @@ def create_team_awards(team_completed_actions,
         update_toty(team)
         update_qual_points(team)
 
+        if tournament.season in settings.ONLINE_SEASONS:
+            update_online_quals(team)
+
     redo_rankings(TOTY.objects.filter(season=settings.CURRENT_SEASON), season=settings.CURRENT_SEASON, cache_type='toty')
-    redo_rankings(COTY.objects.filter(season=settings.CURRENT_SEASON), season=settings.CURRENT_SEASON, cache_type='coty')    
+    redo_rankings(COTY.objects.filter(season=settings.CURRENT_SEASON), season=settings.CURRENT_SEASON, cache_type='coty')
+    redo_rankings(OnlineQUAL.objects.filter(season=settings.CURRENT_SEASON), season=settings.CURRENT_SEASON, cache_type='online_quals')
     
