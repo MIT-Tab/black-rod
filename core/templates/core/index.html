@@ -258,6 +258,7 @@
 				<th scope="col">Debater</th>
 				<th scope="col">School</th>
 				<th scope="col">Points</th>
+                                <th scope="col">Qualled</th>
 				<th scop="col"><center>1</center></th>
 				<th scop="col"><center>2</center></th>
 				<th scop="col"><center>3</center></th>
@@ -272,6 +273,7 @@
 					<td><a href="{% url 'core:debater_detail' pk=speaker.debater.id %}">{{ speaker.debater.name }}</a></td>
 					<td><a href={% url 'core:school_detail' pk=speaker.debater.school.id %}>{{ speaker.debater.school.name }}</a></td>
 					<td>{{ speaker.points|number }}</td>
+                                        <td>{% if speaker.points >= online_qual_bar %}*{% endif %}</td>
 					<td>{% if not speaker.marker_one == 0 %}{{ speaker.marker_one|number }} (<a href="{{ speaker.tournament_one.get_absolute_url }}">{{ speaker.tournament_one.display }}</a>){% endif %}</td>
 					<td>{% if not speaker.marker_two == 0 %}{{ speaker.marker_two|number }} (<a href="{{ speaker.tournament_two.get_absolute_url }}">{{ speaker.tournament_two.display }}</a>){% endif %}</td>
 					<td>{% if not speaker.marker_three == 0 %}{{ speaker.marker_three|number }} (<a href="{{ speaker.tournament_three.get_absolute_url }}">{{ speaker.tournament_three.display }}</a>){% endif %}</td>
