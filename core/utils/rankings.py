@@ -434,9 +434,6 @@ def update_online_quals(team):
         team.delete()
         return
     
-    if team.hybrid:
-        return
-
     if team.debaters.count() == 0:
         return
 
