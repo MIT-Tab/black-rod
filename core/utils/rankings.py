@@ -437,43 +437,30 @@ def update_online_quals(team):
     if team.debaters.count() == 0:
         return
 
-    if team.debaters.first() and \
-       not team.debaters.first().school.included_in_oty:
-        TOTY.objects.filter(
-            season=settings.CURRENT_SEASON,
-            team__debaters__school=team.debaters.first().school
-        ).delete()
-        return
-
-    results = team.team_results.filter(
-        tournament__season=settings.CURRENT_SEASON
-    ).filter(
-        tournament__online_qual_points=True
-    ).filter(
-        type_of_place=Debater.VARSITY
-    )
-
-    markers = [(result.tournament.get_online_qual_points(result.place), result) \
-               for result in results]
-    
-    markers.sort(key=lambda marker: marker[0], reverse=True)
-
     for debater in team.debaters.all():
-        online_qual = OnlineQUAL.objects.filter(
-            season=settings.CURRENT_SEASON
+        results = TeamResult.objects.filter(
+            tournament__season=settings.CURRENT_SEASON
         ).filter(
-            debater=debater
-        ).first()
+            type_of_place=Debater.VARSITY
+        ).filter(
+            team__debaters=debater
+        )
+
+        markers = [(result.tournament.get_online_qual_points(result.place), result) \
+                   for result in results]
         
-        if len(markers) == 0:
+        markers.sort(key=lambda marker: marker[0], reverse=True)
+        
+        if len(markers) == 0 or not debater.school.included_in_oty:
             if online_qual:
                 online_qual.delete()
-            return
+            continue
         
         if not online_qual:
             online_qual = OnlineQUAL.objects.create(
                 season=settings.CURRENT_SEASON,
-                debater=debater)
+                debater=debater
+            )
 
         labels = ['one', 'two', 'three', 'four', 'five', 'six']
 
