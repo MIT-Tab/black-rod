@@ -450,6 +450,11 @@ def update_online_quals(team):
                    for result in results]
         
         markers.sort(key=lambda marker: marker[0], reverse=True)
+
+        online_qual = OnlineQUAL.objects.filter(
+            season=settings.CURRENT_SEASON,
+            debater=debater
+        ).first()
         
         if len(markers) == 0 or not debater.school.included_in_oty:
             if online_qual:
