@@ -22,9 +22,7 @@
 			{% endif %}
 		    {% endif %}
 		    <a class="btn btn-primary" href="{% provider_login_url "apdaonline" %}">Login with apda.online</a>
-                    <br>
-                    Or
-                    <br>
+                    <hr>
 		    <form method="post" action="{% url 'login' %}" novalidate>
 			{% csrf_token %}
 			{{ form|crispy }}
