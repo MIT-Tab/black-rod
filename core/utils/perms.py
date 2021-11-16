@@ -12,6 +12,9 @@ def has_perm(user, video):
     if video.permissions == Video.ALL:
         return True
 
+    if not user.is_authenticated:
+        return False
+
     if video.permissions == Video.ACCOUNTS_ONLY \
        and user.can_view_private_videos:
         return True
