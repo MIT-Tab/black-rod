@@ -2,6 +2,7 @@ from core.models.video import Video
 
 
 def has_perm(user, video):
+    print (user.__dict__)
     if user.is_superuser:
         return True
 
@@ -12,8 +13,8 @@ def has_perm(user, video):
         return True
 
     if video.permissions == Video.ACCOUNTS_ONLY \
-       and user.is_authenticated:
-        return False
+       and user.has_perm('core.view_accounts_only_video'):
+        return True
 
     if video.permissions == Video.DEBATERS_IN_ROUND:
         return False

@@ -42,6 +42,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'django.contrib.humanize',
+    'django.contrib.sites',
 
     'webpack_loader',
     'menu_generator',
@@ -54,7 +55,12 @@ INSTALLED_APPS = [
     'django_summernote',
 
     'core',
-    'django_extensions'
+    'django_extensions',
+
+    'allauth',
+    'allauth.account',
+    'allauth.socialaccount',    
+    'apdaonline',
 ]
 
 CRISPY_TEMPLATE_PACK = 'bootstrap4'
@@ -187,6 +193,24 @@ WEBPACK_LOADER = {
 }
 
 AUTH_USER_MODEL = 'core.User'
+AUTHENTICATION_BACKENDS = [
+    'django.contrib.auth.backends.ModelBackend',
+    'allauth.account.auth_backends.AuthenticationBackend'
+]
+ACCOUNT_USER_MODEL_USERNAME_FIELD = 'username'
+
+SOCIALACCOUNT_ADAPTER = 'apdaonline.adapter.APDAOnlineAdapter'
+SOCIALACCOUNT_PROVIDERS = {
+    'apdaonline': {
+        'APP': {
+            'client_id': 'trFRQPwEPoARBgpFaGGz2FunZ5IAYuMtH9xFjcCI',
+            'secret': 'gZmR7Fz1cPDlJZG4XYJM1XdwFRjFmztQM55BZSVd',
+            'key': ''
+        }
+    }
+}
+
+SITE_ID = 1
 
 NAV_MENU_LEFT = [
     {
