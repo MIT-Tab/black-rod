@@ -21,15 +21,16 @@
 			    </div>
 			{% endif %}
 		    {% endif %}
-		    
-			
-			<form method="post" action="{% url 'login' %}" novalidate>
-			    {% csrf_token %}
-			    {{ form|crispy }}
-                            <a class="btn btn-primary" href="{% provider_login_url "apdaonline" %}">Login with apda.online</a>
-			    <input class="btn btn-secondary" type="submit" value="Login">
-			    <input type="hidden" name="next" value="{{ next }}">
-			</form>
+		    <a class="btn btn-primary" href="{% provider_login_url "apdaonline" %}">Login with apda.online</a>
+                    <br>
+                    Or
+                    <br>
+		    <form method="post" action="{% url 'login' %}" novalidate>
+			{% csrf_token %}
+			{{ form|crispy }}
+			<input class="btn btn-secondary" type="submit" value="Login">
+			<input type="hidden" name="next" value="{{ next }}">
+		    </form>
 		    </p>
 		    <!--<p><a href="{% url 'password_reset' %}">Lost password?</a></p>-->
 		</div>
