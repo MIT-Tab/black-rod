@@ -20,16 +20,14 @@ class APDAOnlineProvider(OAuth2Provider):
         return str(data['ID'])
 
     def extract_common_fields(self, data):
-        permissions = []
+        can_view_private_videos = False
         if 'private_side_viewer' in data['user_roles']:
-            permissions = [
-                Permission.objects.filter(codename='view_accounts_only_video').first()
-            ]
+            can_view_private_videos = True
 
         return dict(
             username=data['user_nicename'],
             email=data['user_email'],
-            user_permissions=permissions,
+            can_view_private_videos=can_view_private_videos,
             name=data['display_name']
         )
 
