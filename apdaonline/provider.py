@@ -26,7 +26,6 @@ class APDAOnlineProvider(OAuth2Provider):
                 Permission.objects.filter(codename='view_accounts_only_video').first()
             ]
 
-        print (permissions)
         return dict(
             username=data['user_nicename'],
             email=data['user_email'],
