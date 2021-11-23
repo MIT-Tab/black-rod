@@ -36,6 +36,8 @@ def index(request):
 
         online_qual_bar = settings.ONLINE_QUAL_BAR
 
+    render_noty = int(current_season) <= settings.LAST_NOTY_SEASON
+
     return render(request,
                   'core/index.html',
                   locals())

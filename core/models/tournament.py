@@ -120,7 +120,7 @@ class Tournament(models.Model):
         POINTS: {
             'toty': True,
             'soty': True,
-            'noty': True,
+            'noty': False,
             'qual': True,
         },
         BRANDEIS: {
@@ -150,7 +150,7 @@ class Tournament(models.Model):
         EXPANSION: {
             'toty': True,
             'soty': True,
-            'noty': True,
+            'noty': False,
             'qual': True,
             'autoqual_bar': 1,
             'suffix': ' (Expansion)'
@@ -174,7 +174,7 @@ class Tournament(models.Model):
         PROAMS: {
             'toty': False,
             'soty': True,
-            'noty': True,
+            'noty': False,
             'qual': True,
             'suffix': ' ProAms'
         },

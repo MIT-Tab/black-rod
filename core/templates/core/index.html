@@ -1,7 +1,6 @@
 {% extends "base/base.html" %}
 
-{% load tags %}
-{% load cache %}
+{% load tags cache %}
 
 {% block content %}
     <div class="card m-lg-5 mt-2 m-1">
@@ -14,9 +13,11 @@
 		    <li class="nav-item pr-2">
 			<a class="nav-link {% if default == 'soty' %}active{% endif %}" id="soty_button" data-toggle="tab" href="#soty">Speaker of the Year</a>
 		    </li>
+                    {% if render_noty %}
 		    <li class="nav-item pr-2">
 			<a class="nav-link {% if default == 'noty' %}active{% endif %}" id="noty_button" data-toggle="tab" href="#noty">Novice of the Year</a>
 		    </li>
+                    {% endif %}
 		    <li class="nav-item pr-2">
 			<a class="nav-link {% if default == 'coty' %}active{% endif %}" id="coty_button" data-toggle="tab" href="#coty">Club of the Year</a>
 		    </li>
