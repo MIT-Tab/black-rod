@@ -44,6 +44,7 @@ from core.models.standings.soty import SOTY
 from core.models.standings.noty import NOTY
 from core.models.standings.coty import COTY
 from core.models.standings.qual import QUAL
+from core.models.standings.online_qual import OnlineQUAL
 
 from core.utils.rankings import (
     redo_rankings,
