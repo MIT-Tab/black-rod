@@ -811,6 +811,7 @@ class TournamentDataEntryWizardView(CustomMixin, SessionWizardView):
             for team in teams_to_update:
                 update_toty(team)
                 update_qual_points(team)
+                update_online_quals(team)
             for debater in speakers_to_update:
                 update_soty(debater)
             for debater in novices_to_update:

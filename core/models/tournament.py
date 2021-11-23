@@ -260,6 +260,9 @@ class Tournament(models.Model):
 
 
     def get_online_qual_points(self, place):
+        if not self.online_qual_points:
+            return 0
+
         return online_points(place)
 
 
