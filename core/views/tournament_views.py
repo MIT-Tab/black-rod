@@ -822,5 +822,6 @@ class TournamentDataEntryWizardView(CustomMixin, SessionWizardView):
             redo_rankings(SOTY.objects.filter(season=settings.CURRENT_SEASON), season=settings.CURRENT_SEASON, cache_type='soty')
             redo_rankings(NOTY.objects.filter(season=settings.CURRENT_SEASON), season=settings.CURRENT_SEASON, cache_type='noty')
             redo_rankings(COTY.objects.filter(season=settings.CURRENT_SEASON), season=settings.CURRENT_SEASON, cache_type='coty')
+            redo_rankings(OnlineQUAL.objects.filter(season=settings.CURRENT_SEASON), season=settings.CURRENT_SEASON, cache_type='online_quals')
             
         return redirect('core:tournament_detail', pk=tournament.id)
