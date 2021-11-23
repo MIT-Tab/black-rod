@@ -51,6 +51,7 @@ from core.utils.rankings import (
     update_soty,
     update_noty,
     update_qual_points,
+    update_online_quals
 )
 from core.utils.import_management import (
     CREATE, LINK,
