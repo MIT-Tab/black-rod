@@ -204,6 +204,7 @@ class Tournament(models.Model):
             'soty': False,
             'noty': False,
             'qual': False,
+            'online_qual_points': False,
             'suffix': ' (Online No Points)'
         },
         ONLINE_POINTS: {
