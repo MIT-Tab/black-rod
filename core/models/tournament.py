@@ -219,7 +219,7 @@ class Tournament(models.Model):
             'toty': False,
             'soty': True,
             'noty': False,
-            'qual': False,
+            'qual': True,
             'online_qual_points': True,
             'suffix': ' (Online Proams)'
         },
@@ -227,7 +227,7 @@ class Tournament(models.Model):
             'toty': False,
             'soty': False,
             'noty': False,
-            'qual': False,
+            'qual': True,
             'online_qual_points': True,
             'suffix': ' (Online Gender Minority)'
         }        
