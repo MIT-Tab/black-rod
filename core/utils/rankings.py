@@ -489,5 +489,39 @@ def update_online_quals(team):
 
         online_qual.points = points
         online_qual.save()
+
+    for debater in team.debaters.all():
+        if not debater.school.included_in_oty:
+            continue
+
+        coty = COTY.objects.filter(
+            season=settings.CURRENT_SEASON
+        ).filter(
+            school=debater.school
+        ).first()
+
+        if not coty:
+            coty = COTY.objects.create(season=settings.CURRENT_SEASON,
+                                       school=debater.school)
+
+        relevant_qual_points = QualPoints.objects.filter(
+            season=settings.CURRENT_SEASON
+        ).filter(
+            debater__school=debater.school
+        ).all()
+
+        relevant_qual_points = sum([min(60, q.points) for q in relevant_qual_points])
+
+        qualled_debaters = [q.debater for q in QUAL.objects.filter(
+            season=settings.CURRENT_SEASON
+        ).filter(
+            debater__school=debater.school
+        ).all()]
+        qualled_debaters = len(list(set(qualled_debaters)))
+
+        relevant_qual_points += qualled_debaters * 6
+
+        coty.points = relevant_qual_points
+        coty.save()
         
     return True    
