@@ -211,7 +211,7 @@ class Tournament(models.Model):
             'toty': True,
             'soty': True,
             'noty': False,
-            'qual': False,
+            'qual': True,
             'online_qual_points': True,
             'suffix': ' (Online)'
         },
