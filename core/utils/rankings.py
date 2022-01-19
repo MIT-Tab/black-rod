@@ -326,6 +326,9 @@ def update_qual_points(team):
             debater=debater
         ).first()
 
+        if settings.CURRENT_SEASON in settings.ONLINE_SEASONS:
+            continue
+
         if points <= 0:
             if qual_points and not qual:
                 qual_points.delete()
@@ -489,6 +492,24 @@ def update_online_quals(team):
 
         online_qual.points = points
         online_qual.save()
+            
+        if settings.CURRENT_SEASON not in settings.ONLINE_SEASONS:
+            continue
+
+        if points >= settings.ONLINE_QUAL_BAR:
+            qual = QUAL.objects.filter(
+                debater=debater
+            ).filter(
+                qual_type=QUAL.POINTS
+            ).filter(
+                season=settings.CURRENT_SEASON
+            ).first()
+            
+            if not qual:
+                QUAL.objects.create(debater=debater,
+                                    season=settings.CURRENT_SEASON,
+                                    qual_type=QUAL.POINTS)
+            
 
     for debater in team.debaters.all():
         if not debater.school.included_in_oty:
@@ -523,5 +544,7 @@ def update_online_quals(team):
 
         coty.points = relevant_qual_points
         coty.save()
+
+        
         
     return True    
