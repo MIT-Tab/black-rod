@@ -149,7 +149,7 @@ def update_soty(debater):
             type_of_place=Debater.VARSITY
         )
 
-    markers = [(result.tournament.get_soty_points(result.place), result) \
+    markers = [(result.tournament.get_soty_points(result.place - (1 if result.tie else 0)), result) \
                for result in results]
     
     markers.sort(key=lambda marker: marker[0], reverse=True)
