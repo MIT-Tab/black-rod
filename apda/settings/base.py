@@ -150,6 +150,10 @@ STATICFILES_DIRS = (
 STATIC_ROOT = os.path.join(BASE_DIR, 'static_root')
 
 SEASONS = (
+('2025', '2025-26'),
+('2024', '2024-25'),
+    ('2023', '2023-24'),    
+    ('2022', '2022-23'),
     ('2021', '2021-22'),
     ('2020', '2020-21'),
     ('2019', '2019-20'),
@@ -173,13 +177,14 @@ SEASONS = (
 
 HAYSTACK_SIGNAL_PROCESSOR = 'haystack.signals.RealtimeSignalProcessor'
 
-DEFAULT_SEASON = '2021'
-CURRENT_SEASON = '2021'
-QUAL_BAR = 16.5
+DEFAULT_SEASON = '2023'
+CURRENT_SEASON = '2024'
+QUAL_BAR = 10.5
 
 ONLINE_SEASONS = (
     '2020',
-    '2021'
+    '2021',
+    #'2022',
 )
 ONLINE_QUAL_BAR = 10
 LAST_NOTY_SEASON = 2020

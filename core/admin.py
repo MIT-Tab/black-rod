@@ -38,7 +38,19 @@ class NOTYAdmin(ImportExportModelAdmin):
 
 
 class SOTYAdmin(ImportExportModelAdmin):
-    resource_class = SOTYResource
+    resource_class = SpeakerResultResource
+
+    # Display debater's name and other fields in the admin
+    list_display = ('debater_name', 'season', 'place', 'marker_one', 'marker_two')
+    list_filter = ('debater__first_name', 'debater__last_name', 'season')
+    search_fields = ('debater__first_name', 'debater__last_name')
+    ordering = ('debater__first_name', 'debater__last_name') 
+
+    def debater_name(self, obj):
+        return f"{obj.debater.first_name} {obj.debater.last_name}"
+    
+    debater_name.admin_order_field = 'debater__first_name'
+    debater_name.short_description = 'Debater Name' 
 
 
 class TOTYAdmin(ImportExportModelAdmin):
