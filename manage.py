@@ -3,7 +3,16 @@ import os
 import sys
 
 if __name__ == "__main__":
-    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "apda.settings")
+    # Check if '-p' is in the command-line arguments
+    if '-p' in sys.argv:
+        os.environ.setdefault("DJANGO_SETTINGS_MODULE", "apda.settings.production")
+        sys.argv.remove('-p')
+    elif '-d' in sys.argv:
+        os.environ.setdefault("DJANGO_SETTINGS_MODULE", "apda.settings.production")
+        sys.argv.remove('-d')
+    else:
+        os.environ.setdefault("DJANGO_SETTINGS_MODULE", "apda.settings")
+    
     try:
         from django.core.management import execute_from_command_line
     except ImportError:
