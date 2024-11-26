@@ -23,4 +23,5 @@ def on_interrupt(*args):
   
 signal.signal(signal.SIGINT, on_interrupt)
 
+
 for p in [webpack_proc, server_proc]: p.communicate()

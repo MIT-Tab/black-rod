@@ -202,17 +202,36 @@ class TournamentDetailView(CustomDetailView):
             'place'
         )
 
-        context['varsity_speaker_results'] = obj.speaker_results.filter(
+        vspeakers = list(obj.speaker_results.filter(
             type_of_place=Debater.VARSITY
-        ).order_by(
-                'place'
-        )
+        ).order_by('place')) 
 
-        context['novice_speaker_results'] = obj.speaker_results.filter(
+        vspeakerCount = len(vspeakers)
+        for i in range(vspeakerCount):
+            if vspeakers[i].tie:
+                vspeakers[i].place -= 1  
+            if i < vspeakerCount - 1 and vspeakers[i + 1].tie:
+                vspeakers[i].tie = True  
+
+
+        context['varsity_speaker_results'] = vspeakers
+
+
+        nspeakers = list(obj.speaker_results.filter(
             type_of_place=Debater.NOVICE,
-        ).order_by(
-            'place'
-        )
+        ).order_by('place')) 
+
+        nspeakerCount = len(nspeakers)
+        for i in range(nspeakerCount):
+            if i < nspeakerCount - 1 and nspeakers[i + 1].tie:
+                nspeakers[i].tie = True 
+            if nspeakers[i].tie:
+                nspeakers[i].place -= 1  
+
+        context['novice_speaker_results'] = nspeakers
+       
+
+        context['novice_speaker_results'] = nspeakers
 
         context['tab_cards_available'] = Round.objects.filter(tournament=self.object).exists()
 
@@ -650,11 +669,12 @@ class TournamentDataEntryWizardView(CustomMixin, SessionWizardView):
             
         if step == '3':
             results = SpeakerResult.objects.filter(tournament=tournament,
-                                                type_of_place=Debater.VARSITY)
+                                                type_of_place=Debater.VARSITY,)
 
             for i in range(1, 11):
                 if results.filter(place=i).exists():
-                    initial += [{'speaker': results.filter(place=i).first().debater}]
+                    initial += [{'speaker': results.filter(place=i).first().debater,
+                                 'tie': results.filter(place=i).first().tie}]
 
         if step == '4':
             results = TeamResult.objects.filter(tournament=tournament,
@@ -671,7 +691,8 @@ class TournamentDataEntryWizardView(CustomMixin, SessionWizardView):
 
             for i in range(1, 17):
                 if results.filter(place=i).exists():
-                    initial += [{'speaker': results.filter(place=i).first().debater}]
+                    initial += [{'speaker': results.filter(place=i).first().debater,
+                                 'tie': results.filter(place=i).first().tie}]
 
         return initial
 
@@ -748,6 +769,7 @@ class TournamentDataEntryWizardView(CustomMixin, SessionWizardView):
             place = i + 1
             type_of_place = Debater.VARSITY
             speaker = form_dict['3'].cleaned_data[i]['speaker']
+            tie = form_dict['3'].cleaned_data[i]['tie']
 
             if not speaker:
                 continue
@@ -755,7 +777,8 @@ class TournamentDataEntryWizardView(CustomMixin, SessionWizardView):
             SpeakerResult.objects.create(tournament=tournament,
                                          debater=speaker,
                                          type_of_place=type_of_place,
-                                         place=place)
+                                         place=place,
+                                         tie=tie)
 
             speakers_to_update += [speaker]
 
@@ -794,6 +817,7 @@ class TournamentDataEntryWizardView(CustomMixin, SessionWizardView):
             place = i + 1
             type_of_place = Debater.NOVICE
             speaker = form_dict['5'].cleaned_data[i]['speaker']
+            tie = form_dict['5'].cleaned_data[i]['tie']
 
             if not speaker:
                 continue
@@ -801,7 +825,8 @@ class TournamentDataEntryWizardView(CustomMixin, SessionWizardView):
             SpeakerResult.objects.create(tournament=tournament,
                                          debater=speaker,
                                          type_of_place=type_of_place,
-                                         place=place)
+                                         place=place,
+                                         tie=tie)
 
             novices_to_update += [speaker]
 

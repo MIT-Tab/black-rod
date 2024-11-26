@@ -185,7 +185,7 @@ class SpeakerResultForm(forms.ModelForm):
 
     class Meta:
         model = SpeakerResult
-        fields = ('speaker',)
+        fields = ('speaker','tie')
 
 VarsityTeamResultFormset = formset_factory(TeamResultForm, extra=16, max_num=16)
 NoviceTeamResultFormset = formset_factory(TeamResultForm, extra=8, max_num=8)
