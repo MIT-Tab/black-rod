@@ -36,9 +36,9 @@ npm install
 
 ##### Load test data (Username: `tab`, Password: `password`)
 ```bash
-python manage.py makemigrations
-python manage.py migrate
-python3 manage.py loaddata coty debaters noty qual_points qual schools soty speaker_results team_results teams toty tournaments users
+python manage.py -d makemigrations
+python manage.py -d migrate
+python3 manage.py -d loaddata coty debaters noty qual_points qual schools soty speaker_results team_results teams toty tournaments users
 ```
 
 ##### Create an admin user

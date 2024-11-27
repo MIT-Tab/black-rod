@@ -244,20 +244,20 @@ class Tournament(models.Model):
         return place <= self.qual_bar
         
         
-    def get_qual_points(self, place):
+    def get_qual_points(self, place, ghost_points=False):
         if not self.qual:
             return 0
 
         return team_points_for_size(self.num_teams,
-                                    place)
+                                    place, ghost_points=ghost_points)
 
 
-    def get_toty_points(self, place):
+    def get_toty_points(self, place, ghost_points=False):
         if not self.toty:
             return 0
 
         return team_points_for_size(self.num_teams,
-                                    place)
+                                    place, ghost_points=ghost_points)
 
 
     def get_online_qual_points(self, place):
