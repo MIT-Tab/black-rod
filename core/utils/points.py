@@ -15,7 +15,7 @@ def online_points(place):
         return 1.25
     return 0
 
-def team_points_for_size(num_teams, place):
+def team_points_for_size(num_teams, place, ghost_points=False):
     toty = 0
 
     if num_teams < 8:
@@ -35,7 +35,7 @@ def team_points_for_size(num_teams, place):
             return 8 + math.floor((num_teams - 16) / 8)
         if place < 5:
             return 3 + .75 * math.floor((num_teams - 16) / 8)
-        if place < 9:
+        if place < 9 or ghost_points:
             return .5 * math.floor((num_teams - 16) / 8)
         return 0
 
@@ -48,7 +48,7 @@ def team_points_for_size(num_teams, place):
             return 8.25
         if place < 9:
             return 3.5
-        if place < 17:
+        if place < 17 or ghost_points:
             return .75
         return 0
 
@@ -60,7 +60,7 @@ def team_points_for_size(num_teams, place):
         return 9
     if place < 9:
         return 4
-    if place < 17:
+    if place < 17 or ghost_points:
         return 1.5
 
     return 0

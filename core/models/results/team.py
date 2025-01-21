@@ -19,5 +19,7 @@ class TeamResult(models.Model):
 
     place = models.IntegerField(default=-1)
 
+    ghost_points = models.BooleanField(default=False)
+
     class Meta:
         unique_together = ('tournament', 'type_of_place', 'place')

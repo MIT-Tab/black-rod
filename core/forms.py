@@ -170,6 +170,8 @@ class TeamResultForm(forms.Form):
         required=False
     )
 
+    ghost_points = forms.BooleanField(label="Ghost Points", required=False)
+
     class Meta:
         model = TeamResult
         fields = []
@@ -187,7 +189,7 @@ class SpeakerResultForm(forms.ModelForm):
         model = SpeakerResult
         fields = ('speaker','tie')
 
-VarsityTeamResultFormset = formset_factory(TeamResultForm, extra=16, max_num=16)
+VarsityTeamResultFormset = formset_factory(TeamResultForm, extra=20, max_num=20)
 NoviceTeamResultFormset = formset_factory(TeamResultForm, extra=8, max_num=8)
 
 VarsitySpeakerResultFormset = formset_factory(SpeakerResultForm, extra=10, max_num=10)

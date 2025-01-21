@@ -3,20 +3,24 @@
 {% load crispy_forms_tags %}
 
 {% block data_entry_block %}
-    {{ wizard.form.management_form }}
-    <table class="table table-bordered">
+{{ wizard.form.management_form }}
+<table class="table table-bordered">
 	<thead>
-	    <th>Place</th>
-	    <th>Team</th>
+		<th>Place</th>
+		<th>Team</th>
 	</thead>
 	<tbody>
-	    {% for form in wizard.form.forms %}
+		{% for form in wizard.form.forms %}
 		<tr>
-		    <td><b><center>{{ forloop.counter }}</center></b></td>
-		    <td>{{ form.debater_one|as_crispy_field }}
-			{{ form.debater_two|as_crispy_field }}</td>
+			<td><b>
+					<center>{{ forloop.counter }}</center>
+				</b></td>
+			<td>{{ form.debater_one|as_crispy_field }}
+				{{ form.debater_two|as_crispy_field }}
+				{{ form.ghost_points|as_crispy_field }}</td>
+			</td>
 		</tr>
-	    {% endfor %}
+		{% endfor %}
 	</tbody>
-    </table>
+</table>
 {% endblock %}
