@@ -11,10 +11,24 @@ from core.resources import *
 
 class SchoolAdmin(ImportExportModelAdmin):
     resource_class = SchoolResource
+    list_display = ['name']
+    list_filter = ['name']
+    search_fields = ['name']
+    ordering = ['name']
 
 
 class DebaterAdmin(ImportExportModelAdmin):
     resource_class = DebaterResource
+    list_display = ('first_name', 'last_name', 'school')
+    list_filter = ('first_name', 'last_name', 'school')
+    search_fields = ('first_name', 'last_name', 'school')
+    ordering = ('first_name', 'last_name', 'school')
+
+    def debater_name(self, obj):
+        return f"{obj.debater.first_name} {obj.debater.last_name}"
+    
+    debater_name.admin_order_field = 'debater__first_name'
+    debater_name.short_description = 'Debater Name' 
 
 
 class TournamentAdmin(ImportExportModelAdmin):
@@ -39,8 +53,6 @@ class NOTYAdmin(ImportExportModelAdmin):
 
 class SOTYAdmin(ImportExportModelAdmin):
     resource_class = SpeakerResultResource
-
-    # Display debater's name and other fields in the admin
     list_display = ('debater_name', 'season', 'place', 'marker_one', 'marker_two')
     list_filter = ('debater__first_name', 'debater__last_name', 'season')
     search_fields = ('debater__first_name', 'debater__last_name')
@@ -59,14 +71,44 @@ class TOTYAdmin(ImportExportModelAdmin):
 
 class COTYAdmin(ImportExportModelAdmin):
     resource_class = COTYResource
+    list_display = ('school_name', 'season', 'place')
+    list_filter = ('season', 'place')
+    search_fields = ('school__name', 'season')
+    ordering = ('school__name', 'season')
+
+    def school_name(self, obj):
+        return obj.school.name
+    school_name.admin_order_field = 'school__name'  
+    school_name.short_description = 'School Name'
 
     
 class QualPointsAdmin(ImportExportModelAdmin):
     resource_class = QualPointsResource
+    list_display = ('debater_name', 'season', 'points')
+    list_filter = ('debater__first_name', 'debater__last_name', 'season')
+    search_fields = ('debater__first_name', 'debater__last_name')
+    ordering = ('debater__first_name', 'debater__last_name') 
+
+    def debater_name(self, obj):
+        return f"{obj.debater.first_name} {obj.debater.last_name}"
+    
+    debater_name.admin_order_field = 'debater__first_name'
+    debater_name.short_description = 'Debater Name' 
+
 
 
 class QUALAdmin(ImportExportModelAdmin):
     resource_class = QUALResource
+    list_display = ('debater_name', 'season', 'place')
+    list_filter = ('debater__first_name', 'debater__last_name', 'season')
+    search_fields = ('debater__first_name', 'debater__last_name')
+    ordering = ('debater__first_name', 'debater__last_name') 
+
+    def debater_name(self, obj):
+        return f"{obj.debater.first_name} {obj.debater.last_name}"
+    
+    debater_name.admin_order_field = 'debater__first_name'
+    debater_name.short_description = 'Debater Name' 
 
 
 admin.site.register(User, UserAdmin)
