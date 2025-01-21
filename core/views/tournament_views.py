@@ -662,10 +662,11 @@ class TournamentDataEntryWizardView(CustomMixin, SessionWizardView):
             results = TeamResult.objects.filter(tournament=tournament,
                                                 type_of_place=Debater.VARSITY)
 
-            for i in range(1, 17):
+            for i in range(1, 21):
                 if results.filter(place=i).exists():
                     initial += [{'debater_one': results.filter(place=i).first().team.debaters.first(),
-                                 'debater_two': results.filter(place=i).first().team.debaters.last()}]
+                                 'debater_two': results.filter(place=i).first().team.debaters.last(),
+                                 'ghost_points': results.filter(place=i).first().ghost_points}]
             
         if step == '3':
             results = SpeakerResult.objects.filter(tournament=tournament,
@@ -754,11 +755,13 @@ class TournamentDataEntryWizardView(CustomMixin, SessionWizardView):
 
             place = i + 1
             type_of_place = Debater.VARSITY
+            ghost_points = form_dict['2'].cleaned_data[i]['ghost_points']
 
             TeamResult.objects.create(tournament=tournament,
                                       team=team,
                                       type_of_place=type_of_place,
-                                      place=place)
+                                      place=place,
+                                      ghost_points=ghost_points)
 
             teams_to_update += [team]
 

@@ -1,6 +1,7 @@
 from .base import *
 
 DEBUG = True
+ENV = "PROD"
 
 DATABASES = {
     'default': {

@@ -81,7 +81,7 @@ def update_toty(team):
         type_of_place=Debater.VARSITY
     )
 
-    markers = [(result.tournament.get_toty_points(result.place), result) \
+    markers = [(result.tournament.get_toty_points(result.place, ghost_points=result.ghost_points), result) \
                for result in results]
     
     markers.sort(key=lambda marker: marker[0], reverse=True)
@@ -313,7 +313,7 @@ def update_qual_points(team):
             tournament__qual=True
         )
 
-        markers = [(result.tournament.get_qual_points(result.place), result) \
+        markers = [(result.tournament.get_qual_points(result.place, ghost_points=result.ghost_points), result) \
                    for result in results]
         
         markers.sort(key=lambda marker: marker[0], reverse=True)

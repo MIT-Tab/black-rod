@@ -8,7 +8,7 @@ if __name__ == "__main__":
         os.environ.setdefault("DJANGO_SETTINGS_MODULE", "apda.settings.production")
         sys.argv.remove('-p')
     elif '-d' in sys.argv:
-        os.environ.setdefault("DJANGO_SETTINGS_MODULE", "apda.settings.production")
+        os.environ.setdefault("DJANGO_SETTINGS_MODULE", "apda.settings.development")
         sys.argv.remove('-d')
     else:
         os.environ.setdefault("DJANGO_SETTINGS_MODULE", "apda.settings")

@@ -1,6 +1,8 @@
 from .base import *
 
 DEBUG = True
+ENV = "DEV"
+
 
 SEASONS = (
     ('2019', '2019-20'),
