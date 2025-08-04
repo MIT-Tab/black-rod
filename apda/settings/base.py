@@ -11,6 +11,8 @@ https://docs.djangoproject.com/en/1.11/ref/settings/
 """
 
 import os
+from dotenv import load_dotenv
+load_dotenv(os.environ.get('DOT_ENV_FILE', '.env'))
 from .season_settings import *
 
 # Build paths inside the project like this: os.path.join(BASE_DIR, ...)
@@ -112,13 +114,18 @@ if os.environ.get("ENV") == "development":
         }
     }
     ALLOWED_HOSTS = ['*']
+    CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.dummy.DummyCache',
+    }
+    }
 elif os.environ.get("ENV") == "production":
     DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql_psycopg2',
         'NAME': 'standings',
         'USER': 'rodda',
-        'PASSWORD': os.environ.get('DATA_PASSWORD', ''),
+        'PASSWORD': os.environ.get('DATABASE_PASSWORD', ''),
         'HOST': 'localhost',
         'PORT': '',
         }
@@ -307,11 +314,6 @@ HAYSTACK_CONNECTIONS = {
     },
 }
 
-CACHES = {
-    'default': {
-        'BACKEND': 'django.core.cache.backends.dummy.DummyCache',
-    }
-}
 
 DATA_UPLOAD_MAX_NUMBER_FIELDS = 10240
 
