@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/1.11/ref/settings/
 """
 
 import os
+from .season_settings import *
 
 # Build paths inside the project like this: os.path.join(BASE_DIR, ...)
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -20,11 +21,15 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # See https://docs.djangoproject.com/en/1.11/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = '3j$y%c@9o%b-1mf$n=$bps=qvt^ls!l_5juf+%1_&w46t$1-q*'
+SECRET_KEY = os.environ.get('SECRET_KEY', "abcd")
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
-
+ENV = os.environ.get("ENV", "development")
+if os.environ.get("DEBUG"):
+    print("Running in development mode")
+    DEBUG = True
+else:
+    DEBUG = False
 ALLOWED_HOSTS = []
 BASE_URL = 'http://50.116.54.146'
 
@@ -99,12 +104,40 @@ WSGI_APPLICATION = 'apda.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/1.11/ref/settings/#databases
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': os.path.join(BASE_DIR, 'db.sqlite3'),
+if os.environ.get("ENV") == "development":
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': os.path.join(BASE_DIR, 'db.sqlite3'),
+        }
     }
-}
+    ALLOWED_HOSTS = ['*']
+elif os.environ.get("ENV") == "production":
+    DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.postgresql_psycopg2',
+        'NAME': 'standings',
+        'USER': 'rodda',
+        'PASSWORD': os.environ.get('DATA_PASSWORD', ''),
+        'HOST': 'localhost',
+        'PORT': '',
+        }
+    }
+    import sentry_sdk
+    from sentry_sdk.integrations.django import DjangoIntegration
+
+    sentry_sdk.init(
+        dsn=os.environ.get('SENTRY_DSN', ''),
+        integrations=[DjangoIntegration()]
+    )
+    ALLOWED_HOSTS = ['50.116.54.146', 'results.apda.online']
+
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.memcached.MemcachedCache',
+            'LOCATION': '127.0.0.1:11211',
+        }
+    }
 
 
 # Password validation
@@ -149,43 +182,10 @@ STATICFILES_DIRS = (
 )
 STATIC_ROOT = os.path.join(BASE_DIR, 'static_root')
 
-SEASONS = (
-('2025', '2025-26'),
-('2024', '2024-25'),
-    ('2023', '2023-24'),    
-    ('2022', '2022-23'),
-    ('2021', '2021-22'),
-    ('2020', '2020-21'),
-    ('2019', '2019-20'),
-    ('2018', '2018-19'),
-    ('2017', '2017-18'),
-    ('2016', '2016-17'),
-    ('2015', '2015-16'),
-    ('2014', '2014-15'),
-    ('2013', '2013-14'),
-    ('2012', '2012-13'),
-    ('2011', '2011-12'),
-    ('2010', '2010-11'),
-    ('2009', '2009-10'),        
-    ('2008', '2008-09'),
-    ('2007', '2007-08'),
-    ('2006', '2006-07'),
-    ('2005', '2005-06'),
-    #('2004', '2004-05'),
-    #('2003', '2003-04'),
-)
 
 HAYSTACK_SIGNAL_PROCESSOR = 'haystack.signals.RealtimeSignalProcessor'
 
-DEFAULT_SEASON = '2024'
-CURRENT_SEASON = '2024'
-QUAL_BAR = 10.5
 
-ONLINE_SEASONS = (
-    '2020',
-    '2021',
-    #'2022',
-)
 ONLINE_QUAL_BAR = 10
 LAST_NOTY_SEASON = 2020
 
@@ -211,8 +211,8 @@ SOCIALACCOUNT_ADAPTER = 'apdaonline.adapter.APDAOnlineAdapter'
 SOCIALACCOUNT_PROVIDERS = {
     'apdaonline': {
         'APP': {
-            'client_id': 'trFRQPwEPoARBgpFaGGz2FunZ5IAYuMtH9xFjcCI',
-            'secret': 'gZmR7Fz1cPDlJZG4XYJM1XdwFRjFmztQM55BZSVd',
+            'client_id': os.environ.get('apdaonline_client_id', 'default_client_id'),
+            'secret': os.environ.get('apdaonline_secret', 'default_secret'),
             'key': ''
         }
     }

@@ -8,7 +8,7 @@ class Migration(migrations.Migration):
     dependencies = [
         ('core', '0036_auto_20211116_2047'),
     ]
-    if settings.ENV == "DEV":
+    if settings.ENV == "development":
         operations = [
             migrations.AlterField(
             model_name='coty',
@@ -56,7 +56,7 @@ class Migration(migrations.Migration):
             field=models.CharField(blank=True, max_length=30, verbose_name='first name'),
         ),
         ]
-    elif settings.ENV == "PROD":
+    elif settings.ENV == "production":
         operations = [
             migrations.AlterField(
                 model_name='coty',

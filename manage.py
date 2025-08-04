@@ -1,17 +1,12 @@
 #!/usr/bin/env python
 import os
 import sys
+from dotenv import load_dotenv
+load_dotenv()
 
 if __name__ == "__main__":
     # Check if '-p' is in the command-line arguments
-    if '-p' in sys.argv:
-        os.environ.setdefault("DJANGO_SETTINGS_MODULE", "apda.settings.production")
-        sys.argv.remove('-p')
-    elif '-d' in sys.argv:
-        os.environ.setdefault("DJANGO_SETTINGS_MODULE", "apda.settings.development")
-        sys.argv.remove('-d')
-    else:
-        os.environ.setdefault("DJANGO_SETTINGS_MODULE", "apda.settings")
+    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "apda.settings.base")
     
     try:
         from django.core.management import execute_from_command_line
