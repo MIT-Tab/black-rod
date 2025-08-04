@@ -1,20 +1,21 @@
 $font-size-base: .9rem;
 
 $theme-colors: (
-  "primary": #4D7EA8,
-  "danger": #A31621,
-  "success": #70A363,
-  "secondary": #668586,
-  "info": #E8E8E8,
+    "primary":#731DDD,
+    "danger": #580000,
+    "success": #70A363,
+    "secondary": #668586,
+    "info": #E8E8E8,
 );
 
-.table > tbody > tr > td {
+.table>tbody>tr>td {
     vertical-align: middle;
 }
 
 .select2 {
     width: 100% !important;
 }
+
 .select2-container .select2-selection--single {
     height: 42px !important;
 }
@@ -41,7 +42,7 @@ $theme-colors: (
 
 .short-row {
     padding-top: 4px !important;
-    padding-bottom: 4px !important;    
+    padding-bottom: 4px !important;
 }
 
 .no-padding {

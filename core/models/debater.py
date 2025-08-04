@@ -64,3 +64,17 @@ class QualPoints(models.Model):
     @property
     def qualled(self):
         return self.debater.quals.filter(season=self.season).exists()
+
+class Reaff(models.Model):
+    season = models.CharField(choices=settings.SEASONS,
+                              default=settings.DEFAULT_SEASON,
+                              max_length=16)
+
+    old_debater = models.ForeignKey(Debater,
+                             on_delete=models.CASCADE,
+                             related_name='reaff_old')
+    
+    new_debater = models.ForeignKey(Debater,
+                             on_delete=models.CASCADE,
+                             related_name='reaff_new')
+    reaff_date = models.DateField()

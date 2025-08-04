@@ -11,6 +11,7 @@ from core.models.school import School
 from core.models.tournament import Tournament
 from core.models.team import Team
 from core.models.video import Video
+from .models import TOTYReaff, Team
 
 from core.models.results.team import TeamResult
 from core.models.results.speaker import SpeakerResult
@@ -189,7 +190,7 @@ class SpeakerResultForm(forms.ModelForm):
         model = SpeakerResult
         fields = ('speaker','tie')
 
-VarsityTeamResultFormset = formset_factory(TeamResultForm, extra=20, max_num=20)
+VarsityTeamResultFormset = formset_factory(TeamResultForm, extra=24, max_num=24)
 NoviceTeamResultFormset = formset_factory(TeamResultForm, extra=8, max_num=8)
 
 VarsitySpeakerResultFormset = formset_factory(SpeakerResultForm, extra=10, max_num=10)
@@ -235,3 +236,25 @@ class DebaterReconciliationForm(forms.Form):
 
 SchoolReconciliationFormset = formset_factory(SchoolReconciliationForm, extra=0)
 DebaterReconciliationFormset = formset_factory(DebaterReconciliationForm, extra=0)
+
+
+class TeamChoiceField(forms.ModelChoiceField):
+    def label_from_instance(self, obj):
+        return obj.long_name
+
+class TOTYReaffForm(forms.ModelForm):
+    old_team = TeamChoiceField(
+        queryset=Team.objects.prefetch_related('debaters', 'debaters__school')
+                             .order_by('debaters__school__name', 'debaters__first_name', 'debaters__last_name'),
+        label="Old Team"
+    )
+    new_team = TeamChoiceField(
+        queryset=Team.objects.prefetch_related('debaters', 'debaters__school')
+                             .order_by('debaters__school__name', 'debaters__first_name', 'debaters__last_name'),
+        label="New Team"
+    )
+
+    class Meta:
+        model = TOTYReaff
+        fields = '__all__'
+

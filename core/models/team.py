@@ -35,6 +35,19 @@ class Team(models.Model):
                                                                   debater.name) for debater in self.debaters.all()]))
 
     @property
+    def long_name(self):
+        debaters = list(self.debaters.all())
+        if len(debaters) == 2:
+            school = debaters[0].school.name if debaters[0].school == debaters[1].school \
+                     else f"{debaters[0].school.name} / {debaters[1].school.name}"
+            names = f"{debaters[0].first_name} {debaters[0].last_name} and {debaters[1].first_name} {debaters[1].last_name}"
+            return f"{school} {names}"
+        elif debaters:
+            return f"{debaters[0].school.name} {debaters[0].first_name} {debaters[0].last_name}"
+        else:
+            return self.name
+
+    @property
     def toty_points(self):
         return sum([t.points for t in self.toty.all()])
 

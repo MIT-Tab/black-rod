@@ -17,6 +17,10 @@ class TournamentResource(resources.ModelResource):
     class Meta:
         model = Tournament
 
+class ReaffResource(resources.ModelResource):
+    class Meta:
+        model = Reaff
+
 
 class TeamResource(resources.ModelResource):
     class Meta:
