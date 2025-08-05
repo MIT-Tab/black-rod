@@ -218,8 +218,8 @@ SOCIALACCOUNT_ADAPTER = 'apdaonline.adapter.APDAOnlineAdapter'
 SOCIALACCOUNT_PROVIDERS = {
     'apdaonline': {
         'APP': {
-            'client_id': os.environ.get('apdaonline_client_id', 'default_client_id'),
-            'secret': os.environ.get('apdaonline_secret', 'default_secret'),
+            'client_id': os.environ.get('APDAONLINE_CLIENT_ID', 'default_client_id'),
+            'secret': os.environ.get('APDAONLINE_SECRET_ID', 'default_secret'),
             'key': ''
         }
     }
