@@ -5,7 +5,6 @@ from dotenv import load_dotenv
 load_dotenv()
 
 if __name__ == "__main__":
-    # Check if '-p' is in the command-line arguments
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", "apda.settings.base")
     
     try:
