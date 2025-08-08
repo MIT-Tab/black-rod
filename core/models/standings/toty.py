@@ -52,3 +52,19 @@ class TOTY(AbstractStanding):
 
     class Meta:
         ordering = ('place',)
+
+class TOTYReaff(models.Model):
+    season = models.CharField(choices=settings.SEASONS,
+                              default=settings.DEFAULT_SEASON,
+                              max_length=16)
+
+    old_team = models.ForeignKey(Team,
+                             on_delete=models.CASCADE,
+                             related_name='toty_reaff_old')
+    
+    new_team = models.ForeignKey(Team,
+                             on_delete=models.CASCADE,
+                             related_name='toty_reaff_new')
+    reaff_date = models.DateField()
+
+    

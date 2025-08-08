@@ -7,11 +7,11 @@ from django.shortcuts import reverse
 from django.core.cache import cache
 from django.core.cache.utils import make_template_fragment_key
 
-from core.models.debater import Debater, QualPoints
+from core.models.debater import Debater, QualPoints, Reaff
 
 from core.models.results.team import TeamResult
 
-from core.models.standings.toty import TOTY
+from core.models.standings.toty import TOTY, TOTYReaff
 from core.models.standings.soty import SOTY
 from core.models.standings.noty import NOTY
 from core.models.standings.coty import COTY
@@ -55,7 +55,7 @@ def get_relevant_debaters(school, season):
     
 
 def update_toty(team):
-    if team.team_results.count() == 0 and team.govs.count() == 0 and team.opps.count():
+    if team.team_results.count() == 0:
         team.delete()
         return
     
@@ -64,6 +64,11 @@ def update_toty(team):
 
     if team.debaters.count() == 0:
         return
+    
+    if TOTYReaff.objects.filter(old_team=team).filter(season=settings.CURRENT_SEASON).count() > 0:
+        TOTY.objects.filter(season=settings.CURRENT_SEASON).filter(team=team).delete()
+        return
+        
 
     if team.debaters.first() and \
        not team.debaters.first().school.included_in_oty:
@@ -81,7 +86,19 @@ def update_toty(team):
         type_of_place=Debater.VARSITY
     )
 
-    markers = [(result.tournament.get_toty_points(result.place), result) \
+    
+
+    reaff = TOTYReaff.objects.filter(new_team=team).filter(season=settings.CURRENT_SEASON).all()
+    if len(reaff) > 0:
+        results = results | reaff[0].old_team.team_results.filter(
+        tournament__season=settings.CURRENT_SEASON
+        ).filter(
+            tournament__toty=True
+        ).filter(
+            type_of_place=Debater.VARSITY
+        )
+
+    markers = [(result.tournament.get_toty_points(result.place, ghost_points=result.ghost_points), result) \
                for result in results]
     
     markers.sort(key=lambda marker: marker[0], reverse=True)
@@ -133,6 +150,10 @@ def update_soty(debater):
        debater.speaker_results.count() == 0:
         debater.delete()
         return
+
+    if Reaff.objects.filter(old_debater=debater).filter(season=settings.CURRENT_SEASON).count() > 0:
+        SOTY.objects.filter(season=settings.CURRENT_SEASON).filter(debater=debater).delete()
+        return
     
     if not debater.school.included_in_oty:
         SOTY.objects.filter(
@@ -148,8 +169,18 @@ def update_soty(debater):
         ).filter(
             type_of_place=Debater.VARSITY
         )
+    
+    reaff = Reaff.objects.filter(new_debater=debater).filter(season=settings.CURRENT_SEASON).all()
+    if len(reaff) > 0:
+        results = results | reaff[0].old_debater.speaker_results.filter(
+            tournament__season=settings.CURRENT_SEASON
+        ).filter(
+            tournament__soty=True
+        ).filter(
+            type_of_place=Debater.VARSITY
+        )
 
-    markers = [(result.tournament.get_soty_points(result.place), result) \
+    markers = [(result.tournament.get_soty_points(result.place - (1 if result.tie else 0)), result) \
                for result in results]
     
     markers.sort(key=lambda marker: marker[0], reverse=True)
@@ -304,16 +335,19 @@ def update_qual_points(team):
 
         for result in results:
             if result.place <= result.tournament.autoqual_bar:
-                qual = QUAL.objects.create(season=settings.CURRENT_SEASON,
-                                           tournament=result.tournament,
-                                           qual_type=result.tournament.qual_type,
-                                           debater=debater)
+                try:
+                    qual = QUAL.objects.create(season=settings.CURRENT_SEASON,
+                                            tournament=result.tournament,
+                                            qual_type=result.tournament.qual_type,
+                                            debater=debater)
+                except:
+                    pass
 
         results = results.filter(
             tournament__qual=True
         )
 
-        markers = [(result.tournament.get_qual_points(result.place), result) \
+        markers = [(result.tournament.get_qual_points(result.place, ghost_points=result.ghost_points), result) \
                    for result in results]
         
         markers.sort(key=lambda marker: marker[0], reverse=True)

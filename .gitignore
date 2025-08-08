@@ -22,6 +22,19 @@ static_root/*
 # Webpacks
 node_modules/
 *webpack_bundles/
+apda/webpack-stats.json
 
 # Whoosh
 apda/whoosh_index/
+
+#compile-cache
+v8-compile-cache-0/
+
+# backups
+backup.sql
+
+# logs
+*.log
+
+# env
+.env

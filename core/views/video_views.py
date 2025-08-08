@@ -142,7 +142,7 @@ class VideoDetailView(CustomDetailView):
     def get_context_data(self, *args, **kwargs):
         context = super().get_context_data(*args, **kwargs)
 
-        youtube_embed = 'youtube' in self.object.link
+        youtube_embed = 'youtube' in self.object.link and not "playlist" in self.object.link
         vimeo_embed = 'vimeo' in self.object.link and self.object.password == ''
 
         context['embed'] = youtube_embed or vimeo_embed

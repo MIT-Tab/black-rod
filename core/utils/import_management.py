@@ -217,7 +217,8 @@ def create_speaker_awards(debater_completed_actions,
         SpeakerResult.objects.create(tournament=tournament,
                                      debater=debater,
                                      type_of_place=type_of_result,
-                                     place=award['place'])
+                                     place=award['place'],
+                                     tie=award['tie'])
 
         debaters_changed += [debater]
 
