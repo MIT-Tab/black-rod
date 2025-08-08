@@ -23,6 +23,7 @@ static_root/*
 node_modules/
 *webpack_bundles/
 apda/webpack-stats.json
+webpack-stats.json
 
 # Whoosh
 apda/whoosh_index/

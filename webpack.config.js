@@ -13,7 +13,7 @@ module.exports = {
     },
     
     plugins: [
-	new BundleTracker({filename: './apda/webpack-stats.json'}),
+	new BundleTracker({filename: 'webpack-stats.json'}),
 	new webpack.ProvidePlugin({ // inject ES5 modules as global vars
 	    $: 'jquery',
 	    Popper: 'popper.js'
