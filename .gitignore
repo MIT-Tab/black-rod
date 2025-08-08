@@ -38,3 +38,6 @@ backup.sql
 
 # env
 .env
+
+# deploy script
+deploy.sh
