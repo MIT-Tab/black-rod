@@ -279,7 +279,19 @@ NAV_MENU_LEFT = [
     {
         'name': 'Admin',
         'url': '/admin/',
-        'validators': ['menu_generator.validators.is_superuser']
+        'validators': ['menu_generator.validators.is_superuser'],
+        'submenu' : [
+             {
+                'name': 'Django Admin',
+                'url': '/admin/',
+                'validators': ['menu_generator.validators.is_superuser']
+            },
+             {
+                'name': 'Admin Tools',
+                'url': '/core/admin-tools/',
+                'validators': ['menu_generator.validators.is_superuser']
+            },
+        ]
     },
     {
         'name': 'Feedback',

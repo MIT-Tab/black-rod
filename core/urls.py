@@ -15,6 +15,7 @@ import core.views.soty_views as soty_views
 import core.views.toty_views as toty_views
 import core.views.noty_views as noty_views
 import core.views.coty_views as coty_views
+import core.views.admin_views as admin_views
 
 app_name = 'core'
 
@@ -146,5 +147,9 @@ urlpatterns = [
          name='noty'),
     path('core/coty',
          coty_views.COTYListView.as_view(),
-         name='coty')
+         name='coty'),
+    
+    path('core/admin-tools/',
+         admin_views.AdminToolsView.as_view(),
+         name='admin_tools'),
 ]
