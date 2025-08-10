@@ -49,4 +49,59 @@ $theme-colors: (
     padding: 0px !important;
 }
 
+.mittab-dashboard {
+    .mittab-table-row:hover {
+        background-color: #f8f9fa !important;
+        transform: translateY(-1px);
+        transition: all 0.2s ease;
+    }
+    
+    .mittab-tournament-icon {
+        width: 40px;
+        height: 40px;
+        background: #007bff;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-size: 1.1rem;
+    }
+    
+    .mittab-stat-item {
+        padding: 1rem;
+        border-radius: 8px;
+        transition: transform 0.2s ease;
+        
+        &:hover {
+            transform: translateY(-2px);
+        }
+    }
+    
+    .mittab-table {
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        border-radius: 8px;
+        overflow: hidden;
+    }
+    
+    .mittab-btn-primary {
+        background: #007bff;
+        transition: all 0.2s ease;
+        
+        &:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(115, 29, 221, 0.3);
+            background: #731DDD;
+        }
+    }
+    
+    .mittab-refresh-btn {
+        transition: all 0.2s ease;
+        
+        &:hover {
+            transform: translateY(-1px);
+        }
+    }
+}
+
 @import "node_modules/bootstrap/scss/bootstrap";

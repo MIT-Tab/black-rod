@@ -152,4 +152,7 @@ urlpatterns = [
     path('core/admin-tools/',
          admin_views.AdminToolsView.as_view(),
          name='admin_tools'),
+     path('core/mittab-dashboard/',
+         admin_views.MitTabDashboardView.as_view(),
+         name='mittab_dashboard'),
 ]
