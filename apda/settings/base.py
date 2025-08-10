@@ -27,7 +27,7 @@ SECRET_KEY = os.environ.get('SECRET_KEY', "abcd")
 
 # SECURITY WARNING: don't run with debug turned on in production!
 ENV = os.environ.get("ENV", "development")
-if os.environ.get("DEBUG"):
+if os.environ.get("DEBUG") == "1":
     print("Running in development mode")
     DEBUG = True
 else:
