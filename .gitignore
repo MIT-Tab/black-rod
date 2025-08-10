@@ -42,3 +42,6 @@ backup.sql
 
 # deploy script
 deploy.sh
+
+# static_root
+apda/static_root/*
