@@ -57,18 +57,19 @@ class QualPoints(models.Model):
 
     points = models.FloatField(default=0)
 
-    season = models.CharField(choices=settings.SEASONS,
-                              default=settings.DEFAULT_SEASON,
-                              max_length=16)
+    season = models.CharField(max_length=16)
 
     @property
     def qualled(self):
         return self.debater.quals.filter(season=self.season).exists()
 
+    def __save__(self, *args, **kwargs):
+        if not self.season:
+            self.season = settings.CURRENT_SEASON
+        super().save(*args, **kwargs)
+
 class Reaff(models.Model):
-    season = models.CharField(choices=settings.SEASONS,
-                              default=settings.DEFAULT_SEASON,
-                              max_length=16)
+    season = models.CharField(max_length=16)
 
     old_debater = models.ForeignKey(Debater,
                              on_delete=models.CASCADE,
@@ -78,3 +79,7 @@ class Reaff(models.Model):
                              on_delete=models.CASCADE,
                              related_name='reaff_new')
     reaff_date = models.DateField()
+    def __save__(self, *args, **kwargs):
+        if not self.season:
+            self.season = settings.CURRENT_SEASON
+        super().save(*args, **kwargs)

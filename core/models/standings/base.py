@@ -24,9 +24,7 @@ class AllSeasonManager(models.Manager):
         
 
 class AbstractStanding(models.Model):
-    season = models.CharField(choices=settings.SEASONS,
-                              default=settings.DEFAULT_SEASON,
-                              max_length=16)
+    season = models.CharField(max_length=16)
 
     place = models.IntegerField(default=-1)
 
@@ -39,6 +37,11 @@ class AbstractStanding(models.Model):
     all_objects = AllSeasonManager()
 
     tied = models.BooleanField(default=False)
+
+    def __save__(self, *args, **kwargs):
+        if not self.season:
+            self.season = settings.CURRENT_SEASON
+        super().save(*args, **kwargs)
     
 
     

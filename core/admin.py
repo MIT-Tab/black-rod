@@ -3,7 +3,7 @@ from django.contrib.auth.admin import UserAdmin
 
 from import_export.admin import ImportExportModelAdmin
 
-from core.forms import TOTYReaffForm
+from core.forms import TOTYReaffForm, QualPointsForm, ReaffForm, SOTYForm, NOTYForm, COTYForm, QUALForm
 from core.models import *
 from core.resources import *
 
@@ -33,6 +33,7 @@ class DebaterAdmin(ImportExportModelAdmin):
 
 class ReaffAdmin(ImportExportModelAdmin):
     resource_class = ReaffResource
+    form = ReaffForm
 
 
 class TournamentAdmin(ImportExportModelAdmin):
@@ -63,10 +64,12 @@ class SpeakerResultAdmin(ImportExportModelAdmin):
 
 class NOTYAdmin(ImportExportModelAdmin):
     resource_class = NOTYResource
+    form = NOTYForm
 
 
 class SOTYAdmin(ImportExportModelAdmin):
     resource_class = SpeakerResultResource
+    form = SOTYForm
     list_display = ('debater_name', 'season', 'place', 'marker_one', 'marker_two')
     list_filter = ('debater__first_name', 'debater__last_name', 'season')
     search_fields = ('debater__first_name', 'debater__last_name')
@@ -129,12 +132,13 @@ class TOTYReaffAdmin(admin.ModelAdmin):
     old_debaters.short_description = 'Old Debaters'
     new_debaters.short_description = 'New Debaters'
 
-
-
 class COTYAdmin(ImportExportModelAdmin):
     resource_class = COTYResource
+    form = COTYForm
     list_display = ('school_name', 'season', 'place')
     list_filter = ('season', 'place')
+    search_fields = ('school__name', 'season')
+    ordering = ('school__name', 'season')
     search_fields = ('school__name', 'season')
     ordering = ('school__name', 'season')
 
@@ -146,6 +150,7 @@ class COTYAdmin(ImportExportModelAdmin):
     
 class QualPointsAdmin(ImportExportModelAdmin):
     resource_class = QualPointsResource
+    form = QualPointsForm
     list_display = ('debater_name', 'season', 'points')
     list_filter = ('debater__first_name', 'debater__last_name', 'season')
     search_fields = ('debater__first_name', 'debater__last_name')
@@ -156,12 +161,13 @@ class QualPointsAdmin(ImportExportModelAdmin):
     
     debater_name.admin_order_field = 'debater__first_name'
     debater_name.short_description = 'Debater Name' 
-
-
-
 class QUALAdmin(ImportExportModelAdmin):
     resource_class = QUALResource
+    form = QUALForm
     list_display = ('debater_name', 'season', 'place', 'id')
+    list_filter = ('debater__first_name', 'debater__last_name', 'season')
+    search_fields = ('debater__first_name', 'debater__last_name', 'id')
+    ordering = ('debater__first_name', 'debater__last_name')
     list_filter = ('debater__first_name', 'debater__last_name', 'season')
     search_fields = ('debater__first_name', 'debater__last_name', 'id')
     ordering = ('debater__first_name', 'debater__last_name') 
