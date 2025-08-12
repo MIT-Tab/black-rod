@@ -2,16 +2,21 @@ from dal import autocomplete
 
 from django import forms
 from django.forms import formset_factory
+from django.conf import settings
 
 from django.core.validators import URLValidator
 from django.core.exceptions import ValidationError
 
-from core.models.debater import Debater
+from core.models.debater import Debater, QualPoints, Reaff
 from core.models.school import School
 from core.models.tournament import Tournament
 from core.models.team import Team
 from core.models.video import Video
 from .models import TOTYReaff, Team
+from core.models.standings.soty import SOTY
+from core.models.standings.noty import NOTY
+from core.models.standings.coty import COTY
+from core.models.standings.qual import QUAL
 
 from core.models.results.team import TeamResult
 from core.models.results.speaker import SpeakerResult
@@ -105,6 +110,11 @@ class TournamentForm(forms.ModelForm):
     host = forms.ModelChoiceField(
         queryset=School.objects.all(),
         widget=autocomplete.ModelSelect2(url='core:school_autocomplete')
+    )
+    
+    season = forms.ChoiceField(
+        choices=settings.SEASONS,
+        widget=forms.Select()
     )
 
     class Meta:
@@ -253,8 +263,116 @@ class TOTYReaffForm(forms.ModelForm):
                              .order_by('debaters__school__name', 'debaters__first_name', 'debaters__last_name'),
         label="New Team"
     )
+    
+    season = forms.ChoiceField(
+        choices=settings.SEASONS,
+        widget=forms.Select()
+    )
 
     class Meta:
         model = TOTYReaff
+        fields = '__all__'
+
+
+class QualPointsForm(forms.ModelForm):
+    debater = forms.ModelChoiceField(
+        queryset=Debater.objects.all(),
+        widget=autocomplete.ModelSelect2(url='core:debater_autocomplete')
+    )
+    
+    season = forms.ChoiceField(
+        choices=settings.SEASONS,
+        widget=forms.Select()
+    )
+
+    class Meta:
+        model = QualPoints
+        fields = '__all__'
+
+
+class ReaffForm(forms.ModelForm):
+    old_debater = forms.ModelChoiceField(
+        queryset=Debater.objects.all(),
+        widget=autocomplete.ModelSelect2(url='core:debater_autocomplete'),
+        label="Old Debater"
+    )
+    
+    new_debater = forms.ModelChoiceField(
+        queryset=Debater.objects.all(),
+        widget=autocomplete.ModelSelect2(url='core:debater_autocomplete'),
+        label="New Debater"
+    )
+    
+    season = forms.ChoiceField(
+        choices=settings.SEASONS,
+        widget=forms.Select()
+    )
+
+    class Meta:
+        model = Reaff
+        fields = '__all__'
+
+
+class SOTYForm(forms.ModelForm):
+    debater = forms.ModelChoiceField(
+        queryset=Debater.objects.all(),
+        widget=autocomplete.ModelSelect2(url='core:debater_autocomplete')
+    )
+    
+    season = forms.ChoiceField(
+        choices=settings.SEASONS,
+        widget=forms.Select()
+    )
+
+    class Meta:
+        model = SOTY
+        fields = '__all__'
+
+
+class NOTYForm(forms.ModelForm):
+    debater = forms.ModelChoiceField(
+        queryset=Debater.objects.all(),
+        widget=autocomplete.ModelSelect2(url='core:debater_autocomplete')
+    )
+    
+    season = forms.ChoiceField(
+        choices=settings.SEASONS,
+        widget=forms.Select()
+    )
+
+    class Meta:
+        model = NOTY
+        fields = '__all__'
+
+
+class COTYForm(forms.ModelForm):
+    school = forms.ModelChoiceField(
+        queryset=School.objects.all(),
+        widget=autocomplete.ModelSelect2(url='core:school_autocomplete')
+    )
+    
+    season = forms.ChoiceField(
+        choices=settings.SEASONS,
+        widget=forms.Select()
+    )
+
+    class Meta:
+        model = COTY
+        fields = '__all__'
+
+
+class QUALForm(forms.ModelForm):
+    debater = forms.ModelChoiceField(
+        queryset=Debater.objects.all(),
+        widget=autocomplete.ModelSelect2(url='core:debater_autocomplete')
+    )
+    
+    season = forms.ChoiceField(
+        choices=settings.SEASONS,
+        widget=forms.Select()
+    )
+
+    class Meta:
+        model = QUAL
         fields = '__all__'
 

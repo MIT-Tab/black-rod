@@ -8,9 +8,6 @@ from core.models.tournament import Tournament
 
 
 class TOTY(AbstractStanding):
-    season = models.CharField(choices=settings.SEASONS,
-                              default=settings.DEFAULT_SEASON,
-                              max_length=16)
 
     team = models.ForeignKey(Team,
                              on_delete=models.CASCADE,
@@ -54,9 +51,7 @@ class TOTY(AbstractStanding):
         ordering = ('place',)
 
 class TOTYReaff(models.Model):
-    season = models.CharField(choices=settings.SEASONS,
-                              default=settings.DEFAULT_SEASON,
-                              max_length=16)
+    season = models.CharField(max_length=16)
 
     old_team = models.ForeignKey(Team,
                              on_delete=models.CASCADE,
@@ -66,5 +61,10 @@ class TOTYReaff(models.Model):
                              on_delete=models.CASCADE,
                              related_name='toty_reaff_new')
     reaff_date = models.DateField()
+    
+    def __save__(self, *args, **kwargs):
+        if not self.season:
+            self.season = settings.CURRENT_SEASON
+        super().save(*args, **kwargs)
 
     

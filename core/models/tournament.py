@@ -28,9 +28,7 @@ class Tournament(models.Model):
                              blank=True,
                              null=True)
 
-    season = models.CharField(choices=settings.SEASONS,
-                              default=settings.DEFAULT_SEASON,
-                              max_length=16)
+    season = models.CharField(max_length=16)
 
     num_teams = models.IntegerField(null=False,
                                     verbose_name='Teams',
@@ -236,6 +234,10 @@ class Tournament(models.Model):
                                     default=POINTS,
                                     verbose_name='Tournament Type')
 
+    def __save__(self, *args, **kwargs):
+        if not self.season:
+            self.season = settings.CURRENT_SEASON
+        super().save(*args, **kwargs)
 
     def get_qualled(self, place):
         if self.qual_bar < 1:
@@ -273,7 +275,9 @@ class Tournament(models.Model):
 
         return speaker_points_for_size(self.num_teams,
                                        place)
-
+    
+    def get_season_display(self):
+        return f"{self.season}-{str(int(self.season)+1)[2:]}"
 
     def get_noty_points(self, place):
         if not self.noty:
