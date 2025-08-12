@@ -1,11 +1,14 @@
 from django.views.generic import TemplateView
 from django.contrib.auth.mixins import UserPassesTestMixin
+from django.http import JsonResponse
 import os
 import requests
 import re
 from bs4 import BeautifulSoup
 
-from core.utils.generics import CustomMixin
+from core.models import Team, Debater, TOTY, NOTY, SOTY
+from core.utils.rankings import update_toty, update_soty, update_noty, redo_rankings
+from apda.settings.season_settings import SEASONS
 
 
 class AdminToolsView(UserPassesTestMixin, TemplateView):
@@ -71,3 +74,58 @@ class MitTabDashboardView(UserPassesTestMixin, TemplateView):
         context['nu_tab_url'] = os.environ.get('NU_TAB_URL', 'https://nu-tab.com')
         
         return context
+
+
+class RankingsRecomputeView(UserPassesTestMixin, TemplateView):
+    template_name = 'admin/rankings_recompute.html'
+    
+    def test_func(self):
+        return self.request.user.is_superuser
+    
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['seasons'] = SEASONS
+        context['ranking_types'] = [
+            ('toty', 'TOTY'),
+            ('soty', 'SOTY'),
+            ('noty', 'NOTY'),
+        ]
+        return context
+    
+    def post(self, request, *args, **kwargs):
+        season = request.POST.get('season')
+        ranking_type = request.POST.get('ranking_type')
+        
+        if not season or not ranking_type:
+            return JsonResponse({'success': False, 'error': 'Season and ranking type are required'})
+        
+        try:
+            ranking_funcs = {
+                'toty': lambda: self._update_toty_rankings(season),
+                'soty': lambda: self._update_soty_rankings(season), 
+                'noty': lambda: self._update_noty_rankings(season)
+            }
+            
+            if ranking_type in ranking_funcs:
+                ranking_funcs[ranking_type]()
+                return JsonResponse({
+                    'success': True, 
+                    'message': f'Successfully recomputed {ranking_type.upper()} rankings for season {season}'
+                })
+            
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': str(e)})
+    
+    def _update_toty_rankings(self, season):
+        for team in Team.objects.all():
+            update_toty(team, season=season)
+        redo_rankings(TOTY.objects.filter(season=season), season=season, cache_type='toty')
+    
+    def _update_soty_rankings(self, season):
+        for debater in Debater.objects.all():
+            update_soty(debater, season=season)
+        redo_rankings(SOTY.objects.filter(season=season), season=season, cache_type='soty')
+    
+    def _update_noty_rankings(self, season):
+        for debater in Debater.objects.all():
+            update_noty(debater, season=season)

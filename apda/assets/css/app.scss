@@ -104,4 +104,21 @@ $theme-colors: (
     }
 }
 
+.rankings-card {
+    border-radius: 8px;
+    
+    .rankings-warning {
+        border-left: 4px solid #ffc107;
+    }
+    
+    .form-control:focus {
+        border-color: #731DDD;
+        box-shadow: 0 0 0 0.2rem rgba(115, 29, 221, 0.25);
+    }
+    
+    .btn:hover:not(:disabled) {
+        transform: translateY(-1px);
+    }
+}
+
 @import "node_modules/bootstrap/scss/bootstrap";

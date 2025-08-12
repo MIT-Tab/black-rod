@@ -155,4 +155,7 @@ urlpatterns = [
      path('core/mittab-dashboard/',
          admin_views.MitTabDashboardView.as_view(),
          name='mittab_dashboard'),
+     path('core/rankings-recompute/',
+         admin_views.RankingsRecomputeView.as_view(),
+         name='rankings_recompute'),
 ]
