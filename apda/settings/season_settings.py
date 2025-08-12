@@ -6,7 +6,7 @@ if os.environ.get("ENV") == "development":
     DEFAULT_SEASON = '2019'
     CURRENT_SEASON = '2019'
 elif os.environ.get("ENV") == "production":
-    latest = 2026
+    latest = 2025
     DEFAULT_SEASON = '2024'
     CURRENT_SEASON = '2024'
     

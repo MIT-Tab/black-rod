@@ -42,6 +42,9 @@ backup.sql
 
 # deploy script
 deploy.sh
+bin/gunicorn_start
 
 # static_root
+
 apda/static_root/
+
