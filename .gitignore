@@ -45,4 +45,6 @@ deploy.sh
 bin/gunicorn_start
 
 # static_root
-apda/static_root/*
+
+apda/static_root/
+
