@@ -139,8 +139,6 @@ class COTYAdmin(ImportExportModelAdmin):
     list_filter = ('season', 'place')
     search_fields = ('school__name', 'season')
     ordering = ('school__name', 'season')
-    search_fields = ('school__name', 'season')
-    ordering = ('school__name', 'season')
 
     def school_name(self, obj):
         return obj.school.name
@@ -165,9 +163,6 @@ class QUALAdmin(ImportExportModelAdmin):
     resource_class = QUALResource
     form = QUALForm
     list_display = ('debater_name', 'season', 'place', 'id')
-    list_filter = ('debater__first_name', 'debater__last_name', 'season')
-    search_fields = ('debater__first_name', 'debater__last_name', 'id')
-    ordering = ('debater__first_name', 'debater__last_name')
     list_filter = ('debater__first_name', 'debater__last_name', 'season')
     search_fields = ('debater__first_name', 'debater__last_name', 'id')
     ordering = ('debater__first_name', 'debater__last_name') 
