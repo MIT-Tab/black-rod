@@ -87,3 +87,12 @@ class PlaceColumn(tables.Column):
 class PointsColumn(tables.Column):
     def render(self, record):
         return '%s' % (number(record.points),)
+
+class SeasonColumn(tables.Column):
+    def render(self, record):
+        if hasattr(record, 'get_season_display'):
+            return record.get_season_display()
+        elif hasattr(record, 'tournament') and hasattr(record.tournament, 'get_season_display'):
+            return record.tournament.get_season_display()
+        else:
+            return getattr(record, 'season', 'Unknown')

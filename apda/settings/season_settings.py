@@ -1,6 +1,6 @@
 import os
 
-oldest = 2005
+oldest = 2004
 if os.environ.get("ENV") == "development":
     latest = 2020
     DEFAULT_SEASON = '2019'

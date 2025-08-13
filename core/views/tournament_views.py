@@ -11,7 +11,7 @@ from django.views.generic import TemplateView
 
 from django.http import QueryDict
 
-from django_filters import FilterSet
+from django_filters import FilterSet, ChoiceFilter
 
 from haystack.query import SearchQuerySet
 
@@ -28,8 +28,10 @@ from core.utils.generics import (
     CustomCreateView,
     CustomUpdateView,
     CustomDetailView,
-    CustomDeleteView
+    CustomDeleteView,
+    SeasonColumn
 )
+
 from core.models.tournament import Tournament
 from core.models.debater import Debater
 from core.models.school import School
@@ -94,12 +96,18 @@ class TournamentFilter(FilterSet):
 
         super().__init__(data, *args, **kwargs)
 
+    # Custom season filter using dropdown choices from settings.SEASONS
+    season = ChoiceFilter(
+        choices=settings.SEASONS,
+        empty_label="Any Season",
+        label="Season"
+    )
+
     class Meta:
         model = Tournament
         fields = {
             'id': ['exact'],
             'name': ['icontains'],
-            'season': ['exact'],
             'qual_type': ['exact'],
         }
 
@@ -108,13 +116,19 @@ class TournamentTable(CustomTable):
     id = Column(linkify=True)
 
     name = Column(linkify=True)
+    
+    season_display = SeasonColumn(
+        verbose_name='Season',
+        accessor='season',
+        order_by='season'
+    )
 
     class Meta:
         model = Tournament
         fields = ('id',
                   'name',
                   'date',
-                  'season',
+                  'season_display',
                   'num_teams',
                   'num_novice_debaters')
 

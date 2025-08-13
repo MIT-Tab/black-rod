@@ -9,7 +9,7 @@ from django.shortcuts import reverse, redirect
 
 from django.conf import settings
 
-from django_filters import FilterSet
+from django_filters import FilterSet, ChoiceFilter
 
 from haystack.query import SearchQuerySet
 
@@ -23,7 +23,8 @@ from core.utils.generics import (
     CustomCreateView,
     CustomUpdateView,
     CustomDetailView,
-    CustomDeleteView
+    CustomDeleteView,
+    SeasonColumn
 )
 from core.utils.filter import TagFilter
 
@@ -40,25 +41,34 @@ class VideoFilter(FilterSet):
                          'core:tag_autocomplete_no_create'
                      )
     )
+    tournament__season = ChoiceFilter(
+        choices=settings.SEASONS,
+        empty_label="Any Season",
+        label="Season"
+    )
 
     class Meta:
         model = Video
         fields = {
             'id': ['exact'],
             'tournament__name': ['icontains'],
-            'tournament__season': ['exact'],
             'round': ['exact'],
         }
 
 
 class VideoTable(CustomTable):
     id = Column(linkify=True)
+    tournament_season = SeasonColumn(
+        verbose_name='Season',
+        accessor='tournament.season',
+        order_by='tournament.season'
+    )
 
     class Meta:
         model = Video
         fields = ('id',
                   'tournament',
-                  'tournament.season',
+                  'tournament_season',
                   'round',
                   'pm',
                   'mg',
