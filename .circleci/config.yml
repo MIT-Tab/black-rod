@@ -27,8 +27,4 @@ workflows:
   version: 2
   pr_checks:
     jobs:
-      - lint_and_compile:
-          filters:
-            branches:
-              ignore:
-                - main
+      - lint_and_compile

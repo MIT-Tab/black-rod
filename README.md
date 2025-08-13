@@ -38,7 +38,7 @@ npm install
 ```bash
 python manage.py -d makemigrations
 python manage.py -d migrate
-python3 manage.py -d loaddata coty debaters noty qual_points qual schools soty speaker_results team_results teams toty tournaments users
+python3 manage.py -d loaddata all_data
 ```
 
 ##### Create an admin user
