@@ -1,5 +1,5 @@
 
-Recommend setting up on Linux, macOS, or WSL. Windows can be problematic. Below assumes some basic installs (python, pip, venv, node, npm)
+Recommend setting up on Linux, macOS, or WSL. Windows can be problematic. Below assumes some basic installs (python, pip, venv, node, npm, pyenv)
 
 ##### Clone the repository
 ```bash
@@ -32,6 +32,7 @@ pip install -r requirements.txt
 ##### Set up Webpack assets
 ```bash
 npm install
+npm run build
 ```
 
 ##### Load test data (Username: `tab`, Password: `password`)

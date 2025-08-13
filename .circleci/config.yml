@@ -9,7 +9,7 @@ jobs:
       - run: python -m venv venv
       - run: |
           . venv/bin/activate
-          pip install --upgrade pip setuptools wheel
+          pip install --upgrade pip setuptools wheel -c constraints.txt
           pip install -r requirements.txt -c constraints.txt
           pip install pylint
       - run:
