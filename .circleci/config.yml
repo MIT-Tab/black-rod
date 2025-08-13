@@ -1,0 +1,34 @@
+version: 2.1
+
+jobs:
+  lint_and_compile:
+    docker:
+      - image: cimg/python:3.8
+    steps:
+      - checkout
+      - run: python -m venv venv
+      - run: |
+          . venv/bin/activate
+          pip install --upgrade pip setuptools wheel
+          pip install -r requirements.txt -c constraints.txt
+          pip install pylint
+      - run:
+          name: Byte-compile Python files
+          command: |
+            . venv/bin/activate
+            python -m py_compile $(find apda apdaonline core -name "*.py")
+      - run:
+          name: Pylint
+          command: |
+            . venv/bin/activate
+            pylint apda apdaonline core
+
+workflows:
+  version: 2
+  pr_checks:
+    jobs:
+      - lint_and_compile:
+          filters:
+            branches:
+              ignore:
+                - main
