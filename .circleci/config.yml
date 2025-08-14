@@ -22,6 +22,11 @@ jobs:
           command: |
             . venv/bin/activate
             pylint apda apdaonline core
+      - run:
+          name: Lint HTML
+          command: |
+            . venv/bin/activate
+            djlint .
 
 workflows:
   version: 2
