@@ -1,7 +1,6 @@
 from django.conf import settings
 
-from core.models import TOTY, NOTY, COTY, SOTY
-
+from core.models import COTY, SOTY, TOTY
 from core.utils.rankings import *
 
 for season, season_display in settings.SEASONS:

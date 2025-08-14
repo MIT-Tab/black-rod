@@ -6,13 +6,30 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('core', '0029_auto_20200824_2212'),
+        ("core", "0029_auto_20200824_2212"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='tournament',
-            name='qual_type',
-            field=models.IntegerField(choices=[(0, 'Regular (Points)'), (1, 'Brandeis IV'), (2, 'Yale IV'), (3, 'NorthAms'), (4, 'Expansion'), (5, 'Worlds'), (6, 'NAUDC'), (7, 'ProAms'), (8, 'Nationals'), (9, 'Novice'), (10, 'Gender Minority'), (11, 'Online')], default=0, verbose_name='Tournament Type'),
+            model_name="tournament",
+            name="qual_type",
+            field=models.IntegerField(
+                choices=[
+                    (0, "Regular (Points)"),
+                    (1, "Brandeis IV"),
+                    (2, "Yale IV"),
+                    (3, "NorthAms"),
+                    (4, "Expansion"),
+                    (5, "Worlds"),
+                    (6, "NAUDC"),
+                    (7, "ProAms"),
+                    (8, "Nationals"),
+                    (9, "Novice"),
+                    (10, "Gender Minority"),
+                    (11, "Online"),
+                ],
+                default=0,
+                verbose_name="Tournament Type",
+            ),
         ),
     ]

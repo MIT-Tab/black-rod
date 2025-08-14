@@ -1,33 +1,28 @@
-from django.urls import reverse_lazy
-from django.shortcuts import reverse, redirect
-
+from dal import autocomplete
 from django.conf import settings
-
+from django.shortcuts import redirect, reverse
+from django.urls import reverse_lazy
 from django_filters import FilterSet
-
 from django_tables2 import Column
 
-from dal import autocomplete
-
+from core.models.school import School
 from core.utils.generics import (
+    CustomCreateView,
+    CustomDeleteView,
+    CustomDetailView,
     CustomListView,
     CustomTable,
-    CustomCreateView,
     CustomUpdateView,
-    CustomDetailView,
-    CustomDeleteView
 )
 from core.utils.rankings import get_relevant_debaters
-from core.models.school import School
-from core.models.debater import QualPoints
 
 
 class SchoolFilter(FilterSet):
     class Meta:
         model = School
         fields = {
-            'id': ['exact'],
-            'name': ['icontains'],
+            "id": ["exact"],
+            "name": ["icontains"],
         }
 
 
@@ -35,75 +30,75 @@ class SchoolTable(CustomTable):
     id = Column(linkify=True)
     name = Column(linkify=True)
 
-    included_in_oty = Column(verbose_name='APDA Member?')
+    included_in_oty = Column(verbose_name="APDA Member?")
 
     class Meta:
         model = School
-        fields = ('id', 'name', 'included_in_oty')
+        fields = ("id", "name", "included_in_oty")
 
 
 class SchoolListView(CustomListView):
-    public_view = True    
+    public_view = True
     model = School
     table_class = SchoolTable
-    template_name = 'schools/list.html'
+    template_name = "schools/list.html"
 
     filterset_class = SchoolFilter
 
     buttons = [
         {
-            'name': 'Create',
-            'href': reverse_lazy('core:school_create'),
-            'perm': 'core.add_school',
-            'class': 'btn-success'
+            "name": "Create",
+            "href": reverse_lazy("core:school_create"),
+            "perm": "core.add_school",
+            "class": "btn-success",
         }
     ]
 
 
 class SchoolDetailView(CustomDetailView):
-    public_view = True    
+    public_view = True
     model = School
-    template_name = 'schools/detail.html'
+    template_name = "schools/detail.html"
 
     buttons = [
         {
-            'name': 'Delete',
-            'href': 'core:school_delete',
-            'perm': 'core.remove_school',
-            'class': 'btn-danger',
-            'include_pk': True
+            "name": "Delete",
+            "href": "core:school_delete",
+            "perm": "core.remove_school",
+            "class": "btn-danger",
+            "include_pk": True,
         },
         {
-            'name': 'Edit',
-            'href': 'core:school_update',
-            'perm': 'core.change_school',
-            'class': 'btn-info',
-            'include_pk': True
+            "name": "Edit",
+            "href": "core:school_update",
+            "perm": "core.change_school",
+            "class": "btn-info",
+            "include_pk": True,
         },
     ]
 
     def get(self, request, *args, **kwargs):
-        season = self.request.GET.get('season', '')
-        if season == '':
+        season = self.request.GET.get("season", "")
+        if season == "":
             return redirect(
-                reverse('core:school_detail',
-                        kwargs={'pk': self.get_object().id}) + '?season=%s' % (settings.CURRENT_SEASON,))
+                reverse("core:school_detail", kwargs={"pk": self.get_object().id})
+                + f"?season={settings.CURRENT_SEASON}"
+            )
         return super().get(request, *args, **kwargs)
 
     def get_context_data(self, *args, **kwargs):
         context = super().get_context_data(*args, **kwargs)
 
-        context['cotys'] = self.object.coty.order_by(
-            '-season'
+        context["cotys"] = self.object.coty.order_by("-season")
+
+        context["debaters"] = get_relevant_debaters(
+            self.object, self.request.GET.get("season")
         )
 
-        context['debaters'] = get_relevant_debaters(self.object,
-                                                    self.request.GET.get('season'))
+        context["seasons"] = settings.SEASONS
+        context["current_season"] = self.request.GET.get("season")
 
-        context['seasons'] = settings.SEASONS
-        context['current_season'] = self.request.GET.get('season')
-
-        context['tournaments'] = self.object.hosted_tournaments.order_by('-date')
+        context["tournaments"] = self.object.hosted_tournaments.order_by("-date")
 
         return context
 
@@ -111,17 +106,15 @@ class SchoolDetailView(CustomDetailView):
 class SchoolUpdateView(CustomUpdateView):
     model = School
 
-    fields = ['name', 'included_in_oty']
-    template_name = 'schools/update.html'
+    fields = ["name", "included_in_oty"]
+    template_name = "schools/update.html"
 
     def get_context_data(self, *args, **kwargs):
         context = super().get_context_data(*args, **kwargs)
 
-        context['cotys'] = self.object.coty.order_by(
-            '-season'
-        )
+        context["cotys"] = self.object.coty.order_by("-season")
 
-        context['tournaments'] = self.object.hosted_tournaments.order_by('-date')        
+        context["tournaments"] = self.object.hosted_tournaments.order_by("-date")
 
         return context
 
@@ -129,22 +122,21 @@ class SchoolUpdateView(CustomUpdateView):
 class SchoolCreateView(CustomCreateView):
     model = School
 
-    fields = ['name', 'included_in_oty']
-    template_name = 'schools/create.html'
+    fields = ["name", "included_in_oty"]
+    template_name = "schools/create.html"
 
 
 class SchoolDeleteView(CustomDeleteView):
     model = School
-    success_url = reverse_lazy('core:school_list')
+    success_url = reverse_lazy("core:school_list")
 
-    template_name = 'schools/delete.html'
+    template_name = "schools/delete.html"
 
 
 class SchoolAutocomplete(autocomplete.Select2QuerySetView):
     def get_result_label(self, record):
-        return '<%s> %s' % (record.id,
-                            record.name)
-    
+        return f"<{record.id}> {record.name}"
+
     def get_queryset(self):
         qs = School.objects.all()
 

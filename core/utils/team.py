@@ -2,14 +2,12 @@ from core.models.team import Team
 
 
 def get_or_create_team_for_debaters(debater_one, debater_two):
-    print (debater_one)
-    print (debater_two)
+    print(debater_one)
+    print(debater_two)
 
-    team = Team.objects.filter(
-        debaters=debater_one
-    ).filter(
-        debaters=debater_two
-    ).first()
+    team = (
+        Team.objects.filter(debaters=debater_one).filter(debaters=debater_two).first()
+    )
 
     if team:
         return team

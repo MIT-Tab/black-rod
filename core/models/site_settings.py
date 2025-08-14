@@ -1,5 +1,6 @@
 from django.db import models
 
+
 class SiteSetting(models.Model):
     key = models.CharField(max_length=255, unique=True)
     value = models.CharField(max_length=255)
@@ -14,5 +15,5 @@ class SiteSetting(models.Model):
 
     @classmethod
     def set_setting(cls, key, value):
-        obj, created = cls.objects.update_or_create(key=key, defaults={"value": value})
+        obj, _ = cls.objects.update_or_create(key=key, defaults={"value": value})
         return obj

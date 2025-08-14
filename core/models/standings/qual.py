@@ -1,16 +1,12 @@
 from django.db import models
 
-from django.conf import settings
-
 from core.models.debater import Debater
-from core.models.tournament import Tournament
 from core.models.standings.base import AbstractStanding
+from core.models.tournament import Tournament
 
 
 class QUAL(AbstractStanding):
-    debater = models.ForeignKey(Debater,
-                                on_delete=models.CASCADE,
-                                related_name='quals')
+    debater = models.ForeignKey(Debater, on_delete=models.CASCADE, related_name="quals")
 
     POINTS = 0
     BRANDEIS = 1
@@ -24,26 +20,27 @@ class QUAL(AbstractStanding):
     NOVICE = 9
 
     QUAL_TYPES = (
-        (POINTS, 'Points'),
-        (BRANDEIS, 'Brandeis IV'),
-        (YALE, 'Yale IV'),
-        (NORTHAMS, 'NorthAms'),
-        (EXPANSION, 'Expansion'),
-        (WORLDS, 'Worlds'),
-        (NAUDC, 'NAUDC'),
-        (PROAMS, 'ProAms'),
-        (NATIONALS, 'Nationals'),
-        (NOVICE, 'Novice'),
+        (POINTS, "Points"),
+        (BRANDEIS, "Brandeis IV"),
+        (YALE, "Yale IV"),
+        (NORTHAMS, "NorthAms"),
+        (EXPANSION, "Expansion"),
+        (WORLDS, "Worlds"),
+        (NAUDC, "NAUDC"),
+        (PROAMS, "ProAms"),
+        (NATIONALS, "Nationals"),
+        (NOVICE, "Novice"),
     )
 
-    qual_type = models.IntegerField(choices=QUAL_TYPES,
-                                    default=POINTS)
+    qual_type = models.IntegerField(choices=QUAL_TYPES, default=POINTS)
 
-    tournament = models.ForeignKey(Tournament,
-                                   on_delete=models.CASCADE,
-                                   related_name='quals',
-                                   blank=True,
-                                   null=True)
+    tournament = models.ForeignKey(
+        Tournament,
+        on_delete=models.CASCADE,
+        related_name="quals",
+        blank=True,
+        null=True,
+    )
 
     class Meta:
-        unique_together = ('season', 'debater', 'qual_type')
+        unique_together = ("season", "debater", "qual_type")

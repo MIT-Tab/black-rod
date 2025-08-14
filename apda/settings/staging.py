@@ -1,3 +1,7 @@
+# pylint: disable=unused-wildcard-import,wildcard-import,unused-import
+import sentry_sdk
+from sentry_sdk.integrations.django import DjangoIntegration
+
 from .base import *
 
 DEBUG = False
@@ -22,8 +26,7 @@ CACHES = {
     }
 }
 
-import sentry_sdk
-from sentry_sdk.integrations.django import DjangoIntegration
+
 
 sentry_sdk.init(
     dsn="https://6c6eb92f6b7248a9a37e4b255eab4962@sentry.io/1811674",

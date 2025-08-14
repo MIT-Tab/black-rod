@@ -6,13 +6,13 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('core', '0038_speakerresult_tie'),
+        ("core", "0038_speakerresult_tie"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='teamresult',
-            name='ghost_points',
+            model_name="teamresult",
+            name="ghost_points",
             field=models.BooleanField(default=False),
         ),
     ]

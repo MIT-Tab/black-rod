@@ -1,3 +1,4 @@
+# pylint: disable=unused-wildcard-import,wildcard-import,unused-import
 """
 Django settings for apda project.
 
@@ -11,9 +12,10 @@ https://docs.djangoproject.com/en/1.11/ref/settings/
 """
 
 import os
+
 from dotenv import load_dotenv
+
 load_dotenv(os.environ.get('DOT_ENV_FILE', '.env'))
-from .season_settings import *
 
 # Build paths inside the project like this: os.path.join(BASE_DIR, ...)
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -41,7 +43,7 @@ BASE_URL = 'http://50.116.54.146'
 INSTALLED_APPS = [
     'dal',
     'dal_select2',
-    
+
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -66,7 +68,7 @@ INSTALLED_APPS = [
 
     'allauth',
     'allauth.account',
-    'allauth.socialaccount',    
+    'allauth.socialaccount',
     'apdaonline',
 ]
 
@@ -200,7 +202,9 @@ WEBPACK_LOADER = {
     'DEFAULT': {
         'CACHE': not DEBUG,
         'BUNDLE_DIR_NAME': 'webpack_bundles/', # must end with slash
-        'STATS_FILE': os.environ.get('WEBPACK_STATS_FILE', os.path.join(BASE_DIR, '../webpack-stats.json')),
+        'STATS_FILE': os.environ.get('WEBPACK_STATS_FILE',
+                                     os.path.join(BASE_DIR,
+                                    '../webpack-stats.json')),
         'POLL_INTERVAL': 0.1,
         'TIMEOUT': None,
         'IGNORE': [r'.+\.hot-update.js', r'.+\.map']
@@ -257,7 +261,7 @@ NAV_MENU_LEFT = [
                 'name': 'Teams',
                 'url': 'core:team_list',
                 'root': True
-            },            
+            },
         ]
     },
     {
@@ -337,3 +341,23 @@ SUMMERNOTE_CONFIG = {
         'width': '100%',
     }
 }
+
+
+# Season Settings
+OLDEST = 2004
+LATEST = 2025
+DEFAULT_SEASON = '2024'
+CURRENT_SEASON = '2024'
+
+
+SEASONS = tuple(
+    (str(year), f"{year}-{str(year+1)[2:]}")
+    for year in range(LATEST, OLDEST-1, -1)
+    )
+
+ONLINE_SEASONS = (
+    '2020',
+    '2021',
+    )
+
+QUAL_BAR = 10.5

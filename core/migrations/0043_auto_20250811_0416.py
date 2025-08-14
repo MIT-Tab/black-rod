@@ -6,58 +6,58 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('core', '0042_auto_20250728_0212_squashed_0043_auto_20250810_2030'),
+        ("core", "0042_auto_20250728_0212_squashed_0043_auto_20250810_2030"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='coty',
-            name='season',
+            model_name="coty",
+            name="season",
             field=models.CharField(max_length=16),
         ),
         migrations.AlterField(
-            model_name='noty',
-            name='season',
+            model_name="noty",
+            name="season",
             field=models.CharField(max_length=16),
         ),
         migrations.AlterField(
-            model_name='onlinequal',
-            name='season',
+            model_name="onlinequal",
+            name="season",
             field=models.CharField(max_length=16),
         ),
         migrations.AlterField(
-            model_name='qual',
-            name='season',
+            model_name="qual",
+            name="season",
             field=models.CharField(max_length=16),
         ),
         migrations.AlterField(
-            model_name='qualpoints',
-            name='season',
+            model_name="qualpoints",
+            name="season",
             field=models.CharField(max_length=16),
         ),
         migrations.AlterField(
-            model_name='reaff',
-            name='season',
+            model_name="reaff",
+            name="season",
             field=models.CharField(max_length=16),
         ),
         migrations.AlterField(
-            model_name='soty',
-            name='season',
+            model_name="soty",
+            name="season",
             field=models.CharField(max_length=16),
         ),
         migrations.AlterField(
-            model_name='toty',
-            name='season',
+            model_name="toty",
+            name="season",
             field=models.CharField(max_length=16),
         ),
         migrations.AlterField(
-            model_name='totyreaff',
-            name='season',
+            model_name="totyreaff",
+            name="season",
             field=models.CharField(max_length=16),
         ),
         migrations.AlterField(
-            model_name='tournament',
-            name='season',
+            model_name="tournament",
+            name="season",
             field=models.CharField(max_length=16),
         ),
     ]
