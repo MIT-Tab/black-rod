@@ -1,40 +1,51 @@
 {% extends "base/base.html" %}
-
 {% load tags humanize %}
-
 {% block content %}
     <div class="card ml-2 mr-2 mt-5 mb-5">
-	<div class="card-body">
-	    <h5 class="card-title">Schedule for {{ season_display }}
-		<ul class="nav nav-pills float-right">
-		    <li class="nav-item dropdown">
-			<a class="nav-link dropdown-toggle active float-right" data-toggle="dropdown" href="#" role="button" aria-haspopup="true" aria-expanded="false">{% for season in seasons %}{% if season.0 == current_season %}{{ season.1 }}{% endif %}{% endfor %}</a>
-			<div class="dropdown-menu">
-			    {% for season in seasons %}
-				<a class="dropdown-item {% if season.0 == current_season %}active{% endif %}" href="{{ request.path }}?season={{ season.0 }}">{{ season.1 }}</a>
-			    {% endfor %}
-			</div>
-		    </li>
-		</ul>
-	    </h5>
-	    {% for month in tournaments %}
-		<h6>{{ month.display }}</h6>
-		<table class="table table-bordered table-striped table-hover">
-		    {% for week in month.weeks %}
-			<tr>
-			    <td width="12%">{{ week.date|ordinal }} - {{ week.one_more|ordinal }}</td>
-			    {% for tournament in week.tournaments %}
-				<td width="22%"><a href="{{ tournament.get_absolute_url }}">{{ tournament.name }}</a></td>
-				{% if forloop.last %}
-				    {% for i in forloop.counter|range_filter:3 %}
-					<td width="22%"></td>
-				    {% endfor %}
-				{% endif %}
-			    {% endfor %}
-			</tr>
-		    {% endfor %}
-		</table>
-	    {% endfor %}
-	</div>
+        <div class="card-body">
+            <h5 class="card-title">
+                Schedule for {{ season_display }}
+                <ul class="nav nav-pills float-right">
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle active float-right"
+                           data-toggle="dropdown"
+                           href="#"
+                           role="button"
+                           aria-haspopup="true"
+                           aria-expanded="false">
+                            {% for season in seasons %}
+                                {% if season.0 == current_season %}{{ season.1 }}{% endif %}
+                            {% endfor %}
+                        </a>
+                        <div class="dropdown-menu">
+                            {% for season in seasons %}
+                                <a class="dropdown-item {% if season.0 == current_season %}active{% endif %}"
+                                   href="{{ request.path }}?season={{ season.0 }}">{{ season.1 }}</a>
+                            {% endfor %}
+                        </div>
+                    </li>
+                </ul>
+            </h5>
+            {% for month in tournaments %}
+                <h6>{{ month.display }}</h6>
+                <table class="table table-bordered table-striped table-hover">
+                    {% for week in month.weeks %}
+                        <tr>
+                            <td width="12%">{{ week.date|ordinal }} - {{ week.one_more|ordinal }}</td>
+                            {% for tournament in week.tournaments %}
+                                <td width="22%">
+                                    <a href="{{ tournament.get_absolute_url }}">{{ tournament.name }}</a>
+                                </td>
+                                {% if forloop.last %}
+                                    {% for i in forloop.counter|range_filter:3 %}
+                                        <td width="22%"></td>
+                                    {% endfor %}
+                                {% endif %}
+                            {% endfor %}
+                        </tr>
+                    {% endfor %}
+                </table>
+            {% endfor %}
+        </div>
     </div>
-{% endblock %}
+{% endblock content %}

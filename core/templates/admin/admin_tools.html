@@ -1,5 +1,4 @@
-{% extends 'base/base.html' %}
-
+{% extends "base/base.html" %}
 {% block content %}
     <div class="row mt-lg-5 ml-lg-2 mr-lg-2 mb-lg-5 m-1">
         <div class="col-lg-12">
@@ -7,7 +6,6 @@
                 <div class="card-body">
                     <h5 class="card-title">Admin Tools</h5>
                     <p class="card-text">Welcome to the APDA Admin Tools page. This is a central location for administrative functions.</p>
-                    
                     <div class="row">
                         <div class="col-md-6">
                             <h6>Quick Links</h6>
@@ -17,26 +15,31 @@
                                     <span class="text-muted ml-2">Manage database records</span>
                                 </li>
                                 <li class="list-group-item">
-                                    <a href="{% url 'core:tournament_dataentry' %}" class="btn btn-outline-success btn-sm">Enter Results</a>
+                                    <a href="{% url 'core:tournament_dataentry' %}"
+                                       class="btn btn-outline-success btn-sm">Enter Results</a>
                                     <span class="text-muted ml-2">Add tournament results</span>
                                 </li>
                                 <li class="list-group-item">
-                                    <a href="{% url 'core:mittab_dashboard' %}" class="btn btn-outline-danger btn-sm">Mit-Tab Dashboard</a>
+                                    <a href="{% url 'core:mittab_dashboard' %}"
+                                       class="btn btn-outline-danger btn-sm">Mit-Tab Dashboard</a>
                                     <span class="text-muted ml-2">View the Mit-Tab Dashboard</span>
                                 </li>
                                 <li class="list-group-item">
-                                    <a href="{% url 'core:rankings_recompute' %}" class="btn btn-outline-warning btn-sm">Rankings Recompute</a>
+                                    <a href="{% url 'core:rankings_recompute' %}"
+                                       class="btn btn-outline-warning btn-sm">Rankings Recompute</a>
                                     <span class="text-muted ml-2">Recompute TOTY, SOTY, or NOTY rankings</span>
                                 </li>
                             </ul>
                         </div>
-                        
                         <div class="col-md-6">
                             <h6>System Information</h6>
                             <div class="card">
                                 <div class="card-body">
-                                    <p><strong>Current User:</strong> {{ user.username }}</p>
-                                    <p><strong>User Type:</strong> 
+                                    <p>
+                                        <strong>Current User:</strong> {{ user.username }}
+                                    </p>
+                                    <p>
+                                        <strong>User Type:</strong>
                                         {% if user.is_superuser %}
                                             <span class="badge badge-danger">Superuser</span>
                                         {% else %}
@@ -51,4 +54,4 @@
             </div>
         </div>
     </div>
-{% endblock %}
+{% endblock content %}

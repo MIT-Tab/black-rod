@@ -1,42 +1,38 @@
-{% extends 'tournaments/data_entry.html' %}
-
+{% extends "tournaments/data_entry.html" %}
 {% load crispy_forms_tags %}
-
 {% block root_data_entry %}
     {{ wizard.form.media }}
     <div class="card" style="width: 100%;">
-	<div class="card-body">
-	    <h5 class="card-title pb-2">{{ title }} <div class="float-right">Step {{ wizard.steps.step1 }} of {{ wizard.steps.count }}</div></h5>
-	    <form action="" method="POST" novalidate>
-		{% csrf_token %}
-		{{ wizard.management_form }}
-		{% block data_entry_block %}
-		    {% if wizard.form.forms %}
-			{{ wizard.form.management_form }}
-			{% for form in wizard.form.forms %}
-			    {{ form|crispy }}
-			{% endfor %}
-		    {% else %}
-			{{ wizard.form|crispy }}
-		    {% endif %}
-		{% endblock %}
-		
-		<input type="submit" class="btn btn-primary float-right" value="Save and Continue"/>
-		{% if wizard.steps.prev %}
-		    <button name="wizard_goto_step"
-				  type="submit"
-				  class="btn btn-outline-secondary float-right mr-2"
-				  value="{{ wizard.steps.prev }}">
-			Prev
-		    </button>
-		    <button name="wizard_goto_step"
-				  type="submit"
-				  class="btn btn-outline float-right mr-2"
-				  value="{{ wizard.steps.first }}">
-			First
-		    </button>
-		{% endif %}
-	    </form>
-	</div>
+        <div class="card-body">
+            <h5 class="card-title pb-2">
+                {{ title }}
+                <div class="float-right">Step {{ wizard.steps.step1 }} of {{ wizard.steps.count }}</div>
+            </h5>
+            <form action="" method="POST" novalidate>
+                {% csrf_token %}
+                {{ wizard.management_form }}
+                {% block data_entry_block %}
+                    {% if wizard.form.forms %}
+                        {{ wizard.form.management_form }}
+                        {% for form in wizard.form.forms %}{{ form|crispy }}{% endfor %}
+                    {% else %}
+                        {{ wizard.form|crispy }}
+                    {% endif %}
+                {% endblock data_entry_block %}
+                <input type="submit"
+                       class="btn btn-primary float-right"
+                       value="Save and Continue" />
+                {% if wizard.steps.prev %}
+                    <button name="wizard_goto_step"
+                            type="submit"
+                            class="btn btn-outline-secondary float-right mr-2"
+                            value="{{ wizard.steps.prev }}">Prev</button>
+                    <button name="wizard_goto_step"
+                            type="submit"
+                            class="btn btn-outline float-right mr-2"
+                            value="{{ wizard.steps.first }}">First</button>
+                {% endif %}
+            </form>
+        </div>
     </div>
-{% endblock %}
+{% endblock root_data_entry %}

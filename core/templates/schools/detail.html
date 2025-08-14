@@ -1,120 +1,138 @@
-{% extends 'base/detail.html' %}
-
+{% extends "base/detail.html" %}
 {% load tags %}
-
-{% block title %}{{ object }}{% endblock %}
-
+{% block title %}
+    {{ object }}
+{% endblock title %}
 {% block detail_view %}
     <table class="table table-bordered">
-	<thead>
-	    <th>Field</th>
-	    <th>Value</th>
-	</thead>
-	<tbody>
-	    <tr>
-		<td>ID</td>
-		<td>{{ object.id }}</td>
-	    </tr>
-	    <tr>
-		<td>Name</td>
-		<td>{{ object.name }}</td>
-	    </tr>
-	    <tr>
-		<td>APDA member?</td>
-		<td>{{ object.included_in_oty|yesno:"Yes,No" }}</td>
-	    </tr>
-	</tbody>
+        <thead>
+            <th>Field</th>
+            <th>Value</th>
+        </thead>
+        <tbody>
+            <tr>
+                <td>ID</td>
+                <td>{{ object.id }}</td>
+            </tr>
+            <tr>
+                <td>Name</td>
+                <td>{{ object.name }}</td>
+            </tr>
+            <tr>
+                <td>APDA member?</td>
+                <td>{{ object.included_in_oty|yesno:"Yes,No" }}</td>
+            </tr>
+        </tbody>
     </table>
-{% endblock %}
-
+{% endblock detail_view %}
 {% block left_column %}
     {% if cotys|length > 0 %}
-	<div class="card mb-2">
-	    <div class="card-body">
-		<h5 class="card-title">COTY</h5>
-		<hr />
-		<table class="table table-bordered table-hover table-striped">
-		    <thead>
-			<th>Place</th>
-			<th>Season</th>
-			<th>Points</th>
-		    </thead>
-		    <tbody>
-			{% for coty in cotys %}
-			    <tr>
-				<td>{{ coty.place }}</td>
-				<td><a href="{% url 'core:index' %}?season={{ coty.season }}&default=coty">{{ coty.get_season_display }}</a></td>
-				<td>{{ coty.points|number }}</td>
-			    </tr>
-			{% endfor %}
-		    </tbody>
-		</table>
-	    </div>
-	</div>
+        <div class="card mb-2">
+            <div class="card-body">
+                <h5 class="card-title">COTY</h5>
+                <hr />
+                <table class="table table-bordered table-hover table-striped">
+                    <thead>
+                        <th>Place</th>
+                        <th>Season</th>
+                        <th>Points</th>
+                    </thead>
+                    <tbody>
+                        {% for coty in cotys %}
+                            <tr>
+                                <td>{{ coty.place }}</td>
+                                <td>
+                                    <a href="{% url 'core:index' %}?season={{ coty.season }}&default=coty">{{ coty.get_season_display }}</a>
+                                </td>
+                                <td>{{ coty.points|number }}</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
     {% endif %}
     <div class="card mb-2">
-	<div class="card-body">
-	    <h5 class="card-title">Hosted Tournaments</h5>
-	    <hr />
-	    <table class="table table-bordered table-hover table-striped">
-		<thead>
-		    <th>Name</th>
-		    <th>Date</th>
-		    <th>Season</th>
-		</thead>
-		<tbody>
-		    {{ object.host }}
-		    {% for tournament in tournaments %}
-			<tr>
-			    <td><a href="{{ tournament.get_absolute_url }}">{{ tournament.name }}</a></td>
-			    <td>{{ tournament.date|date:"M j" }}</td>
-			    <td>{{ tournament.get_season_display }}</td>
-			</tr>
-		    {% empty %}
-			<tr class="shaded">
-			    <td colspan="3"><center>This school has not hosted any tournaments!</center></td>
-			</tr>
-		    {% endfor %}
-		</tbody>
-	    </table>
-	</div>
+        <div class="card-body">
+            <h5 class="card-title">Hosted Tournaments</h5>
+            <hr />
+            <table class="table table-bordered table-hover table-striped">
+                <thead>
+                    <th>Name</th>
+                    <th>Date</th>
+                    <th>Season</th>
+                </thead>
+                <tbody>
+                    {{ object.host }}
+                    {% for tournament in tournaments %}
+                        <tr>
+                            <td>
+                                <a href="{{ tournament.get_absolute_url }}">{{ tournament.name }}</a>
+                            </td>
+                            <td>{{ tournament.date|date:"M j" }}</td>
+                            <td>{{ tournament.get_season_display }}</td>
+                        </tr>
+                    {% empty %}
+                        <tr class="shaded">
+                            <td colspan="3">
+                                <center>This school has not hosted any tournaments!</center>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
     </div>
-{% endblock %}
-
+{% endblock left_column %}
 {% block added_information_view %}
     <div class="card">
-	<div class="card-body">
-	    <h5 class="card-title pb-2">COTY Breakdown
-		<ul class="nav nav-pills float-right">
-		    <li class="nav-item dropdown">
-			<a class="nav-link dropdown-toggle active" data-toggle="dropdown" href="#" role="button" aria-haspopup="true" aria-expanded="false">{% for season in seasons %}{% if season.0 == current_season %}{{ season.1 }}{% endif %}{% endfor %}</a>
-			<div class="dropdown-menu">
-			    {% for season in seasons %}
-				<a class="dropdown-item {% if season.0 == current_season %}active{% endif %}" href="{{ request.path }}?season={{ season.0 }}">{{ season.1 }}</a>
-			    {% endfor %}
-			</div>
-		    </li>
-		</ul>
-	    </h5>
-	    <hr />
-	    <table class="table table-bordered table-hover table-striped">
-		<thead>
-			<th>ID</th>
-		    <th>Debater</th>
-		    <th>Points (Contribution)</th>
-		    <th>Auto-Quals</th>
-		</thead>
-		<tbody>
-		    {% for debater in debaters %}
-			<tr>
-				<td>{{ debater.debater.id }}</td>
-			    <td>{% if debater.qualled %}<b>{% endif %}<a href="{{ debater.debater.get_absolute_url }}?season={{ request.GET.season }}">{{ debater.debater.name }}</a>{% if debater.qualled %}*</b>{% endif %}</td>
-			    <td>{{ debater.points|number }} ({{ debater|qual_contribution:current_season|number }})</td>
-			    <td>{{ debater.debater|qual_display:current_season }}</td>
-			</tr>
-		    {% endfor %}
-		</tbody>
-	    </table>
-	</div>
+        <div class="card-body">
+            <h5 class="card-title pb-2">
+                COTY Breakdown
+                <ul class="nav nav-pills float-right">
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle active"
+                           data-toggle="dropdown"
+                           href="#"
+                           role="button"
+                           aria-haspopup="true"
+                           aria-expanded="false">
+                            {% for season in seasons %}
+                                {% if season.0 == current_season %}{{ season.1 }}{% endif %}
+                            {% endfor %}
+                        </a>
+                        <div class="dropdown-menu">
+                            {% for season in seasons %}
+                                <a class="dropdown-item {% if season.0 == current_season %}active{% endif %}"
+                                   href="{{ request.path }}?season={{ season.0 }}">{{ season.1 }}</a>
+                            {% endfor %}
+                        </div>
+                    </li>
+                </ul>
+            </h5>
+            <hr />
+            <table class="table table-bordered table-hover table-striped">
+                <thead>
+                    <th>ID</th>
+                    <th>Debater</th>
+                    <th>Points (Contribution)</th>
+                    <th>Auto-Quals</th>
+                </thead>
+                <tbody>
+                    {% for debater in debaters %}
+                        <tr>
+                            <td>{{ debater.debater.id }}</td>
+                            <td>
+                                {% if debater.qualled %}<b>{% endif %}
+                                    <a href="{{ debater.debater.get_absolute_url }}?season={{ request.GET.season }}">{{ debater.debater.name }}</a>
+                                    {% if debater.qualled %}*</b>{% endif %}
+                            </td>
+                            <td>{{ debater.points|number }} ({{ debater|qual_contribution:current_season|number }})</td>
+                            <td>{{ debater.debater|qual_display:current_season }}</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
     </div>
-{% endblock %}
+{% endblock added_information_view %}

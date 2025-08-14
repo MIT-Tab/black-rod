@@ -1,17 +1,21 @@
 {% for button in buttons %}
     {% if button.perm %}
-	{% if button.perm in perms %}
-	    {% if button.include_pk %}
-		<a href="{% url button.href object.id %}" class="btn btn-sm float-right mr-1 {{ button.class }}">{{ button.name }}</a>
-	    {% else %}
-		<a href="{{ button.href }}" class="btn btn-sm float-right mr-1 {{ button.class }}">{{ button.name }}</a>
-	    {% endif %}
-	{% endif %}
+        {% if button.perm in perms %}
+            {% if button.include_pk %}
+                <a href="{% url button.href object.id %}"
+                   class="btn btn-sm float-right mr-1 {{ button.class }}">{{ button.name }}</a>
+            {% else %}
+                <a href="{{ button.href }}"
+                   class="btn btn-sm float-right mr-1 {{ button.class }}">{{ button.name }}</a>
+            {% endif %}
+        {% endif %}
     {% else %}
-	{% if button.include_pk %}
-	    <a href="{% url button.href object.id %}" class="btn btn-sm float-right mr-1 {{ button.class }}">{{ button.name }}</a>
-	{% else %}
-	    <a href="{{ button.href }}" class="btn btn-sm float-right mr-1 {{ button.class }}">{{ button.name }}</a>
-	{% endif %}
+        {% if button.include_pk %}
+            <a href="{% url button.href object.id %}"
+               class="btn btn-sm float-right mr-1 {{ button.class }}">{{ button.name }}</a>
+        {% else %}
+            <a href="{{ button.href }}"
+               class="btn btn-sm float-right mr-1 {{ button.class }}">{{ button.name }}</a>
+        {% endif %}
     {% endif %}
 {% endfor %}

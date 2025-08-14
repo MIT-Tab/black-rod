@@ -1,88 +1,117 @@
-{% extends 'base/detail.html' %}
-
+{% extends "base/detail.html" %}
 {% load tags %}
-
-{% block title %}{{ object }}{% endblock %}
-
+{% block title %}
+    {{ object }}
+{% endblock title %}
 {% block detail_view %}
     <table class="table table-bordered">
-	<thead>
-	    <th>Field</th>
-	    <th>Value</th>
-	</thead>
-	<tbody>
-	    <tr>
-		<td>Tournament</td>
-		<td><a href="{{ object.tournament.get_absolute_url }}">{{ object.tournament.name }}</a> ({{ object.tournament.get_season_display }})</td>
-	    </tr>
-	    <tr>
-		<td>Round</td>
-		<td>{{ object.get_round_display }}</td>
-	    </tr>
-	    </tr>
-	    <tr>
-		<td>PM</td>
-		<td><a href="{{ object.pm.get_absolute_url }}">{{ object.pm.name }}</a></td>
-	    </tr>
-	    <tr>
-		<td>MG</td>
-		<td><a href="{{ object.mg.get_absolute_url }}">{{ object.mg.name }}</a></td>
-	    </tr>
-	    <tr>
-		<td>LO</td>
-		<td><a href="{{ object.lo.get_absolute_url }}">{{ object.lo.name }}</a></td>
-	    </tr>
-	    <tr>
-		<td>MO</td>
-		<td><a href="{{ object.mo.get_absolute_url }}">{{ object.mo.name }}</a></td>
-	    </tr>
-	    <tr>
-		<td>Link</td>
-		<td><a href="{{ object.link }}">Link</a></td>
-	    </tr>
-	    <tr>
-		<td>Password</td>
-		<td>{% if object.password != '' %}{{ object.password }}{% else %}No Password{% endif %}</td>
-	    </tr>
-	    <tr>
-		<td>Permissions</td>
-		<td>{{ object.get_permissions_display }}</td>
-	    </tr>
-	</tbody>
-    </table>
-{% endblock %}
-
+        <thead>
+            <th>Field</th>
+            <th>Value</th>
+        </thead>
+        <tbody>
+            <tr>
+                <td>Tournament</td>
+                <td>
+                    <a href="{{ object.tournament.get_absolute_url }}">{{ object.tournament.name }}</a> ({{ object.tournament.get_season_display }})
+                </td>
+            </tr>
+            <tr>
+                <td>Round</td>
+                <td>{{ object.get_round_display }}</td>
+            </tr>
+        <tr>
+            <td>PM</td>
+            <td>
+                <a href="{{ object.pm.get_absolute_url }}">{{ object.pm.name }}</a>
+            </td>
+        </tr>
+        <tr>
+            <td>MG</td>
+            <td>
+                <a href="{{ object.mg.get_absolute_url }}">{{ object.mg.name }}</a>
+            </td>
+        </tr>
+        <tr>
+            <td>LO</td>
+            <td>
+                <a href="{{ object.lo.get_absolute_url }}">{{ object.lo.name }}</a>
+            </td>
+        </tr>
+        <tr>
+            <td>MO</td>
+            <td>
+                <a href="{{ object.mo.get_absolute_url }}">{{ object.mo.name }}</a>
+            </td>
+        </tr>
+        <tr>
+            <td>Link</td>
+            <td>
+                <a href="{{ object.link }}">Link</a>
+            </td>
+        </tr>
+        <tr>
+            <td>Password</td>
+            <td>
+                {% if object.password != '' %}
+                    {{ object.password }}
+                {% else %}
+                    No Password
+                {% endif %}
+            </td>
+        </tr>
+        <tr>
+            <td>Permissions</td>
+            <td>{{ object.get_permissions_display }}</td>
+        </tr>
+    </tbody>
+</table>
+{% endblock detail_view %}
 {% block added_information_view %}
     <div class="card">
-	<div class="card-body">
-	    {% if embed %}
-		<div class="row">
-		    <div class="col-lg-8">
-			<iframe width="100%"
-				height=480"
-				src="{{ embed_link }}"
-				allow="autoplay; fullscreen"
-				allowfullscreen>
-			</iframe>
-		    </div>
-		    <div class="col-lg-4">
-			<h6>Case:</h6>
-			{% if object.case != '' %}{{ object.case|safe }}{% else %}There is no data in this field{% endif %}
-		    </div>
-		</div>
-		<hr />
-	    {% else %}
-		<h5 class="card-title pb-2">Video Descriptors</h5>
-		<h6>Case:</h6>
-		{% if object.case != '' %}{{ object.case|safe }}{% else %}There is no data in this field{% endif %}
-		<hr />
-	    {% endif %}
-	    
-	    <h6>Description:</h6>
-	    {% if object.description != '' %}{{ object.description|safe }}{% else %}There is no data in this field{% endif %}
-	    <hr />
-	    <h6>Tags</h6>
-	    {% for tag in object.tags.all %}<a href="{% url 'core:tag_detail' tag.name %}">{{ tag.name }}</a>{% if not forloop.last %}, {% endif %}{% endfor %}
-	</div>
+        <div class="card-body">
+            {% if embed %}
+                <div class="row">
+                    <div class="col-lg-8">
+                        <iframe width="100%"
+                            height=480"
+                            src="{{ embed_link }}"
+                            allow="autoplay; fullscreen"
+                            allowfullscreen>
+                        </iframe>
+                    </div>
+                    <div class="col-lg-4">
+                        <h6>Case:</h6>
+                        {% if object.case != '' %}
+                            {{ object.case|safe }}
+                        {% else %}
+                            There is no data in this field
+                        {% endif %}
+                    </div>
+                </div>
+                <hr />
+            {% else %}
+                <h5 class="card-title pb-2">Video Descriptors</h5>
+                <h6>Case:</h6>
+                {% if object.case != '' %}
+                    {{ object.case|safe }}
+                {% else %}
+                    There is no data in this field
+                {% endif %}
+                <hr />
+            {% endif %}
+            <h6>Description:</h6>
+            {% if object.description != '' %}
+                {{ object.description|safe }}
+            {% else %}
+                There is no data in this field
+            {% endif %}
+            <hr />
+            <h6>Tags</h6>
+            {% for tag in object.tags.all %}
+                <a href="{% url 'core:tag_detail' tag.name %}">{{ tag.name }}</a>
+                {% if not forloop.last %},{% endif %}
+            {% endfor %}
+        </div>
     </div>
-{% endblock %}
+{% endblock added_information_view %}

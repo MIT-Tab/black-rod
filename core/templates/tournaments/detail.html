@@ -1,52 +1,58 @@
-{% extends 'base/detail.html' %}
-
+{% extends "base/detail.html" %}
 {% load tags %}
-
-{% block title %}{{ object }}{% endblock %}
-
+{% block title %}
+    {{ object }}
+{% endblock title %}
 {% block extra_buttons %}
     {% if 'core.change_tournament' in perms %}
-	<a href="{% url 'core:tournament_dataentry' %}?tournament={{ object.id }}" class="btn btn-sm mr-1 btn-primary float-right">Enter Results</a>
-	<a href="{% url 'core:tournament_import' %}?tournament={{ object.id }}" class="btn btn-sm mr-1 btn-info float-right">Import Results</a>
+        <a href="{% url 'core:tournament_dataentry' %}?tournament={{ object.id }}"
+           class="btn btn-sm mr-1 btn-primary float-right">Enter Results</a>
+        <a href="{% url 'core:tournament_import' %}?tournament={{ object.id }}"
+           class="btn btn-sm mr-1 btn-info float-right">Import Results</a>
     {% endif %}
-{% endblock %}
-    
-
+{% endblock extra_buttons %}
 {% block detail_view %}
     <table class="table table-bordered">
-	<thead>
-	    <th>Field</th>
-	    <th>Value</th>
-	</thead>
-	<tbody>
-	    <tr>
-		<td>ID</td>
-		<td>{{ object.id }}</td>
-	    </tr>
-	    <tr>
-		<td>Name</td>
-		<td>{{ object.name }}</td>
-	    </tr>
-	    <tr>
-		<td>Host School</td>
-		<td>{% if object.host %}<a href="{{ object.host.get_absolute_url }}">{{ object.host.name }}</a>{% else %}Unlinked{% endif %}</td>
-	    </tr>
-	    <tr>
-		<td>Date</td>
-		<td>{{ object.date }}</td>
-	    <tr>
-		<td>Season</td>
-		<td>{{ object.get_season_display }}</td>
-	    </tr>
-	    <!--<tr>
+        <thead>
+            <th>Field</th>
+            <th>Value</th>
+        </thead>
+        <tbody>
+            <tr>
+                <td>ID</td>
+                <td>{{ object.id }}</td>
+            </tr>
+            <tr>
+                <td>Name</td>
+                <td>{{ object.name }}</td>
+            </tr>
+            <tr>
+                <td>Host School</td>
+                <td>
+                    {% if object.host %}
+                        <a href="{{ object.host.get_absolute_url }}">{{ object.host.name }}</a>
+                    {% else %}
+                        Unlinked
+                    {% endif %}
+                </td>
+            </tr>
+            <tr>
+                <td>Date</td>
+                <td>{{ object.date }}</td>
+            </tr>
+            <tr>
+                <td>Season</td>
+                <td>{{ object.get_season_display }}</td>
+            </tr>
+            <!--<tr>
 		<td>Num Rounds</td>
 		<td>{{ object.num_rounds }}</td>
 	    </tr>-->
-	    <tr>
-		<td>Teams</td>
-		<td>{{ object.num_teams }}</td>
-	    </tr>
-	    <!--<tr>
+            <tr>
+                <td>Teams</td>
+                <td>{{ object.num_teams }}</td>
+            </tr>
+            <!--<tr>
 		<td>Novice Teams</td>
 		<td>{{ object.num_novice_teams }}</td>
 	    </tr>
@@ -54,11 +60,11 @@
 		<td>Debaters</td>
 		<td>{{ object.num_debaters }}</td>
 	    </tr>-->
-	    <tr>
-		<td>Novice Debaters</td>
-		<td>{{ object.num_novice_debaters }}</td>
-	    </tr>
-	    <!--<tr>
+            <tr>
+                <td>Novice Debaters</td>
+                <td>{{ object.num_novice_debaters }}</td>
+            </tr>
+            <!--<tr>
 		<td>Qual</td>
 		<td>{{ object.qual|yesno:"Yes,No" }}</td>
 	    </tr>
@@ -78,176 +84,222 @@
 		<td>Autoqual Bar</td>
 		<td>{% if object.qual_bar == 0 %}None{% else %}{{ object.qual_bar }}{% endif %}</td>
 	    </tr>-->
-	</tbody>
+        </tbody>
     </table>
-{% endblock %}
-
+{% endblock detail_view %}
 {% block left_column %}
     {% for team, tab_card in teams %}
-	<div class="modal fade" id="tournament_{{ team.id }}">
-	    <div class="modal-dialog modal-lg">
-		<div class="modal-content">
-		    <div class="modal-header">
-			<h4 class="modal-title">Results for {{ team.name }}</h4>
-			<button type="button" class="close" data-dismiss="modal">&times;</button>
-		    </div>
-		    
-		    <div class="modal-body">
-			<table class="table table-bordered">
-			    <thead>
-				<th>Round Number</th>
-				<th>Opponent</th>
-				<th>W/L</th>
-				{% for stat in tab_card.0.stats %}
-				    <th><a href="{{ stat.debater.get_absolute_url }}">{{ stat.debater.name }}</a></th>
-				{% endfor %}
-			    </thead>
-			    <tbody>
-				{% for round in tab_card %}
-				    <tr>
-					<td><a href="{{ round.round.get_absolute_url }}">{{ round.round.round_number }}</a></td>
-					<td><a href="{{ round.round|opponent_url:team }}">{{ round.round|opponent:team }}</a> ({{ round.round|opponent_side:team }})</td>
-					<td>{{ round.round|wl:team }}</td>
-					{% for stat in round.stats %}
-					    <td>{{ stat.debater_role|upper }} / {{ stat.speaks|number }} / {{ stat.ranks|number }}</td>
-					{% endfor %}
-				    </tr>
-				{% endfor %}
-			    </tbody>
-			</table>
-		    </div>
-		    <div class="modal-footer">
-			<button type="button" class="btn btn-danger" data-dismiss="modal">Close</button>
-		    </div>
-		</div>
-	    </div>
-	</div>
+        <div class="modal fade" id="tournament_{{ team.id }}">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h4 class="modal-title">Results for {{ team.name }}</h4>
+                        <button type="button" class="close" data-dismiss="modal">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <table class="table table-bordered">
+                            <thead>
+                                <th>Round Number</th>
+                                <th>Opponent</th>
+                                <th>W/L</th>
+                                {% for stat in tab_card.0.stats %}
+                                    <th>
+                                        <a href="{{ stat.debater.get_absolute_url }}">{{ stat.debater.name }}</a>
+                                    </th>
+                                {% endfor %}
+                            </thead>
+                            <tbody>
+                                {% for round in tab_card %}
+                                    <tr>
+                                        <td>
+                                            <a href="{{ round.round.get_absolute_url }}">{{ round.round.round_number }}</a>
+                                        </td>
+                                        <td>
+                                            <a href="{{ round.round|opponent_url:team }}">{{ round.round|opponent:team }}</a> ({{ round.round|opponent_side:team }})
+                                        </td>
+                                        <td>{{ round.round|wl:team }}</td>
+                                        {% for stat in round.stats %}
+                                            <td>{{ stat.debater_role|upper }} / {{ stat.speaks|number }} / {{ stat.ranks|number }}</td>
+                                        {% endfor %}
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-danger" data-dismiss="modal">Close</button>
+                    </div>
+                </div>
+            </div>
+        </div>
     {% endfor %}
-    
     {% if tab_cards_available and user.is_authenticated %}
-	<div class="card mt-3 mb-3">
-	    <div class="card-body">
-		<h5 class="card-title pb-2">Teams
-		</h5>
-		<div class="form-group">
-		    <label>Search Tab Cards</label>
-		    <input type="text" class="form-control" id="teams" placeholder="Team Name">
-		</div>
-		<table id="team_list">
-		{% for team in teams %}
-		    <tr><td><button type="button" class="btn btn-link" data-toggle="modal" data-target="#tournament_{{ team.0.id }}">
-			{{ team.0.name }}
-		    </button></td></tr>
-		{% endfor %}
-		</table>
-	    </div>
-	</div>
+        <div class="card mt-3 mb-3">
+            <div class="card-body">
+                <h5 class="card-title pb-2">Teams</h5>
+                <div class="form-group">
+                    <label>Search Tab Cards</label>
+                    <input type="text" class="form-control" id="teams" placeholder="Team Name">
+                </div>
+                <table id="team_list">
+                    {% for team in teams %}
+                        <tr>
+                            <td>
+                                <button type="button"
+                                        class="btn btn-link"
+                                        data-toggle="modal"
+                                        data-target="#tournament_{{ team.0.id }}">{{ team.0.name }}</button>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </table>
+            </div>
+        </div>
     {% endif %}
-{% endblock %}
-
-
+{% endblock left_column %}
 {% block added_information_view %}
     {% if varsity_team_results|length > 0 or novice_team_results|length > 0 %}
-    <div class="card mb-3">
-	<div class="card-body">
-	    <h5 class="card-title pb-2">Team Results
-		<ul class="nav nav-pills float-right" id="results_pills" roll="tablist">
-		    {% if varsity_team_results|length > 0 %}
-		    <li class="nav-item">
-			<a class="nav-link active" id="varsity_button" data-toggle="tab" href="#varsity">Varsity</a>
-		    </li>
-		    {% endif %}
-		    {% if novice_team_results|length > 0 %}
-		    <li class="nav-item">
-			<a class="nav-link {% if varsity_team_results|length == 0 %}active{% endif %}" id="novice_button" data-toggle="tab" href="#novice">Novice</a>
-		    </li>
-		    {% endif %}
-		</ul>
-	    </h5>
-	    <hr />
-	    <div class="tab-content" id="results">
-		{% if varsity_team_results|length > 0 %}
-		<div class="tab-pane fade show active" id="varsity" role="tabpanel">
-		    {% include 'base/results/team.html' with results=varsity_team_results %}
-		</div>
-		{% endif %}
-		{% if novice_team_results|length > 0 %}
-		<div class="tab-pane fade {% if varsity_team_results|length == 0 %}active{% endif %}" id="novice" role="tabpanel">
-		    {% include 'base/results/team.html' with results=novice_team_results %}
-		</div>
-		{% endif %}
-	    </div>
-	</div>
-    </div>
+        <div class="card mb-3">
+            <div class="card-body">
+                <h5 class="card-title pb-2">
+                    Team Results
+                    <ul class="nav nav-pills float-right" id="results_pills" roll="tablist">
+                        {% if varsity_team_results|length > 0 %}
+                            <li class="nav-item">
+                                <a class="nav-link active"
+                                   id="varsity_button"
+                                   data-toggle="tab"
+                                   href="#varsity">Varsity</a>
+                            </li>
+                        {% endif %}
+                        {% if novice_team_results|length > 0 %}
+                            <li class="nav-item">
+                                <a class="nav-link {% if varsity_team_results|length == 0 %}active{% endif %}"
+                                   id="novice_button"
+                                   data-toggle="tab"
+                                   href="#novice">Novice</a>
+                            </li>
+                        {% endif %}
+                    </ul>
+                </h5>
+                <hr />
+                <div class="tab-content" id="results">
+                    {% if varsity_team_results|length > 0 %}
+                        <div class="tab-pane fade show active" id="varsity" role="tabpanel">
+                            {% include "base/results/team.html" with results=varsity_team_results %}
+                        </div>
+                    {% endif %}
+                    {% if novice_team_results|length > 0 %}
+                        <div class="tab-pane fade {% if varsity_team_results|length == 0 %}active{% endif %}"
+                             id="novice"
+                             role="tabpanel">
+                            {% include "base/results/team.html" with results=novice_team_results %}
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
     {% endif %}
     {% if varsity_speaker_results|length > 0 or novice_speaker_results|length > 0 %}
-    <div class="card mb-3">
-	<div class="card-body">
-	    <h5 class="card-title pb-2">Speaker Results
-		<ul class="nav nav-pills float-right" id="results_pills" roll="tablist">
-		    {% if varsity_speaker_results|length > 0 %}
-		    <li class="nav-item">
-			<a class="nav-link active" id="speakers_varsity_button" data-toggle="tab" href="#varsity_speakers">Varsity</a>
-		    </li>
-		    {% endif %}
-		    {% if novice_speaker_results|length > 0 %}
-		    <li class="nav-item">
-			<a class="nav-link {% if varsity_speaker_results|length == 0 %}active{% endif %}" id="speakers_novice_button" data-toggle="tab" href="#novice_speakers">Novice</a>
-		    </li>
-		    {% endif %}
-		</ul>
-	    </h5>
-	    <hr />
-	    <div class="tab-content" id="results">
-		{% if varsity_speaker_results|length > 0 %}
-		<div class="tab-pane fade show active" id="varsity_speakers" role="tabpanel">
-		    {% include 'base/results/speaker.html' with results=varsity_speaker_results %}
-		</div>
-		{% endif %}
-		{% if novice_speaker_results|length > 0 %}
-		<div class="tab-pane fade {% if varsity_speaker_results|length == 0 %}active{% endif %}" id="novice_speakers" role="tabpanel">
-		    {% include 'base/results/speaker.html' with results=novice_speaker_results %}
-		</div>
-		{% endif %}
-	    </div>
-	</div>
-    </div>
+        <div class="card mb-3">
+            <div class="card-body">
+                <h5 class="card-title pb-2">
+                    Speaker Results
+                    <ul class="nav nav-pills float-right" id="results_pills" roll="tablist">
+                        {% if varsity_speaker_results|length > 0 %}
+                            <li class="nav-item">
+                                <a class="nav-link active"
+                                   id="speakers_varsity_button"
+                                   data-toggle="tab"
+                                   href="#varsity_speakers">Varsity</a>
+                            </li>
+                        {% endif %}
+                        {% if novice_speaker_results|length > 0 %}
+                            <li class="nav-item">
+                                <a class="nav-link {% if varsity_speaker_results|length == 0 %}active{% endif %}"
+                                   id="speakers_novice_button"
+                                   data-toggle="tab"
+                                   href="#novice_speakers">Novice</a>
+                            </li>
+                        {% endif %}
+                    </ul>
+                </h5>
+                <hr />
+                <div class="tab-content" id="results">
+                    {% if varsity_speaker_results|length > 0 %}
+                        <div class="tab-pane fade show active"
+                             id="varsity_speakers"
+                             role="tabpanel">
+                            {% include "base/results/speaker.html" with results=varsity_speaker_results %}
+                        </div>
+                    {% endif %}
+                    {% if novice_speaker_results|length > 0 %}
+                        <div class="tab-pane fade {% if varsity_speaker_results|length == 0 %}active{% endif %}"
+                             id="novice_speakers"
+                             role="tabpanel">
+                            {% include "base/results/speaker.html" with results=novice_speaker_results %}
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
     {% endif %}
     {% if object.videos.all|length > 0 %}
-	<div class="card">
-	    <div class="card-body">
-		<h5 class="card-title pb-2">Videos</h5>
-		<table class="table table-bordered">
-		    <thead>
-			<th>ID</th>
-			<th>Tournament</th>
-			<th>Round</th>
-			<th>PM</th>
-			<th>MG</th>
-			<th>LO</th>
-			<th>MO</th>
-			<th>Tags</th>
-		    </thead>
-		    <tbody>
-			{% for video in object.videos.all %}
-			    <tr>
-				<td><a href="{{ video.get_absolute_url }}">{{ video.id }}</a></td>
-				<td><a href="{{ video.tournament.get_absolute_url }}">{{ video.tournament.name }}</a> ({{ video.tournament.get_season_display }})</td>
-				<td><a href="{{ video.get_absolute_url }}">{{ video.get_round_display }}</a></td>
-				<td><a href="{{ video.pm.get_absolute_url }}">{{ video.pm }}</a></td>
-				<td><a href="{{ video.mg.get_absolute_url }}">{{ video.mg }}</a></td>
-				<td><a href="{{ video.lo.get_absolute_url }}">{{ video.lo }}</a></td>				
-				<td><a href="{{ video.mo.get_absolute_url }}">{{ video.mo }}</a></td>
-				<td>{% for tag in video.tags.all %}<a href="{% url 'core:tag_detail' tag.name %}">{{ tag.name }}</a>{% if not forloop.last %}, {% endif %}{% endfor %}</td>
-			    </tr>
-			{% empty %}
-			    <tr>
-				<td colspan="8"><center>There are no videos under this tournament visible to you</center></td>
-			    </tr>
-			{% endfor %}
-		    </tbody>
-		</table>
-	    </div>
-	</div>
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title pb-2">Videos</h5>
+                <table class="table table-bordered">
+                    <thead>
+                        <th>ID</th>
+                        <th>Tournament</th>
+                        <th>Round</th>
+                        <th>PM</th>
+                        <th>MG</th>
+                        <th>LO</th>
+                        <th>MO</th>
+                        <th>Tags</th>
+                    </thead>
+                    <tbody>
+                        {% for video in object.videos.all %}
+                            <tr>
+                                <td>
+                                    <a href="{{ video.get_absolute_url }}">{{ video.id }}</a>
+                                </td>
+                                <td>
+                                    <a href="{{ video.tournament.get_absolute_url }}">{{ video.tournament.name }}</a> ({{ video.tournament.get_season_display }})
+                                </td>
+                                <td>
+                                    <a href="{{ video.get_absolute_url }}">{{ video.get_round_display }}</a>
+                                </td>
+                                <td>
+                                    <a href="{{ video.pm.get_absolute_url }}">{{ video.pm }}</a>
+                                </td>
+                                <td>
+                                    <a href="{{ video.mg.get_absolute_url }}">{{ video.mg }}</a>
+                                </td>
+                                <td>
+                                    <a href="{{ video.lo.get_absolute_url }}">{{ video.lo }}</a>
+                                </td>
+                                <td>
+                                    <a href="{{ video.mo.get_absolute_url }}">{{ video.mo }}</a>
+                                </td>
+                                <td>
+                                    {% for tag in video.tags.all %}
+                                        <a href="{% url 'core:tag_detail' tag.name %}">{{ tag.name }}</a>
+                                        {% if not forloop.last %},{% endif %}
+                                    {% endfor %}
+                                </td>
+                            </tr>
+                        {% empty %}
+                            <tr>
+                                <td colspan="8">
+                                    <center>There are no videos under this tournament visible to you</center>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
     {% endif %}
-{% endblock %}
+{% endblock added_information_view %}

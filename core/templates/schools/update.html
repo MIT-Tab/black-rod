@@ -1,17 +1,14 @@
-{% extends 'schools/detail.html' %}
-
+{% extends "schools/detail.html" %}
 {% load crispy_forms_tags %}
-
 {% block added_information_view %}
     <div class="card">
-	<div class="card-body">
-	    <h5 class="card-title">Edit {{ object }}</h5>
-	    <form action="" method="POST">
-		{% csrf_token %}
-		{{ form|crispy }}
-		<input type="submit" class="btn btn-secondary" value="Save">
-	    </form>
-	</div>
+        <div class="card-body">
+            <h5 class="card-title">Edit {{ object }}</h5>
+            <form action="" method="POST">
+                {% csrf_token %}
+                {{ form|crispy }}
+                <input type="submit" class="btn btn-secondary" value="Save">
+            </form>
+        </div>
     </div>
-{% endblock %}
-
+{% endblock added_information_view %}

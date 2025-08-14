@@ -1,17 +1,21 @@
 <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN">
 <html lang="en">
     <head>
-	{% load render_bundle from webpack_loader %}
-	{% render_bundle 'main' %}
-	<script src="https://kit.fontawesome.com/79126da965.js" crossorigin="anonymous"></script>
-	
-	<title>{% block title %}APDA Results{% endblock %}</title>
+        {% load render_bundle from webpack_loader %}
+        {% render_bundle 'main' %}
+        <script src="https://kit.fontawesome.com/79126da965.js"
+                crossorigin="anonymous"></script>
+        <title>
+            {% block title %}
+                APDA Results
+            {% endblock title %}
+        </title>
     </head>
     <body>
-	{% include "base/_nav.html" %}
-	<div class="container-fluid">
-	    {% block content %}
-	    {% endblock %}
-	</div>
+        {% include "base/_nav.html" %}
+        <div class="container-fluid">
+            {% block content %}
+            {% endblock content %}
+        </div>
     </body>
 </html>

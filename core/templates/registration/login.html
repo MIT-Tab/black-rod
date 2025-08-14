@@ -1,40 +1,35 @@
-{% extends 'base/base.html' %}
-
+{% extends "base/base.html" %}
 {% load crispy_forms_tags socialaccount %}
-
 {% block content %}
     <div class="row">
-	<div class="col"></div>
-	<div class="col">
-	    <div class="card mt-5">	
-	        <div class="card-body">
-		    <h5 class="card-title">Login</h5>
-		    <p class="card-text">
-		    {% if next %}
-			{% if user.is_authenticated %}
-			    <div class="alert alert-danger" role="alert">
-				Your account doesn't have access to this page. To proceed, please login with an account that has access.
-			    </div>
-			{% else %}
-			    <div class="alert alert-danger" role="alert">
-				Please login to see this page.
-			    </div>
-			{% endif %}
-		    {% endif %}
-		    <a class="btn btn-primary" href="{% provider_login_url "apdaonline" %}">Login with apda.online</a>
-                    <hr>
-		    <form method="post" action="{% url 'login' %}" novalidate>
-			{% csrf_token %}
-			{{ form|crispy }}
-			<input class="btn btn-secondary" type="submit" value="Login">
-			<input type="hidden" name="next" value="{{ next }}">
-		    </form>
-		    </p>
-		    <!--<p><a href="{% url 'password_reset' %}">Lost password?</a></p>-->
-		</div>
-	    </div>
-	</div>
-	<div class="col"></div>
+        <div class="col"></div>
+        <div class="col">
+            <div class="card mt-5">
+                <div class="card-body">
+                    <h5 class="card-title">Login</h5>
+                    <p class="card-text">
+                        {% if next %}
+                            {% if user.is_authenticated %}
+                                <div class="alert alert-danger" role="alert">
+                                    Your account doesn't have access to this page. To proceed, please login with an account that has access.
+                                </div>
+                            {% else %}
+                                <div class="alert alert-danger" role="alert">Please login to see this page.</div>
+                            {% endif %}
+                        {% endif %}
+                        <a class="btn btn-primary" href="{% provider_login_url "apdaonline" %}">Login with apda.online</a>
+                        <hr>
+                        <form method="post" action="{% url 'login' %}" novalidate>
+                            {% csrf_token %}
+                            {{ form|crispy }}
+                            <input class="btn btn-secondary" type="submit" value="Login">
+                            <input type="hidden" name="next" value="{{ next }}">
+                        </form>
+                    </p>
+                    <!--<p><a href="{% url 'password_reset' %}">Lost password?</a></p>-->
+                </div>
+            </div>
+        </div>
+        <div class="col"></div>
     </div>
-</div>
-{% endblock %}
+{% endblock content %}

@@ -1,89 +1,97 @@
-{% extends 'base/detail.html' %}
-
+{% extends "base/detail.html" %}
 {% load tags %}
-
-{% block title %}{{ object }}{% endblock %}
-
+{% block title %}
+    {{ object }}
+{% endblock title %}
 {% block detail_view %}
     <table class="table table-bordered">
-	<thead>
-	    <th>Field</th>
-	    <th>Value</th>
-	</thead>
-	<tbody>
-	    <tr>
-		<td>ID</td>
-		<td>{{ object.id }}</td>
-	    </tr>
-	    <tr>
-		<td>Name</td>
-		<td>{{ object.name }}</td>
-	    </tr>
-	    <tr>
-		<td>Debaters</td>
-		<td>
-		    <ul>
-			{% for debater in object.debaters.all %}
-			    <li><a href="{{ debater.get_absolute_url }}">{{ debater.name }}</a> (<a href="{{ debater.school.get_absolute_url }}">{{ debater.school.name }}</a>)</li>
-			{% endfor %}
-		    </ul>
-		</td>
-	    </tr>
-	</tbody>
+        <thead>
+            <th>Field</th>
+            <th>Value</th>
+        </thead>
+        <tbody>
+            <tr>
+                <td>ID</td>
+                <td>{{ object.id }}</td>
+            </tr>
+            <tr>
+                <td>Name</td>
+                <td>{{ object.name }}</td>
+            </tr>
+            <tr>
+                <td>Debaters</td>
+                <td>
+                    <ul>
+                        {% for debater in object.debaters.all %}
+                            <li>
+                                <a href="{{ debater.get_absolute_url }}">{{ debater.name }}</a> (<a href="{{ debater.school.get_absolute_url }}">{{ debater.school.name }}</a>)
+                            </li>
+                        {% endfor %}
+                    </ul>
+                </td>
+            </tr>
+        </tbody>
     </table>
-{% endblock %}
-
+{% endblock detail_view %}
 {% block added_information_view %}
     <div class="card">
-	<div class="card-body">
-	    <h5 class="card-title pb-2">Team Results
-		{% if user.is_authenticated %}
-		    <ul class="nav nav-pills float-right">	    
-			{% if not 'all' in request.GET %}
-			    <li clas="nav-item">
-				<a class="nav-link" href="{{ request.path }}?season={{ current_season }}&all=1">All Results</a>
-			    </li>
-			{% else %}
-			    <li clas="nav-item">
-				<a class="nav-link" href="{{ request.path }}?season={{ current_season }}">Awards Only</a>
-			    </li>
-			{% endif %}
-		    </ul>
-		{% endif %}
-	    </h5>
-	    <hr />
-	    {% include 'base/results/full_team.html' with results=team_results %}
-    </div>
-{% endblock %}
-
-{% block left_column %}
-    {% if not object.hybrid and totys|length > 0 %}
-	<div class="card">
-	    <div class="card-body">
-		<h5 class="card-title pb-2"><a href="{% url 'core:index' %}?default=toty">TOTY</a></h5>
-		<hr />
-		<table class="table table-bordered table-hover table-striped">
-		    <thead>
-			<th>Place</th>
-			<th>Season</th>
-			<th>Points</th>
-		    </thead>
-		    <tbody>
-			{% for toty in totys %}
-			    <tr>
-				<td>{{ toty.place }}</td>
-				<td><a href="{% url 'core:index' %}?season={{ toty.season }}&default=toty">{{ toty.get_season_display }}</a></td>
-				<td>{{ toty.points|number }}</td>
-			    </tr>
-			{% empty %}
-			    <tr>
-				<td colspan="3"><center>This team has never been on the TOTY board.</center></td>
-			    </tr>
-			{% endfor %}
-		    </tbody>
-		</table>
-	    </div>
-	</div>
-    {% endif %}
-{% endblock %}
-
+        <div class="card-body">
+            <h5 class="card-title pb-2">
+                Team Results
+                {% if user.is_authenticated %}
+                    <ul class="nav nav-pills float-right">
+                        {% if not 'all' in request.GET %}
+                            <li clas="nav-item">
+                                <a class="nav-link"
+                                   href="{{ request.path }}?season={{ current_season }}&all=1">All Results</a>
+                            </li>
+                        {% else %}
+                            <li clas="nav-item">
+                                <a class="nav-link"
+                                   href="{{ request.path }}?season={{ current_season }}">Awards Only</a>
+                            </li>
+                        {% endif %}
+                    </ul>
+                {% endif %}
+            </h5>
+            <hr />
+            {% include "base/results/full_team.html" with results=team_results %}
+        </div>
+    {% endblock added_information_view %}
+    {% block left_column %}
+        {% if not object.hybrid and totys|length > 0 %}
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title pb-2">
+                        <a href="{% url 'core:index' %}?default=toty">TOTY</a>
+                    </h5>
+                    <hr />
+                    <table class="table table-bordered table-hover table-striped">
+                        <thead>
+                            <th>Place</th>
+                            <th>Season</th>
+                            <th>Points</th>
+                        </thead>
+                        <tbody>
+                            {% for toty in totys %}
+                                <tr>
+                                    <td>{{ toty.place }}</td>
+                                    <td>
+                                        <a href="{% url 'core:index' %}?season={{ toty.season }}&default=toty">{{ toty.get_season_display }}</a>
+                                    </td>
+                                    <td>{{ toty.points|number }}</td>
+                                </tr>
+                            {% empty %}
+                                <tr>
+                                    <td colspan="3">
+                                        <center>This team has never been on the TOTY board.</center>
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    {% endblock left_column %}

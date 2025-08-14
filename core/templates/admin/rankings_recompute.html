@@ -1,5 +1,4 @@
-{% extends 'base/base.html' %}
-
+{% extends "base/base.html" %}
 {% block content %}
     <div class="container mt-5">
         <div class="card rankings-card">
@@ -7,15 +6,12 @@
                 <h5 class="card-title">
                     <i class="fas fa-calculator mr-2"></i>Rankings Recompute Tool
                 </h5>
-
                 <div class="alert alert-warning rankings-warning" role="alert">
                     <strong><i class="fas fa-exclamation-triangle mr-2"></i>Warning:</strong>
                     Recomputation can be difficult to reverse. Use only if necessary.
                 </div>
-                
                 <form id="recomputeForm">
                     {% csrf_token %}
-                    
                     <div class="form-row">
                         <div class="col-md-6">
                             <label for="season" class="font-weight-bold">Season</label>
@@ -26,7 +22,6 @@
                                 {% endfor %}
                             </select>
                         </div>
-                        
                         <div class="col-md-6">
                             <label for="ranking_type" class="font-weight-bold">Ranking Type</label>
                             <select class="form-control" id="ranking_type" name="ranking_type" required>
@@ -37,7 +32,6 @@
                             </select>
                         </div>
                     </div>
-                    
                     <div class="mt-3">
                         <button type="submit" class="btn btn-primary" id="recomputeBtn">
                             <i class="fas fa-play mr-2"></i>Start Recomputation
@@ -47,20 +41,19 @@
                         </a>
                     </div>
                 </form>
-                
                 <div id="progressSection" class="mt-4" style="display: none;">
-                    <h6><i class="fas fa-cog fa-spin mr-2"></i>Processing...</h6>
+                    <h6>
+                        <i class="fas fa-cog fa-spin mr-2"></i>Processing...
+                    </h6>
                     <div class="progress">
-                        <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                        <div class="progress-bar progress-bar-striped progress-bar-animated"
                              style="width: 0%">0%</div>
                     </div>
                 </div>
-                
                 <div id="resultsSection" class="mt-4" style="display: none;"></div>
             </div>
         </div>
     </div>
-
     <script>
         document.getElementById('recomputeForm').addEventListener('submit', function(e) {
             e.preventDefault();
@@ -131,4 +124,4 @@
             });
         });
     </script>
-{% endblock %}
+{% endblock content %}
