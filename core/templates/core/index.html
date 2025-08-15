@@ -165,7 +165,7 @@
                         </li>
                     </ul>
                 </h5>
-                <table class="table table-hover table-standings roundeds">
+                <table class="table table-hover table-standings">
                     <thead>
                         <th scope="col">#</th>
                         <th scope="col">Debater</th>
@@ -273,7 +273,7 @@
                     </li>
                 </ul>
             </h5>
-            <table class="table table-hover table-standings roundeds">
+            <table class="table table-hover">
                 <thead>
                     <th scope="col" width="10%">#</th>
                     <th scope="col" width="20%">School</th>
@@ -284,7 +284,7 @@
                 </thead>
                 {% for school in coty %}
                     <tbody>
-                        <tr {% if not forloop.counter|divisibleby:"2" %}class="shaded"{% endif %}>
+                        <tr >
                             <td>
                                 {% if school.tied %}T-{% endif %}
                                 {{ school.place }}
@@ -352,7 +352,7 @@
             </li>
         </ul>
     </h5>
-    <table class="table table-hover table-standings roundeds">
+    <table class="table table-hover">
         <thead>
             <th scope="col">#</th>
             <th scope="col">Debater</th>
@@ -451,7 +451,7 @@
             </li>
         </ul>
     </h5>
-    <table class="table table-hover table-standings roundeds">
+    <table class="table table-hover">
         <thead>
             <th scope="col">#</th>
             <th scope="col">Debater</th>

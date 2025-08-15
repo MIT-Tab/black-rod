@@ -5,6 +5,8 @@
         {% render_bundle 'main' %}
         <script src="https://kit.fontawesome.com/79126da965.js"
                 crossorigin="anonymous"></script>
+        {% load static %}
+        <link rel="shortcut icon" href="{% static 'favicon.ico' %}" type="image/x-icon">
         <title>
             {% block title %}
                 APDA Results
