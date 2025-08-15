@@ -1,7 +1,7 @@
 {% extends "base/base.html" %}
 {% load tags cache %}
 {% block content %}
-    <div class="card m-lg-5 mt-2 m-1">
+    <div class="shadow-lg card m-lg-5 mt-2 m-1">
         <div class="card-body">
             <h5 class="card-title text-white">
                 <ul class="nav nav-pills nav-fill" id="oty_pills" roll="tablist">
@@ -68,7 +68,7 @@
                             </li>
                         </ul>
                     </h5>
-                    <table class="table table-bordered table-striped">
+                    <table class="table table-hover table-standings">
                         <thead>
                             <th scope="col" width="5%">#</th>
                             <th scope="col">School</th>
@@ -165,7 +165,7 @@
                         </li>
                     </ul>
                 </h5>
-                <table class="table table-bordered table-striped">
+                <table class="table table-hover table-standings roundeds">
                     <thead>
                         <th scope="col">#</th>
                         <th scope="col">Debater</th>
@@ -273,7 +273,7 @@
                     </li>
                 </ul>
             </h5>
-            <table class="table table-bordered">
+            <table class="table table-hover table-standings roundeds">
                 <thead>
                     <th scope="col" width="10%">#</th>
                     <th scope="col" width="20%">School</th>
@@ -352,7 +352,7 @@
             </li>
         </ul>
     </h5>
-    <table class="table table-bordered table-striped">
+    <table class="table table-hover table-standings roundeds">
         <thead>
             <th scope="col">#</th>
             <th scope="col">Debater</th>
@@ -451,7 +451,7 @@
             </li>
         </ul>
     </h5>
-    <table class="table table-bordered table-striped">
+    <table class="table table-hover table-standings roundeds">
         <thead>
             <th scope="col">#</th>
             <th scope="col">Debater</th>
