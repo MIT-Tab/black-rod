@@ -29,7 +29,7 @@
 {% endblock detail_view %}
 {% block left_column %}
     {% if totys|length > 0 or sotys|length > 0 or notys|length > 0 %}
-        <div class="card mt-3 mb-3">
+        <div class="card mt-3 mb-3 rounded-l5 shadow-lg">
             <div class="card-body">
                 <h5 class="card-title pb-2">
                     <ul class="nav nav-pills nav-fill" id="otys_pills" roll="tablist">
@@ -149,7 +149,7 @@
             </div>
         </div>
     {% endif %}
-    <div class="card mb-2">
+    <div class="card mb-2 rounded-l5 shadow-lg">
         <div class="card-body">
             <h5 class="card-title">Partners</h5>
             <hr />
@@ -164,7 +164,7 @@
     </div>
 {% endblock left_column %}
 {% block added_information_view %}
-    <div class="card mb-3">
+    <div class="card mb-3 rounded-l5 shadow-lg">
         <div class="card-body">
             <h5 class="card-title pb-2">
                 Results
@@ -301,7 +301,7 @@
             </table>
         </div>
     </div>
-    <div class="card">
+    <div class="card rounded-l5 shadow-lg">
         <div class="card-body">
             <h5 class="card-title pb-2">Videos</h5>
             <table class="table table-bordered">

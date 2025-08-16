@@ -60,7 +60,7 @@
     {% endblock added_information_view %}
     {% block left_column %}
         {% if not object.hybrid and totys|length > 0 %}
-            <div class="card">
+            <div class="card shadow-lg rounded-l5">
                 <div class="card-body">
                     <h5 class="card-title pb-2">
                         <a href="{% url 'core:index' %}?default=toty">TOTY</a>

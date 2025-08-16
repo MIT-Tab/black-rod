@@ -2,7 +2,7 @@
 {% block content %}
     <div class="row mt-lg-5 ml-lg-2 mr-lg-2 mb-lg-5 m-1">
         <div class="col-lg-4">
-            <div class="card mb-2">
+            <div class="card mb-2 rounded-l5 shadow-lg">
                 <div class="card-body">
                     <h5 class="card-title">
                         {{ object }}
@@ -16,8 +16,10 @@
                     {% endblock detail_view %}
                 </div>
             </div>
+            <div>
             {% block left_column %}
             {% endblock left_column %}
+            </div>
         </div>
         <div class="col-lg-8">
             {% block added_information_view %}
