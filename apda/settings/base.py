@@ -221,7 +221,7 @@ AUTHENTICATION_BACKENDS = [
     'allauth.account.auth_backends.AuthenticationBackend'
 ]
 ACCOUNT_USER_MODEL_USERNAME_FIELD = 'username'
-
+SOCIALACCOUNT_STORE_TOKENS = True
 SOCIALACCOUNT_ADAPTER = 'apdaonline.adapter.APDAOnlineAdapter'
 SOCIALACCOUNT_PROVIDERS = {
     'apdaonline': {

@@ -83,6 +83,18 @@ class TournamentAdmin(ImportExportModelAdmin):
     search_fields = ["name"]
 
 
+
+class CustomUserAdmin(UserAdmin):
+    fieldsets = UserAdmin.fieldsets + (
+        ('Permissions', {'fields': ('can_view_private_videos',)}),
+    )
+    
+    list_display = UserAdmin.list_display + ('can_view_private_videos',)
+    
+    list_filter = UserAdmin.list_filter + ('can_view_private_videos',)
+
+
+
 class TeamAdmin(ImportExportModelAdmin):
     search_fields = ["name", "debaters__name", "debaters__school__name"]
 
@@ -271,7 +283,7 @@ class VideoAdmin(admin.ModelAdmin):
     get_absolute_url.short_description = "Video URL"
 
 
-admin.site.register(User, UserAdmin)
+admin.site.register(User, CustomUserAdmin)
 admin.site.register(Round)
 admin.site.register(RoundStats)
 admin.site.register(SiteSetting, SiteSettingAdmin)
