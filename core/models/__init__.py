@@ -7,7 +7,7 @@ from .site_settings import SiteSetting
 from .standings.coty import COTY
 from .standings.noty import NOTY
 from .standings.online_qual import OnlineQUAL
-from .standings.qual import QUAL
+from .standings.qual import QUAL, QualBar
 from .standings.soty import SOTY
 from .standings.toty import TOTY, TOTYReaff
 from .team import Team
@@ -37,4 +37,5 @@ __all__ = [
     "OnlineQUAL",
     "SiteSetting",
     "Video",
+    "QualBar",
 ]

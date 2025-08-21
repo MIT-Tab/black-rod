@@ -7,6 +7,7 @@ from core.forms import (
     NOTYForm,
     QUALForm,
     QualPointsForm,
+
     ReaffForm,
     SOTYForm,
     TOTYReaffForm,
@@ -16,6 +17,7 @@ from core.models import (
     NOTY,
     QUAL,
     QualPoints,
+    QualBar,
     Reaff,
     Round,
     RoundStats,
@@ -254,6 +256,9 @@ class SiteSettingAdmin(admin.ModelAdmin):
     search_fields = ("key",)
     ordering = ("key",)
 
+class QualBarAdmin(admin.ModelAdmin):
+    list_display = ("season", "points")
+    search_fields = ("season",)
 
 class VideoAdmin(admin.ModelAdmin):
     list_display = ("tournament", "round", "pm", "lo", "mg", "mo", "permissions")
@@ -305,4 +310,6 @@ admin.site.register(TOTY, TOTYAdmin)
 admin.site.register(TOTYReaff, TOTYReaffAdmin)
 admin.site.register(COTY, COTYAdmin)
 admin.site.register(QualPoints, QualPointsAdmin)
+
+admin.site.register(QualBar, QualBarAdmin)
 admin.site.register(QUAL, QUALAdmin)

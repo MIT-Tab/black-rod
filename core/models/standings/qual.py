@@ -5,6 +5,13 @@ from core.models.standings.base import AbstractStanding
 from core.models.tournament import Tournament
 
 
+class QualBar(models.Model):
+    season = models.CharField(max_length=10, unique=True)
+    points = models.DecimalField(max_digits=8, decimal_places=2, default=0)
+
+    def __str__(self):
+        return f"{self.season} - {self.points} points"
+
 class QUAL(AbstractStanding):
     debater = models.ForeignKey(Debater, on_delete=models.CASCADE, related_name="quals")
 

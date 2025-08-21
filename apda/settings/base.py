@@ -107,10 +107,9 @@ WSGI_APPLICATION = 'apda.wsgi.application'
 
 # Database
 # https://docs.djangoproject.com/en/1.11/ref/settings/#databases
-
+DEFAULT_SEASON = '2024'
+CURRENT_SEASON = '2024'
 if os.environ.get("ENV") == "development":
-    DEFAULT_SEASON = '2016'
-    CURRENT_SEASON = '2016'
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.sqlite3',
@@ -124,8 +123,6 @@ if os.environ.get("ENV") == "development":
     }
     }
 elif os.environ.get("ENV") == "production":
-    DEFAULT_SEASON = '2024'
-    CURRENT_SEASON = '2024'
     DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql_psycopg2',

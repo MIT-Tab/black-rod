@@ -269,7 +269,8 @@ def update_noty(debater, season=settings.CURRENT_SEASON):
 
 def update_qual_points(team, season=settings.CURRENT_SEASON):
     if team.team_results.count() == 0:
-        team.delete()
+        if season == settings.CURRENT_SEASON:
+            team.delete()
         return
 
     for debater in team.debaters.all():
@@ -280,16 +281,16 @@ def update_qual_points(team, season=settings.CURRENT_SEASON):
         )
 
         if not debater.school.included_in_oty:
-            QUAL.objects.filter(season=season, debater__school=debater.school).delete()
-
-            QualPoints.objects.filter(
-                season=season, debater__school=debater.school
-            ).delete()
-
-            COTY.objects.filter(school=debater.school).delete()
+            if season == settings.CURRENT_SEASON:
+                QUAL.objects.filter(season=season, debater__school=debater.school).delete()
+                QualPoints.objects.filter(
+                    season=season, debater__school=debater.school
+                ).delete()
+                COTY.objects.filter(school=debater.school).delete()
             continue
 
-        QUAL.objects.filter(season=season, debater=debater).delete()
+        if season == settings.CURRENT_SEASON:
+            QUAL.objects.filter(season=season, debater=debater).delete()
 
         qual = None
 
@@ -326,9 +327,8 @@ def update_qual_points(team, season=settings.CURRENT_SEASON):
         )
 
         if points <= 0:
-            if qual_points and not qual:
+            if qual_points and not qual and season == settings.CURRENT_SEASON:
                 qual_points.delete()
-
             continue
 
         if not qual_points:
