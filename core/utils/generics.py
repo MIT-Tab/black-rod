@@ -41,6 +41,7 @@ class CustomMixin(PermissionRequiredMixin):
 
 class CustomListView(CustomMixin, tables.SingleTableMixin, FilterView):
     permission_type = "view"
+    ordering = ["-pk"]
 
 
 class CustomCreateView(CustomMixin, CreateView):
