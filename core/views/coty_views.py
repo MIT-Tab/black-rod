@@ -25,7 +25,7 @@ class COTYFilter(FilterSet):
 class COTYTable(CustomTable):
     school = Column(
         verbose_name="School",
-        accessor="school.name",
+        accessor="school__name",
         linkify=lambda record: record.school.get_absolute_url(),
     )
 

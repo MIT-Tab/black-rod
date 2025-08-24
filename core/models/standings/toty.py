@@ -58,9 +58,9 @@ class TOTY(AbstractStanding):
 
     class Meta:
         ordering = ("place",)
-    
 
-    
+
+
 class TOTYReaff(models.Model):
     season = models.CharField(max_length=16)
 

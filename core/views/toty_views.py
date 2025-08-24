@@ -36,7 +36,7 @@ class TOTYTable(CustomTable):
 
     team = Column(
         verbose_name="Team",
-        accessor="team.name",
+        accessor="team__name",
         linkify=lambda record: record.team.get_absolute_url(),
     )
 
@@ -45,7 +45,7 @@ class TOTYTable(CustomTable):
         fields = (
             "place",
             "team",
-            "team.debaters",
+            "team__debaters",
             "points",
             "marker_one",
             "marker_two",
