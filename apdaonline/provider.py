@@ -14,25 +14,26 @@ class APDAOnlineProvider(OAuth2Provider):
     account_class = APDAOnlineAccount
 
     def extract_uid(self, data):
-        return str(data['ID'])
+        return str(data["ID"])
 
     def extract_common_fields(self, data):
         can_view_private_videos = False
-        if 'private_side_viewer' in data['user_roles']:
+        if "private_side_viewer" in data["user_roles"]:
             can_view_private_videos = True
 
         return {
-            "username": data['user_nicename'],
-            "email": data['user_email'],
+            "username": data["user_nicename"],
+            "email": data["user_email"],
             "can_view_private_videos": can_view_private_videos,
-            "name": data['display_name']
+            "name": data["display_name"],
         }
 
     def sociallogin_from_response(self, request, response):
         sociallogin = super().sociallogin_from_response(request, response)
 
-        print (get_adapter(request))
+        print(get_adapter(request))
 
         return sociallogin
+
 
 providers.registry.register(APDAOnlineProvider)

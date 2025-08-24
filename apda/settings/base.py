@@ -15,7 +15,7 @@ import os
 
 from dotenv import load_dotenv
 
-load_dotenv(os.environ.get('DOT_ENV_FILE', '.env'))
+load_dotenv(os.environ.get("DOT_ENV_FILE", ".env"))
 
 # Build paths inside the project like this: os.path.join(BASE_DIR, ...)
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -25,7 +25,7 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # See https://docs.djangoproject.com/en/1.11/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.environ.get('SECRET_KEY', "abcd")
+SECRET_KEY = os.environ.get("SECRET_KEY", "abcd")
 
 # SECURITY WARNING: don't run with debug turned on in production!
 ENV = os.environ.get("ENV", "development")
@@ -35,117 +35,133 @@ if os.environ.get("DEBUG") == "1":
 else:
     DEBUG = False
 ALLOWED_HOSTS = []
-BASE_URL = 'http://50.116.54.146'
+BASE_URL = "http://50.116.54.146"
 
 
 # Application definition
 
 INSTALLED_APPS = [
-    'dal',
-    'dal_select2',
-
-    'django.contrib.admin',
-    'django.contrib.auth',
-    'django.contrib.contenttypes',
-    'django.contrib.sessions',
-    'django.contrib.messages',
-    'django.contrib.staticfiles',
-    'django.contrib.humanize',
-    'django.contrib.sites',
-
-    'webpack_loader',
-    'menu_generator',
-    'crispy_forms',
-    'import_export',
-    'django_tables2',
-    'formtools',
-    'haystack',
-    'taggit',
-    'django_summernote',
-
-    'core',
-    'django_extensions',
-
-    'allauth',
-    'allauth.account',
-    'allauth.socialaccount',
-    'apdaonline',
+    "dal",
+    "dal_select2",
+    "django.contrib.admin",
+    "django.contrib.auth",
+    "django.contrib.contenttypes",
+    "django.contrib.sessions",
+    "django.contrib.messages",
+    "django.contrib.staticfiles",
+    "django.contrib.humanize",
+    "django.contrib.sites",
+    "webpack_loader",
+    "menu_generator",
+    "crispy_forms",
+    "import_export",
+    "django_tables2",
+    "formtools",
+    "haystack",
+    "taggit",
+    "django_summernote",
+    "core.apps.CoreConfig",
+    "django_extensions",
+    "allauth",
+    "allauth.account",
+    "allauth.socialaccount",
+    "apdaonline",
 ]
 
-CRISPY_TEMPLATE_PACK = 'bootstrap4'
+CRISPY_TEMPLATE_PACK = "bootstrap4"
 
 MIDDLEWARE = [
-    'django.middleware.security.SecurityMiddleware',
-    'django.contrib.sessions.middleware.SessionMiddleware',
-    'django.middleware.common.CommonMiddleware',
-    'django.middleware.csrf.CsrfViewMiddleware',
-    'django.contrib.auth.middleware.AuthenticationMiddleware',
-    'django.contrib.messages.middleware.MessageMiddleware',
-    'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    "django.middleware.security.SecurityMiddleware",
+    "django.contrib.sessions.middleware.SessionMiddleware",
+    "django.middleware.common.CommonMiddleware",
+    "django.middleware.csrf.CsrfViewMiddleware",
+    "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "django.contrib.messages.middleware.MessageMiddleware",
+    "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
-ROOT_URLCONF = 'apda.urls'
+ROOT_URLCONF = "apda.urls"
 
 TEMPLATES = [
     {
-        'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
-        'APP_DIRS': True,
-        'OPTIONS': {
-            'context_processors': [
-                'django.template.context_processors.debug',
-                'django.template.context_processors.request',
-                'django.contrib.auth.context_processors.auth',
-                'django.contrib.messages.context_processors.messages',
+        "BACKEND": "django.template.backends.django.DjangoTemplates",
+        "DIRS": [],
+        "APP_DIRS": True,
+        "OPTIONS": {
+            "context_processors": [
+                "django.template.context_processors.debug",
+                "django.template.context_processors.request",
+                "django.contrib.auth.context_processors.auth",
+                "django.contrib.messages.context_processors.messages",
             ],
         },
     },
 ]
 
-WSGI_APPLICATION = 'apda.wsgi.application'
+WSGI_APPLICATION = "apda.wsgi.application"
 
 
 # Database
 # https://docs.djangoproject.com/en/1.11/ref/settings/#databases
 DEFAULT_SEASON = '2024'
 CURRENT_SEASON = '2024'
-if os.environ.get("ENV") == "development":
+
+# Set defaults for non-production environments
+if os.environ.get("ENV") != "production":
+    # Default to SQLite for testing and development
     DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.sqlite3',
-            'NAME': os.path.join(BASE_DIR, 'db.sqlite3'),
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": os.path.join(BASE_DIR, "db.sqlite3"),
         }
     }
-    ALLOWED_HOSTS = ['*']
+
+    # Default cache setting
     CACHES = {
-    'default': {
-        'BACKEND': 'django.core.cache.backends.dummy.DummyCache',
+        "default": {
+            "BACKEND": "django.core.cache.backends.dummy.DummyCache",
+        }
     }
+
+    # Default allowed hosts
+    ALLOWED_HOSTS = ["*"]
+
+if os.environ.get("ENV") == "development":
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": os.path.join(BASE_DIR, "db.sqlite3"),
+        }
+    }
+    ALLOWED_HOSTS = ["*"]
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.dummy.DummyCache",
+        }
     }
 elif os.environ.get("ENV") == "production":
     DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql_psycopg2',
-        'NAME': 'standings',
-        'USER': 'rodda',
-        'PASSWORD': os.environ.get('DATABASE_PASSWORD', ''),
-        'HOST': 'localhost',
-        'PORT': '',
+        "default": {
+            "ENGINE": "django.db.backends.postgresql_psycopg2",
+            "NAME": "standings",
+            "USER": "rodda",
+            "PASSWORD": os.environ.get("DATABASE_PASSWORD", ""),
+            "HOST": "localhost",
+            "PORT": "",
         }
     }
     import sentry_sdk
     from sentry_sdk.integrations.django import DjangoIntegration
 
     sentry_sdk.init(
-        dsn=os.environ.get('SENTRY_DSN', ''),
-        integrations=[DjangoIntegration()]
+        dsn=os.environ.get("SENTRY_DSN", ""), integrations=[DjangoIntegration()]
     )
-    ALLOWED_HOSTS = ['50.116.54.146', 'results.apda.online']
+    ALLOWED_HOSTS = ["50.116.54.146", "results.apda.online"]
 
     CACHES = {
-        'default': {
-            'BACKEND': 'django.core.cache.backends.memcached.MemcachedCache',
-            'LOCATION': '127.0.0.1:11211',
+        "default": {
+            "BACKEND": "django.core.cache.backends.memcached.MemcachedCache",
+            "LOCATION": "127.0.0.1:11211",
         }
     }
 
@@ -155,16 +171,16 @@ elif os.environ.get("ENV") == "production":
 
 AUTH_PASSWORD_VALIDATORS = [
     {
-        'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
+        "NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator",
     },
     {
-        'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
+        "NAME": "django.contrib.auth.password_validation.MinimumLengthValidator",
     },
     {
-        'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
+        "NAME": "django.contrib.auth.password_validation.CommonPasswordValidator",
     },
     {
-        'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
+        "NAME": "django.contrib.auth.password_validation.NumericPasswordValidator",
     },
 ]
 
@@ -172,9 +188,9 @@ AUTH_PASSWORD_VALIDATORS = [
 # Internationalization
 # https://docs.djangoproject.com/en/1.11/topics/i18n/
 
-LANGUAGE_CODE = 'en-us'
+LANGUAGE_CODE = "en-us"
 
-TIME_ZONE = 'UTC'
+TIME_ZONE = "UTC"
 
 USE_I18N = True
 
@@ -186,160 +202,135 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/1.11/howto/static-files/
 
-STATIC_URL = '/static/'
-STATICFILES_DIRS = (
-    os.path.join(BASE_DIR, 'assets'),
-)
-STATIC_ROOT = os.path.join(BASE_DIR, 'static_root')
+STATIC_URL = "/static/"
+STATICFILES_DIRS = (os.path.join(BASE_DIR, "assets"),)
+STATIC_ROOT = os.path.join(BASE_DIR, "static_root")
 
 
-HAYSTACK_SIGNAL_PROCESSOR = 'haystack.signals.RealtimeSignalProcessor'
+HAYSTACK_SIGNAL_PROCESSOR = "haystack.signals.RealtimeSignalProcessor"
 
 
 ONLINE_QUAL_BAR = 10
 LAST_NOTY_SEASON = 2020
 
 WEBPACK_LOADER = {
-    'DEFAULT': {
-        'CACHE': not DEBUG,
-        'BUNDLE_DIR_NAME': 'webpack_bundles/', # must end with slash
-        'STATS_FILE': os.environ.get('WEBPACK_STATS_FILE',
-                                     os.path.join(BASE_DIR,
-                                    '../webpack-stats.json')),
-        'POLL_INTERVAL': 0.1,
-        'TIMEOUT': None,
-        'IGNORE': [r'.+\.hot-update.js', r'.+\.map']
+    "DEFAULT": {
+        "CACHE": not DEBUG,
+        "BUNDLE_DIR_NAME": "webpack_bundles/",  # must end with slash
+        "STATS_FILE": os.environ.get(
+            "WEBPACK_STATS_FILE", os.path.join(BASE_DIR, "../webpack-stats.json")
+        ),
+        "POLL_INTERVAL": 0.1,
+        "TIMEOUT": None,
+        "IGNORE": [r".+\.hot-update.js", r".+\.map"],
     }
 }
 
-AUTH_USER_MODEL = 'core.User'
+AUTH_USER_MODEL = "core.User"
 AUTHENTICATION_BACKENDS = [
-    'django.contrib.auth.backends.ModelBackend',
-    'allauth.account.auth_backends.AuthenticationBackend'
+    "django.contrib.auth.backends.ModelBackend",
+    "allauth.account.auth_backends.AuthenticationBackend",
 ]
 ACCOUNT_USER_MODEL_USERNAME_FIELD = 'username'
 SOCIALACCOUNT_STORE_TOKENS = True
+
+# Basic allauth settings required for imports (test/dev only)
+if os.environ.get("ENV") != "production":
+    ACCOUNT_EMAIL_VERIFICATION = "none"
+    ACCOUNT_EMAIL_REQUIRED = False
+    ACCOUNT_AUTHENTICATION_METHOD = "username"
+
 SOCIALACCOUNT_ADAPTER = 'apdaonline.adapter.APDAOnlineAdapter'
 SOCIALACCOUNT_PROVIDERS = {
-    'apdaonline': {
-        'APP': {
-            'client_id': os.environ.get('APDAONLINE_CLIENT_ID', 'default_client_id'),
-            'secret': os.environ.get('APDAONLINE_SECRET_ID', 'default_secret'),
-            'key': ''
+    "apdaonline": {
+        "APP": {
+            "client_id": os.environ.get("APDAONLINE_CLIENT_ID", "default_client_id"),
+            "secret": os.environ.get("APDAONLINE_SECRET_ID", "default_secret"),
+            "key": "",
         }
     }
 }
-SOCIALACCOUNT_EMAIL_VERIFICATION = 'none'
+SOCIALACCOUNT_EMAIL_VERIFICATION = "none"
 
 SITE_ID = 1
 
 NAV_MENU_LEFT = [
+    {"name": "Standings", "url": "core:index"},
     {
-        'name': 'Standings',
-        'url': 'core:index'
+        "name": "Results",
+        "validators": ["menu_generator.validators.is_authenticated"],
+        "url": "/asdfa",
+        "submenu": [
+            {"name": "Schools", "url": "core:school_list", "root": True},
+            {"name": "Debaters", "url": "core:debater_list", "root": True},
+            {"name": "Tournaments", "url": "core:tournament_list", "root": True},
+            {"name": "Teams", "url": "core:team_list", "root": True},
+        ],
     },
+    {"name": "Videos", "url": "core:video_list", "root": True},
     {
-        'name': 'Results',
-        'validators': ['menu_generator.validators.is_authenticated'],
-        'url': '/asdfa',
-        'submenu': [
+        "name": "Results",
+        "validators": ["menu_generator.validators.is_anonymous"],
+        "url": "core:tournament_list",
+        "root": True,
+    },
+    {"name": "Schedule", "url": "core:schedule_view", "root": True},
+    {
+        "name": "Admin",
+        "url": "/admin/",
+        "validators": ["menu_generator.validators.is_superuser"],
+        "submenu": [
             {
-                'name': 'Schools',
-                'url': 'core:school_list',
-                'root': True
+                "name": "Django Admin",
+                "url": "/admin/",
+                "validators": ["menu_generator.validators.is_superuser"],
             },
             {
-                'name': 'Debaters',
-                'url': 'core:debater_list',
-                'root': True
+                "name": "Admin Tools",
+                "url": "/core/admin-tools/",
+                "validators": ["menu_generator.validators.is_superuser"],
             },
-            {
-                'name': 'Tournaments',
-                'url': 'core:tournament_list',
-                'root': True
-            },
-            {
-                'name': 'Teams',
-                'url': 'core:team_list',
-                'root': True
-            },
-        ]
+        ],
+    },
+    {"name": "Feedback", "url": "https://forms.gle/b5P8mU8inAerZVY58"},
+    {
+        "name": "apda.online",
+        "url": "http://apda.online",
     },
     {
-        'name': 'Videos',
-        'url': 'core:video_list',
-        'root': True
+        "name": "Login",
+        "url": "/auth/login/",
+        "validators": ["menu_generator.validators.is_anonymous"],
     },
     {
-        'name': 'Results',
-        'validators': ['menu_generator.validators.is_anonymous'],
-        'url': 'core:tournament_list',
-        'root': True
+        "name": "Logout",
+        "url": "/auth/logout/",
+        "validators": ["menu_generator.validators.is_authenticated"],
     },
-    {
-        'name': 'Schedule',
-        'url': 'core:schedule_view',
-        'root': True
-    },
-    {
-        'name': 'Admin',
-        'url': '/admin/',
-        'validators': ['menu_generator.validators.is_superuser'],
-        'submenu' : [
-             {
-                'name': 'Django Admin',
-                'url': '/admin/',
-                'validators': ['menu_generator.validators.is_superuser']
-            },
-             {
-                'name': 'Admin Tools',
-                'url': '/core/admin-tools/',
-                'validators': ['menu_generator.validators.is_superuser']
-            },
-        ]
-    },
-    {
-        'name': 'Feedback',
-        'url': 'https://forms.gle/b5P8mU8inAerZVY58'
-    },
-    {
-        'name': 'apda.online',
-        'url': 'http://apda.online',
-    },
-    {
-        'name': 'Login',
-        'url': '/auth/login/',
-        'validators': ['menu_generator.validators.is_anonymous']
-    },
-    {
-        'name': 'Logout',
-        'url': '/auth/logout/',
-        'validators': ['menu_generator.validators.is_authenticated']
-    }
 ]
 
-LOGIN_URL = '/auth/login'
-LOGIN_REDIRECT_URL = '/'
-LOGOUT_REDIRECT_URL = '/'
+LOGIN_URL = "/auth/login"
+LOGIN_REDIRECT_URL = "/"
+LOGOUT_REDIRECT_URL = "/"
 
-DJANGO_TABLES2_TEMPLATE = 'base/table.html'
+DJANGO_TABLES2_TEMPLATE = "base/table.html"
 
 HAYSTACK_CONNECTIONS = {
-    'default': {
-        'ENGINE': 'haystack.backends.whoosh_backend.WhooshEngine',
-        'PATH': os.path.join(BASE_DIR, 'whoosh_index'),
+    "default": {
+        "ENGINE": "haystack.backends.whoosh_backend.WhooshEngine",
+        "PATH": os.path.join(BASE_DIR, "whoosh_index"),
     },
 }
 
 
 DATA_UPLOAD_MAX_NUMBER_FIELDS = 10240
 
-SUMMERNOTE_THEME = 'lite'
+SUMMERNOTE_THEME = "lite"
 
 
 SUMMERNOTE_CONFIG = {
-    'summernote': {
-        'width': '100%',
+    "summernote": {
+        "width": "100%",
     }
 }
 
@@ -349,15 +340,13 @@ OLDEST = 2004
 LATEST = 2025
 
 
-
 SEASONS = tuple(
-    (str(year), f"{year}-{str(year+1)[2:]}")
-    for year in range(LATEST, OLDEST-1, -1)
-    )
+    (str(year), f"{year}-{str(year+1)[2:]}") for year in range(LATEST, OLDEST - 1, -1)
+)
 
 ONLINE_SEASONS = (
-    '2020',
-    '2021',
-    )
+    "2020",
+    "2021",
+)
 
 QUAL_BAR = 10.5

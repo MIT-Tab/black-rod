@@ -54,6 +54,9 @@ PyJWT==2.3.0
 pylint==3.2.7
 pylint-django==2.5.5
 pylint-plugin-utils==0.8.2
+pytest==7.4.4
+pytest-django==4.8.0
+pytest-cov==4.1.0
 python-dotenv==1.0.1
 python-memcached==1.59
 python3-openid==3.2.0

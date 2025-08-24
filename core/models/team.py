@@ -40,9 +40,7 @@ class Team(models.Model):
                 if debaters[0].school == debaters[1].school
                 else f"{debaters[0].school.name} / {debaters[1].school.name}"
             )
-            names = (
-                f"{debaters[0].first_name} {debaters[0].last_name} and {debaters[1].first_name} {debaters[1].last_name}"
-            )
+            names = f"{debaters[0].first_name} {debaters[0].last_name} and {debaters[1].first_name} {debaters[1].last_name}"
             return f"{school} {names}"
         if debaters:
             return f"{debaters[0].school.name} {debaters[0].first_name} {debaters[0].last_name}"

@@ -30,6 +30,7 @@ class DebaterFilter(FilterSet):
             "id": ["exact"],
             "first_name": ["icontains"],
             "last_name": ["icontains"],
+            "school": ["exact"],
             "school__name": ["icontains"],
             "status": ["exact"],
         }
