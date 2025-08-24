@@ -5,4 +5,5 @@ class ApdaonlineConfig(AppConfig):
     name = "apdaonline"
 
     def ready(self):
-        import apdaonline.signals  
+        # pylint: disable=import-outside-toplevel,unused-import
+        import apdaonline.signals

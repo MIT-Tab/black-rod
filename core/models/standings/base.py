@@ -31,7 +31,7 @@ class AbstractStanding(models.Model):
     all_objects = AllSeasonManager()
 
     tied = models.BooleanField(default=False)
-    
+
     def get_season_display(self):
         return f"{self.season}-{str(int(self.season)+1)[2:]}"
 

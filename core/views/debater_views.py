@@ -42,7 +42,7 @@ class DebaterTable(CustomTable):
     first_name = Column(linkify=True)
     last_name = Column(linkify=True)
 
-    school_name = Column(verbose_name="School", accessor="school.name")
+    school_name = Column(verbose_name="School", accessor="school__name")
 
     class Meta:
         model = Debater
@@ -75,7 +75,7 @@ class DebaterDetailView(CustomDetailView):
     public_view = True
     model = Debater
     template_name = "debaters/detail.html"
-    
+
     buttons = [
         {
             "name": "Delete",

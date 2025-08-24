@@ -12,12 +12,12 @@ https://docs.djangoproject.com/en/1.11/ref/settings/
 """
 
 import os
-
+import re
 from dotenv import load_dotenv
 
 load_dotenv(os.environ.get("DOT_ENV_FILE", ".env"))
 
-# Build paths inside the project like this: os.path.join(BASE_DIR, ...)
+
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
@@ -142,7 +142,7 @@ if os.environ.get("ENV") == "development":
 elif os.environ.get("ENV") == "production":
     DATABASES = {
         "default": {
-            "ENGINE": "django.db.backends.postgresql_psycopg2",
+            "ENGINE": "django.db.backends.postgresql",
             "NAME": "standings",
             "USER": "rodda",
             "PASSWORD": os.environ.get("DATABASE_PASSWORD", ""),
@@ -222,7 +222,7 @@ WEBPACK_LOADER = {
         ),
         "POLL_INTERVAL": 0.1,
         "TIMEOUT": None,
-        "IGNORE": [r".+\.hot-update.js", r".+\.map"],
+        "IGNORES": [re.compile(r".+\.hot-update.js"), re.compile(r".+\.map")],
     }
 }
 

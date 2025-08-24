@@ -39,12 +39,12 @@ class SOTYTable(CustomTable):
 
     debater = Column(
         verbose_name="Debater",
-        accessor="debater.name",
+        accessor="debater__name",
         linkify=lambda record: record.debater.get_absolute_url(),
     )
     school = Column(
         verbose_name="School",
-        accessor="debater.school.name",
+        accessor="debater__school__name",
         linkify=lambda record: record.debater.school.get_absolute_url(),
     )
 

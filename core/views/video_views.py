@@ -47,8 +47,8 @@ class VideoTable(CustomTable):
     id = Column(linkify=True)
     tournament_season = SeasonColumn(
         verbose_name="Season",
-        accessor="tournament.season",
-        order_by="tournament.season",
+        accessor="tournament__season",
+        order_by="tournament__season",
     )
 
     class Meta:

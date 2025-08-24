@@ -51,6 +51,7 @@ from core.resources import (
 # Register your models here.
 
 
+@admin.register(School)
 class SchoolAdmin(ImportExportModelAdmin):
     resource_class = SchoolResource
     list_display = ["name"]
@@ -59,6 +60,7 @@ class SchoolAdmin(ImportExportModelAdmin):
     ordering = ["name"]
 
 
+@admin.register(Debater)
 class DebaterAdmin(ImportExportModelAdmin):
     resource_class = DebaterResource
     list_display = ("first_name", "last_name", "school", "id")
@@ -66,18 +68,22 @@ class DebaterAdmin(ImportExportModelAdmin):
     search_fields = ("first_name", "last_name", "school", "id")
     ordering = ("first_name", "last_name", "school")
 
+    @admin.display(
+        description="Debater Name",
+        ordering="debater__first_name",
+    )
     def debater_name(self, obj):
         return f"{obj.debater.first_name} {obj.debater.last_name}"
 
-    debater_name.admin_order_field = "debater__first_name"
-    debater_name.short_description = "Debater Name"
 
 
+@admin.register(Reaff)
 class ReaffAdmin(ImportExportModelAdmin):
     resource_class = ReaffResource
     form = ReaffForm
 
 
+@admin.register(Tournament)
 class TournamentAdmin(ImportExportModelAdmin):
     resource_class = TournamentResource
     list_display = ["name"]
@@ -86,17 +92,19 @@ class TournamentAdmin(ImportExportModelAdmin):
 
 
 
+@admin.register(User)
 class CustomUserAdmin(UserAdmin):
     fieldsets = UserAdmin.fieldsets + (
         ('Permissions', {'fields': ('can_view_private_videos',)}),
     )
-    
+
     list_display = UserAdmin.list_display + ('can_view_private_videos',)
-    
+
     list_filter = UserAdmin.list_filter + ('can_view_private_videos',)
 
 
 
+@admin.register(Team)
 class TeamAdmin(ImportExportModelAdmin):
     search_fields = ["name", "debaters__name", "debaters__school__name"]
 
@@ -114,19 +122,23 @@ class TeamAdmin(ImportExportModelAdmin):
         return queryset, use_distinct
 
 
+@admin.register(TeamResult)
 class TeamResultAdmin(ImportExportModelAdmin):
     resource_class = TeamResultResource
 
 
+@admin.register(SpeakerResult)
 class SpeakerResultAdmin(ImportExportModelAdmin):
     resource_class = SpeakerResultResource
 
 
+@admin.register(NOTY)
 class NOTYAdmin(ImportExportModelAdmin):
     resource_class = NOTYResource
     form = NOTYForm
 
 
+@admin.register(SOTY)
 class SOTYAdmin(ImportExportModelAdmin):
     resource_class = SpeakerResultResource
     form = SOTYForm
@@ -135,13 +147,16 @@ class SOTYAdmin(ImportExportModelAdmin):
     search_fields = ("debater__first_name", "debater__last_name")
     ordering = ("debater__first_name", "debater__last_name")
 
+    @admin.display(
+        description="Debater Name",
+        ordering="debater__first_name",
+    )
     def debater_name(self, obj):
         return f"{obj.debater.first_name} {obj.debater.last_name}"
 
-    debater_name.admin_order_field = "debater__first_name"
-    debater_name.short_description = "Debater Name"
 
 
+@admin.register(TOTY)
 class TOTYAdmin(admin.ModelAdmin):
     list_display = (
         "team_name",
@@ -156,20 +171,27 @@ class TOTYAdmin(admin.ModelAdmin):
         "team__debaters__last_name",
     )
 
+    @admin.display(
+        description="Team"
+    )
     def team_name(self, obj):
         return obj.team.name
 
+    @admin.display(
+        description="Debaters"
+    )
     def debater_names(self, obj):
         return ", ".join([debater.name for debater in obj.team.debaters.all()])
 
+    @admin.display(
+        description="School"
+    )
     def school_name(self, obj):
         return obj.team.school.name
 
-    team_name.short_description = "Team"
-    debater_names.short_description = "Debaters"
-    school_name.short_description = "School"
 
 
+@admin.register(TOTYReaff)
 class TOTYReaffAdmin(admin.ModelAdmin):
     form = TOTYReaffForm
     autocomplete_fields = ["old_team", "new_team"]
@@ -188,24 +210,33 @@ class TOTYReaffAdmin(admin.ModelAdmin):
         "new_team__debaters__name",
     )
 
+    @admin.display(
+        description="Old Team"
+    )
     def old_team_name(self, obj):
         return obj.old_team.debaters_display
 
+    @admin.display(
+        description="New Team"
+    )
     def new_team_name(self, obj):
         return obj.new_team.debaters_display
 
+    @admin.display(
+        description="Old Debaters"
+    )
     def old_debaters(self, obj):
         return ", ".join([debater.name for debater in obj.old_team.debaters.all()])
 
+    @admin.display(
+        description="New Debaters"
+    )
     def new_debaters(self, obj):
         return ", ".join([debater.name for debater in obj.new_team.debaters.all()])
 
-    old_team_name.short_description = "Old Team"
-    new_team_name.short_description = "New Team"
-    old_debaters.short_description = "Old Debaters"
-    new_debaters.short_description = "New Debaters"
 
 
+@admin.register(COTY)
 class COTYAdmin(ImportExportModelAdmin):
     resource_class = COTYResource
     form = COTYForm
@@ -214,13 +245,16 @@ class COTYAdmin(ImportExportModelAdmin):
     search_fields = ("school__name", "season")
     ordering = ("school__name", "season")
 
+    @admin.display(
+        description="School Name",
+        ordering="school__name",
+    )
     def school_name(self, obj):
         return obj.school.name
 
-    school_name.admin_order_field = "school__name"
-    school_name.short_description = "School Name"
 
 
+@admin.register(QualPoints)
 class QualPointsAdmin(ImportExportModelAdmin):
     resource_class = QualPointsResource
     form = QualPointsForm
@@ -229,13 +263,16 @@ class QualPointsAdmin(ImportExportModelAdmin):
     search_fields = ("debater__first_name", "debater__last_name")
     ordering = ("debater__first_name", "debater__last_name")
 
+    @admin.display(
+        description="Debater Name",
+        ordering="debater__first_name",
+    )
     def debater_name(self, obj):
         return f"{obj.debater.first_name} {obj.debater.last_name}"
 
-    debater_name.admin_order_field = "debater__first_name"
-    debater_name.short_description = "Debater Name"
 
 
+@admin.register(QUAL)
 class QUALAdmin(ImportExportModelAdmin):
     resource_class = QUALResource
     form = QUALForm
@@ -244,22 +281,27 @@ class QUALAdmin(ImportExportModelAdmin):
     search_fields = ("debater__first_name", "debater__last_name", "id")
     ordering = ("debater__first_name", "debater__last_name")
 
+    @admin.display(
+        description="Debater Name",
+        ordering="debater__first_name",
+    )
     def debater_name(self, obj):
         return f"{obj.debater.first_name} {obj.debater.last_name}"
 
-    debater_name.admin_order_field = "debater__first_name"
-    debater_name.short_description = "Debater Name"
 
 
+@admin.register(SiteSetting)
 class SiteSettingAdmin(admin.ModelAdmin):
     list_display = ("key", "value")
     search_fields = ("key",)
     ordering = ("key",)
 
+@admin.register(QualBar)
 class QualBarAdmin(admin.ModelAdmin):
     list_display = ("season", "points")
     search_fields = ("season",)
 
+@admin.register(Video)
 class VideoAdmin(admin.ModelAdmin):
     list_display = ("tournament", "round", "pm", "lo", "mg", "mo", "permissions")
     list_filter = ("tournament", "round", "permissions", "tags")
@@ -282,34 +324,15 @@ class VideoAdmin(admin.ModelAdmin):
         ("Permissions & Tags", {"fields": ("permissions", "tags")}),
     )
 
+    @admin.display(
+        description="Video URL"
+    )
     def get_absolute_url(self, obj):
         return obj.get_absolute_url()
 
-    get_absolute_url.short_description = "Video URL"
 
 
-admin.site.register(User, CustomUserAdmin)
 admin.site.register(Round)
 admin.site.register(RoundStats)
-admin.site.register(SiteSetting, SiteSettingAdmin)
 
 admin.site.register(SchoolLookup)
-admin.site.register(Video, VideoAdmin)
-
-admin.site.register(School, SchoolAdmin)
-admin.site.register(Debater, DebaterAdmin)
-admin.site.register(Reaff, ReaffAdmin)
-admin.site.register(Tournament, TournamentAdmin)
-admin.site.register(Team, TeamAdmin)
-admin.site.register(TeamResult, TeamResultAdmin)
-admin.site.register(SpeakerResult, SpeakerResultAdmin)
-
-admin.site.register(SOTY, SOTYAdmin)
-admin.site.register(NOTY, NOTYAdmin)
-admin.site.register(TOTY, TOTYAdmin)
-admin.site.register(TOTYReaff, TOTYReaffAdmin)
-admin.site.register(COTY, COTYAdmin)
-admin.site.register(QualPoints, QualPointsAdmin)
-
-admin.site.register(QualBar, QualBarAdmin)
-admin.site.register(QUAL, QUALAdmin)
