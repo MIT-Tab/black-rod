@@ -86,9 +86,16 @@ class ReaffAdmin(ImportExportModelAdmin):
 @admin.register(Tournament)
 class TournamentAdmin(ImportExportModelAdmin):
     resource_class = TournamentResource
-    list_display = ["name"]
-    list_filter = ["name"]
-    search_fields = ["name"]
+    list_display = ["name", "host_name", "id", "season"]
+    list_filter = ["name", "host__name", "id", "season"]
+    search_fields = ["name", "host__name", "id", "season"]
+
+    @admin.display(
+        description="Host Name",
+        ordering="host__name",
+    )
+    def host_name(self, obj):
+        return obj.host.name if obj.host else ""
 
 
 

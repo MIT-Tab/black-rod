@@ -279,7 +279,10 @@ class Tournament(models.Model):
         return speaker_points_for_size(self.num_teams, place)
 
     def get_season_display(self):
-        return f"{self.season}-{str(int(self.season)+1)[2:]}"
+        if isinstance(self.season, int) or (isinstance(self.season, str) and self.season.isdigit()):
+            season_int = int(self.season)
+            return f"{season_int}-{str(season_int + 1)[2:]}"
+        return self.season
 
     def get_noty_points(self, place):
         if not self.noty:
