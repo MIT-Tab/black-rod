@@ -62,10 +62,10 @@ INSTALLED_APPS = [
     "django_summernote",
     "core.apps.CoreConfig",
     "django_extensions",
+    "apdaonline",
     "allauth",
     "allauth.account",
     "allauth.socialaccount",
-    "apdaonline",
 ]
 
 CRISPY_TEMPLATE_PACK = "bootstrap4"
