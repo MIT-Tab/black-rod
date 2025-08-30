@@ -2,8 +2,9 @@ from dal import autocomplete
 from django.conf import settings
 from django.http import HttpResponse
 from django.urls import reverse_lazy
-from django_filters import FilterSet
+from django_filters import FilterSet, ChoiceFilter, CharFilter
 from django_tables2 import Column
+from django import forms
 from haystack.query import SearchQuerySet
 
 from core.forms import DebaterForm
@@ -23,7 +24,75 @@ from core.utils.perms import has_perm
 from core.utils.rounds import get_tab_card_data
 
 
+class SeasonFilterWidget(forms.MultiWidget):
+    """Custom widget that renders two dropdowns: filter type and season"""
+    
+    def __init__(self, attrs=None):
+        filter_type_choices = [
+            ('', 'Select Filter Type'),
+            ('first_season', 'Started in Season'),
+            ('latest_season', 'Last Competed in Season'), 
+            ('competed_during', 'Competed During Season'),
+        ]
+        
+        season_choices = [('', 'Select Season')] + list(settings.SEASONS)
+        
+        widgets = [
+            forms.Select(choices=filter_type_choices, attrs={'class': 'form-control'}),
+            forms.Select(choices=season_choices, attrs={'class': 'form-control'}),
+        ]
+        super().__init__(widgets, attrs)
+    
+    def decompress(self, value):
+        if value:
+            # Value format: "filter_type:season_value"
+            parts = value.split(':', 1) if ':' in str(value) else ['', '']
+            return parts
+        return ['', '']
+    
+    def value_from_datadict(self, data, files, name):
+        filter_type = data.get(f'{name}_0', '')
+        season = data.get(f'{name}_1', '')
+        if filter_type and season:
+            return f'{filter_type}:{season}'
+        return ''
+
+
+class SeasonFilter(CharFilter):
+    """Custom filter that handles the combined season filter logic"""
+    
+    def __init__(self, *args, **kwargs):
+        kwargs['widget'] = SeasonFilterWidget()
+        super().__init__(*args, **kwargs)
+    
+    def filter(self, qs, value):
+        if not value or ':' not in value:
+            return qs
+            
+        filter_type, season_value = value.split(':', 1)
+        
+        if filter_type == 'first_season':
+            return qs.filter(first_season=season_value)
+        elif filter_type == 'latest_season':
+            return qs.filter(latest_season=season_value)
+        elif filter_type == 'competed_during':
+            return qs.filter(
+                first_season__lte=season_value,
+                latest_season__gte=season_value
+            ).exclude(
+                first_season__isnull=True,
+                latest_season__isnull=True
+            )
+        
+        return qs
+
+
 class DebaterFilter(FilterSet):
+    season_filter = SeasonFilter(
+        label="Season Filter",
+        help_text="Select filter type and season"
+    )
+    
     class Meta:
         model = Debater
         fields = {

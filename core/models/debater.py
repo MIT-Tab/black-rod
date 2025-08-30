@@ -17,8 +17,10 @@ class Debater(models.Model):
         blank=True,
         null=True,
     )
-
     # WHAT IF AFFILIATION CHANGES ?  Considered new debater
+    
+    first_season = models.CharField(max_length=16, blank=True, null=True)
+    latest_season = models.CharField(max_length=16, blank=True, null=True)
 
     NOVICE = 0
     VARSITY = 1
@@ -26,6 +28,12 @@ class Debater(models.Model):
     status = models.IntegerField(choices=STATUS, default=VARSITY)
 
     def save(self, *args, **kwargs):
+        if not self.pk:
+            current_season = settings.CURRENT_SEASON
+            if not self.first_season:
+                self.first_season = current_season
+            if not self.most_recent_season:
+                self.most_recent_season = current_season
         super().save(*args, **kwargs)
 
         for team in self.teams.all():

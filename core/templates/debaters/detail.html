@@ -24,6 +24,19 @@
                     <a href={% url 'core:school_detail' pk=object.school.id %}>{{ object.school.name }}</a>
                 </td>
             </tr>
+            <tr>
+                <td>First Season</td>
+                <td>
+                    {{ object.first_season }}-{{ object.first_season|add:"1"|stringformat:"s"|slice:"2:4" }}
+                </td>
+            </tr>
+            <tr>
+                <td>Latest Season</td>
+                <td>
+                    {{ object.latest_season }}-{{ object.latest_season|add:"1"|stringformat:"s"|slice:"2:4" }}
+                </td>
+            </tr>
+            </tr>
         </tbody>
     </table>
 {% endblock detail_view %}

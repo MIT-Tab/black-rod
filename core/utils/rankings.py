@@ -298,7 +298,13 @@ def update_qual_points(team, season=settings.CURRENT_SEASON):
             QUAL.objects.filter(season=season, debater=debater).delete()
 
         qual = None
-
+        if results.exists():
+            latest_season = debater.latest_season
+            current_season = int(settings.CURRENT_SEASON)
+            if latest_season is None or int(latest_season) < current_season:
+                debater.latest_season = settings.CURRENT_SEASON
+                debater.save()
+                
         for result in results:
             if result.place <= result.tournament.autoqual_bar:
                 try:
