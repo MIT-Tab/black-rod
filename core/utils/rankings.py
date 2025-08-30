@@ -13,6 +13,7 @@ from core.models.standings.online_qual import OnlineQUAL
 from core.models.standings.qual import QUAL
 from core.models.standings.soty import SOTY
 from core.models.standings.toty import TOTY, TOTYReaff
+from django.test import Client
 
 
 def get_relevant_debaters(school, season):
@@ -125,6 +126,8 @@ def update_toty(team, season=settings.CURRENT_SEASON):
 
 
 def update_soty(debater, season=settings.CURRENT_SEASON):
+    if isinstance(season, str):
+        season = int(season.split("-")[0])
     if (
         not any(
             [
@@ -202,6 +205,8 @@ def update_soty(debater, season=settings.CURRENT_SEASON):
 
 
 def update_noty(debater, season=settings.CURRENT_SEASON):
+    if isinstance(season, str):
+        season = int(season.split("-")[0])
     if season > settings.LAST_NOTY_SEASON:
         return None
     if (
@@ -418,10 +423,8 @@ def redo_rankings(rankings, season=settings.CURRENT_SEASON, cache_type="toty"):
     key = make_template_fragment_key(cache_type, [season])
     print(f"CLEARING: {key} ({season})")
     cache.delete(key)
-
-    contents = urllib.request.urlopen(
-        settings.BASE_URL + reverse("core:index") + f"?season={season}"
-    ).read()
+    client = Client()
+    client.get(reverse("core:index") + f"?season={season}")
 
 
 def update_online_quals(team, season=settings.CURRENT_SEASON):

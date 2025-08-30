@@ -46,7 +46,7 @@
         </div>
     {% endif %}
 {% endfor %}
-<table class="table table-striped table-hover table-bordered">
+<table class="table table-hover ">
     <thead>
         <th>Place</th>
         <th>Tournament</th>
@@ -58,7 +58,11 @@
         {% for result in results %}
             <tr>
                 {% if result.type == 'award' %}
-                    <td>{{ result.result.place }}</td>
+                    {% if result.result.place > 0 %}
+                        <td>{{ result.result.place }}</td>
+                    {% else %}
+                        <td></td>
+                    {% endif %}
                     <td>
                         <a href="{% url 'core:tournament_detail' pk=result.result.tournament.id %}">{{ result.result.tournament.name }}</a>
                     </td>

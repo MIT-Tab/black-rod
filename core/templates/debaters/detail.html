@@ -276,6 +276,7 @@
                             {% endif %}
                         </tr>
                         {% for type, award in tournament.data %}
+                            {% if award.place > 0 %}
                             <tr>
                                 {% if type == 'team' %}
                                     <td></td>
@@ -294,6 +295,7 @@
                                         colspan="{% if tournament.tab_card and user.is_authenticated %}4{% else %}3{% endif %}">
                                     </td>
                                 {% endif %}
+                            {% endif %}
                             </tr>
                         {% endfor %}
                     {% endfor %}

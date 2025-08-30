@@ -16,9 +16,16 @@ class TeamResult(models.Model):
 
     type_of_place = models.IntegerField(choices=Debater.STATUS, default=Debater.VARSITY)
 
+    # -1 -> did not place
     place = models.IntegerField(default=-1)
 
     ghost_points = models.BooleanField(default=False)
 
     class Meta:
-        unique_together = ("tournament", "type_of_place", "place")
+        constraints = [
+            models.UniqueConstraint(
+                fields=["tournament", "type_of_place", "place"],
+                condition=~models.Q(place=-1), # Allows many results with place -1
+                name="unique_teamresult_place_when_not_minus_one"
+            )
+        ]

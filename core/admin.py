@@ -132,6 +132,48 @@ class TeamAdmin(ImportExportModelAdmin):
 @admin.register(TeamResult)
 class TeamResultAdmin(ImportExportModelAdmin):
     resource_class = TeamResultResource
+    list_display = (
+        "tournament_name",
+        "tournament_season",
+        "team_name",
+        "type_of_place_display",
+        "place",
+        "ghost_points",
+    )
+    list_filter = (
+        "tournament__name",
+        "tournament__season",
+        "team__name",
+        "type_of_place",
+        "ghost_points",
+    )
+    search_fields = (
+        "tournament__name",
+        "tournament__season",
+        "team__name",
+        "place",
+    )
+    ordering = ("tournament__name", "tournament__season", "team__name", "type_of_place", "place")
+
+    @admin.display(description="Tournament", ordering="tournament__name")
+    def tournament_name(self, obj):
+        return obj.tournament.name
+
+    @admin.display(description="Season", ordering="tournament__season")
+    def tournament_season(self, obj):
+        return obj.tournament.season
+
+    @admin.display(description="Team", ordering="team__name")
+    def team_name(self, obj):
+        return obj.team.name
+
+    @admin.display(description="Type of Place", ordering="type_of_place")
+    def type_of_place_display(self, obj):
+        return obj.get_type_of_place_display()
+
+    @admin.display(description="Ghost Points", ordering="ghost_points")
+    def ghost_points(self, obj):
+        return obj.ghost_points
 
 
 @admin.register(SpeakerResult)

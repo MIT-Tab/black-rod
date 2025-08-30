@@ -186,6 +186,7 @@ class SpeakerResultForm(forms.ModelForm):
 
 VarsityTeamResultFormset = formset_factory(TeamResultForm, extra=24, max_num=24)
 NoviceTeamResultFormset = formset_factory(TeamResultForm, extra=8, max_num=8)
+UnplacedTeamResultFormset = formset_factory(TeamResultForm, extra=20, max_num=20)
 
 VarsitySpeakerResultFormset = formset_factory(SpeakerResultForm, extra=10, max_num=10)
 NoviceSpeakerResultFormset = formset_factory(SpeakerResultForm, extra=10, max_num=10)

@@ -19,6 +19,8 @@ def online_points(place):
 
 def team_points_for_size(num_teams, place, ghost_points=False):
     toty = 0
+    if place < 0:
+        return 0
 
     if num_teams < 8:
         return 0
