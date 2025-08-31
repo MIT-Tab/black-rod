@@ -172,7 +172,7 @@ class TemplateTagExecutionTest(TestCase):
         result = qual_contribution(debater, "2024")
         self.assertEqual(result, 66)  # min(65 + 6, 66)
 
-    @patch("core.templatetags.tags.get_relevant_debaters")
+    @patch("core.templatetags.tags.get_qualled_debaters")
     def test_relevant_debaters_filter_execution(self, mock_get_relevant):
         """Test relevant_debaters filter execution"""
         from core.templatetags.tags import relevant_debaters

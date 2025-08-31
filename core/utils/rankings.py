@@ -16,7 +16,7 @@ from core.models.standings.toty import TOTY, TOTYReaff
 from django.test import Client
 
 
-def get_relevant_debaters(school, season):
+def get_qualled_debaters(school, season):
     qualled_debaters = [
         q.debater for q in QUAL.objects.filter(debater__school=school, season=season)
     ]

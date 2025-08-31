@@ -2,7 +2,7 @@ from decimal import Decimal
 
 from django import template
 
-from core.utils.rankings import get_relevant_debaters
+from core.utils.rankings import get_qualled_debaters
 
 register = template.Library()
 
@@ -86,7 +86,7 @@ def qual_contribution(debater, season):
 
 @register.filter
 def relevant_debaters(school, season):
-    return get_relevant_debaters(school, season)
+    return get_qualled_debaters(school, season)
 
 
 @register.filter
@@ -110,3 +110,12 @@ def partner_name(team, debater):
 @register.filter
 def school(team):
     return f'<a href="{team.debaters.first().school.get_absolute_url()}">{team.debaters.first().school.name}</a>'
+
+
+@register.filter
+def years_on_team(current_season, first_season):
+    """Calculate years on team: current_season - first_season + 1"""
+    try:
+        return int(current_season) - int(first_season) + 1
+    except (ValueError, TypeError):
+        return 0

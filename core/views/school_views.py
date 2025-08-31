@@ -14,7 +14,8 @@ from core.utils.generics import (
     CustomTable,
     CustomUpdateView,
 )
-from core.utils.rankings import get_relevant_debaters
+from core.utils.rankings import get_qualled_debaters
+from core.utils.schools import get_debaters_for_season
 
 
 class SchoolFilter(FilterSet):
@@ -87,16 +88,21 @@ class SchoolDetailView(CustomDetailView):
         return super().get(request, *args, **kwargs)
 
     def get_context_data(self, *args, **kwargs):
+        season = self.request.GET.get("season")
+        default = self.request.GET.get("default", "members")
         context = super().get_context_data(*args, **kwargs)
 
         context["cotys"] = self.object.coty.order_by("-season")
 
-        context["debaters"] = get_relevant_debaters(
-            self.object, self.request.GET.get("season")
+        context["quals"] = get_qualled_debaters(
+            self.object, season
         )
 
+        context["debaters"] = get_debaters_for_season(self.object, season)
+
         context["seasons"] = settings.SEASONS
-        context["current_season"] = self.request.GET.get("season")
+        context["current_season"] = season
+        context["default"] = default
 
         context["tournaments"] = self.object.hosted_tournaments.order_by("-date")
 
