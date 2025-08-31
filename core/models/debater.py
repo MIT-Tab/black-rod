@@ -18,7 +18,7 @@ class Debater(models.Model):
         null=True,
     )
     # WHAT IF AFFILIATION CHANGES ?  Considered new debater
-    
+
     first_season = models.CharField(max_length=16, blank=True, null=True)
     latest_season = models.CharField(max_length=16, blank=True, null=True)
 
@@ -32,8 +32,8 @@ class Debater(models.Model):
             current_season = settings.CURRENT_SEASON
             if not self.first_season:
                 self.first_season = current_season
-            if not self.most_recent_season:
-                self.most_recent_season = current_season
+            if not self.latest_season:
+                self.latest_season = current_season
         super().save(*args, **kwargs)
 
         for team in self.teams.all():
