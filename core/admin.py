@@ -65,15 +65,15 @@ class DebaterAdmin(ImportExportModelAdmin):
     resource_class = DebaterResource
     list_display = ("first_name", "last_name", "school", "id")
     list_filter = ("first_name", "last_name", "school", "id")
-    search_fields = ("first_name", "last_name", "school", "id")
+    search_fields = ("first_name", "last_name", "school__name", "id")
     ordering = ("first_name", "last_name", "school")
 
     @admin.display(
         description="Debater Name",
-        ordering="debater__first_name",
+        ordering="first_name",
     )
     def debater_name(self, obj):
-        return f"{obj.debater.first_name} {obj.debater.last_name}"
+        return f"{obj.first_name} {obj.last_name}"
 
 
 
