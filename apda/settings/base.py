@@ -258,7 +258,6 @@ NAV_MENU_LEFT = [
     {"name": "Standings", "url": "core:index"},
     {
         "name": "Results",
-        "validators": ["menu_generator.validators.is_authenticated"],
         "url": "/asdfa",
         "submenu": [
             {"name": "Schools", "url": "core:school_list", "root": True},
