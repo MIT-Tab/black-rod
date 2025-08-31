@@ -9,7 +9,7 @@ def get_debaters_for_season(school, season):
             latest_season__gte=season
         )
     )
-    
+
     def years_on_team(debater):
         try:
             return int(season) - int(debater.first_season) + 1
