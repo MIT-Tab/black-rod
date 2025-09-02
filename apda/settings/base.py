@@ -267,12 +267,6 @@ NAV_MENU_LEFT = [
         ],
     },
     {"name": "Videos", "url": "core:video_list", "root": True},
-    {
-        "name": "Results",
-        "validators": ["menu_generator.validators.is_anonymous"],
-        "url": "core:tournament_list",
-        "root": True,
-    },
     {"name": "Schedule", "url": "core:schedule_view", "root": True},
     {
         "name": "Admin",
