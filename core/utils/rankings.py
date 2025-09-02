@@ -531,3 +531,18 @@ def update_online_quals(team, season=settings.CURRENT_SEASON):
         coty.save()
 
     return True
+
+def place_as_round(place):
+        rounds = [
+            (1, "1st"),
+            (2, "2nd"),
+            (4, "Semi-Finalist"),
+            (8, "Quarter-Finalist"),
+            (16, "Octo-Finalist"),
+            (32, "Double Octo-Finalist"),
+            (64, "Quadruple Octo-Finalist"),
+        ]
+        for cutoff, name in rounds:
+            if place <= cutoff:
+                return name
+        return f"Top {place}"

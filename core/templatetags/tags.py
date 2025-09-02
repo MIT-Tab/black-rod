@@ -2,7 +2,7 @@ from decimal import Decimal
 
 from django import template
 
-from core.utils.rankings import get_qualled_debaters
+from core.utils.rankings import get_qualled_debaters, place_as_round
 
 register = template.Library()
 
@@ -119,3 +119,9 @@ def years_on_team(current_season, first_season):
         return int(current_season) - int(first_season) + 1
     except (ValueError, TypeError):
         return 0
+
+
+@register.filter
+def place_as_round_filter(place):
+    """Convert numeric place to round name (e.g., 1 -> '1st', 4 -> 'Semi-Finalist')"""
+    return place_as_round(place)

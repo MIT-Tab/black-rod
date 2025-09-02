@@ -198,6 +198,8 @@ class TournamentDetailView(CustomDetailView):
         context["novice_team_results"] = obj.team_results.filter(
             type_of_place=Debater.NOVICE,
             place__gt=0
+        ).exclude(
+            team__in=obj.team_results.filter(type_of_place=Debater.VARSITY, place__gt=0).values_list("team", flat=True)
         ).order_by("place")
 
         vspeakers = list(
