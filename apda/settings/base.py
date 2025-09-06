@@ -103,8 +103,8 @@ WSGI_APPLICATION = "apda.wsgi.application"
 
 # Database
 # https://docs.djangoproject.com/en/1.11/ref/settings/#databases
-DEFAULT_SEASON = '2024'
-CURRENT_SEASON = '2024'
+DEFAULT_SEASON = '2025'
+CURRENT_SEASON = '2025'
 
 # Set defaults for non-production environments
 if os.environ.get("ENV") != "production":
