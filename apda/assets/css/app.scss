@@ -1,20 +1,36 @@
 $font-size-base: .9rem;
 
 $theme-colors: (
-  "primary": #4D7EA8,
-  "danger": #A31621,
-  "success": #70A363,
-  "secondary": #668586,
-  "info": #E8E8E8,
+    "primary":#045fb0,
+    "danger": #580000,
+    "success": #70A363,
+    "secondary": #668586,
+    "info": #E8E8E8,
 );
 
-.table > tbody > tr > td {
+.table>tbody>tr>td {
     vertical-align: middle;
+}
+
+@for $i from 1 through 10 {
+    .rounded-l#{$i} {
+        border-radius: $i * 3px !important;
+        overflow: hidden;
+        border : 1px solid lightgray !important;
+    }
+}
+
+nav {
+    border-bottom-left-radius: 25px;
+    border-bottom-right-radius: 25px;
+    padding-bottom : 20px !important;
+    font-weight: 600 !important;
 }
 
 .select2 {
     width: 100% !important;
 }
+
 .select2-container .select2-selection--single {
     height: 42px !important;
 }
@@ -41,11 +57,83 @@ $theme-colors: (
 
 .short-row {
     padding-top: 4px !important;
-    padding-bottom: 4px !important;    
+    padding-bottom: 4px !important;
 }
 
 .no-padding {
     padding: 0px !important;
+}
+
+.mittab-dashboard {
+    .mittab-table-row:hover {
+        background-color: #f8f9fa !important;
+        transform: translateY(-1px);
+        transition: all 0.2s ease;
+    }
+    
+    .mittab-tournament-icon {
+        width: 40px;
+        height: 40px;
+        background: #007bff;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-size: 1.1rem;
+    }
+    
+    .mittab-stat-item {
+        padding: 1rem;
+        border-radius: 8px;
+        transition: transform 0.2s ease;
+        
+        &:hover {
+            transform: translateY(-2px);
+        }
+    }
+    
+    .mittab-table {
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        border-radius: 8px;
+        overflow: hidden;
+    }
+    
+    .mittab-btn-primary {
+        background: #007bff;
+        transition: all 0.2s ease;
+        
+        &:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(115, 29, 221, 0.3);
+            background: #731DDD;
+        }
+    }
+    
+    .mittab-refresh-btn {
+        transition: all 0.2s ease;
+        
+        &:hover {
+            transform: translateY(-1px);
+        }
+    }
+}
+
+.rankings-card {
+    border-radius: 8px;
+    
+    .rankings-warning {
+        border-left: 4px solid #ffc107;
+    }
+    
+    .form-control:focus {
+        border-color: #731DDD;
+        box-shadow: 0 0 0 0.2rem rgba(115, 29, 221, 0.25);
+    }
+    
+    .btn:hover:not(:disabled) {
+        transform: translateY(-1px);
+    }
 }
 
 @import "node_modules/bootstrap/scss/bootstrap";

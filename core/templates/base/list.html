@@ -1,32 +1,34 @@
-{% extends 'base/base.html' %}
-
+{% extends "base/base.html" %}
 {% load render_table from django_tables2 %}
 {% load crispy_forms_tags %}
-
 {% block content %}
     <div class="row mt-lg-5 ml-lg-2 mr-lg-2 mb-lg-5 m-1">
-	<div class="col-lg-3">
-	    {% block left_alert %}{% endblock %}
-	    <div class="card m-2">
-		<div class="card-body">
-		    <h5 class="card-title">Search</h5>
-		    <form action="" method="GET">
-			{{ filter.form.media }}
-			{{ filter.form|crispy }}
-			<input type="submit" class="btn btn-info" value="Search">
-		    </form>
-		</div>
-	    </div>
-	</div>
-	<div class="col-lg-9">
-	    <div class="card m-2">
-		<div class="card-body">
-		    <h5 class="card-title">{% block table_title %}Object List{% endblock %}
-			{% include 'base/_buttons.html' %}
-		    </h5>
-		    {% render_table table %}
-		</div>
-	    </div>
-	</div>
+        <div class="col-lg-3">
+            {% block left_alert %}
+            {% endblock left_alert %}
+            <div class="rounded-l5 shadow-lg card m-2 ">
+                <div class="card-body">
+                    <h5 class="card-title">Search</h5>
+                    <form action="" method="GET">
+                        {{ filter.form.media }}
+                        {{ filter.form|crispy }}
+                        <input type="submit" class="btn btn-info" value="Search">
+                    </form>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-9">
+            <div class="shadow-lg card m-2 rounded-l5">
+                <div class="card-body">
+                    <h5 class="card-title">
+                        {% block table_title %}
+                            Object List
+                        {% endblock table_title %}
+                        {% include "base/_buttons.html" %}
+                    </h5>
+                    {% render_table table %}
+                </div>
+            </div>
+        </div>
     </div>
-{% endblock %}
+{% endblock content %}

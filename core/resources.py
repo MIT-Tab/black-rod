@@ -1,6 +1,20 @@
 from import_export import resources
 
-from core.models import *
+from core.models import (
+    School,
+    Debater,
+    Tournament,
+    Reaff,
+    Team,
+    TeamResult,
+    SpeakerResult,
+    NOTY,
+    SOTY,
+    TOTY,
+    COTY,
+    QualPoints,
+    QUAL,
+)
 
 
 class SchoolResource(resources.ModelResource):
@@ -16,6 +30,11 @@ class DebaterResource(resources.ModelResource):
 class TournamentResource(resources.ModelResource):
     class Meta:
         model = Tournament
+
+
+class ReaffResource(resources.ModelResource):
+    class Meta:
+        model = Reaff
 
 
 class TeamResource(resources.ModelResource):

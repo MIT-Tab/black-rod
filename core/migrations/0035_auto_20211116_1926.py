@@ -6,12 +6,16 @@ from django.db import migrations
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('core', '0034_merge_20211116_1654'),
+        ("core", "0034_merge_20211116_1654"),
     ]
 
     operations = [
         migrations.AlterModelOptions(
-            name='user',
-            options={'permissions': (('view_accounts_only_video', 'View Accounts Only Video'),)},
+            name="user",
+            options={
+                "permissions": (
+                    ("view_accounts_only_video", "View Accounts Only Video"),
+                )
+            },
         ),
     ]

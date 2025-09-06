@@ -1,38 +1,51 @@
 from django.db import models
 from django.shortcuts import reverse
-
 from django.utils.html import format_html
 
-from django.conf import settings
-
-from .school import School
 from .debater import Debater
 
 
 class Team(models.Model):
-    name = models.CharField(max_length=128,
-                            blank=False)
+    name = models.CharField(max_length=128, blank=False)
 
-    debaters = models.ManyToManyField(Debater,
-                                      related_name='teams')
+    debaters = models.ManyToManyField(Debater, related_name="teams")
 
     def update_name(self):
-        school_name = ''
+        school_name = ""
 
         if self.debaters.first().school == self.debaters.last().school:
             school_name = self.debaters.first().school.name
         else:
-            school_name = '%s / %s' % (self.debaters.first().school.name,
-                                       self.debaters.last().school.name)
+            school_name = f"{self.debaters.first().school.name} / {self.debaters.last().school.name}"
 
-        self.name = '%s %s' % (school_name,
-                               ''.join([debater.last_name[0] \
-                                        for debater in self.debaters.all()]))
+        self.name = f"{school_name} {''.join([debater.last_name[0] for debater in self.debaters.all()])}"
 
     @property
     def debaters_display(self):
-        return format_html(' and '.join(['<a href="%s">%s</a>' % (debater.get_absolute_url(),
-                                                                  debater.name) for debater in self.debaters.all()]))
+        return format_html(
+            " and ".join(
+                [
+                    f'<a href="{debater.get_absolute_url()}">{debater.name}</a>'
+                    for debater in self.debaters.all()
+                ]
+            )
+        )
+
+    @property
+    def long_name(self):
+        debaters = list(self.debaters.all())
+        if len(debaters) == 2:
+            school = (
+                debaters[0].school.name
+                if debaters[0].school == debaters[1].school
+                else f"{debaters[0].school.name} / {debaters[1].school.name}"
+            )
+            names = f"{debaters[0].first_name} {debaters[0].last_name} and {debaters[1].first_name} {debaters[1].last_name}"
+            return f"{school} {names}"
+        if debaters:
+            return f"{debaters[0].school.name} {debaters[0].first_name} {debaters[0].last_name}"
+
+        return self.name
 
     @property
     def toty_points(self):
@@ -40,12 +53,12 @@ class Team(models.Model):
 
     @property
     def hybrid(self):
-        schools = list(set([d.school for d in self.debaters.all()]))
+        schools = list({d.school for d in self.debaters.all()})
 
         return len(schools) == 2
 
     def get_absolute_url(self):
-        return reverse('core:team_detail', kwargs={'pk': self.id})
+        return reverse("core:team_detail", kwargs={"pk": self.id})
 
     def __str__(self):
         return self.name

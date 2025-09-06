@@ -1,0 +1,89 @@
+version: 2.1
+
+jobs:
+  pylint:
+    docker:
+      - image: cimg/python:3.8
+    steps:
+      - checkout
+      - run: python -m venv venv
+      - run:
+          name: Install requirements
+          command: |
+            . venv/bin/activate
+            pip install --upgrade pip setuptools wheel -c constraints.txt
+            pip install -r requirements.txt -c constraints.txt
+            pip install pylint
+      - run:
+          name: Pylint (excluding test directories)
+          command: |
+            . venv/bin/activate
+            pylint apda apdaonline core --ignore-patterns='^tests?$'
+
+  lint_html:
+    docker:
+      - image: cimg/python:3.8
+    steps:
+      - checkout
+      - run: python -m venv venv
+      - run:
+          name: Install requirements
+          command: |
+            . venv/bin/activate
+            pip install --upgrade pip setuptools wheel -c constraints.txt
+            pip install -r requirements.txt -c constraints.txt
+            pip install djlint
+      - run:
+          name: Lint HTML
+          command: |
+            . venv/bin/activate
+            djlint .
+
+  test:
+    docker:
+      - image: cimg/python:3.8
+    steps:
+      - checkout
+      - run: python -m venv venv
+      - run:
+          name: Install requirements
+          command: |
+            . venv/bin/activate
+            pip install --upgrade pip setuptools wheel -c constraints.txt
+            pip install -r requirements.txt -c constraints.txt
+            pip install pytest pytest-django pytest-cov
+      - run:
+          name: Setup Node.js 10
+          command: |
+            curl -fsSL https://nodejs.org/dist/v10.24.1/node-v10.24.1-linux-x64.tar.xz -o node10.tar.xz
+            sudo tar -C /usr/local --strip-components=1 -xf node10.tar.xz
+            rm node10.tar.xz
+            node -v
+            npm -v
+      - run:
+          name: Build frontend
+          command: |
+            npm install
+            npm run build
+      - run:
+          name: Run tests with coverage (excluding test dirs from coverage)
+          command: |
+            . venv/bin/activate
+            export ENV=testing
+            export DEBUG=1
+            export DJANGO_SETTINGS_MODULE=apda.settings.base
+            pytest \
+              --cov=apdaonline \
+              --cov=apda \
+              --cov=core \
+              --cov-report=term-missing \
+              --cov-fail-under=40 \
+              --cov-config=<(echo '[run]'; echo 'omit = */tests/* */test/* */migrations/*')
+
+workflows:
+  version: 2
+  pr_checks:
+    jobs:
+      - pylint
+      - lint_html
+      - test

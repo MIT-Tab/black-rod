@@ -6,17 +6,21 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('core', '0014_qual_tournament'),
+        ("core", "0014_qual_tournament"),
     ]
 
     operations = [
         migrations.RemoveField(
-            model_name='tournament',
-            name='qual_bar',
+            model_name="tournament",
+            name="qual_bar",
         ),
         migrations.AddField(
-            model_name='tournament',
-            name='autoqual_bar',
-            field=models.IntegerField(default=0, help_text='If this tournament gives autoquals, this value represents the highest place that receivs the autoqual', verbose_name='Autoqual Bar'),
+            model_name="tournament",
+            name="autoqual_bar",
+            field=models.IntegerField(
+                default=0,
+                help_text="If this tournament gives autoquals, this value represents the highest place that receivs the autoqual",
+                verbose_name="Autoqual Bar",
+            ),
         ),
     ]

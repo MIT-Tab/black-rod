@@ -4,9 +4,8 @@
   "description": "Standings site for APDA",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "build": "webpack --config webpack.config.js --progress --colors --mode development",
-    "watch": "webpack --config webpack.config.js --watch --mode development"
+    "build": "webpack --config webpack.config.js --progress --color --mode=development",
+    "watch": "webpack --config webpack.config.js --watch --mode=development"
   },
   "repository": {
     "type": "git",
@@ -19,26 +18,28 @@
   },
   "homepage": "https://github.com/MIT-Tab/black-rod#readme",
   "devDependencies": {
-    "@babel/core": "^7.6.4",
-    "babel-loader": "^8.0.6",
-    "babel-preset-env": "^1.7.0",
-    "bootstrap-datepicker": "^1.9.0",
-    "css-loader": "^3.2.0",
-    "less": "^3.10.3",
-    "less-loader": "^5.0.0",
-    "node-sass": "^4.12.0",
-    "postcss-loader": "^3.0.0",
-    "precss": "^4.0.0",
-    "sass-loader": "^8.0.0",
-    "style-loader": "^1.0.0",
-    "webpack": "^4.41.2",
-    "webpack-bundle-tracker": "^0.4.3",
-    "webpack-cli": "^3.3.9"
+    "@babel/core": "^7.28.3",
+    "@babel/preset-env": "^7.28.3",
+    "autoprefixer": "^10.4.21",
+    "babel-loader": "^9.2.1",
+    "bootstrap-datepicker": "1.9.0",
+    "css-loader": "^6.11.0",
+    "less": "^4.4.1",
+    "less-loader": "^11.1.4",
+    "postcss": "^8.5.6",
+    "postcss-loader": "^7.3.4",
+    "precss": "4.0.0",
+    "sass": "^1.91.0",
+    "sass-loader": "^13.3.3",
+    "style-loader": "^3.3.4",
+    "webpack": "^5.101.3",
+    "webpack-bundle-tracker": "^1.8.1",
+    "webpack-cli": "^5.1.4"
   },
   "dependencies": {
-    "bootstrap": "^4.3.1",
-    "jquery": "^3.4.1",
-    "popper.js": "^1.16.1",
-    "select2": "^4.0.11"
+    "bootstrap": "4.6.0",
+    "jquery": "^3.7.1",
+    "popper.js": "1.16.1",
+    "select2": "4.0.11"
   }
 }

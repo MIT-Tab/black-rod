@@ -1,54 +1,59 @@
-{% extends 'base/detail.html' %}
-
+{% extends "base/detail.html" %}
 {% load tags %}
-
-{% block title %}{{ object }}{% endblock %}
-
+{% block title %}
+    {{ object }}
+{% endblock title %}
 {% block detail_view %}
     <table class="table table-bordered">
-	<thead>
-	    <th>Field</th>
-	    <th>Value</th>
-	</thead>
-	<tbody>
-	    <tr>
-		<td>ID</td>
-		<td>{{ object.id }}</td>
-	    </tr>
-	    <tr>
-		<td>Tournament</td>
-		<td><a href="{{ object.tournament.get_absolute_url }}">{{ object.tournament.name }}</a></td>
-	    </tr>
-	    <tr>
-		<td>Round Number</td>
-		<td>{{ object.round_number }}</td>
-	    </tr>
-	    <tr>
-		<td>Gov</td>
-		<td>
-		    <a href="{{ object.gov.get_absolute_url }}">{{ object.gov.name }}</a> ({{ object.gov.debaters_display }})
-		</td>
-	    </tr>
-	    <tr>
-		<td>Opp</td>
-		<td><a href="{{ object.opp.get_absolute_url }}">{{ object.opp.name }}</a> ({{ object.opp.debaters_display }})</td>
-	    </tr>
-	    <tr>
-		<td>Victor</td>
-		<td>{{ object.get_victor_display }}</td>
-	    </tr>
-	</tbody>
+        <thead>
+            <th>Field</th>
+            <th>Value</th>
+        </thead>
+        <tbody>
+            <tr>
+                <td>ID</td>
+                <td>{{ object.id }}</td>
+            </tr>
+            <tr>
+                <td>Tournament</td>
+                <td>
+                    <a href="{{ object.tournament.get_absolute_url }}">{{ object.tournament.name }}</a>
+                </td>
+            </tr>
+            <tr>
+                <td>Round Number</td>
+                <td>{{ object.round_number }}</td>
+            </tr>
+            <tr>
+                <td>Gov</td>
+                <td>
+                    <a href="{{ object.gov.get_absolute_url }}">{{ object.gov.name }}</a> ({{ object.gov.debaters_display }})
+                </td>
+            </tr>
+            <tr>
+                <td>Opp</td>
+                <td>
+                    <a href="{{ object.opp.get_absolute_url }}">{{ object.opp.name }}</a> ({{ object.opp.debaters_display }})
+                </td>
+            </tr>
+            <tr>
+                <td>Victor</td>
+                <td>{{ object.get_victor_display }}</td>
+            </tr>
+        </tbody>
     </table>
     <table class="table table-bordered">
-	<thead>
-	    <th>Debater</th>
-	    <th>Results</th>
-	</thead>
-	{% for stat in object.stats.all %}
-	    <tr>
-		<td><a href="{{ stat.debater.get_absolute_url }}">{{ stat.debater.name }}</a> (<a href="{{ stat.debater.school.get_absolute_url }}">{{ stat.debater.school.name }}</a>)</td>
-		<td>{{ stat.debater_role|upper }} / {{ stat.speaks|number }} / {{ stat.ranks|number }}</td>
-	    </tr>
-	{% endfor %}
+        <thead>
+            <th>Debater</th>
+            <th>Results</th>
+        </thead>
+        {% for stat in object.stats.all %}
+            <tr>
+                <td>
+                    <a href="{{ stat.debater.get_absolute_url }}">{{ stat.debater.name }}</a> (<a href="{{ stat.debater.school.get_absolute_url }}">{{ stat.debater.school.name }}</a>)
+                </td>
+                <td>{{ stat.debater_role|upper }} / {{ stat.speaks|number }} / {{ stat.ranks|number }}</td>
+            </tr>
+        {% endfor %}
     </table>
-{% endblock %}
+{% endblock detail_view %}

@@ -1,19 +1,29 @@
-<table class="table table-striped table-hover table-bordered">
+<table class="table table-hover table-bordered">
     <thead>
-	<th>Place</th>
-	<th>Debater</th>
-	<th>School</th>
+        <th>Place</th>
+        <th>Debater</th>
+        <th>School</th>
     </thead>
     <tbody>
-	{% for result in results %}
-	    <tr>
-		<td>{{ result.place }}</td>
-		<td><a href="{% url 'core:debater_detail' pk=result.debater.id %}">{{ result.debater.name }}</a></td>
-		<td><a href="{{ result.debater.school.get_absolute_url }}">{{ result.debater.school.name }}</a></td>
-	    </tr>
-	{% empty %}
-	    <tr>
-		<td colspan="3"><center>There are no results of this type.</center></td>
-	{% endfor %}
+        {% for result in results %}
+            <tr>
+                <td>
+                    {{ result.place }}
+                    {% if result.tie %}<span style="color: red; font-weight: bold;">(Tie)</span>{% endif %}
+                </td>
+                <td>
+                    <a href="{% url 'core:debater_detail' pk=result.debater.id %}">{{ result.debater.name }}</a>
+                </td>
+                <td>
+                    <a href="{{ result.debater.school.get_absolute_url }}">{{ result.debater.school.name }}</a>
+                </td>
+            </tr>
+        {% empty %}
+            <tr>
+                <td colspan="3">
+                    <center>There are no results of this type.</center>
+                </td>
+            </tr>
+        {% endfor %}
     </tbody>
 </table>

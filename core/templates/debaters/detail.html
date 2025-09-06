@@ -1,286 +1,375 @@
-{% extends 'base/detail.html' %}
-
+{% extends "base/detail.html" %}
 {% load tags %}
-
-{% block title %}{{ object }}{% endblock %}
-
+{% block title %}
+    {{ object }}
+{% endblock title %}
 {% block detail_view %}
     <table class="table table-bordered">
-	<thead>
-	    <th>Field</th>
-	    <th>Value</th>
-	</thead>
-	<tbody>
-	    <tr>
-		<td>ID</td>
-		<td>{{ object.id }}</td>
-	    </tr>
-	    <tr>
-		<td>Name</td>
-		<td>{{ object.name }}</td>
-	    </tr>
-	    <tr>
-		<td>School</td>
-		<td><a href={% url 'core:school_detail' pk=object.school.id %}>{{ object.school.name }}</a></td>
-	    </tr>
-	</tbody>
+        <thead>
+            <th>Field</th>
+            <th>Value</th>
+        </thead>
+        <tbody>
+            <tr>
+                <td>ID</td>
+                <td>{{ object.id }}</td>
+            </tr>
+            <tr>
+                <td>Name</td>
+                <td>{{ object.name }}</td>
+            </tr>
+            <tr>
+                <td>School</td>
+                <td>
+                    <a href={% url 'core:school_detail' pk=object.school.id %}>{{ object.school.name }}</a>
+                </td>
+            </tr>
+            <tr>
+                <td>First Season</td>
+                <td>
+                    {{ object.first_season }}-{{ object.first_season|add:"1"|stringformat:"s"|slice:"2:4" }}
+                </td>
+            </tr>
+            <tr>
+                <td>Latest Season</td>
+                <td>
+                    {{ object.latest_season }}-{{ object.latest_season|add:"1"|stringformat:"s"|slice:"2:4" }}
+                </td>
+            </tr>
+            </tr>
+        </tbody>
     </table>
-{% endblock %}
-
+{% endblock detail_view %}
 {% block left_column %}
     {% if totys|length > 0 or sotys|length > 0 or notys|length > 0 %}
-	<div class="card mt-3 mb-3">
-	    <div class="card-body">
-		<h5 class="card-title pb-2">
-		    <ul class="nav nav-pills nav-fill" id="otys_pills" roll="tablist">
-			{% if totys|length > 0 %}
-			    <li class="nav-item">
-				<a class="nav-link active" id="_TOTY" data-toggle="tab" href="#toty">TOTY</a>
-			    </li>
-			{% endif %}
-			{% if sotys|length > 0 %}
-			    <li class="nav-item">
-				<a class="nav-link {% if totys|length == 0 %}active{% endif %}" id="_SOTY" data-toggle="tab" href="#soty">SOTY</a>
-			    </li>
-			{% endif %}
-			{% if notys|length > 0 %}
-			    <li class="nav-item">
-				<a class="nav-link {% if totys|length == 0 and sotys|length == 0 %}active{% endif %}" id="_NOTY" data-toggle="tab" href="#noty">NOTY</a>
-			    </li>
-			{% endif %}
-		    </ul>
-		</h5>
-		<div class="tab-content" id="otys">
-		    <div class="tab-pane fade {% if totys|length > 0 %}active show{% endif %}" id="toty" role="tabpanel">
-			<table class="table table-bordered table-hover table-striped">
-			    <thead>
-				<th>Place</th>
-				<th>Team</th>
-				<th>Season</th>
-				<th>Points</th>
-			    </thead>
-			    <tbody>
-				{% for toty in totys %}
-				    <tr>
-					<td>{{ toty.place }}</td>
-					<td><a href="{{ toty.team.get_absolute_url }}">{{ toty.team.name }}</a></td>
-					<td><a href="{% url 'core:index' %}?season={{ toty.season }}&default=toty">{{ toty.get_season_display }}</a></td>
-					<td>{{ toty.points|number }}</td>
-				    </tr>
-				{% empty %}
-				    <tr>
-					<td colspan="4"><center>This debater has never been on the TOTY board.</center></td>
-				    </tr>
-				{% endfor %}
-			    </tbody>
-			</table>
-		    </div>
-		    <div class="tab-pane fade {% if sotys|length > 0 and totys|length == 0 %}active show{% endif %}" id="soty" role="tabpanel">
-			<table class="table table-bordered table-hover table-striped">
-			    <thead>
-				<th>Place</th>
-				<th>Season</th>
-				<th>Points</th>
-			    </thead>
-			    <tbody>
-				{% for soty in sotys %}
-				    <tr>
-					<td>{{ soty.place }}</td>
-					<td><a href="{% url 'core:index' %}?season={{ soty.season }}&default=soty">{{ soty.get_season_display }}</a></td>
-					<td>{{ soty.points|number }}</td>
-				    </tr>
-				{% empty %}
-				    <tr>
-					<td colspan="3"><center>This debater has never been on the SOTY board.</center></td>
-				    </tr>
-				{% endfor %}
-			    </tbody>
-			</table>
-			
-		    </div>
-		    <div class="tab-pane fade {% if totys|length == 0 and sotys|length == 0 %}show active{% endif %}" id="noty" role="tabpanel">
-			<table class="table table-bordered table-hover table-striped">
-			    <thead>
-				<th>Place</th>
-				<th>Season</th>
-				<th>Points</th>
-			    </thead>
-			    <tbody>
-				{% for noty in notys %}
-				    <tr>
-					<td>{{ noty.place }}</td>
-					<td><a href="{% url 'core:index' %}?season={{ noty.season }}&default=noty">{{ noty.get_season_display }}</a></td>
-					<td>{{ noty.points|number }}</td>
-				    </tr>
-				{% empty %}
-				    <tr>
-					<td colspan="3"><center>This debater has never been on the NOTY board.</center></td>
-				    </tr>
-				{% endfor %}
-			    </tbody>
-			</table>
-		    </div>		
-		</div>
-	    </div>
-	</div>    
+        <div class="card mt-3 mb-3 rounded-l5 shadow-lg">
+            <div class="card-body">
+                <h5 class="card-title pb-2">
+                    <ul class="nav nav-pills nav-fill" id="otys_pills" roll="tablist">
+                        {% if totys|length > 0 %}
+                            <li class="nav-item">
+                                <a class="nav-link active" id="_TOTY" data-toggle="tab" href="#toty">TOTY</a>
+                            </li>
+                        {% endif %}
+                        {% if sotys|length > 0 %}
+                            <li class="nav-item">
+                                <a class="nav-link {% if totys|length == 0 %}active{% endif %}"
+                                   id="_SOTY"
+                                   data-toggle="tab"
+                                   href="#soty">SOTY</a>
+                            </li>
+                        {% endif %}
+                        {% if notys|length > 0 %}
+                            <li class="nav-item">
+                                <a class="nav-link {% if totys|length == 0 and sotys|length == 0 %}active{% endif %}"
+                                   id="_NOTY"
+                                   data-toggle="tab"
+                                   href="#noty">NOTY</a>
+                            </li>
+                        {% endif %}
+                    </ul>
+                </h5>
+                <div class="tab-content" id="otys">
+                    <div class="tab-pane fade {% if totys|length > 0 %}active show{% endif %}"
+                         id="toty"
+                         role="tabpanel">
+                        <table class="table table-hover">
+                            <thead>
+                                <th>Place</th>
+                                <th>Team</th>
+                                <th>Season</th>
+                                <th>Points</th>
+                            </thead>
+                            <tbody>
+                                {% for toty in totys %}
+                                    <tr>
+                                        <td>{{ toty.place }}</td>
+                                        <td>
+                                            <a href="{{ toty.team.get_absolute_url }}">{{ toty.team.name }}</a>
+                                        </td>
+                                        <td>
+                                            <a href="{% url 'core:index' %}?season={{ toty.season }}&default=toty">{{ toty.get_season_display }}</a>
+                                        </td>
+                                        <td>{{ toty.points|number }}</td>
+                                    </tr>
+                                {% empty %}
+                                    <tr>
+                                        <td colspan="4">
+                                            <center>This debater has never been on the TOTY board.</center>
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="tab-pane fade {% if sotys|length > 0 and totys|length == 0 %}active show{% endif %}"
+                         id="soty"
+                         role="tabpanel">
+                        <table class="table table-hover">
+                            <thead>
+                                <th>Place</th>
+                                <th>Season</th>
+                                <th>Points</th>
+                            </thead>
+                            <tbody>
+                                {% for soty in sotys %}
+                                    <tr>
+                                        <td>{{ soty.place }}</td>
+                                        <td>
+                                            <a href="{% url 'core:index' %}?season={{ soty.season }}&default=soty">{{ soty.get_season_display }}</a>
+                                        </td>
+                                        <td>{{ soty.points|number }}</td>
+                                    </tr>
+                                {% empty %}
+                                    <tr>
+                                        <td colspan="3">
+                                            <center>This debater has never been on the SOTY board.</center>
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="tab-pane fade {% if totys|length == 0 and sotys|length == 0 %}show active{% endif %}"
+                         id="noty"
+                         role="tabpanel">
+                        <table class="table table-hover">
+                            <thead>
+                                <th>Place</th>
+                                <th>Season</th>
+                                <th>Points</th>
+                            </thead>
+                            <tbody>
+                                {% for noty in notys %}
+                                    <tr>
+                                        <td>{{ noty.place }}</td>
+                                        <td>
+                                            <a href="{% url 'core:index' %}?season={{ noty.season }}&default=noty">{{ noty.get_season_display }}</a>
+                                        </td>
+                                        <td>{{ noty.points|number }}</td>
+                                    </tr>
+                                {% empty %}
+                                    <tr>
+                                        <td colspan="3">
+                                            <center>This debater has never been on the NOTY board.</center>
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
     {% endif %}
-    <div class="card mb-2">
-	<div class="card-body">
-	    <h5 class="card-title">Partners</h5>
-	    <hr />
-	    <ul>
-		{% for team in teams %}
-		    <li>
-			{{ team|partner_name:object|safe }} (<a href="{{ team.get_absolute_url }}">{{ team }}</a>)
-		    </li>
-		{% endfor %}
-	    </ul>
-	</div>
+    <div class="card mb-2 rounded-l5 shadow-lg">
+        <div class="card-body">
+            <h5 class="card-title">Partners</h5>
+            <hr />
+            <ul>
+                {% for team in teams %}
+                    <li>
+                        {{ team|partner_name:object|safe }} (<a href="{{ team.get_absolute_url }}">{{ team }}</a>)
+                    </li>
+                {% endfor %}
+            </ul>
+        </div>
     </div>
-{% endblock %}
-
+{% endblock left_column %}
 {% block added_information_view %}
-    <div class="card mb-3">
-	<div class="card-body">
-	    <h5 class="card-title pb-2">Results
-		<ul class="nav nav-pills float-right">
-		    {% if user.is_authenticated %}
-			{% if not 'all' in request.GET %}
-			    <li clas="nav-item">
-				<a class="nav-link" href="{{ request.path }}?season={{ current_season }}&all=1">All Results</a>
-			    </li>
-			{% else %}
-			    <li clas="nav-item">
-				<a class="nav-link" href="{{ request.path }}?season={{ current_season }}">Awards Only</a>
-			    </li>
-			{% endif %}
-		    {% endif %}
-			
-		    <li class="nav-item dropdown">
-			<a class="nav-link dropdown-toggle active" data-toggle="dropdown" href="#" role="button" aria-haspopup="true" aria-expanded="false">{% for season in seasons %}{% if season.0 == current_season %}{{ season.1 }}{% endif %}{% endfor %}</a>
-			<div class="dropdown-menu">
-			    {% for season in seasons %}
-				<a class="dropdown-item {% if season.0 == current_season %}active{% endif %}" href="{{ request.path }}?season={{ season.0 }}">{{ season.1 }}</a>
-			    {% endfor %}
-			</div>
-		    </li>
-		</ul>
-	    </h5>
-	    <hr />
-	    {% for tournament in results %}
-		{% if tournament.tab_card and user.is_authenticated %}
-		    <div class="modal fade" id="tournament_{{ tournament.id }}">
-			<div class="modal-dialog modal-lg">
-			    <div class="modal-content">
-				<div class="modal-header">
-				    <h4 class="modal-title">Results</h4>
-				    <button type="button" class="close" data-dismiss="modal">&times;</button>
-				</div>
-				
-				<div class="modal-body">
-				    <table class="table table-bordered">
-					<thead>
-					    <th>Round Number</th>
-					    <th>Opponent</th>
-					    <th>W/L</th>
-					    {% for stat in tournament.tab_card.0.stats %}
-						<th><a href="{{ stat.debater.get_absolute_url }}">{{ stat.debater.name }}</a></th>
-					    {% endfor %}
-					</thead>
-					<tbody>
-					    {% for round in tournament.tab_card %}
-						<tr>
-						    <td><a href="{{ round.round.get_absolute_url }}">{{ round.round.round_number }}</a></td>
-						    <td><a href="{{ round.round|opponent_url:tournament.team }}">{{ round.round|opponent:tournament.team }}</a> ({{ round.round|opponent_side:tournament.team }})</td>
-						    <td>{{ round.round|wl:tournament.team }}</td>
-						    {% for stat in round.stats %}
-							<td>{{ stat.debater_role|upper }} / {{ stat.speaks|number }} / {{ stat.ranks|number }}</td>
-						    {% endfor %}
-						</tr>
-					    {% endfor %}
-					</tbody>
-				    </table>
-				</div>
-				<div class="modal-footer">
-				    <button type="button" class="btn btn-danger" data-dismiss="modal">Close</button>
-				</div>
-			    </div>
-			</div>
-		    </div>
-		{% endif %}
-	    {% endfor %}
-	    <table class="table table-bordered">
-		<tbody>
-		    {% for tournament in results %}
-			<tr class="shaded">
-			    <td colspan="2"><a href="{{ tournament.tournament.get_absolute_url }}">{{ tournament.tournament.name }}</a></td>
-			    <td>{{ tournament.tournament.date|date:'M j' }}</td>
-			    <td {% if not tournament.team and not tournament.tab_card %}colspan="3"{% elif not tournament.team %}colspan="2"{% endif %}>{{ tournament.tournament.get_season_display }}</td>
-			    {% if tournament.team %}<td {% if not tournament.tab_card or not user.is_authenticated %}colspan="2"{% endif %}>Partner: {{ tournament.team|partner_display:object|safe }}</td>{% endif %}
-			    {% if tournament.tab_card and user.is_authenticated %}
-				<td>
-				    <button type="button" class="btn btn-link" data-toggle="modal" data-target="#tournament_{{ tournament.id }}">
-				    View Tab Card
-				    </button>
-				</td>
-			    {% endif %}
-			</tr>
-			{% for type, award in tournament.data %}
-			    <tr>
-				{% if type == 'team' %}
-				    <td></td>
-				    <td class="short-row">{{ award.get_type_of_place_display }} Team Award</td>
-				    <td class="short-row">{{ award.place }}</td>
-				    <td colspan="{% if tournament.tab_card and user.is_authenticated %}4{% else %}3{% endif %}" class="short-row">
-					<a href="{{ award.team.get_absolute_url }}">{{ award.team }}</a>
-				    </td>
-				{% endif %}
-				{% if type == 'speaker' %}
-				    <td></td>
-				    <td class="short-row">{{ award.get_type_of_place_display }} Speaker Award</td>
-				    <td class="short-row">{{ award.place }}</td>
-				    <td class="short-row" colspan="{% if tournament.tab_card and user.is_authenticated  %}4{% else %}3{% endif %}"></td>
-				{% endif %}
-			    </tr>
-			{% endfor %}
-		    {% endfor %}
-		</tbody>
-	    </table>
-	</div>
+    <div class="card mb-3 rounded-l5 shadow-lg">
+        <div class="card-body">
+            <h5 class="card-title pb-2">
+                Results
+                <ul class="nav nav-pills float-right">
+                    {% if user.is_authenticated %}
+                        {% if not 'all' in request.GET %}
+                            <li clas="nav-item">
+                                <a class="nav-link"
+                                   href="{{ request.path }}?season={{ current_season }}&all=1">All Results</a>
+                            </li>
+                        {% else %}
+                            <li clas="nav-item">
+                                <a class="nav-link"
+                                   href="{{ request.path }}?season={{ current_season }}">Awards Only</a>
+                            </li>
+                        {% endif %}
+                    {% endif %}
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle active"
+                           data-toggle="dropdown"
+                           href="#"
+                           role="button"
+                           aria-haspopup="true"
+                           aria-expanded="false">
+                            {% for season in seasons %}
+                                {% if season.0 == current_season %}{{ season.1 }}{% endif %}
+                            {% endfor %}
+                        </a>
+                        <div class="dropdown-menu">
+                            {% for season in seasons %}
+                                <a class="dropdown-item {% if season.0 == current_season %}active{% endif %}"
+                                   href="{{ request.path }}?season={{ season.0 }}">{{ season.1 }}</a>
+                            {% endfor %}
+                        </div>
+                    </li>
+                </ul>
+            </h5>
+            <hr />
+            {% for tournament in results %}
+                {% if tournament.tab_card and user.is_authenticated %}
+                    <div class="modal fade" id="tournament_{{ tournament.id }}">
+                        <div class="modal-dialog modal-lg">
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <h4 class="modal-title">Results</h4>
+                                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                                </div>
+                                <div class="modal-body">
+                                    <table class="table table-bordered">
+                                        <thead>
+                                            <th>Round Number</th>
+                                            <th>Opponent</th>
+                                            <th>W/L</th>
+                                            {% for stat in tournament.tab_card.0.stats %}
+                                                <th>
+                                                    <a href="{{ stat.debater.get_absolute_url }}">{{ stat.debater.name }}</a>
+                                                </th>
+                                            {% endfor %}
+                                        </thead>
+                                        <tbody>
+                                            {% for round in tournament.tab_card %}
+                                                <tr>
+                                                    <td>
+                                                        <a href="{{ round.round.get_absolute_url }}">{{ round.round.round_number }}</a>
+                                                    </td>
+                                                    <td>
+                                                        <a href="{{ round.round|opponent_url:tournament.team }}">{{ round.round|opponent:tournament.team }}</a> ({{ round.round|opponent_side:tournament.team }})
+                                                    </td>
+                                                    <td>{{ round.round|wl:tournament.team }}</td>
+                                                    {% for stat in round.stats %}
+                                                        <td>{{ stat.debater_role|upper }} / {{ stat.speaks|number }} / {{ stat.ranks|number }}</td>
+                                                    {% endfor %}
+                                                </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-danger" data-dismiss="modal">Close</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                {% endif %}
+            {% endfor %}
+            <table class="table table-bordered">
+                <tbody>
+                    {% for tournament in results %}
+                        <tr class="shaded">
+                            <td colspan="2">
+                                <a href="{{ tournament.tournament.get_absolute_url }}">{{ tournament.tournament.name }}</a>
+                            </td>
+                            <td>{{ tournament.tournament.date|date:'M j' }}</td>
+                            <td {% if not tournament.team and not tournament.tab_card %}colspan="3"{% elif not tournament.team %}colspan="2"{% endif %}>
+                                {{ tournament.tournament.get_season_display }}
+                            </td>
+                            {% if tournament.team %}
+                                <td {% if not tournament.tab_card or not user.is_authenticated %}colspan="2"{% endif %}>
+                                    Partner: {{ tournament.team|partner_display:object|safe }}
+                                </td>
+                            {% endif %}
+                            {% if tournament.tab_card and user.is_authenticated %}
+                                <td>
+                                    <button type="button"
+                                            class="btn btn-link"
+                                            data-toggle="modal"
+                                            data-target="#tournament_{{ tournament.id }}">View Tab Card</button>
+                                </td>
+                            {% endif %}
+                        </tr>
+                        {% for type, award in tournament.data %}
+                            {% if award.place > 0 %}
+                            <tr>
+                                {% if type == 'team' %}
+                                    <td></td>
+                                    <td class="short-row">{{ award.get_type_of_place_display }} Team Award</td>
+                                    <td class="short-row">{{ award.place }}</td>
+                                    <td colspan="{% if tournament.tab_card and user.is_authenticated %}4{% else %}3{% endif %}"
+                                        class="short-row">
+                                        <a href="{{ award.team.get_absolute_url }}">{{ award.team }}</a>
+                                    </td>
+                                {% endif %}
+                                {% if type == 'speaker' %}
+                                    <td></td>
+                                    <td class="short-row">{{ award.get_type_of_place_display }} Speaker Award</td>
+                                    <td class="short-row">{{ award.place }}</td>
+                                    <td class="short-row"
+                                        colspan="{% if tournament.tab_card and user.is_authenticated %}4{% else %}3{% endif %}">
+                                    </td>
+                                {% endif %}
+                            {% endif %}
+                            </tr>
+                        {% endfor %}
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
     </div>
-    <div class="card">
-	<div class="card-body">
-	    <h5 class="card-title pb-2">Videos</h5>
-	    <table class="table table-bordered">
-		<thead>
-		    <th>ID</th>
-		    <th>Tournament</th>
-		    <th>Round</th>
-		    <th>PM</th>
-		    <th>MG</th>
-		    <th>LO</th>
-		    <th>MO</th>
-		    <th>Tags</th>
-		</thead>
-		<tbody>
-		    {% for video in videos %}
-			<tr>
-			    <td><a href="{{ video.get_absolute_url }}">{{ video.id }}</a></td>
-			    <td><a href="{{ video.tournament.get_absolute_url }}">{{ video.tournament.name }}</a> ({{ video.tournament.get_season_display }})</td>
-			    <td><a href="{{ video.get_absolute_url }}">{{ video.get_round_display }}</a></td>
-			    <td><a href="{{ video.pm.get_absolute_url }}">{{ video.pm }}</a></td>
-			    <td><a href="{{ video.mg.get_absolute_url }}">{{ video.mg }}</a></td>
-			    <td><a href="{{ video.lo.get_absolute_url }}">{{ video.lo }}</a></td>
-			    <td><a href="{{ video.mo.get_absolute_url }}">{{ video.mo }}</a></td>
-			    <td>{% for tag in video.tags.all %}<a href="{% url 'core:tag_detail' tag.name %}">{{ tag.name }}</a>{% if not forloop.last %}, {% endif %}{% endfor %}</td>
-			</tr>
-		    {% empty %}
-			<tr>
-			    <td colspan="8"><center>There are no videos under this debater visible to you</center></td>
-			</tr>
-		    {% endfor %}
-		</tbody>
-	    </table>
-	</div>
+    <div class="card rounded-l5 shadow-lg">
+        <div class="card-body">
+            <h5 class="card-title pb-2">Videos</h5>
+            <table class="table table-bordered">
+                <thead>
+                    <th>ID</th>
+                    <th>Tournament</th>
+                    <th>Round</th>
+                    <th>PM</th>
+                    <th>MG</th>
+                    <th>LO</th>
+                    <th>MO</th>
+                    <th>Tags</th>
+                </thead>
+                <tbody>
+                    {% for video in videos %}
+                        <tr>
+                            <td>
+                                <a href="{{ video.get_absolute_url }}">{{ video.id }}</a>
+                            </td>
+                            <td>
+                                <a href="{{ video.tournament.get_absolute_url }}">{{ video.tournament.name }}</a> ({{ video.tournament.get_season_display }})
+                            </td>
+                            <td>
+                                <a href="{{ video.get_absolute_url }}">{{ video.get_round_display }}</a>
+                            </td>
+                            <td>
+                                <a href="{{ video.pm.get_absolute_url }}">{{ video.pm }}</a>
+                            </td>
+                            <td>
+                                <a href="{{ video.mg.get_absolute_url }}">{{ video.mg }}</a>
+                            </td>
+                            <td>
+                                <a href="{{ video.lo.get_absolute_url }}">{{ video.lo }}</a>
+                            </td>
+                            <td>
+                                <a href="{{ video.mo.get_absolute_url }}">{{ video.mo }}</a>
+                            </td>
+                            <td>
+                                {% for tag in video.tags.all %}
+                                    <a href="{% url 'core:tag_detail' tag.name %}">{{ tag.name }}</a>
+                                    {% if not forloop.last %},{% endif %}
+                                {% endfor %}
+                            </td>
+                        </tr>
+                    {% empty %}
+                        <tr>
+                            <td colspan="8">
+                                <center>There are no videos under this debater visible to you</center>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
     </div>
-{% endblock %}
+{% endblock added_information_view %}

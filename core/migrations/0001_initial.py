@@ -2,9 +2,9 @@
 
 import django.contrib.auth.models
 import django.contrib.auth.validators
-from django.db import migrations, models
 import django.db.models.deletion
 import django.utils.timezone
+from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
@@ -12,157 +12,592 @@ class Migration(migrations.Migration):
     initial = True
 
     dependencies = [
-        ('auth', '0011_update_proxy_permissions'),
+        ("auth", "0011_update_proxy_permissions"),
     ]
 
     operations = [
         migrations.CreateModel(
-            name='Debater',
+            name="Debater",
             fields=[
-                ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('first_name', models.CharField(max_length=32)),
-                ('last_name', models.CharField(max_length=32)),
-                ('status', models.IntegerField(choices=[(1, 'Varsity'), (0, 'Novice')], default=1)),
+                (
+                    "id",
+                    models.AutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("first_name", models.CharField(max_length=32)),
+                ("last_name", models.CharField(max_length=32)),
+                (
+                    "status",
+                    models.IntegerField(
+                        choices=[(1, "Varsity"), (0, "Novice")], default=1
+                    ),
+                ),
             ],
         ),
         migrations.CreateModel(
-            name='School',
+            name="School",
             fields=[
-                ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('name', models.CharField(max_length=64)),
-                ('included_in_oty', models.BooleanField(default=True)),
+                (
+                    "id",
+                    models.AutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("name", models.CharField(max_length=64)),
+                ("included_in_oty", models.BooleanField(default=True)),
             ],
         ),
         migrations.CreateModel(
-            name='Tournament',
+            name="Tournament",
             fields=[
-                ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('name', models.CharField(max_length=128)),
-                ('num_rounds', models.IntegerField(default=5)),
-                ('season', models.CharField(choices=[('2000', '2000-2001'), ('2001', '2001-2002'), ('2002', '2002-2003'), ('2003', '2003-2004'), ('2004', '2004-2005'), ('2005', '2005-2006'), ('2006', '2006-2007'), ('2007', '2007-2008'), ('2008', '2008-2009'), ('2009', '2009-2010'), ('2010', '2010-2011'), ('2011', '2011-2012'), ('2012', '2012-2013'), ('2013', '2013-2014'), ('2014', '2014-2015'), ('2015', '2015-2016'), ('2016', '2016-2017'), ('2017', '2017-2018'), ('2018', '2018-2019'), ('2019', '2019-2020'), ('2020', '2020-2021'), ('2021', '2021-2022')], default='2018', max_length=16)),
-                ('num_teams', models.IntegerField()),
-                ('num_novice_teams', models.IntegerField()),
-                ('num_debaters', models.IntegerField()),
-                ('num_novice_debaters', models.IntegerField()),
-                ('qual', models.BooleanField(default=True)),
-                ('noty', models.BooleanField(default=True)),
-                ('soty', models.BooleanField(default=True)),
-                ('toty', models.BooleanField(default=True)),
-                ('qual_bar', models.IntegerField(default=0)),
+                (
+                    "id",
+                    models.AutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("name", models.CharField(max_length=128)),
+                ("num_rounds", models.IntegerField(default=5)),
+                (
+                    "season",
+                    models.CharField(
+                        choices=[
+                            ("2000", "2000-2001"),
+                            ("2001", "2001-2002"),
+                            ("2002", "2002-2003"),
+                            ("2003", "2003-2004"),
+                            ("2004", "2004-2005"),
+                            ("2005", "2005-2006"),
+                            ("2006", "2006-2007"),
+                            ("2007", "2007-2008"),
+                            ("2008", "2008-2009"),
+                            ("2009", "2009-2010"),
+                            ("2010", "2010-2011"),
+                            ("2011", "2011-2012"),
+                            ("2012", "2012-2013"),
+                            ("2013", "2013-2014"),
+                            ("2014", "2014-2015"),
+                            ("2015", "2015-2016"),
+                            ("2016", "2016-2017"),
+                            ("2017", "2017-2018"),
+                            ("2018", "2018-2019"),
+                            ("2019", "2019-2020"),
+                            ("2020", "2020-2021"),
+                            ("2021", "2021-2022"),
+                        ],
+                        default="2018",
+                        max_length=16,
+                    ),
+                ),
+                ("num_teams", models.IntegerField()),
+                ("num_novice_teams", models.IntegerField()),
+                ("num_debaters", models.IntegerField()),
+                ("num_novice_debaters", models.IntegerField()),
+                ("qual", models.BooleanField(default=True)),
+                ("noty", models.BooleanField(default=True)),
+                ("soty", models.BooleanField(default=True)),
+                ("toty", models.BooleanField(default=True)),
+                ("qual_bar", models.IntegerField(default=0)),
             ],
         ),
         migrations.CreateModel(
-            name='TOTY',
+            name="TOTY",
             fields=[
-                ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('season', models.CharField(choices=[('2000', '2000-2001'), ('2001', '2001-2002'), ('2002', '2002-2003'), ('2003', '2003-2004'), ('2004', '2004-2005'), ('2005', '2005-2006'), ('2006', '2006-2007'), ('2007', '2007-2008'), ('2008', '2008-2009'), ('2009', '2009-2010'), ('2010', '2010-2011'), ('2011', '2011-2012'), ('2012', '2012-2013'), ('2013', '2013-2014'), ('2014', '2014-2015'), ('2015', '2015-2016'), ('2016', '2016-2017'), ('2017', '2017-2018'), ('2018', '2018-2019'), ('2019', '2019-2020'), ('2020', '2020-2021'), ('2021', '2021-2022')], default='2018', max_length=16)),
-                ('points', models.FloatField(default=-1)),
-                ('debaters', models.ManyToManyField(related_name='toty', to='core.Debater')),
+                (
+                    "id",
+                    models.AutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                (
+                    "season",
+                    models.CharField(
+                        choices=[
+                            ("2000", "2000-2001"),
+                            ("2001", "2001-2002"),
+                            ("2002", "2002-2003"),
+                            ("2003", "2003-2004"),
+                            ("2004", "2004-2005"),
+                            ("2005", "2005-2006"),
+                            ("2006", "2006-2007"),
+                            ("2007", "2007-2008"),
+                            ("2008", "2008-2009"),
+                            ("2009", "2009-2010"),
+                            ("2010", "2010-2011"),
+                            ("2011", "2011-2012"),
+                            ("2012", "2012-2013"),
+                            ("2013", "2013-2014"),
+                            ("2014", "2014-2015"),
+                            ("2015", "2015-2016"),
+                            ("2016", "2016-2017"),
+                            ("2017", "2017-2018"),
+                            ("2018", "2018-2019"),
+                            ("2019", "2019-2020"),
+                            ("2020", "2020-2021"),
+                            ("2021", "2021-2022"),
+                        ],
+                        default="2018",
+                        max_length=16,
+                    ),
+                ),
+                ("points", models.FloatField(default=-1)),
+                (
+                    "debaters",
+                    models.ManyToManyField(related_name="toty", to="core.Debater"),
+                ),
             ],
         ),
         migrations.AddField(
-            model_name='debater',
-            name='school',
-            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='debaters', to='core.School'),
+            model_name="debater",
+            name="school",
+            field=models.ForeignKey(
+                blank=True,
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="debaters",
+                to="core.School",
+            ),
         ),
         migrations.CreateModel(
-            name='User',
+            name="User",
             fields=[
-                ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('password', models.CharField(max_length=128, verbose_name='password')),
-                ('last_login', models.DateTimeField(blank=True, null=True, verbose_name='last login')),
-                ('is_superuser', models.BooleanField(default=False, help_text='Designates that this user has all permissions without explicitly assigning them.', verbose_name='superuser status')),
-                ('username', models.CharField(error_messages={'unique': 'A user with that username already exists.'}, help_text='Required. 150 characters or fewer. Letters, digits and @/./+/-/_ only.', max_length=150, unique=True, validators=[django.contrib.auth.validators.UnicodeUsernameValidator()], verbose_name='username')),
-                ('first_name', models.CharField(blank=True, max_length=30, verbose_name='first name')),
-                ('last_name', models.CharField(blank=True, max_length=150, verbose_name='last name')),
-                ('email', models.EmailField(blank=True, max_length=254, verbose_name='email address')),
-                ('is_staff', models.BooleanField(default=False, help_text='Designates whether the user can log into this admin site.', verbose_name='staff status')),
-                ('is_active', models.BooleanField(default=True, help_text='Designates whether this user should be treated as active. Unselect this instead of deleting accounts.', verbose_name='active')),
-                ('date_joined', models.DateTimeField(default=django.utils.timezone.now, verbose_name='date joined')),
-                ('groups', models.ManyToManyField(blank=True, help_text='The groups this user belongs to. A user will get all permissions granted to each of their groups.', related_name='user_set', related_query_name='user', to='auth.Group', verbose_name='groups')),
-                ('user_permissions', models.ManyToManyField(blank=True, help_text='Specific permissions for this user.', related_name='user_set', related_query_name='user', to='auth.Permission', verbose_name='user permissions')),
+                (
+                    "id",
+                    models.AutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                ("password", models.CharField(max_length=128, verbose_name="password")),
+                (
+                    "last_login",
+                    models.DateTimeField(
+                        blank=True, null=True, verbose_name="last login"
+                    ),
+                ),
+                (
+                    "is_superuser",
+                    models.BooleanField(
+                        default=False,
+                        help_text="Designates that this user has all permissions without explicitly assigning them.",
+                        verbose_name="superuser status",
+                    ),
+                ),
+                (
+                    "username",
+                    models.CharField(
+                        error_messages={
+                            "unique": "A user with that username already exists."
+                        },
+                        help_text="Required. 150 characters or fewer. Letters, digits and @/./+/-/_ only.",
+                        max_length=150,
+                        unique=True,
+                        validators=[
+                            django.contrib.auth.validators.UnicodeUsernameValidator()
+                        ],
+                        verbose_name="username",
+                    ),
+                ),
+                (
+                    "first_name",
+                    models.CharField(
+                        blank=True, max_length=30, verbose_name="first name"
+                    ),
+                ),
+                (
+                    "last_name",
+                    models.CharField(
+                        blank=True, max_length=150, verbose_name="last name"
+                    ),
+                ),
+                (
+                    "email",
+                    models.EmailField(
+                        blank=True, max_length=254, verbose_name="email address"
+                    ),
+                ),
+                (
+                    "is_staff",
+                    models.BooleanField(
+                        default=False,
+                        help_text="Designates whether the user can log into this admin site.",
+                        verbose_name="staff status",
+                    ),
+                ),
+                (
+                    "is_active",
+                    models.BooleanField(
+                        default=True,
+                        help_text="Designates whether this user should be treated as active. Unselect this instead of deleting accounts.",
+                        verbose_name="active",
+                    ),
+                ),
+                (
+                    "date_joined",
+                    models.DateTimeField(
+                        default=django.utils.timezone.now, verbose_name="date joined"
+                    ),
+                ),
+                (
+                    "groups",
+                    models.ManyToManyField(
+                        blank=True,
+                        help_text="The groups this user belongs to. A user will get all permissions granted to each of their groups.",
+                        related_name="user_set",
+                        related_query_name="user",
+                        to="auth.Group",
+                        verbose_name="groups",
+                    ),
+                ),
+                (
+                    "user_permissions",
+                    models.ManyToManyField(
+                        blank=True,
+                        help_text="Specific permissions for this user.",
+                        related_name="user_set",
+                        related_query_name="user",
+                        to="auth.Permission",
+                        verbose_name="user permissions",
+                    ),
+                ),
             ],
             options={
-                'verbose_name': 'user',
-                'verbose_name_plural': 'users',
-                'abstract': False,
+                "verbose_name": "user",
+                "verbose_name_plural": "users",
+                "abstract": False,
             },
             managers=[
-                ('objects', django.contrib.auth.models.UserManager()),
+                ("objects", django.contrib.auth.models.UserManager()),
             ],
         ),
         migrations.CreateModel(
-            name='TeamResult',
+            name="TeamResult",
             fields=[
-                ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('type_of_place', models.IntegerField(choices=[(1, 'Varsity'), (0, 'Novice')], default=1)),
-                ('place', models.IntegerField(default=-1)),
-                ('debaters', models.ManyToManyField(to='core.Debater')),
-                ('tournament', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='team_results', to='core.Tournament')),
+                (
+                    "id",
+                    models.AutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                (
+                    "type_of_place",
+                    models.IntegerField(
+                        choices=[(1, "Varsity"), (0, "Novice")], default=1
+                    ),
+                ),
+                ("place", models.IntegerField(default=-1)),
+                ("debaters", models.ManyToManyField(to="core.Debater")),
+                (
+                    "tournament",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="team_results",
+                        to="core.Tournament",
+                    ),
+                ),
             ],
             options={
-                'unique_together': {('tournament', 'type_of_place', 'place')},
+                "unique_together": {("tournament", "type_of_place", "place")},
             },
         ),
         migrations.CreateModel(
-            name='SpeakerResult',
+            name="SpeakerResult",
             fields=[
-                ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('type_of_place', models.IntegerField(choices=[(1, 'Varsity'), (0, 'Novice')], default=1)),
-                ('place', models.IntegerField(default=-1)),
-                ('debater', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='speaker_results', to='core.Debater')),
-                ('tournament', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='speaker_results', to='core.Tournament')),
+                (
+                    "id",
+                    models.AutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                (
+                    "type_of_place",
+                    models.IntegerField(
+                        choices=[(1, "Varsity"), (0, "Novice")], default=1
+                    ),
+                ),
+                ("place", models.IntegerField(default=-1)),
+                (
+                    "debater",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="speaker_results",
+                        to="core.Debater",
+                    ),
+                ),
+                (
+                    "tournament",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="speaker_results",
+                        to="core.Tournament",
+                    ),
+                ),
             ],
             options={
-                'unique_together': {('tournament', 'type_of_place', 'place')},
+                "unique_together": {("tournament", "type_of_place", "place")},
             },
         ),
         migrations.CreateModel(
-            name='SOTY',
+            name="SOTY",
             fields=[
-                ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('season', models.CharField(choices=[('2000', '2000-2001'), ('2001', '2001-2002'), ('2002', '2002-2003'), ('2003', '2003-2004'), ('2004', '2004-2005'), ('2005', '2005-2006'), ('2006', '2006-2007'), ('2007', '2007-2008'), ('2008', '2008-2009'), ('2009', '2009-2010'), ('2010', '2010-2011'), ('2011', '2011-2012'), ('2012', '2012-2013'), ('2013', '2013-2014'), ('2014', '2014-2015'), ('2015', '2015-2016'), ('2016', '2016-2017'), ('2017', '2017-2018'), ('2018', '2018-2019'), ('2019', '2019-2020'), ('2020', '2020-2021'), ('2021', '2021-2022')], default='2018', max_length=16)),
-                ('points', models.FloatField(default=-1)),
-                ('debater', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='soty', to='core.Debater')),
+                (
+                    "id",
+                    models.AutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                (
+                    "season",
+                    models.CharField(
+                        choices=[
+                            ("2000", "2000-2001"),
+                            ("2001", "2001-2002"),
+                            ("2002", "2002-2003"),
+                            ("2003", "2003-2004"),
+                            ("2004", "2004-2005"),
+                            ("2005", "2005-2006"),
+                            ("2006", "2006-2007"),
+                            ("2007", "2007-2008"),
+                            ("2008", "2008-2009"),
+                            ("2009", "2009-2010"),
+                            ("2010", "2010-2011"),
+                            ("2011", "2011-2012"),
+                            ("2012", "2012-2013"),
+                            ("2013", "2013-2014"),
+                            ("2014", "2014-2015"),
+                            ("2015", "2015-2016"),
+                            ("2016", "2016-2017"),
+                            ("2017", "2017-2018"),
+                            ("2018", "2018-2019"),
+                            ("2019", "2019-2020"),
+                            ("2020", "2020-2021"),
+                            ("2021", "2021-2022"),
+                        ],
+                        default="2018",
+                        max_length=16,
+                    ),
+                ),
+                ("points", models.FloatField(default=-1)),
+                (
+                    "debater",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="soty",
+                        to="core.Debater",
+                    ),
+                ),
             ],
             options={
-                'unique_together': {('season', 'debater')},
+                "unique_together": {("season", "debater")},
             },
         ),
         migrations.CreateModel(
-            name='QUAL',
+            name="QUAL",
             fields=[
-                ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('season', models.CharField(choices=[('2000', '2000-2001'), ('2001', '2001-2002'), ('2002', '2002-2003'), ('2003', '2003-2004'), ('2004', '2004-2005'), ('2005', '2005-2006'), ('2006', '2006-2007'), ('2007', '2007-2008'), ('2008', '2008-2009'), ('2009', '2009-2010'), ('2010', '2010-2011'), ('2011', '2011-2012'), ('2012', '2012-2013'), ('2013', '2013-2014'), ('2014', '2014-2015'), ('2015', '2015-2016'), ('2016', '2016-2017'), ('2017', '2017-2018'), ('2018', '2018-2019'), ('2019', '2019-2020'), ('2020', '2020-2021'), ('2021', '2021-2022')], default='2018', max_length=16)),
-                ('qual_type', models.IntegerField(choices=[(0, 'Autoqual'), (1, 'Brandeis IV'), (2, 'Yale IV'), (3, 'NorthAms'), (4, 'Expansion'), (5, 'Worlds'), (6, 'NAUDC')], default=0)),
-                ('debater', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='quals', to='core.Debater')),
+                (
+                    "id",
+                    models.AutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                (
+                    "season",
+                    models.CharField(
+                        choices=[
+                            ("2000", "2000-2001"),
+                            ("2001", "2001-2002"),
+                            ("2002", "2002-2003"),
+                            ("2003", "2003-2004"),
+                            ("2004", "2004-2005"),
+                            ("2005", "2005-2006"),
+                            ("2006", "2006-2007"),
+                            ("2007", "2007-2008"),
+                            ("2008", "2008-2009"),
+                            ("2009", "2009-2010"),
+                            ("2010", "2010-2011"),
+                            ("2011", "2011-2012"),
+                            ("2012", "2012-2013"),
+                            ("2013", "2013-2014"),
+                            ("2014", "2014-2015"),
+                            ("2015", "2015-2016"),
+                            ("2016", "2016-2017"),
+                            ("2017", "2017-2018"),
+                            ("2018", "2018-2019"),
+                            ("2019", "2019-2020"),
+                            ("2020", "2020-2021"),
+                            ("2021", "2021-2022"),
+                        ],
+                        default="2018",
+                        max_length=16,
+                    ),
+                ),
+                (
+                    "qual_type",
+                    models.IntegerField(
+                        choices=[
+                            (0, "Autoqual"),
+                            (1, "Brandeis IV"),
+                            (2, "Yale IV"),
+                            (3, "NorthAms"),
+                            (4, "Expansion"),
+                            (5, "Worlds"),
+                            (6, "NAUDC"),
+                        ],
+                        default=0,
+                    ),
+                ),
+                (
+                    "debater",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="quals",
+                        to="core.Debater",
+                    ),
+                ),
             ],
             options={
-                'unique_together': {('season', 'debater', 'qual_type')},
+                "unique_together": {("season", "debater", "qual_type")},
             },
         ),
         migrations.CreateModel(
-            name='NOTY',
+            name="NOTY",
             fields=[
-                ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('season', models.CharField(choices=[('2000', '2000-2001'), ('2001', '2001-2002'), ('2002', '2002-2003'), ('2003', '2003-2004'), ('2004', '2004-2005'), ('2005', '2005-2006'), ('2006', '2006-2007'), ('2007', '2007-2008'), ('2008', '2008-2009'), ('2009', '2009-2010'), ('2010', '2010-2011'), ('2011', '2011-2012'), ('2012', '2012-2013'), ('2013', '2013-2014'), ('2014', '2014-2015'), ('2015', '2015-2016'), ('2016', '2016-2017'), ('2017', '2017-2018'), ('2018', '2018-2019'), ('2019', '2019-2020'), ('2020', '2020-2021'), ('2021', '2021-2022')], default='2018', max_length=16)),
-                ('points', models.FloatField(default=-1)),
-                ('debater', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='noty', to='core.Debater')),
+                (
+                    "id",
+                    models.AutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                (
+                    "season",
+                    models.CharField(
+                        choices=[
+                            ("2000", "2000-2001"),
+                            ("2001", "2001-2002"),
+                            ("2002", "2002-2003"),
+                            ("2003", "2003-2004"),
+                            ("2004", "2004-2005"),
+                            ("2005", "2005-2006"),
+                            ("2006", "2006-2007"),
+                            ("2007", "2007-2008"),
+                            ("2008", "2008-2009"),
+                            ("2009", "2009-2010"),
+                            ("2010", "2010-2011"),
+                            ("2011", "2011-2012"),
+                            ("2012", "2012-2013"),
+                            ("2013", "2013-2014"),
+                            ("2014", "2014-2015"),
+                            ("2015", "2015-2016"),
+                            ("2016", "2016-2017"),
+                            ("2017", "2017-2018"),
+                            ("2018", "2018-2019"),
+                            ("2019", "2019-2020"),
+                            ("2020", "2020-2021"),
+                            ("2021", "2021-2022"),
+                        ],
+                        default="2018",
+                        max_length=16,
+                    ),
+                ),
+                ("points", models.FloatField(default=-1)),
+                (
+                    "debater",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="noty",
+                        to="core.Debater",
+                    ),
+                ),
             ],
             options={
-                'unique_together': {('season', 'debater')},
+                "unique_together": {("season", "debater")},
             },
         ),
         migrations.CreateModel(
-            name='COTY',
+            name="COTY",
             fields=[
-                ('id', models.AutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('season', models.CharField(choices=[('2000', '2000-2001'), ('2001', '2001-2002'), ('2002', '2002-2003'), ('2003', '2003-2004'), ('2004', '2004-2005'), ('2005', '2005-2006'), ('2006', '2006-2007'), ('2007', '2007-2008'), ('2008', '2008-2009'), ('2009', '2009-2010'), ('2010', '2010-2011'), ('2011', '2011-2012'), ('2012', '2012-2013'), ('2013', '2013-2014'), ('2014', '2014-2015'), ('2015', '2015-2016'), ('2016', '2016-2017'), ('2017', '2017-2018'), ('2018', '2018-2019'), ('2019', '2019-2020'), ('2020', '2020-2021'), ('2021', '2021-2022')], default='2018', max_length=16)),
-                ('points', models.FloatField(default=-1)),
-                ('school', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='coty', to='core.School')),
+                (
+                    "id",
+                    models.AutoField(
+                        auto_created=True,
+                        primary_key=True,
+                        serialize=False,
+                        verbose_name="ID",
+                    ),
+                ),
+                (
+                    "season",
+                    models.CharField(
+                        choices=[
+                            ("2000", "2000-2001"),
+                            ("2001", "2001-2002"),
+                            ("2002", "2002-2003"),
+                            ("2003", "2003-2004"),
+                            ("2004", "2004-2005"),
+                            ("2005", "2005-2006"),
+                            ("2006", "2006-2007"),
+                            ("2007", "2007-2008"),
+                            ("2008", "2008-2009"),
+                            ("2009", "2009-2010"),
+                            ("2010", "2010-2011"),
+                            ("2011", "2011-2012"),
+                            ("2012", "2012-2013"),
+                            ("2013", "2013-2014"),
+                            ("2014", "2014-2015"),
+                            ("2015", "2015-2016"),
+                            ("2016", "2016-2017"),
+                            ("2017", "2017-2018"),
+                            ("2018", "2018-2019"),
+                            ("2019", "2019-2020"),
+                            ("2020", "2020-2021"),
+                            ("2021", "2021-2022"),
+                        ],
+                        default="2018",
+                        max_length=16,
+                    ),
+                ),
+                ("points", models.FloatField(default=-1)),
+                (
+                    "school",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="coty",
+                        to="core.School",
+                    ),
+                ),
             ],
             options={
-                'unique_together': {('season', 'school')},
+                "unique_together": {("season", "school")},
             },
         ),
     ]

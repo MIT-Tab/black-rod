@@ -1,6 +1,6 @@
 from django.db.models import Q
 
-from core.models.round import Round, RoundStats
+from core.models.round import Round
 
 
 def get_record(tournament, team):
@@ -12,7 +12,7 @@ def get_record(tournament, team):
     rounds = tournament.rounds.filter(Q(gov=team) | Q(opp=team))
 
     if not rounds.exists():
-        return ''
+        return ""
 
     for round in rounds:
         if round.gov == team and round.victor in gov_wins:
@@ -20,7 +20,8 @@ def get_record(tournament, team):
         if round.opp == team and round.victor in opp_wins:
             num_wins += 1
 
-    return '%s - %s' % (num_wins, (tournament.num_rounds - num_wins))
+    return f"{num_wins} - {tournament.num_rounds - num_wins}"
+
 
 def get_tab_card_data(team, tournament):
     if not team:
@@ -29,24 +30,22 @@ def get_tab_card_data(team, tournament):
     speaker_one = team.debaters.first()
     speaker_two = team.debaters.last()
 
-    rounds = Round.objects.filter(
-        Q(gov=team) | Q(opp=team)
-    )
+    rounds = Round.objects.filter(Q(gov=team) | Q(opp=team))
 
     if not rounds.exists():
         return None
 
     to_return = []
 
-    print (rounds)
+    print(rounds)
 
-    for round in rounds.order_by('round_number').all():
+    for round in rounds.order_by("round_number").all():
         to_add = {
-            'round': round,
-            'stats': [
+            "round": round,
+            "stats": [
                 round.stats.filter(debater=speaker_one).first(),
-                round.stats.filter(debater=speaker_two).first()
-            ]
+                round.stats.filter(debater=speaker_two).first(),
+            ],
         }
 
         to_return += [to_add]

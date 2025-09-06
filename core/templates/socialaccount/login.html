@@ -1,0 +1,32 @@
+{% extends "base/base.html" %}
+{% load i18n %}
+
+{% block content %}
+<div class="row">
+  <div class="col"></div>
+  <div class="col">
+    <div class="card mt-5 shadow-sm">
+      <div class="card-body">
+        <h5 class="card-title">{% trans "Sign In via APDAOnline" %}</h5>
+        <p class="card-text">
+          {% trans "You are about to sign in using your APDAOnline account." %}
+        </p>
+
+        <form method="post">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-primary w-100 mt-3">
+            {% trans "Continue" %}
+          </button>
+        </form>
+
+        <hr>
+
+        <div class="d-flex justify-content-between">
+          <a class="btn btn-link" href="/auth/login">{% trans "Back to Login" %}</a>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col"></div>
+</div>
+{% endblock %}

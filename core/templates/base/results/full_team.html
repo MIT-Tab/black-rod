@@ -1,90 +1,90 @@
 {% load tags %}
-
 {% for result in results %}
     {% if result.tab_card and user.is_authenticated %}
-	<div class="modal fade" id="tournament_{{ result.tournament.id }}">
-	    <div class="modal-dialog modal-lg">
-		<div class="modal-content">
-		    <div class="modal-header">
-			<h4 class="modal-title">Results</h4>
-			<button type="button" class="close" data-dismiss="modal">&times;</button>
-		    </div>
-		    
-		    <div class="modal-body">
-			<table class="table table-bordered">
-			    <thead>
-				<th>Round Number</th>
-				<th>Opponent</th>
-				<th>W/L</th>
-				{% for stat in result.tab_card.0.stats %}
-				    <th><a href="{{ stat.debater.get_absolute_url }}">{{ stat.debater.name }}</a></th>
-				{% endfor %}
-			    </thead>
-			    <tbody>
-				{% for round in result.tab_card %}
-				    <tr>
-					<td><a href="{{ round.round.get_absolute_url }}">{{ round.round.round_number }}</a></td>
-					<td><a href="{{ round.round|opponent_url:object.get_absolute_url }}">{{ round.round|opponent:object }}</a> ({{ round.round|opponent_side:object }})</td>
-					<td>{{ round.round|wl:object }}</td>
-					{% for stat in round.stats %}
-					    <td>{{ stat.debater_role|upper }} / {{ stat.speaks|number }} / {{ stat.ranks|number }}</td>
-					{% endfor %}
-				    </tr>
-				{% endfor %}
-			    </tbody>
-			</table>
-		    </div>
-		    <div class="modal-footer">
-			<button type="button" class="btn btn-danger" data-dismiss="modal">Close</button>
-		    </div>
-		</div>
-	    </div>
-	</div>
+        <div class="modal fade" id="tournament_{{ result.tournament.id }}">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h4 class="modal-title">Results</h4>
+                        <button type="button" class="close" data-dismiss="modal">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <table class="table table-bordered">
+                            <thead>
+                                <th>Round Number</th>
+                                <th>Opponent</th>
+                                <th>W/L</th>
+                                {% for stat in result.tab_card.0.stats %}
+                                    <th>
+                                        <a href="{{ stat.debater.get_absolute_url }}">{{ stat.debater.name }}</a>
+                                    </th>
+                                {% endfor %}
+                            </thead>
+                            <tbody>
+                                {% for round in result.tab_card %}
+                                    <tr>
+                                        <td>
+                                            <a href="{{ round.round.get_absolute_url }}">{{ round.round.round_number }}</a>
+                                        </td>
+                                        <td>
+                                            <a href="{{ round.round|opponent_url:object.get_absolute_url }}">{{ round.round|opponent:object }}</a> ({{ round.round|opponent_side:object }})
+                                        </td>
+                                        <td>{{ round.round|wl:object }}</td>
+                                        {% for stat in round.stats %}
+                                            <td>{{ stat.debater_role|upper }} / {{ stat.speaks|number }} / {{ stat.ranks|number }}</td>
+                                        {% endfor %}
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-danger" data-dismiss="modal">Close</button>
+                    </div>
+                </div>
+            </div>
+        </div>
     {% endif %}
 {% endfor %}
-
-<table class="table table-striped table-hover table-bordered">
+<table class="table table-hover ">
     <thead>
-	<th>Place</th>
-	<th>Record</th>
-	<th>Tournament</th>
-	<th>Date</th>
-	<th>Season</th>
-	<th>Type</th>
-	<th>Tab Card</th>
+        <th>Place</th>
+        <th>Tournament</th>
+        <th>Date</th>
+        <th>Season</th>
+        <th>Type</th>
     </thead>
     <tbody>
-	{% for result in results %}
-	    <tr>
-		{% if result.type == 'award' %}
-		    <td>{{ result.result.place }}</td>
-		    <td>{% if user.is_authenticated %}{{ result.record }}{% endif %}</td>
-		    <td><a href="{% url 'core:tournament_detail' pk=result.result.tournament.id %}">{{ result.result.tournament.name }}</a></td>
-		    <td>{{ result.result.tournament.date|date:"M j" }}</td>
-		    <td>{{ result.result.tournament.get_season_display }}</td>
-		    <td>{{ result.result.get_type_of_place_display }}</td>
-		{% else %}
-		    <td>{{ result.result.place }}</td>
-		    <td>{{ result.record }}</td>
-		    <td><a href="{% url 'core:tournament_detail' pk=result.tournament.id %}">{{ result.tournament.name }}</a></td>
-		    <td>{{ result.tournament.date|date:"M j" }}</td>
-		    <td colspan="2">{{ result.tournament.get_season_display }}</td>
-		{% endif %}	    
-		<td>
-		    {% if result.tab_card and user.is_authenticated %}
-			<button type="button" class="btn btn-link" data-toggle="modal" data-target="#tournament_{{ result.tournament.id }}">
-			    View Tab Card
-			</button>
-		    {% else %}
-			{% if user.is_authenticated %}
-			    No Tab Card
-			{% endif %}
-		    {% endif %}
-		</td>
-	    </tr>
-	{% empty %}
-	    <tr>
-		<td colspan="7"><center>There are no results of this type.</center></td>
-	{% endfor %}
-    </tbody>
-</table>
+        {% for result in results %}
+            <tr>
+                {% if result.type == 'award' %}
+                    {% if result.result.place > 0 %}
+                        <td>{{ result.result.place }}</td>
+                    {% else %}
+                        <td></td>
+                    {% endif %}
+                    <td>
+                        <a href="{% url 'core:tournament_detail' pk=result.result.tournament.id %}">{{ result.result.tournament.name }}</a>
+                    </td>
+                    <td>{{ result.result.tournament.date|date:"M j" }}</td>
+                    <td>{{ result.result.tournament.get_season_display }}</td>
+                    <td>{{ result.result.get_type_of_place_display }}</td>
+                {% else %}
+                    <td>{{ result.result.place }}</td>
+                    <td>{{ result.record }}</td>
+                    <td>
+                        <a href="{% url 'core:tournament_detail' pk=result.tournament.id %}">{{ result.tournament.name }}</a>
+                    </td>
+                    <td>{{ result.tournament.date|date:"M j" }}</td>
+                    <td colspan="2">{{ result.tournament.get_season_display }}</td>
+                {% endif %}
+            </tr>
+        {% empty %}
+            <tr>
+                <td colspan="7">
+                    <center>There are no results of this type.</center>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>

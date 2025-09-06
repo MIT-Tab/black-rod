@@ -6,45 +6,45 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('core', '0008_auto_20191024_1308'),
+        ("core", "0008_auto_20191024_1308"),
     ]
 
     operations = [
         migrations.AlterModelOptions(
-            name='noty',
-            options={'ordering': ('-points',)},
+            name="noty",
+            options={"ordering": ("-points",)},
         ),
         migrations.AlterModelOptions(
-            name='soty',
-            options={'ordering': ('-points',)},
+            name="soty",
+            options={"ordering": ("-points",)},
         ),
         migrations.AlterModelOptions(
-            name='toty',
-            options={'ordering': ('-points',)},
+            name="toty",
+            options={"ordering": ("-points",)},
         ),
         migrations.AddField(
-            model_name='coty',
-            name='place',
+            model_name="coty",
+            name="place",
             field=models.IntegerField(default=-1),
         ),
         migrations.AddField(
-            model_name='noty',
-            name='place',
+            model_name="noty",
+            name="place",
             field=models.IntegerField(default=-1),
         ),
         migrations.AddField(
-            model_name='qual',
-            name='place',
+            model_name="qual",
+            name="place",
             field=models.IntegerField(default=-1),
         ),
         migrations.AddField(
-            model_name='soty',
-            name='place',
+            model_name="soty",
+            name="place",
             field=models.IntegerField(default=-1),
         ),
         migrations.AddField(
-            model_name='toty',
-            name='place',
+            model_name="toty",
+            name="place",
             field=models.IntegerField(default=-1),
         ),
     ]

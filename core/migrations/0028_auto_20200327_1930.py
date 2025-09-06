@@ -6,13 +6,32 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('core', '0027_merge_20200327_1749'),
+        ("core", "0027_merge_20200327_1749"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='video',
-            name='round',
-            field=models.IntegerField(choices=[(0, 'UNKNOWN'), (1, '1'), (2, '2'), (3, '3'), (4, '4'), (5, '5'), (14, '6'), (6, 'Varsity Octafinals'), (7, 'Varsity Quarterfinals'), (8, 'Varsity Semifinals'), (9, 'Varsity Finals'), (10, 'Novice Quarterfinals'), (11, 'Novice Semifinals'), (12, 'Novice Finals'), (13, 'Demo Round')], default=0),
+            model_name="video",
+            name="round",
+            field=models.IntegerField(
+                choices=[
+                    (0, "UNKNOWN"),
+                    (1, "1"),
+                    (2, "2"),
+                    (3, "3"),
+                    (4, "4"),
+                    (5, "5"),
+                    (14, "6"),
+                    (6, "Varsity Octafinals"),
+                    (7, "Varsity Quarterfinals"),
+                    (8, "Varsity Semifinals"),
+                    (9, "Varsity Finals"),
+                    (10, "Novice Quarterfinals"),
+                    (11, "Novice Semifinals"),
+                    (12, "Novice Finals"),
+                    (13, "Demo Round"),
+                ],
+                default=0,
+            ),
         ),
     ]
