@@ -1,0 +1,164 @@
+{% extends "tournaments/data_entry.html" %}
+{% load crispy_forms_tags %}
+
+{% block data_entry_block %}
+    {{ wizard.form.management_form }}
+    
+    <div class="mb-3">
+        <button type="button" class="btn btn-success btn-sm" id="add-form-btn">
+            <i class="fas fa-plus"></i> Add Unplaced Team
+        </button>
+        <small class="text-muted ml-2">Teams that competed but didn't place in the top rankings</small>
+    </div>
+
+    <div class="table-responsive">
+        <table class="table table-bordered" id="formset-table">
+            <thead>
+                <tr>
+                    <th width="80">#</th>
+                    <th>Team</th>
+                    <th width="80">Actions</th>
+                </tr>
+            </thead>
+            <tbody id="formset-body">
+                {% for form in wizard.form.forms %}
+                    <tr class="formset-row" data-form-index="{{ forloop.counter0 }}">
+                        <td class="text-center">
+                            <strong>{{ forloop.counter }}</strong>
+                        </td>
+                        <td class="form-fields">
+                            {% if form.DELETE %}{{ form.DELETE }}{% endif %}
+                            <div class="row">
+                                <div class="col-md-6">
+                                    {{ form.debater_one|as_crispy_field }}
+                                </div>
+                                <div class="col-md-6">
+                                    {{ form.debater_two|as_crispy_field }}
+                                </div>
+                            </div>
+                        </td>
+                        <td>
+                            <button type="button" class="btn btn-danger btn-sm delete-form" data-form-index="{{ forloop.counter0 }}">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="empty-form" style="display: none;">
+        <tr class="formset-row" data-form-index="__prefix__">
+            <td class="text-center">
+                <strong class="row-number"></strong>
+            </td>
+            <td class="form-fields">
+                <input type="hidden" name="form-__prefix__-DELETE" id="id_form-__prefix__-DELETE">
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label for="id_form-__prefix__-debater_one">Debater One</label>
+                            <select name="form-__prefix__-debater_one" class="django-select2 form-control" id="id_form-__prefix__-debater_one" data-ajax--url="/core/debater-autocomplete/" data-theme="bootstrap4">
+                                <option value=""></option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-group">
+                            <label for="id_form-__prefix__-debater_two">Debater Two</label>
+                            <select name="form-__prefix__-debater_two" class="django-select2 form-control" id="id_form-__prefix__-debater_two" data-ajax--url="/core/debater-autocomplete/" data-theme="bootstrap4">
+                                <option value=""></option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </td>
+            <td>
+                <button type="button" class="btn btn-danger btn-sm delete-form" data-form-index="__prefix__">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </td>
+        </tr>
+    </div>
+
+{% endblock data_entry_block %}
+
+{% block extra_js %}
+    {{ block.super }}
+    <script>
+        $(document).ready(function() {
+            let formIndex = {{ wizard.form.forms|length }};
+            const maxForms = parseInt($('#id_form-MAX_NUM_FORMS').val());
+            
+            // Update row numbers
+            function updateRowNumbers() {
+                $('#formset-body tr.formset-row:visible').each(function(index) {
+                    $(this).find('.row-number, strong').first().text(index + 1);
+                });
+            }
+            
+            // Add new form
+            $('#add-form-btn').click(function() {
+                if (formIndex < maxForms) {
+                    const emptyForm = $('.empty-form').html();
+                    const newForm = emptyForm.replace(/__prefix__/g, formIndex);
+                    $('#formset-body').append(newForm);
+                    
+                    // Update form count
+                    formIndex++;
+                    $('#id_form-TOTAL_FORMS').val(formIndex);
+                    
+                    // Initialize select2 for new form
+                    initializeSelect2ForRow($('#formset-body tr:last'));
+                    
+                    updateRowNumbers();
+                    
+                    if (formIndex >= maxForms) {
+                        $(this).prop('disabled', true);
+                    }
+                } else {
+                    alert('Maximum number of forms reached');
+                }
+            });
+            
+            // Delete form
+            $(document).on('click', '.delete-form', function() {
+                const row = $(this).closest('tr');
+                if ($('#formset-body tr.formset-row:visible').length > 1) {
+                    const deleteCheckbox = row.find('input[name*="DELETE"]');
+                    if (deleteCheckbox.length) {
+                        deleteCheckbox.prop('checked', true);
+                        row.hide();
+                    } else {
+                        row.remove();
+                        formIndex--;
+                        $('#id_form-TOTAL_FORMS').val(formIndex);
+                    }
+                    
+                    updateRowNumbers();
+                    $('#add-form-btn').prop('disabled', false);
+                } else {
+                    alert('Cannot delete the last form');
+                }
+            });
+            
+            // Initialize select2 for a specific row
+            function initializeSelect2ForRow(row) {
+                row.find('.django-select2').each(function() {
+                    if (!$(this).hasClass('select2-hidden-accessible')) {
+                        $(this).djangoSelect2();
+                    }
+                });
+            }
+            
+            // Initialize row numbers
+            updateRowNumbers();
+            
+            // Add at least one form if none exist
+            if ($('#formset-body tr.formset-row').length === 0) {
+                $('#add-form-btn').click();
+            }
+        });
+    </script>
+{% endblock extra_js %}

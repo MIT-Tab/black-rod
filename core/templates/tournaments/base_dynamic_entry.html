@@ -1,0 +1,59 @@
+{% extends "tournaments/data_entry.html" %}
+{% load crispy_forms_tags %}
+
+{% block data_entry_block %}
+    {{ wizard.form.management_form }}
+    
+    <div class="formset-controls">
+        <button type="button" class="btn btn-success btn-sm" id="add-form-btn">
+            <i class="fas fa-plus"></i> Add {% block form_type_name %}Item{% endblock %}
+        </button>
+        <small class="text-muted">Drag rows to reorder {% block form_type_plural %}items{% endblock %}</small>
+    </div>
+
+    <div class="table-responsive" id="formset-container">
+        <table class="table table-bordered" id="formset-table">
+            <thead>
+                <tr>
+                    <th width="60">Place</th>
+                    <th width="40">Drag</th>
+                    <th>{% block table_header %}Details{% endblock %}</th>
+                    <th width="80">Actions</th>
+                </tr>
+            </thead>
+            <tbody class="sortable-formset">
+                {% for form in wizard.form.forms %}
+                    <tr class="formset-row" data-form-index="{{ forloop.counter0 }}">
+                        <td class="place-number">
+                            <span class="place-display">{{ forloop.counter }}</span>
+                        </td>
+                        <td class="drag-handle">
+                            <i class="fas fa-grip-vertical"></i>
+                        </td>
+                        <td class="form-fields">
+                            {% if form.ORDER %}{{ form.ORDER }}{% endif %}
+                            {% if form.DELETE %}{{ form.DELETE }}{% endif %}
+                            
+                            {% block form_fields %}
+                            {% endblock form_fields %}
+                        </td>
+                        <td class="text-center">
+                            <button type="button" class="btn btn-danger btn-sm delete-form" 
+                                    data-form-index="{{ forloop.counter0 }}" 
+                                    title="Delete {% block form_type_name_singular %}Item{% endblock %}">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    {% block empty_form %}
+    {% endblock empty_form %}
+
+    {% block formset_config %}
+    {% endblock formset_config %}
+
+{% endblock data_entry_block %}

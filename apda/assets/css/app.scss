@@ -64,6 +64,84 @@ nav {
     padding: 0px !important;
 }
 
+/* Sortable Formset Styles */
+.sortable-formset {
+    min-height: 100px;
+}
+
+.formset-row.ui-sortable-helper {
+    background-color: #f8f9fa;
+    opacity: 0.8;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+
+.formset-row.ui-sortable-placeholder {
+    background-color: #e9ecef;
+    height: 120px;
+    border: 2px dashed #dee2e6;
+    visibility: visible !important;
+}
+
+.drag-handle {
+    text-align: center;
+    vertical-align: middle;
+    cursor: move;
+}
+
+.drag-handle i {
+    color: #6c757d;
+    cursor: move;
+}
+
+.place-number {
+    text-align: center;
+    vertical-align: middle;
+    background-color: #f8f9fa;
+    font-weight: bold;
+}
+
+/* Disabled drag state */
+.drag-disabled .drag-handle {
+    opacity: 0.3;
+    cursor: not-allowed !important;
+}
+
+.drag-disabled .drag-handle i {
+    cursor: not-allowed !important;
+}
+
+/* Form field spacing */
+.formset-row .form-group {
+    margin-bottom: 1rem;
+}
+
+.formset-row .row {
+    margin-left: 0;
+    margin-right: 0;
+}
+
+/* Button styling */
+.formset-controls {
+    margin-bottom: 1rem;
+}
+
+.formset-controls .btn {
+    margin-right: 0.5rem;
+}
+
+[id$="-ORDER"] {
+    display: none;
+}
+
+[id$="-DELETE"] {
+    display: none;
+}
+
+.formset-controls small {
+    margin-left: 0.5rem;
+    color: #6c757d;
+}
+
 .mittab-dashboard {
     .mittab-table-row:hover {
         background-color: #f8f9fa !important;

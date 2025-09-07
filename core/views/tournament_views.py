@@ -13,6 +13,8 @@ from django_tables2 import Column
 from formtools.wizard.views import SessionWizardView
 from haystack.query import SearchQuerySet
 
+from django.http import JsonResponse
+from django.template.loader import render_to_string
 from core.forms import (
     DebaterForm,
     DebaterReconciliationFormset,
@@ -661,21 +663,14 @@ class TournamentDataEntryWizardView(CustomMixin, SessionWizardView):
         if self.steps.current == "5":
             return ["tournaments/speaker_result_entry.html"]
         if self.steps.current == "6":
-            return ["tournaments/team_result_entry.html"]
+            return ["tournaments/unplaced_team_result_entry.html"]  # Keep simpler template for unplaced teams
 
         return super().get_template_names()
 
     def get_form_initial(self, step):
         storage_data = None
         tournament = None
-
         initial = []
-
-        if not step == "0":
-            storage_data = self.storage.get_step_data("0")
-            tournament = Tournament.objects.get(
-                id=int(storage_data.get("0-tournament"))
-            )
 
         if step == "0" and "tournament" in self.request.GET:
             tournament = Tournament.objects.filter(
@@ -684,6 +679,12 @@ class TournamentDataEntryWizardView(CustomMixin, SessionWizardView):
 
             if tournament:
                 initial = {"tournament": tournament}
+
+        elif step != "0":
+            storage_data = self.storage.get_step_data("0")
+            tournament = Tournament.objects.get(
+                id=int(storage_data.get("0-tournament"))
+            )
 
         if step == "1":
             initial = {
@@ -694,70 +695,56 @@ class TournamentDataEntryWizardView(CustomMixin, SessionWizardView):
         if step == "2":
             results = TeamResult.objects.filter(
                 tournament=tournament, type_of_place=Debater.VARSITY
-            )
+            ).order_by('place')
 
-            for i in range(1, 21):
-                if results.filter(place=i).exists():
-                    initial += [
-                        {
-                            "debater_one": results.filter(place=i)
-                            .first()
-                            .team.debaters.first(),
-                            "debater_two": results.filter(place=i)
-                            .first()
-                            .team.debaters.last(),
-                            "ghost_points": results.filter(place=i)
-                            .first()
-                            .ghost_points,
-                        }
-                    ]
+            for result in results:
+                initial += [
+                    {
+                        "debater_one": result.team.debaters.first(),
+                        "debater_two": result.team.debaters.last(),
+                        "ghost_points": getattr(result, 'ghost_points', False),
+                    }
+                ]
 
         if step == "3":
             results = SpeakerResult.objects.filter(
                 tournament=tournament,
                 type_of_place=Debater.VARSITY,
-            )
+            ).order_by('place')
 
-            for i in range(1, 11):
-                if results.filter(place=i).exists():
-                    initial += [
-                        {
-                            "speaker": results.filter(place=i).first().debater,
-                            "tie": results.filter(place=i).first().tie,
-                        }
-                    ]
+            for result in results:
+                initial += [
+                    {
+                        "speaker": result.debater,
+                        "tie": result.tie,
+                    }
+                ]
 
         if step == "4":
             results = TeamResult.objects.filter(
                 tournament=tournament, type_of_place=Debater.NOVICE
-            )
+            ).order_by('place')
 
-            for i in range(1, 11):
-                if results.filter(place=i).exists():
-                    initial += [
-                        {
-                            "debater_one": results.filter(place=i)
-                            .first()
-                            .team.debaters.first(),
-                            "debater_two": results.filter(place=i)
-                            .first()
-                            .team.debaters.last(),
-                        }
-                    ]
+            for result in results:
+                initial += [
+                    {
+                        "debater_one": result.team.debaters.first(),
+                        "debater_two": result.team.debaters.last(),
+                    }
+                ]
 
         if step == "5":
             results = SpeakerResult.objects.filter(
                 tournament=tournament, type_of_place=Debater.NOVICE
-            )
+            ).order_by('place')
 
-            for i in range(1, 17):
-                if results.filter(place=i).exists():
-                    initial += [
-                        {
-                            "speaker": results.filter(place=i).first().debater,
-                            "tie": results.filter(place=i).first().tie,
-                        }
-                    ]
+            for result in results:
+                initial += [
+                    {
+                        "speaker": result.debater,
+                        "tie": result.tie,
+                    }
+                ]
 
         if step == "6":
             results = TeamResult.objects.filter(
@@ -782,12 +769,60 @@ class TournamentDataEntryWizardView(CustomMixin, SessionWizardView):
 
         return context
 
+    def _process_team_results(self, formset, tournament, type_of_place, teams_to_update):
+        valid_forms = []
+        for form in formset.forms:
+            if form.cleaned_data and not form.cleaned_data.get('DELETE', False):
+                order_value = form.cleaned_data.get('ORDER', 999)
+                if order_value is None:
+                    order_value = 999
+                valid_forms.append((int(order_value), form))
+        
+        valid_forms.sort(key=lambda x: x[0])
+        
+        for place, (_, form) in enumerate(valid_forms, 1):
+            if form.cleaned_data.get("debater_one") and form.cleaned_data.get("debater_two"):
+                team = get_or_create_team_for_debaters(
+                    form.cleaned_data["debater_one"],
+                    form.cleaned_data["debater_two"],
+                )
+                if team:
+                    TeamResult.objects.create(
+                        tournament=tournament,
+                        team=team,
+                        type_of_place=type_of_place,
+                        place=place,
+                        ghost_points=form.cleaned_data.get("ghost_points", False),
+                    )
+                    teams_to_update.append(team)
+
+    def _process_speaker_results(self, formset, tournament, type_of_place, speakers_to_update):
+        valid_forms = []
+        for form in formset.forms:
+            if form.cleaned_data and not form.cleaned_data.get('DELETE', False):
+                order_value = form.cleaned_data.get('ORDER', 999)
+                if order_value is None:
+                    order_value = 999
+                valid_forms.append((int(order_value), form))
+        
+        valid_forms.sort(key=lambda x: x[0])
+        
+        for place, (_, form) in enumerate(valid_forms, 1):
+            if form.cleaned_data.get("speaker"):
+                SpeakerResult.objects.create(
+                    tournament=tournament,
+                    debater=form.cleaned_data["speaker"],
+                    type_of_place=type_of_place,
+                    place=place,
+                    tie=form.cleaned_data.get("tie", False),
+                )
+                speakers_to_update.append(form.cleaned_data["speaker"])
+
     def done(self, form_list, form_dict):
         tournament = form_dict["0"].cleaned_data["tournament"]
 
         tournament.num_teams = form_dict["1"].cleaned_data["num_teams"]
         tournament.num_novice_debaters = form_dict["1"].cleaned_data["num_novices"]
-
         tournament.save()
 
         update_otys = settings.CURRENT_SEASON == tournament.season
@@ -796,11 +831,8 @@ class TournamentDataEntryWizardView(CustomMixin, SessionWizardView):
         speakers_to_update = []
         novices_to_update = []
 
-        ## THIS DOESN'T DO INITIAL
-
         for result in TeamResult.objects.filter(tournament=tournament).all():
             teams_to_update += [result.team]
-
             result.delete()
 
         for result in SpeakerResult.objects.filter(tournament=tournament).all():
@@ -812,152 +844,41 @@ class TournamentDataEntryWizardView(CustomMixin, SessionWizardView):
 
         QUAL.objects.filter(tournament=tournament).delete()
 
-        ## VARSITY TEAM AWARDS ##
-        for i in range(len(form_dict["2"].cleaned_data)):
-            if (
-                "debater_one" not in form_dict["2"].cleaned_data[i]
-                or "debater_two" not in form_dict["2"].cleaned_data[i]
-            ):
-                continue
+        # Process varsity team results with new ordering system
+        self._process_team_results(
+            form_dict["2"], tournament, Debater.VARSITY, teams_to_update
+        )
+        
+        # Process varsity speaker results with new ordering system
+        self._process_speaker_results(
+            form_dict["3"], tournament, Debater.VARSITY, speakers_to_update
+        )
+        
+        # Process novice team results with new ordering system
+        self._process_team_results(
+            form_dict["4"], tournament, Debater.NOVICE, teams_to_update
+        )
+        
+        # Process novice speaker results with new ordering system
+        self._process_speaker_results(
+            form_dict["5"], tournament, Debater.NOVICE, novices_to_update
+        )
 
-            if (
-                not form_dict["2"].cleaned_data[i]["debater_one"]
-                or not form_dict["2"].cleaned_data[i]["debater_two"]
-            ):
-                continue
-
-            team = get_or_create_team_for_debaters(
-                form_dict["2"].cleaned_data[i]["debater_one"],
-                form_dict["2"].cleaned_data[i]["debater_two"],
-            )
-
-            if not team:
-                continue
-
-            place = i + 1
-            type_of_place = Debater.VARSITY
-            ghost_points = form_dict["2"].cleaned_data[i]["ghost_points"]
-
-            TeamResult.objects.create(
-                tournament=tournament,
-                team=team,
-                type_of_place=type_of_place,
-                place=place,
-                ghost_points=ghost_points,
-            )
-
-            teams_to_update += [team]
-
-        for i in range(len(form_dict["3"].cleaned_data)):
-            if "speaker" not in form_dict["3"].cleaned_data[i]:
-                continue
-
-            place = i + 1
-            type_of_place = Debater.VARSITY
-            speaker = form_dict["3"].cleaned_data[i]["speaker"]
-            tie = form_dict["3"].cleaned_data[i]["tie"]
-
-            if not speaker:
-                continue
-
-            SpeakerResult.objects.create(
-                tournament=tournament,
-                debater=speaker,
-                type_of_place=type_of_place,
-                place=place,
-                tie=tie,
-            )
-
-            speakers_to_update += [speaker]
-
-        for i in range(len(form_dict["4"].cleaned_data)):
-            if (
-                "debater_one" not in form_dict["4"].cleaned_data[i]
-                or "debater_two" not in form_dict["4"].cleaned_data[i]
-            ):
-                continue
-
-            if (
-                not form_dict["4"].cleaned_data[i]["debater_one"]
-                or not form_dict["4"].cleaned_data[i]["debater_two"]
-            ):
-                continue
-
-            team = get_or_create_team_for_debaters(
-                form_dict["4"].cleaned_data[i]["debater_one"],
-                form_dict["4"].cleaned_data[i]["debater_two"],
-            )
-
-            if not team:
-                continue
-
-            place = i + 1
-            type_of_place = Debater.NOVICE
-
-            TeamResult.objects.create(
-                tournament=tournament,
-                team=team,
-                type_of_place=type_of_place,
-                place=place,
-            )
-
-            teams_to_update += [team]
-
-        for i in range(len(form_dict["5"].cleaned_data)):
-            if "speaker" not in form_dict["5"].cleaned_data[i]:
-                continue
-
-            place = i + 1
-            type_of_place = Debater.NOVICE
-            speaker = form_dict["5"].cleaned_data[i]["speaker"]
-            tie = form_dict["5"].cleaned_data[i]["tie"]
-
-            if not speaker:
-                continue
-
-            SpeakerResult.objects.create(
-                tournament=tournament,
-                debater=speaker,
-                type_of_place=type_of_place,
-                place=place,
-                tie=tie,
-            )
-
-            novices_to_update += [speaker]
-
-        ## NON-PLACING TEAMS ##
-        for i in range(len(form_dict["6"].cleaned_data)):
-            if (
-                "debater_one" not in form_dict["6"].cleaned_data[i]
-                or "debater_two" not in form_dict["6"].cleaned_data[i]
-            ):
-                continue
-
-            if (
-                not form_dict["6"].cleaned_data[i]["debater_one"]
-                or not form_dict["6"].cleaned_data[i]["debater_two"]
-            ):
-                continue
-
-            team = get_or_create_team_for_debaters(
-                form_dict["6"].cleaned_data[i]["debater_one"],
-                form_dict["6"].cleaned_data[i]["debater_two"],
-            )
-
-            if not team:
-                continue
-
-            place = -1
-            type_of_place = Debater.VARSITY
-
-            TeamResult.objects.create(
-                tournament=tournament,
-                team=team,
-                type_of_place=type_of_place,
-                place=place,
-            )
-
-            teams_to_update += [team]
+        # Process unplaced teams (no ordering needed)
+        for form in form_dict["6"].forms:
+            if form.cleaned_data.get("debater_one") and form.cleaned_data.get("debater_two"):
+                team = get_or_create_team_for_debaters(
+                    form.cleaned_data["debater_one"],
+                    form.cleaned_data["debater_two"],
+                )
+                if team:
+                    TeamResult.objects.create(
+                        tournament=tournament,
+                        team=team,
+                        type_of_place=Debater.VARSITY,
+                        place=-1,
+                    )
+                    teams_to_update += [team]
 
         teams_to_update = list(set(teams_to_update))
         speakers_to_update = list(set(speakers_to_update))
@@ -1000,3 +921,41 @@ class TournamentDataEntryWizardView(CustomMixin, SessionWizardView):
             )
 
         return redirect("core:tournament_detail", pk=tournament.id)
+
+
+def get_new_team_form(request):
+    """AJAX endpoint to get a new team or speaker result form"""
+    if request.method == 'GET':
+        form_index = int(request.GET.get('form_index', 0))
+        form_type = request.GET.get('form_type', 'team')
+        
+        # Create a formset with can_order=True to get the ORDER field
+        if form_type == 'team':
+            FormsetClass = VarsityTeamResultFormset
+            step_prefix = '2'  # Team forms are step 2 in the wizard
+        else:
+            FormsetClass = VarsitySpeakerResultFormset
+            step_prefix = '3'  # Speaker forms are step 3 in the wizard
+        
+        # Create a temporary formset to get a properly structured form
+        temp_formset = FormsetClass()
+        
+        # Get the empty form template and set the correct wizard step prefix
+        empty_form = temp_formset.empty_form
+        empty_form.prefix = f'{step_prefix}-{form_index}'  # Use wizard step format: "3-8" not "form-8"
+        
+        # Set initial ORDER value
+        if hasattr(empty_form, 'fields') and 'ORDER' in empty_form.fields:
+            empty_form.initial = {'ORDER': form_index + 1}
+        
+        # Render the form
+        html = render_to_string('tournaments/ajax_form_row.html', {
+            'form': empty_form,
+            'form_index': form_index,
+            'place_number': form_index + 1,
+            'form_type': form_type
+        })
+        
+        return JsonResponse({'html': html})
+    
+    return JsonResponse({'error': 'Invalid request'}, status=400)

@@ -1,27 +1,31 @@
-{% extends "tournaments/data_entry.html" %}
+{% extends "tournaments/base_dynamic_entry.html" %}
 {% load crispy_forms_tags %}
-{% block data_entry_block %}
-    {{ wizard.form.management_form }}
-    <table class="table table-bordered">
-        <thead>
-            <th>Place</th>
-            <th>Team</th>
-        </thead>
-        <tbody>
-            {% for form in wizard.form.forms %}
-                <tr>
-                    <td>
-                        <b>
-                            <center>{{ forloop.counter }}</center>
-                        </b>
-                    </td>
-                    <td>
-                        {{ form.debater_one|as_crispy_field }}
-                        {{ form.debater_two|as_crispy_field }}
-                        {{ form.ghost_points|as_crispy_field }}
-                    </td>
-            </tr>
-        {% endfor %}
-    </tbody>
-</table>
-{% endblock data_entry_block %}
+
+{% block form_type_name %}Team{% endblock %}
+{% block form_type_plural %}teams{% endblock %}
+{% block form_type_name_singular %}Team{% endblock %}
+{% block table_header %}Team Details{% endblock %}
+
+{% block form_fields %}
+    <div class="row">
+        <div class="col-md-6">
+            {{ form.debater_one|as_crispy_field }}
+        </div>
+        <div class="col-md-6">
+            {{ form.debater_two|as_crispy_field }}
+        </div>
+    </div>
+    {{ form.ghost_points|as_crispy_field }}
+{% endblock form_fields %}
+
+{% block formset_config %}
+    <script>
+        $(document).ready(function() {
+            new SortableFormset('#formset-container', {
+                maxForms: 100,
+                formType: 'team',
+                ajaxUrl: '{% url "core:get_new_team_form" %}'
+            });
+        });
+    </script>
+{% endblock formset_config %}
