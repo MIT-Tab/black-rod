@@ -306,7 +306,7 @@ def update_qual_points(team, season=settings.CURRENT_SEASON):
                 debater.save()
                 
         for result in results:
-            if result.place <= result.tournament.autoqual_bar:
+            if result.place != -1 and result.place <= result.tournament.autoqual_bar:
                 try:
                     qual = QUAL.objects.create(
                         season=season,
