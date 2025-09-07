@@ -21,16 +21,19 @@ brew install sqlite
 **For Windows:**
 Download the installer from [SQLite Downloads](https://www.sqlite.org/download.html) and follow the instructions.
 
+##### Install pyenv if you haven't already, or install the version of python listed in .python-version and verify its being used in your repo
+
 ##### Set up the Python virtual environment
 Make sure to use `python3` for the virtual environment:
 ```bash
-virtualenv venv
+python -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 ```
 
 ##### Set up Webpack assets
 ```bash
+nvm use 20
 npm install
 npm run build
 ```
@@ -39,7 +42,7 @@ npm run build
 ```bash
 python manage.py -d makemigrations
 python manage.py -d migrate
-python3 manage.py -d loaddata all_data
+python3 manage.py -d loaddata dev_fixtures
 ```
 
 ##### Create an admin user
