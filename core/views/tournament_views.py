@@ -13,6 +13,8 @@ from django_tables2 import Column
 from formtools.wizard.views import SessionWizardView
 from haystack.query import SearchQuerySet
 
+from django.http import JsonResponse
+from django.template.loader import render_to_string
 from core.forms import (
     DebaterForm,
     DebaterReconciliationFormset,
@@ -661,7 +663,7 @@ class TournamentDataEntryWizardView(CustomMixin, SessionWizardView):
         if self.steps.current == "5":
             return ["tournaments/speaker_result_entry.html"]
         if self.steps.current == "6":
-            return ["tournaments/team_result_entry.html"]
+            return ["tournaments/unplaced_team_result_entry.html"]
 
         return super().get_template_names()
 
@@ -834,7 +836,7 @@ class TournamentDataEntryWizardView(CustomMixin, SessionWizardView):
             if not team:
                 continue
 
-            place = i + 1
+            place = form_dict["2"].cleaned_data[i].get("ORDER", i + 1)
             type_of_place = Debater.VARSITY
             ghost_points = form_dict["2"].cleaned_data[i]["ghost_points"]
 
@@ -852,7 +854,7 @@ class TournamentDataEntryWizardView(CustomMixin, SessionWizardView):
             if "speaker" not in form_dict["3"].cleaned_data[i]:
                 continue
 
-            place = i + 1
+            place = form_dict["3"].cleaned_data[i].get("ORDER", i + 1)
             type_of_place = Debater.VARSITY
             speaker = form_dict["3"].cleaned_data[i]["speaker"]
             tie = form_dict["3"].cleaned_data[i]["tie"]
@@ -891,7 +893,7 @@ class TournamentDataEntryWizardView(CustomMixin, SessionWizardView):
             if not team:
                 continue
 
-            place = i + 1
+            place = form_dict["4"].cleaned_data[i].get("ORDER", i + 1)
             type_of_place = Debater.NOVICE
 
             TeamResult.objects.create(
@@ -907,7 +909,7 @@ class TournamentDataEntryWizardView(CustomMixin, SessionWizardView):
             if "speaker" not in form_dict["5"].cleaned_data[i]:
                 continue
 
-            place = i + 1
+            place = form_dict["5"].cleaned_data[i].get("ORDER", i + 1)
             type_of_place = Debater.NOVICE
             speaker = form_dict["5"].cleaned_data[i]["speaker"]
             tie = form_dict["5"].cleaned_data[i]["tie"]
@@ -1000,3 +1002,36 @@ class TournamentDataEntryWizardView(CustomMixin, SessionWizardView):
             )
 
         return redirect("core:tournament_detail", pk=tournament.id)
+
+
+def get_new_team_form(request):
+    """When we add a new team to the form, we make an ajax call here"""
+    if request.method == 'GET':
+        form_index = int(request.GET.get('form_index', 0))
+        form_type = request.GET.get('form_type', 'team')
+        
+        if form_type == 'team':
+            FormsetClass = VarsityTeamResultFormset
+            step_prefix = '2'
+        else:
+            FormsetClass = VarsitySpeakerResultFormset
+            step_prefix = '3'
+        
+        temp_formset = FormsetClass()
+        
+        empty_form = temp_formset.empty_form
+        empty_form.prefix = f'{step_prefix}-{form_index}'
+        
+        if hasattr(empty_form, 'fields') and 'ORDER' in empty_form.fields:
+            empty_form.initial = {'ORDER': form_index + 1}
+        
+        html = render_to_string('tournaments/ajax_form_row.html', {
+            'form': empty_form,
+            'form_index': form_index,
+            'place_number': form_index + 1,
+            'form_type': form_type
+        })
+        
+        return JsonResponse({'html': html})
+    
+    return JsonResponse({'error': 'Invalid request'}, status=400)

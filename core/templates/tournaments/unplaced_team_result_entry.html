@@ -1,9 +1,9 @@
 {% extends "tournaments/base_dynamic_entry.html" %}
 {% load crispy_forms_tags %}
 
-{% block form_type_name %}Team{% endblock %}
-{% block form_type_plural %}teams{% endblock %}
-{% block form_type_name_singular %}Team{% endblock %}
+{% block form_type_name %}Unplaced Team{% endblock %}
+{% block form_type_plural %}unplaced teams{% endblock %}
+{% block form_type_name_singular %}Unplaced Team{% endblock %}
 {% block table_header %}Team Details{% endblock %}
 
 {% block form_fields %}
@@ -15,7 +15,6 @@
             {{ form.debater_two|as_crispy_field }}
         </div>
     </div>
-    {{ form.ghost_points|as_crispy_field }}
 {% endblock form_fields %}
 
 {% block formset_config %}
@@ -23,7 +22,7 @@
         $(document).ready(function() {
             new SortableFormset('#formset-container', {
                 maxForms: 100,
-                formType: 'team',
+                formType: 'unplaced_team',
                 ajaxUrl: '{% url "core:get_new_team_form" %}'
             });
         });

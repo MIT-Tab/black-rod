@@ -1,26 +1,24 @@
-{% extends "tournaments/data_entry.html" %}
+{% extends "tournaments/base_dynamic_entry.html" %}
 {% load crispy_forms_tags %}
-{% block data_entry_block %}
-    {{ wizard.form.management_form }}
-    <table class="table table-bordered">
-        <thead>
-            <th>Place</th>
-            <th>Speaker</th>
-        </thead>
-        <tbody>
-            {% for form in wizard.form.forms %}
-                <tr>
-                    <td>
-                        <b>
-                            <center>{{ forloop.counter }}</center>
-                        </b>
-                    </td>
-                    <td>
-                        {{ form.speaker|as_crispy_field }}
-                        {{ form.tie|as_crispy_field }}
-                    </td>
-                </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-{% endblock data_entry_block %}
+
+{% block form_type_name %}Speaker{% endblock %}
+{% block form_type_plural %}speakers{% endblock %}
+{% block form_type_name_singular %}Speaker{% endblock %}
+{% block table_header %}Speaker Details{% endblock %}
+
+{% block form_fields %}
+    {{ form.speaker|as_crispy_field }}
+    {{ form.tie|as_crispy_field }}
+{% endblock form_fields %}
+
+{% block formset_config %}
+    <script>
+        $(document).ready(function() {
+            new SortableFormset('#formset-container', {
+                maxForms: 50,
+                formType: 'speaker',
+                ajaxUrl: '{% url "core:get_new_team_form" %}'
+            });
+        });
+    </script>
+{% endblock formset_config %}
