@@ -170,6 +170,11 @@ urlpatterns = [
         name="tournament_dataentry",
     ),
     path(
+        "core/tournaments/get_new_form",
+        tournament_views.get_new_team_form,
+        name="get_new_team_form",
+    ),
+    path(
         "core/tournaments/data_import",
         tournament_views.TournamentImportWizardView.as_view(),
         name="tournament_import",

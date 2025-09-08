@@ -5,6 +5,12 @@ import "../css/app.scss";
 
 import "bootstrap-datepicker";
 
+import "jquery-ui/ui/widgets/sortable";
+import "jquery-ui/ui/widgets/mouse";
+import "jquery-ui/ui/widget";
+
+import "./sortable-formset.js";
+
 function getCookie(name) {
     var cookieValue = null;
     if (document.cookie && document.cookie != '') {
