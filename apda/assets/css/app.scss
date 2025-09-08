@@ -65,22 +65,7 @@ nav {
 }
 
 /* Sortable Formset Styles */
-.sortable-formset {
-    min-height: 100px;
-}
 
-.formset-row.ui-sortable-helper {
-    background-color: #f8f9fa;
-    opacity: 0.8;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-}
-
-.formset-row.ui-sortable-placeholder {
-    background-color: #e9ecef;
-    height: 120px;
-    border: 2px dashed #dee2e6;
-    visibility: visible;
-}
 
 .drag-handle {
     text-align: center;
@@ -88,39 +73,6 @@ nav {
     cursor: move;
     
     i {
-        color: #6c757d;
-    }
-}
-
-.place-number {
-    text-align: center;
-    vertical-align: middle;
-    background-color: #f8f9fa;
-    font-weight: bold;
-}
-
-.drag-disabled .drag-handle {
-    opacity: 0.3;
-    cursor: not-allowed;
-    
-    i {
-        cursor: not-allowed;
-    }
-}
-
-.formset-row .form-group {
-    margin-bottom: 1rem;
-}
-
-.formset-controls {
-    margin-bottom: 1rem;
-    
-    .btn {
-        margin-right: 0.5rem;
-    }
-    
-    small {
-        margin-left: 0.5rem;
         color: #6c757d;
     }
 }
