@@ -166,30 +166,58 @@ class TeamResultForm(forms.Form):
 
     ghost_points = forms.BooleanField(label="Ghost Points", required=False)
 
-    class Meta:
-        model = TeamResult
-        fields = []
 
-
-class SpeakerResultForm(forms.ModelForm):
+class SpeakerResultForm(forms.Form):
     speaker = forms.ModelChoiceField(
         label="",
         queryset=Debater.objects.all(),
         widget=autocomplete.ModelSelect2(url="core:debater_autocomplete"),
         required=False,
     )
-
-    class Meta:
-        model = SpeakerResult
-        fields = ("speaker", "tie")
+    
+    tie = forms.BooleanField(label="Tie", required=False)
 
 
-VarsityTeamResultFormset = formset_factory(TeamResultForm, extra=24, max_num=24)
-NoviceTeamResultFormset = formset_factory(TeamResultForm, extra=8, max_num=8)
-UnplacedTeamResultFormset = formset_factory(TeamResultForm, extra=20, max_num=20)
+VarsityTeamResultFormset = formset_factory(TeamResultForm, extra=1, max_num=100, can_delete=True, can_order=True)
+NoviceTeamResultFormset = formset_factory(TeamResultForm, extra=1, max_num=50, can_delete=True, can_order=True)
+UnplacedTeamResultFormset = formset_factory(TeamResultForm, extra=1, max_num=150, can_delete=True, can_order=True)
 
-VarsitySpeakerResultFormset = formset_factory(SpeakerResultForm, extra=10, max_num=10)
-NoviceSpeakerResultFormset = formset_factory(SpeakerResultForm, extra=10, max_num=10)
+VarsitySpeakerResultFormset = formset_factory(SpeakerResultForm, extra=1, max_num=50, can_delete=True, can_order=True)
+NoviceSpeakerResultFormset = formset_factory(SpeakerResultForm, extra=1, max_num=50, can_delete=True, can_order=True)
+
+
+class DebaterCreationFormsetBase(forms.BaseFormSet):
+    def is_valid(self):
+        if not self.forms:
+            return True
+
+        is_valid = super().is_valid()
+        
+        all_empty = all(self.is_form_empty(form) for form in self.forms)
+        if all_empty:
+            return True
+            
+        return is_valid
+    
+    def is_form_empty(self, form):
+        form_data = form.data if hasattr(form, 'data') else {}
+        prefix = form.prefix
+
+        required_fields = ['first_name', 'last_name', 'school']
+        for field in required_fields:
+            field_name = f'{prefix}-{field}' if prefix else field
+            if form_data.get(field_name, '').strip():
+                return False
+        return True
+
+
+DebaterCreationFormset = formset_factory(
+    DebaterForm, 
+    formset=DebaterCreationFormsetBase,
+    extra=1, 
+    max_num=50, 
+    can_delete=True
+)
 
 
 class SchoolReconciliationForm(forms.Form):

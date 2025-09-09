@@ -69,6 +69,11 @@ urlpatterns = [
         name="debater_create",
     ),
     path(
+        "core/debaters/check_and_delete",
+        debater_views.check_and_delete_debater,
+        name="debater_check_and_delete",
+    ),
+    path(
         "core/debaters/autocomplete",
         debater_views.DebaterAutocomplete.as_view(),
         name="debater_autocomplete",
@@ -168,6 +173,11 @@ urlpatterns = [
         "core/tournaments/data_entry",
         tournament_views.TournamentDataEntryWizardView.as_view(),
         name="tournament_dataentry",
+    ),
+    path(
+        "core/tournaments/get_new_form",
+        tournament_views.get_new_team_form,
+        name="get_new_team_form",
     ),
     path(
         "core/tournaments/data_import",

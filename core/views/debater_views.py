@@ -1,6 +1,6 @@
 from dal import autocomplete
 from django.conf import settings
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse
 from django.urls import reverse_lazy
 from django_filters import FilterSet, ChoiceFilter, CharFilter
 from django_tables2 import Column
@@ -11,6 +11,7 @@ from core.forms import DebaterForm
 from core.models.debater import Debater
 from core.models.results.team import TeamResult
 from core.models.round import Round
+from core.models.school import School
 from core.models.standings.toty import TOTY
 from core.utils.generics import (
     CustomCreateView,
@@ -363,3 +364,32 @@ class DebaterAutocomplete(autocomplete.Select2QuerySetView):
             qs = qs.filter(school__id=school)
 
         return qs
+
+
+def check_and_delete_debater(request):
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'Invalid request method'})
+    
+    data = {k: request.POST.get(k, '').strip() for k in ['first_name', 'last_name', 'school']}
+    if not all(data.values()):
+        return JsonResponse({'status': 'error', 'message': 'Missing required data'})
+    
+    try:
+        school = School.objects.get(id=data['school'])
+        debater = Debater.objects.filter(
+            first_name=data['first_name'], last_name=data['last_name'], school=school
+        ).first()
+        
+        if not debater:
+            return JsonResponse({'status': 'not_found', 'message': 'Debater not found'})
+
+        if (
+            TeamResult.objects.filter(team__debaters=debater).exists() 
+            or debater.speaker_results.exists()
+        ):
+            return JsonResponse({'status': 'has_results', 'message': 'Cannot delete - has tournament results'})
+        
+        debater.delete()
+        return JsonResponse({'status': 'deleted', 'message': 'Debater deleted'})
+    except Exception as e:
+        return JsonResponse({'status': 'error', 'message': str(e)})

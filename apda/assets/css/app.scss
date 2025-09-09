@@ -64,6 +64,24 @@ nav {
     padding: 0px !important;
 }
 
+/* Sortable Formset Styles */
+
+
+.drag-handle {
+    text-align: center;
+    vertical-align: middle;
+    cursor: move;
+    
+    i {
+        color: #6c757d;
+    }
+}
+
+[id$="-ORDER"],
+[id$="-DELETE"] {
+    display: none;
+}
+
 .mittab-dashboard {
     .mittab-table-row:hover {
         background-color: #f8f9fa !important;
