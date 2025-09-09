@@ -1,0 +1,121 @@
+{% extends "tournaments/base_dynamic_entry.html" %}
+{% load crispy_forms_tags %}
+
+{% block root_data_entry %}
+<div class="col-lg-12">
+    {{ wizard.form.media }}
+    <div class="card mb-3">
+        <div class="card-body">
+            <h5 class="card-title pb-2">
+                {{ title }}
+                <div class="float-right">Step {{ wizard.steps.step1 }} of {{ wizard.steps.count }}</div>
+            </h5>
+            
+            <form action="" method="POST" novalidate>
+                {% csrf_token %}
+                {{ wizard.management_form }}
+                
+                {% include "tournaments/step_navigator.html" %}
+                {% block data_entry_block %}
+                    {{ wizard.form.management_form }}
+                    
+                    <div class="formset-controls">
+                        <button type="button" class="btn btn-success btn-sm" id="add-form-btn">
+                            <i class="fas fa-plus"></i> Add {% block form_type_name %}School{% endblock %}
+                        </button>
+                        <small class="text-muted">Drag rows to reorder {% block form_type_plural %}schools{% endblock %}</small>
+                    </div>
+
+                    <div class="table-responsive" id="formset-container">
+                        <table class="table table-bordered" id="formset-table">
+                            <thead>
+                                <tr>
+                                    <th width="60">Place</th>
+                                    <th width="40">Drag</th>
+                                    <th>{% block table_header %}School Details{% endblock %}</th>
+                                    <th width="80">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody class="sortable-formset">
+                                {% for form in wizard.form.forms %}
+                                    <tr class="formset-row" data-form-index="{{ forloop.counter0 }}">
+                                        <td class="place-number">
+                                            <span class="place-display">{{ forloop.counter }}</span>
+                                        </td>
+                                        <td class="drag-handle">
+                                            <i class="fas fa-grip-vertical"></i>
+                                        </td>
+                                        <td class="form-fields">
+                                            {% if form.ORDER %}{{ form.ORDER }}{% endif %}
+                                            {% if form.DELETE %}{{ form.DELETE }}{% endif %}
+                                            
+                                            {% block form_fields %}
+                                            <div class="row">
+                                                <div class="col-md-8">
+                                                    {{ form.name|as_crispy_field }}
+                                                </div>
+                                                <div class="col-md-4">
+                                                    {{ form.included_in_oty|as_crispy_field }}
+                                                </div>
+                                            </div>
+                                            {% endblock form_fields %}
+                                        </td>
+                                        <td class="text-center">
+                                            <button type="button" class="btn btn-danger btn-sm delete-form" 
+                                                    data-form-index="{{ forloop.counter0 }}" 
+                                                    title="Delete {% block form_type_name_singular %}School{% endblock %}">
+                                                <i class="fas fa-trash"></i>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% endblock data_entry_block %}
+                <input type="submit"
+                       class="btn btn-primary float-right"
+                       value="Save and Continue" />
+                {% if wizard.steps.prev %}
+                    <button name="wizard_goto_step"
+                            type="submit"
+                            class="btn btn-outline-secondary float-right mr-2"
+                            value="{{ wizard.steps.prev }}">Prev</button>
+                    <button name="wizard_goto_step"
+                            type="submit"
+                            class="btn btn-outline float-right mr-2"
+                            value="{{ wizard.steps.first }}">First</button>
+                {% endif %}
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+    $(document).ready(function() {
+        new SortableFormset('#formset-container', {
+            maxForms: 50,
+            formType: 'school',
+            ajaxUrl: '{% url "core:get_new_team_form" %}'
+        });
+        
+        function updateFormIndices() {
+            $('#formset-table tbody tr:visible').each(function(index) {
+                $(this).find('.place-display').text(index + 1);
+            });
+        }
+    });
+</script>
+{% endblock root_data_entry %}
+
+{% block formset_config %}
+    <script>
+        $(document).ready(function() {
+            new SortableFormset('#formset-container', {
+                maxForms: 50,
+                formType: 'school',
+                ajaxUrl: '{% url "core:get_new_team_form" %}'
+            });
+        });
+    </script>
+{% endblock formset_config %}

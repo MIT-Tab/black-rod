@@ -20,6 +20,12 @@ from core.models.tournament import Tournament
 from core.models.video import Video
 
 
+class SchoolForm(forms.ModelForm):
+    class Meta:
+        model = School
+        fields = ("name", "included_in_oty")
+
+
 class DebaterForm(forms.ModelForm):
     school = forms.ModelChoiceField(
         queryset=School.objects.all(),
@@ -211,9 +217,43 @@ class DebaterCreationFormsetBase(forms.BaseFormSet):
         return True
 
 
+class SchoolCreationFormsetBase(forms.BaseFormSet):
+    def is_valid(self):
+        if not self.forms:
+            return True
+
+        is_valid = super().is_valid()
+        
+        all_empty = all(self.is_form_empty(form) for form in self.forms)
+        if all_empty:
+            return True
+            
+        return is_valid
+    
+    def is_form_empty(self, form):
+        form_data = form.data if hasattr(form, 'data') else {}
+        prefix = form.prefix
+
+        required_fields = ['name']
+        for field in required_fields:
+            field_name = f'{prefix}-{field}' if prefix else field
+            if form_data.get(field_name, '').strip():
+                return False
+        return True
+
+
 DebaterCreationFormset = formset_factory(
     DebaterForm, 
     formset=DebaterCreationFormsetBase,
+    extra=1, 
+    max_num=50, 
+    can_delete=True
+)
+
+
+SchoolCreationFormset = formset_factory(
+    SchoolForm, 
+    formset=SchoolCreationFormsetBase,
     extra=1, 
     max_num=50, 
     can_delete=True

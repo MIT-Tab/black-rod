@@ -144,23 +144,39 @@ class SortableFormset {
     }
     
     performDelete($row, currentCount) {
-        const data = {
-            first_name: $row.find(`input[name$="-first_name"]`).val(),
-            last_name: $row.find(`input[name$="-last_name"]`).val(),
-            school: $row.find(`select[name$="-school"]`).val()
-        };
-        
         const deleteField = $row.find('input[name*="DELETE"]');
         deleteField.length ? (deleteField.prop('checked', true), $row.hide()) : $row.remove();
         
-        if (data.first_name && data.last_name && data.school) {
-            $.post('/core/debaters/check_and_delete', {
-                ...data,
-                csrfmiddlewaretoken: $('[name=csrfmiddlewaretoken]').val()
-            }).done(r => console.log('Delete result:', r))
-              .fail(() => console.log('Delete failed'));
+        // Handle smart deletion based on form type
+        if (this.options.formType === 'debater') {
+            const data = {
+                first_name: $row.find(`input[name$="-first_name"]`).val(),
+                last_name: $row.find(`input[name$="-last_name"]`).val(),
+                school: $row.find(`select[name$="-school"]`).val()
+            };
+            
+            if (data.first_name && data.last_name && data.school) {
+                $.post('/core/debaters/check_and_delete', {
+                    ...data,
+                    csrfmiddlewaretoken: $('[name=csrfmiddlewaretoken]').val()
+                }).done(r => console.log('Delete result:', r))
+                  .fail(() => console.log('Delete failed'));
+            }
+        } else if (this.options.formType === 'school') {
+            const data = {
+                name: $row.find(`input[name$="-name"]`).val()
+            };
+            
+            if (data.name) {
+                $.post('/core/schools/check_and_delete', {
+                    ...data,
+                    csrfmiddlewaretoken: $('[name=csrfmiddlewaretoken]').val()
+                }).done(r => console.log('Delete result:', r))
+                  .fail(() => console.log('Delete failed'));
+            }
         }
         
+        // Only update form management if we're not adding a form (to avoid double counting)
         if (currentCount > 1) {
             this.updateFormManagement(currentCount - 1);
         }
