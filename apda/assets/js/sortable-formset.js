@@ -127,12 +127,43 @@ class SortableFormset {
     
     deleteForm($row) {
         const currentCount = this.tbody.find('tr.formset-row:visible').length;
-        if (currentCount <= 1) return alert('Cannot delete the last form');
+
+        if (currentCount <= 1) {
+            const $table = this.tbody.closest('table');
+            $table.css('visibility', 'hidden');
+            
+            this.addForm();
+            setTimeout(() => {
+                this.performDelete($row, currentCount);
+                $table.css('visibility', 'visible');
+            }, 10); 
+            return;
+        }
+
+        this.performDelete($row, currentCount);
+    }
+    
+    performDelete($row, currentCount) {
+        const data = {
+            first_name: $row.find(`input[name$="-first_name"]`).val(),
+            last_name: $row.find(`input[name$="-last_name"]`).val(),
+            school: $row.find(`select[name$="-school"]`).val()
+        };
         
         const deleteField = $row.find('input[name*="DELETE"]');
         deleteField.length ? (deleteField.prop('checked', true), $row.hide()) : $row.remove();
         
-        this.updateFormManagement(currentCount - 1);
+        if (data.first_name && data.last_name && data.school) {
+            $.post('/core/debaters/check_and_delete', {
+                ...data,
+                csrfmiddlewaretoken: $('[name=csrfmiddlewaretoken]').val()
+            }).done(r => console.log('Delete result:', r))
+              .fail(() => console.log('Delete failed'));
+        }
+        
+        if (currentCount > 1) {
+            this.updateFormManagement(currentCount - 1);
+        }
         this.updateDisplayOrder();
     }
 }

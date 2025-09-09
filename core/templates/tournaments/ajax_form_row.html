@@ -19,6 +19,18 @@
                 </div>
             </div>
             {{ form.ghost_points|as_crispy_field }}
+        {% elif form_type == 'debater' %}
+            <div class="row">
+                <div class="col-md-4">
+                    {{ form.first_name|as_crispy_field }}
+                </div>
+                <div class="col-md-4">
+                    {{ form.last_name|as_crispy_field }}
+                </div>
+                <div class="col-md-4">
+                    {{ form.school|as_crispy_field }}
+                </div>
+            </div>
         {% else %}
             {{ form.speaker|as_crispy_field }}
             {{ form.tie|as_crispy_field }}

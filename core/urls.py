@@ -69,6 +69,11 @@ urlpatterns = [
         name="debater_create",
     ),
     path(
+        "core/debaters/check_and_delete",
+        debater_views.check_and_delete_debater,
+        name="debater_check_and_delete",
+    ),
+    path(
         "core/debaters/autocomplete",
         debater_views.DebaterAutocomplete.as_view(),
         name="debater_autocomplete",

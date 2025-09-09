@@ -186,6 +186,40 @@ VarsitySpeakerResultFormset = formset_factory(SpeakerResultForm, extra=1, max_nu
 NoviceSpeakerResultFormset = formset_factory(SpeakerResultForm, extra=1, max_num=50, can_delete=True, can_order=True)
 
 
+class DebaterCreationFormsetBase(forms.BaseFormSet):
+    def is_valid(self):
+        if not self.forms:
+            return True
+
+        is_valid = super().is_valid()
+        
+        all_empty = all(self.is_form_empty(form) for form in self.forms)
+        if all_empty:
+            return True
+            
+        return is_valid
+    
+    def is_form_empty(self, form):
+        form_data = form.data if hasattr(form, 'data') else {}
+        prefix = form.prefix
+
+        required_fields = ['first_name', 'last_name', 'school']
+        for field in required_fields:
+            field_name = f'{prefix}-{field}' if prefix else field
+            if form_data.get(field_name, '').strip():
+                return False
+        return True
+
+
+DebaterCreationFormset = formset_factory(
+    DebaterForm, 
+    formset=DebaterCreationFormsetBase,
+    extra=1, 
+    max_num=50, 
+    can_delete=True
+)
+
+
 class SchoolReconciliationForm(forms.Form):
     id = forms.FloatField(widget=forms.HiddenInput())
 
