@@ -1,9 +1,8 @@
-
 class SortableFormset {
     constructor(container, options = {}) {
         this.container = $(container);
         this.tbody = $('.sortable-formset');
-        this.options = { maxForms: 100, formType: null, ajaxUrl: null, ...options };
+        this.options = { maxForms: 500, formType: null, ajaxUrl: null, ...options };
         this.bindEvents();
         this.updateDisplayOrder();
         this.initializeSortableWhenReady();
@@ -13,7 +12,7 @@ class SortableFormset {
         if (typeof $.fn.sortable === 'function') {
             this.initializeSortable();
         } else {
-            setTimeout(() => this.initializeSortableWhenReady(), 100);
+            setTimeout(() => this.initializeSortableWhenReady(), 500);
         }
     }
     
@@ -147,27 +146,30 @@ class SortableFormset {
         const deleteField = $row.find('input[name*="DELETE"]');
         deleteField.length ? (deleteField.prop('checked', true), $row.hide()) : $row.remove();
         
-        // Handle smart deletion based on form type
         if (this.options.formType === 'debater') {
-            const data = {
-                first_name: $row.find(`input[name$="-first_name"]`).val(),
-                last_name: $row.find(`input[name$="-last_name"]`).val(),
-                school: $row.find(`select[name$="-school"]`).val()
-            };
+            const schoolField = $row.find(`select[name$="-school"]`);
+            const isVirtual = schoolField.find('option:selected').attr('data-virtual') === 'true';
             
-            if (data.first_name && data.last_name && data.school) {
-                $.post('/core/debaters/check_and_delete', {
-                    ...data,
-                    csrfmiddlewaretoken: $('[name=csrfmiddlewaretoken]').val()
-                }).done(r => console.log('Delete result:', r))
-                  .fail(() => console.log('Delete failed'));
+            if (!isVirtual) {
+                const data = {
+                    first_name: $row.find(`input[name$="-first_name"]`).val(),
+                    last_name: $row.find(`input[name$="-last_name"]`).val(),
+                    school: schoolField.val()
+                };
+                
+                if (data.first_name && data.last_name && data.school) {
+                    $.post('/core/debaters/check_and_delete', {
+                        ...data,
+                        csrfmiddlewaretoken: $('[name=csrfmiddlewaretoken]').val()
+                    }).done(r => console.log('Delete result:', r))
+                      .fail(() => console.log('Delete failed'));
+                }
             }
         } else if (this.options.formType === 'school') {
-            const data = {
-                name: $row.find(`input[name$="-name"]`).val()
-            };
+            const nameField = $row.find(`input[name$="-name"]`);
+            const data = { name: nameField.val() };
             
-            if (data.name) {
+            if (data.name && !nameField.closest('form').find('[name*="2-"]').length) {
                 $.post('/core/schools/check_and_delete', {
                     ...data,
                     csrfmiddlewaretoken: $('[name=csrfmiddlewaretoken]').val()

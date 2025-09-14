@@ -11,7 +11,6 @@
             <form action="" method="POST" novalidate>
                 {% csrf_token %}
                 {{ wizard.management_form }}
-                {% include "tournaments/step_navigator.html" %}
                 {% block data_entry_block %}
                     {% if wizard.form.forms %}
                         {{ wizard.form.management_form }}

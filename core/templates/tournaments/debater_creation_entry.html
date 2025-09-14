@@ -14,8 +14,7 @@
             <form action="" method="POST" novalidate>
                 {% csrf_token %}
                 {{ wizard.management_form }}
-                
-                {% include "tournaments/step_navigator.html" %}
+
                 {% block data_entry_block %}
                     {{ wizard.form.management_form }}
                     
@@ -25,7 +24,6 @@
                         </button>
                         <small class="text-muted">Drag rows to reorder {% block form_type_plural %}debaters{% endblock %}</small>
                     </div>
-
                     <div class="table-responsive" id="formset-container">
                         <table class="table table-bordered" id="formset-table">
                             <thead>
@@ -50,6 +48,7 @@
                                             {% if form.DELETE %}{{ form.DELETE }}{% endif %}
                                             
                                             {% block form_fields %}
+                                            {{ form.tournament_id }}
                                             <div class="row">
                                                 <div class="col-md-4">
                                                     {{ form.first_name|as_crispy_field }}

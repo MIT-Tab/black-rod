@@ -5,6 +5,7 @@ from core.views import (
     coty_views,
     debater_views,
     noty_views,
+    results_import_views,
     round_views,
     school_views,
     soty_views,
@@ -176,18 +177,13 @@ urlpatterns = [
     ),
     path(
         "core/tournaments/data_entry",
-        tournament_views.TournamentDataEntryWizardView.as_view(),
+        results_import_views.TournamentDataEntryWizardView.as_view(),
         name="tournament_dataentry",
     ),
     path(
         "core/tournaments/get_new_form",
-        tournament_views.get_new_team_form,
+        results_import_views.get_new_team_form,
         name="get_new_team_form",
-    ),
-    path(
-        "core/tournaments/data_import",
-        tournament_views.TournamentImportWizardView.as_view(),
-        name="tournament_import",
     ),
     path(
         "core/rounds/<int:pk>",

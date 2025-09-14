@@ -4,7 +4,10 @@ from dal import autocomplete
 from django import forms
 from django.conf import settings
 from django.core.validators import URLValidator
-from django.forms import formset_factory
+from django.core.exceptions import ValidationError
+from django.forms import formset_factory, Select
+from django.utils.safestring import mark_safe
+import json
 from django_summernote.widgets import SummernoteInplaceWidget
 
 from core.models import Team, TOTYReaff
@@ -31,6 +34,11 @@ class DebaterForm(forms.ModelForm):
         queryset=School.objects.all(),
         widget=autocomplete.ModelSelect2(url="core:school_autocomplete"),
     )
+    
+    tournament_id = forms.CharField(widget=forms.HiddenInput(), required=False)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
     class Meta:
         model = Debater
@@ -117,6 +125,15 @@ class TournamentForm(forms.ModelForm):
         )
 
 
+class TournamentCreateForm(TournamentForm):
+    api_url = forms.URLField(
+        required=False,
+        label="API URL (Optional)",
+        help_text="If provided, results will be automatically imported from this URL",
+        widget=forms.URLInput(attrs={'placeholder': 'https://nu-tab.com/tournament/123'})
+    )
+
+
 class TeamForm(forms.ModelForm):
     debaters = forms.ModelMultipleChoiceField(
         queryset=Debater.objects.all(),
@@ -184,31 +201,63 @@ class SpeakerResultForm(forms.Form):
     tie = forms.BooleanField(label="Tie", required=False)
 
 
-VarsityTeamResultFormset = formset_factory(TeamResultForm, extra=1, max_num=100, can_delete=True, can_order=True)
-NoviceTeamResultFormset = formset_factory(TeamResultForm, extra=1, max_num=50, can_delete=True, can_order=True)
-UnplacedTeamResultFormset = formset_factory(TeamResultForm, extra=1, max_num=150, can_delete=True, can_order=True)
-
-VarsitySpeakerResultFormset = formset_factory(SpeakerResultForm, extra=1, max_num=50, can_delete=True, can_order=True)
-NoviceSpeakerResultFormset = formset_factory(SpeakerResultForm, extra=1, max_num=50, can_delete=True, can_order=True)
+class BaseFormSetWithValidation(forms.BaseFormSet):
+    pass
 
 
-class DebaterCreationFormsetBase(forms.BaseFormSet):
+VarsityTeamResultFormset = formset_factory(
+    TeamResultForm, 
+    extra=0, 
+    max_num=100, 
+    can_delete=True, 
+    can_order=True
+)
+
+NoviceTeamResultFormset = formset_factory(
+    TeamResultForm, 
+    extra=0, 
+    max_num=50, 
+    can_delete=True, 
+    can_order=True
+)
+
+UnplacedTeamResultFormset = formset_factory(
+    TeamResultForm, 
+    extra=0, 
+    max_num=150, 
+    can_delete=True, 
+    can_order=True
+)
+
+VarsitySpeakerResultFormset = formset_factory(
+    SpeakerResultForm, 
+    extra=0, 
+    max_num=50, 
+    can_delete=True, 
+    can_order=True
+)
+
+NoviceSpeakerResultFormset = formset_factory(
+    SpeakerResultForm, 
+    extra=0, 
+    max_num=50, 
+    can_delete=True, 
+    can_order=True
+)
+
+
+
+class DebaterCreationFormsetBase(BaseFormSetWithValidation):
     def is_valid(self):
         if not self.forms:
             return True
-
         is_valid = super().is_valid()
-        
         all_empty = all(self.is_form_empty(form) for form in self.forms)
-        if all_empty:
-            return True
-            
-        return is_valid
+        return is_valid or all_empty
     
     def is_form_empty(self, form):
         form_data = form.data if hasattr(form, 'data') else {}
         prefix = form.prefix
-
         required_fields = ['first_name', 'last_name', 'school']
         for field in required_fields:
             field_name = f'{prefix}-{field}' if prefix else field
@@ -217,23 +266,36 @@ class DebaterCreationFormsetBase(forms.BaseFormSet):
         return True
 
 
-class SchoolCreationFormsetBase(forms.BaseFormSet):
+class SchoolCreationFormsetBase(BaseFormSetWithValidation):
+    def clean(self):
+        if not self.forms:
+            return
+        
+        school_names = []
+        for form in self.forms:
+            if form.cleaned_data and not form.cleaned_data.get('DELETE'):
+                name = form.cleaned_data.get('name', '').strip()
+                if name:
+                    school_names.append(name)
+        
+        if school_names:
+            existing_schools = set(School.objects.filter(name__in=school_names).values_list('name', flat=True))
+            for form in self.forms:
+                if form.cleaned_data and not form.cleaned_data.get('DELETE'):
+                    name = form.cleaned_data.get('name', '').strip()
+                    if name in existing_schools:
+                        form.cleaned_data['DELETE'] = True
+    
     def is_valid(self):
         if not self.forms:
             return True
-
         is_valid = super().is_valid()
-        
         all_empty = all(self.is_form_empty(form) for form in self.forms)
-        if all_empty:
-            return True
-            
-        return is_valid
+        return is_valid or all_empty
     
     def is_form_empty(self, form):
         form_data = form.data if hasattr(form, 'data') else {}
         prefix = form.prefix
-
         required_fields = ['name']
         for field in required_fields:
             field_name = f'{prefix}-{field}' if prefix else field
@@ -245,8 +307,8 @@ class SchoolCreationFormsetBase(forms.BaseFormSet):
 DebaterCreationFormset = formset_factory(
     DebaterForm, 
     formset=DebaterCreationFormsetBase,
-    extra=1, 
-    max_num=50, 
+    extra=0, 
+    max_num=500, 
     can_delete=True
 )
 
@@ -254,8 +316,8 @@ DebaterCreationFormset = formset_factory(
 SchoolCreationFormset = formset_factory(
     SchoolForm, 
     formset=SchoolCreationFormsetBase,
-    extra=1, 
-    max_num=50, 
+    extra=0, 
+    max_num=500, 
     can_delete=True
 )
 

@@ -374,22 +374,19 @@ def check_and_delete_debater(request):
     if not all(data.values()):
         return JsonResponse({'status': 'error', 'message': 'Missing required data'})
     
-    try:
-        school = School.objects.get(id=data['school'])
-        debater = Debater.objects.filter(
-            first_name=data['first_name'], last_name=data['last_name'], school=school
-        ).first()
-        
-        if not debater:
-            return JsonResponse({'status': 'not_found', 'message': 'Debater not found'})
+    school = School.objects.get(id=data['school'])
+    debater = Debater.objects.filter(
+        first_name=data['first_name'], last_name=data['last_name'], school=school
+    ).first()
+    
+    if not debater:
+        return JsonResponse({'status': 'not_found', 'message': 'Debater not found'})
 
-        if (
-            TeamResult.objects.filter(team__debaters=debater).exists() 
-            or debater.speaker_results.exists()
-        ):
-            return JsonResponse({'status': 'has_results', 'message': 'Cannot delete - has tournament results'})
-        
-        debater.delete()
-        return JsonResponse({'status': 'deleted', 'message': 'Debater deleted'})
-    except Exception as e:
-        return JsonResponse({'status': 'error', 'message': str(e)})
+    if (
+        TeamResult.objects.filter(team__debaters=debater).exists() 
+        or debater.speaker_results.exists()
+    ):
+        return JsonResponse({'status': 'has_results', 'message': 'Cannot delete - has tournament results'})
+    
+    debater.delete()
+    return JsonResponse({'status': 'deleted', 'message': 'Debater deleted'})

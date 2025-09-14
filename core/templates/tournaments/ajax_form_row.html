@@ -31,6 +31,15 @@
                     {{ form.school|as_crispy_field }}
                 </div>
             </div>
+        {% elif form_type == 'school' %}
+            <div class="row">
+                <div class="col-md-8">
+                    {{ form.name|as_crispy_field }}
+                </div>
+                <div class="col-md-4">
+                    {{ form.included_in_oty|as_crispy_field }}
+                </div>
+            </div>
         {% else %}
             {{ form.speaker|as_crispy_field }}
             {{ form.tie|as_crispy_field }}

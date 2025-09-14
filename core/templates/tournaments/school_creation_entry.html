@@ -15,7 +15,6 @@
                 {% csrf_token %}
                 {{ wizard.management_form }}
                 
-                {% include "tournaments/step_navigator.html" %}
                 {% block data_entry_block %}
                     {{ wizard.form.management_form }}
                     
