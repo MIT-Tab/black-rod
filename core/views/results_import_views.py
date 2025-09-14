@@ -57,17 +57,10 @@ class TournamentDataEntryWizardView(CustomMixin, SessionWizardView):
         return self.get_api_handler().should_use_api_data()
 
     def get_template_names(self):
-        templates = {
-            ("0", "1"): "tournaments/tournament_entry.html",
-            ("2",): "tournaments/school_creation_entry.html", 
-            ("3",): "tournaments/debater_creation_entry.html",
-            ("4", "6"): "tournaments/team_result_entry.html",
-            ("5", "7"): "tournaments/speaker_result_entry.html",
-            ("8",): "tournaments/unplaced_team_result_entry.html"
-        }
-        for steps, template in templates.items():
-            if self.steps.current in steps:
-                return [template]
+        if self.steps.current in ("0", "1"):
+            return ["tournaments/tournament_entry.html"]
+        elif self.steps.current in ("2", "3", "4", "5", "6", "7", "8"):
+            return ["tournaments/base_dynamic_entry.html"]
         return [self.template_name]
 
     def get_form_initial(self, step):

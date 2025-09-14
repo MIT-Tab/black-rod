@@ -132,10 +132,10 @@ class SortableFormset {
             $table.css('visibility', 'hidden');
             
             this.addForm();
-            setTimeout(() => {
+            requestAnimationFrame(() => {
                 this.performDelete($row, currentCount);
                 $table.css('visibility', 'visible');
-            }, 10); 
+            });
             return;
         }
 

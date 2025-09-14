@@ -256,10 +256,6 @@ class TournamentCreateView(CustomCreateView):
         tournament = self.object
         
         return redirect(f"{reverse_lazy('core:tournament_dataentry')}?tournament={tournament.id}")
-    
-        return super().form_valid(form)
-
-
 class TournamentDeleteView(CustomDeleteView):
     model = Tournament
     success_url = reverse_lazy("core:tournament_list")
