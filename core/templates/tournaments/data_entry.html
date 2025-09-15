@@ -14,7 +14,6 @@
                         {% csrf_token %}
                         {{ wizard.management_form }}
                         {{ wizard.form.management_form }}
-                        
                         <div class="formset-controls">
                             <button type="button" class="btn btn-success btn-sm" id="add-form-btn">
                                 <i class="fas fa-plus"></i> Add {{ step_config.name }}
@@ -39,32 +38,17 @@
                                 </thead>
                                 <tbody class="sortable-formset">
                                     {% for form in wizard.form.forms %}
-                                        {% with form=form form_index=forloop.counter0 place_number=forloop.counter %}
-                                            {% with field_rows=step_config.field_rows extra_fields=step_config.extra_fields %}
-                                                {% with item_name=step_config.name hidden_fields=step_config.hidden_fields %}
-                                                    {% include "tournaments/includes/formset_row.html" %}
-                                                {% endwith %}
-                                            {% endwith %}
+                                        {% with form=form form_index=forloop.counter0 place_number=forloop.counter field_rows=step_config.field_rows extra_fields=step_config.extra_fields item_name=step_config.name hidden_fields=step_config.hidden_fields %}
+                                            {% include "tournaments/includes/formset_row.html" %}
                                         {% endwith %}
                                     {% endfor %}
                                 </tbody>
                             </table>
                         </div>
-
-
-
-                        <input type="submit"
-                               class="btn btn-primary float-right"
-                               value="Save and Continue" />
+                        <input type="submit" class="btn btn-primary float-right" value="Save and Continue" />
                         {% if wizard.steps.prev %}
-                            <button name="wizard_goto_step"
-                                    type="submit"
-                                    class="btn btn-outline-secondary float-right mr-2"
-                                    value="{{ wizard.steps.prev }}">Prev</button>
-                            <button name="wizard_goto_step"
-                                    type="submit"
-                                    class="btn btn-outline float-right mr-2"
-                                    value="{{ wizard.steps.first }}">First</button>
+                            <button name="wizard_goto_step" type="submit" class="btn btn-outline-secondary float-right mr-2" value="{{ wizard.steps.prev }}">Prev</button>
+                            <button name="wizard_goto_step" type="submit" class="btn btn-outline float-right mr-2" value="{{ wizard.steps.first }}">First</button>
                         {% endif %}
                     </form>
                 </div>
@@ -84,18 +68,14 @@
                             <input type="text" class="textinput textInput form-control" id="id_name">
                         </div>
                         {{ debater_form.school|as_crispy_field }}
-                        <input class="btn btn-primary"
-                            id="create_debater"
-                            value="Create"
-                            type="submit">
+                        <input class="btn btn-primary" id="create_debater" value="Create" type="submit">
                     </form>
                 </div>
             </div>
             <div class="card sticky-top" style="top: 369px;">
                 <div class="card-body">
                     <h5 class="card-title">Created Debaters</h5>
-                    <ul id="new_debaters">
-                    </ul>
+                    <ul id="new_debaters"></ul>
                 </div>
             </div>
         </div>
