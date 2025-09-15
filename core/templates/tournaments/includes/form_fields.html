@@ -1,0 +1,18 @@
+{% load crispy_forms_tags tags %}
+{% if form.ORDER %}{{ form.ORDER }}{% endif %}
+{% if form.DELETE %}{{ form.DELETE }}{% endif %}
+{% for hidden_field in hidden_fields %}
+    {{ form|form_field:hidden_field }}
+{% endfor %}
+{% for row in field_rows %}
+    <div class="row">
+        {% for field in row %}
+            <div class="{{ field.css_class }}">
+                {{ form|form_field:field.name|as_crispy_field }}
+            </div>
+        {% endfor %}
+    </div>
+{% endfor %}
+{% for field_name in extra_fields %}
+    {{ form|form_field:field_name|as_crispy_field }}
+{% endfor %}

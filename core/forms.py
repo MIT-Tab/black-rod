@@ -4,7 +4,10 @@ from dal import autocomplete
 from django import forms
 from django.conf import settings
 from django.core.validators import URLValidator
-from django.forms import formset_factory
+from django.core.exceptions import ValidationError
+from django.forms import formset_factory, Select
+from django.utils.safestring import mark_safe
+import json
 from django_summernote.widgets import SummernoteInplaceWidget
 
 from core.models import Team, TOTYReaff
@@ -20,11 +23,18 @@ from core.models.tournament import Tournament
 from core.models.video import Video
 
 
+class SchoolForm(forms.ModelForm):
+    class Meta:
+        model = School
+        fields = ("name", "included_in_oty")
+
+
 class DebaterForm(forms.ModelForm):
     school = forms.ModelChoiceField(
         queryset=School.objects.all(),
         widget=autocomplete.ModelSelect2(url="core:school_autocomplete"),
     )
+    tournament_id = forms.CharField(widget=forms.HiddenInput(), required=False)
 
     class Meta:
         model = Debater
@@ -111,6 +121,15 @@ class TournamentForm(forms.ModelForm):
         )
 
 
+class TournamentCreateForm(TournamentForm):
+    api_url = forms.URLField(
+        required=False,
+        label="API URL (Optional)",
+        help_text="If provided, results will be automatically imported from this URL",
+        widget=forms.URLInput(attrs={'placeholder': 'https://nu-tab.com/tournament/123'})
+    )
+
+
 class TeamForm(forms.ModelForm):
     debaters = forms.ModelMultipleChoiceField(
         queryset=Debater.objects.all(),
@@ -141,14 +160,6 @@ class TournamentImportForm(forms.Form):
         validators=[URLValidator()],
     )
 
-
-class TournamentSelectionForm(forms.Form):
-    tournament = forms.ModelChoiceField(
-        queryset=Tournament.objects.all(),
-        widget=autocomplete.ModelSelect2(url="core:tournament_autocomplete"),
-    )
-
-
 class TeamResultForm(forms.Form):
     debater_one = forms.ModelChoiceField(
         label="Debater One",
@@ -166,72 +177,67 @@ class TeamResultForm(forms.Form):
 
     ghost_points = forms.BooleanField(label="Ghost Points", required=False)
 
-    class Meta:
-        model = TeamResult
-        fields = []
 
-
-class SpeakerResultForm(forms.ModelForm):
+class SpeakerResultForm(forms.Form):
     speaker = forms.ModelChoiceField(
         label="",
         queryset=Debater.objects.all(),
         widget=autocomplete.ModelSelect2(url="core:debater_autocomplete"),
         required=False,
     )
-
-    class Meta:
-        model = SpeakerResult
-        fields = ("speaker", "tie")
+    
+    tie = forms.BooleanField(label="Tie", required=False)
 
 
-VarsityTeamResultFormset = formset_factory(TeamResultForm, extra=24, max_num=24)
-NoviceTeamResultFormset = formset_factory(TeamResultForm, extra=8, max_num=8)
-UnplacedTeamResultFormset = formset_factory(TeamResultForm, extra=20, max_num=20)
-
-VarsitySpeakerResultFormset = formset_factory(SpeakerResultForm, extra=10, max_num=10)
-NoviceSpeakerResultFormset = formset_factory(SpeakerResultForm, extra=10, max_num=10)
+class DebaterCreationFormsetBase(forms.BaseFormSet):
+    required_fields = ['first_name', 'last_name', 'school']
 
 
-class SchoolReconciliationForm(forms.Form):
-    id = forms.FloatField(widget=forms.HiddenInput())
+class SchoolCreationFormsetBase(forms.BaseFormSet):
+    required_fields = ['name']
+    
+    def clean(self):
+        if not self.forms:
+            return
+        
+        school_names = []
+        for form in self.forms:
+            if form.cleaned_data and not form.cleaned_data.get('DELETE'):
+                name = form.cleaned_data.get('name', '').strip()
+                if name:
+                    school_names.append(name)
+        
+        if school_names:
+            existing_schools = set(School.objects.filter(name__in=school_names).values_list('name', flat=True))
+            for form in self.forms:
+                if form.cleaned_data and not form.cleaned_data.get('DELETE'):
+                    name = form.cleaned_data.get('name', '').strip()
+                    if name in existing_schools:
+                        form.cleaned_data['DELETE'] = True
 
-    server_name = forms.CharField(label="Server School Name")
+IMPORT_FORMSET_PARAMS = {
+    'extra': 0,
+    'can_delete': True,
+    'can_order': True,
+    'max_num': 150,
+}
 
-    school = forms.ModelChoiceField(
-        queryset=School.objects.all(),
-        widget=autocomplete.ModelSelect2(url="core:school_autocomplete"),
-        required=False,
-    )
+CREATION_FORMSET_PARAMS = {
+    'extra': 0,
+    'can_delete': True,
+    'can_order': False,
+    'max_num': 500,
+}
 
+VarsityTeamResultFormset = formset_factory(TeamResultForm, **IMPORT_FORMSET_PARAMS)
+NoviceTeamResultFormset = formset_factory(TeamResultForm, **IMPORT_FORMSET_PARAMS)
+UnplacedTeamResultFormset = formset_factory(TeamResultForm, **IMPORT_FORMSET_PARAMS)
 
-class DebaterReconciliationForm(forms.Form):
-    id = forms.FloatField(widget=forms.HiddenInput())
-    school_id = forms.FloatField(widget=forms.HiddenInput())
-    status = forms.FloatField(widget=forms.HiddenInput())
+VarsitySpeakerResultFormset = formset_factory(SpeakerResultForm, **IMPORT_FORMSET_PARAMS)
+NoviceSpeakerResultFormset = formset_factory(SpeakerResultForm, **IMPORT_FORMSET_PARAMS)
 
-    server_name = forms.CharField(label="Server Debater Name")
-    server_school_name = forms.CharField(label="Server School Name", disabled=True)
-    server_hybrid_school_name = forms.CharField(
-        label="Server Hybrid School Name", disabled=True, required=False
-    )
-
-    school = forms.ModelChoiceField(
-        queryset=School.objects.all(),
-        widget=autocomplete.ModelSelect2(url="core:school_autocomplete"),
-        required=False,
-    )
-
-    debater = forms.ModelChoiceField(
-        queryset=Debater.objects.all(),
-        widget=autocomplete.ModelSelect2(
-            url="core:debater_autocomplete", forward=["school"]
-        ),
-        required=False,
-    )
-
-
-SchoolReconciliationFormset = formset_factory(SchoolReconciliationForm, extra=0)
-DebaterReconciliationFormset = formset_factory(DebaterReconciliationForm, extra=0)
+DebaterCreationFormset = formset_factory(DebaterForm, formset=DebaterCreationFormsetBase, **CREATION_FORMSET_PARAMS)
+SchoolCreationFormset = formset_factory(SchoolForm, formset=SchoolCreationFormsetBase, **CREATION_FORMSET_PARAMS)
 
 
 class TeamChoiceField(forms.ModelChoiceField):

@@ -125,3 +125,14 @@ def years_on_team(current_season, first_season):
 def place_as_round_filter(place):
     """Convert numeric place to round name (e.g., 1 -> '1st', 4 -> 'Semi-Finalist')"""
     return place_as_round(place)
+
+
+@register.filter
+def form_field(form, field_name):
+    """Access a form field by name so templates can look up fields dynamically."""
+    if not form or not field_name:
+        return ""
+    try:
+        return form[field_name]
+    except Exception:
+        return ""
