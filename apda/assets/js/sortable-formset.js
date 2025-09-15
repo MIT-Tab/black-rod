@@ -178,7 +178,6 @@ class SortableFormset {
             }
         }
         
-        // Only update form management if we're not adding a form (to avoid double counting)
         if (currentCount > 1) {
             this.updateFormManagement(currentCount - 1);
         }
@@ -187,3 +186,15 @@ class SortableFormset {
 }
 
 window.SortableFormset = SortableFormset;
+
+$(document).ready(function() {
+    $('[data-form-type]').each(function() {
+        const container = $(this);
+        const options = {
+            maxForms: parseInt(container.data('max-forms')) || 50,
+            formType: container.data('form-type'),
+            ajaxUrl: container.data('ajax-url')
+        };
+        new SortableFormset(container, options);
+    });
+});
