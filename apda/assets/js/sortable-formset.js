@@ -81,12 +81,11 @@ class SortableFormset {
     }
     
     addForm() {
-        const totalForms = parseInt($('input[name$="TOTAL_FORMS"]').val()) || 0;
         const currentCount = this.tbody.find('tr.formset-row:visible').length;
         
         if (currentCount >= this.options.maxForms) return alert('Maximum number of forms reached');
         
-        this.options.ajaxUrl ? this.addFormViaAjax(totalForms) : this.addFormViaTemplate(totalForms);
+        this.options.ajaxUrl ? this.addFormViaAjax(currentCount) : this.addFormViaTemplate(currentCount);
     }
     
     addFormViaAjax(formIndex) {
@@ -144,44 +143,17 @@ class SortableFormset {
     
     performDelete($row, currentCount) {
         const deleteField = $row.find('input[name*="DELETE"]');
-        deleteField.length ? (deleteField.prop('checked', true), $row.hide()) : $row.remove();
         
-        if (this.options.formType === 'debater') {
-            const schoolField = $row.find(`select[name$="-school"]`);
-            const isVirtual = schoolField.find('option:selected').attr('data-virtual') === 'true';
-            
-            if (!isVirtual) {
-                const data = {
-                    first_name: $row.find(`input[name$="-first_name"]`).val(),
-                    last_name: $row.find(`input[name$="-last_name"]`).val(),
-                    school: schoolField.val()
-                };
-                
-                if (data.first_name && data.last_name && data.school) {
-                    $.post('/core/debaters/check_and_delete', {
-                        ...data,
-                        csrfmiddlewaretoken: $('[name=csrfmiddlewaretoken]').val()
-                    }).done(r => console.log('Delete result:', r))
-                      .fail(() => console.log('Delete failed'));
-                }
-            }
-        } else if (this.options.formType === 'school') {
-            const nameField = $row.find(`input[name$="-name"]`);
-            const data = { name: nameField.val() };
-            
-            if (data.name && !nameField.closest('form').find('[name*="2-"]').length) {
-                $.post('/core/schools/check_and_delete', {
-                    ...data,
-                    csrfmiddlewaretoken: $('[name=csrfmiddlewaretoken]').val()
-                }).done(r => console.log('Delete result:', r))
-                  .fail(() => console.log('Delete failed'));
-            }
+        if (deleteField.length) {
+            deleteField.prop('checked', true);
+            $row.hide();
+        } else {
+            $row.remove();
         }
-        
-        if (currentCount > 1) {
-            this.updateFormManagement(currentCount - 1);
-        }
+
         this.updateDisplayOrder();
+        const visibleCount = this.tbody.find('tr.formset-row:visible').length;
+        this.updateFormManagement(visibleCount);
     }
 }
 

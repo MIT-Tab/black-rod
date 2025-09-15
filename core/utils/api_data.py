@@ -36,10 +36,22 @@ class APIDataHandler:
             parsed = urlparse(url)
         return f"{parsed.scheme}://{parsed.netloc}"
     
-    def clear_api_url(self):
-        self._api_url = None
-        if self.request and 'tournament_api_url' in self.request.session:
-            del self.request.session['tournament_api_url']
+    @staticmethod
+    def clear_tournament_session_data(request=None):
+        if request and hasattr(request, 'session'):
+            session_keys = ['tournament_api_url', 'tournament_debater_mapping', 'tournament_id']
+            for key in session_keys:
+                if key in request.session:
+                    del request.session[key]
+
+    def set_tournament_id(self, tournament_id):
+        if self.request and hasattr(self.request, 'session'):
+            self.request.session['tournament_id'] = tournament_id
+
+    def get_tournament_id(self):
+        if self.request and hasattr(self.request, 'session'):
+            return self.request.session.get('tournament_id')
+        return None
     
     def validate_api_connection(self):
         api_url = self.get_api_url()

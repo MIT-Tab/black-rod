@@ -193,30 +193,11 @@ class SpeakerResultForm(forms.Form):
     tie = forms.BooleanField(label="Tie", required=False)
 
 
-class EmptyFormsValidFormSet(forms.BaseFormSet):
-    def is_valid(self):
-        if not self.forms:
-            return True
-        is_valid = super().is_valid()
-        all_empty = all(self.is_form_empty(form) for form in self.forms)
-        return is_valid or all_empty
-    
-    def is_form_empty(self, form):
-        form_data = form.data if hasattr(form, 'data') else {}
-        prefix = form.prefix
-        required_fields = getattr(self, 'required_fields', [])
-        
-        for field in required_fields:
-            field_name = f'{prefix}-{field}' if prefix else field
-            if form_data.get(field_name, '').strip():
-                return False
-        return True
-
-class DebaterCreationFormsetBase(EmptyFormsValidFormSet):
+class DebaterCreationFormsetBase(forms.BaseFormSet):
     required_fields = ['first_name', 'last_name', 'school']
 
 
-class SchoolCreationFormsetBase(EmptyFormsValidFormSet):
+class SchoolCreationFormsetBase(forms.BaseFormSet):
     required_fields = ['name']
     
     def clean(self):

@@ -153,25 +153,3 @@ class SchoolAutocomplete(autocomplete.Select2QuerySetView):
         return qs
 
 
-def check_and_delete_school(request):
-    if request.method != 'POST':
-        return JsonResponse({'status': 'error', 'message': 'Invalid request method'})
-    
-    data = {k: request.POST.get(k, '').strip() for k in ['name']}
-    if not all(data.values()):
-        return JsonResponse({'status': 'error', 'message': 'Missing required data'})
-    
-    try:
-        school = School.objects.filter(name=data['name']).first()
-        
-        if not school:
-            return JsonResponse({'status': 'not_found', 'message': 'School not found'})
-        
-        if school.debaters.exists():
-            return JsonResponse({'status': 'has_debaters', 'message': 'Cannot delete - has associated debaters'})
-        
-        school.delete()
-        return JsonResponse({'status': 'deleted', 'message': 'School deleted'})
-        
-    except Exception as e:
-        return JsonResponse({'status': 'error', 'message': str(e)})

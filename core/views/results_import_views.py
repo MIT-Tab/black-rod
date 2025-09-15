@@ -45,6 +45,22 @@ class TournamentDataEntryWizardView(CustomMixin, SessionWizardView):
         super().__init__(*args, **kwargs)
         self._api_handler = None
 
+    def dispatch(self, request, *args, **kwargs):
+        # Get the tournament ID from URL parameters
+        current_tournament_id = request.GET.get("tournament")
+        if current_tournament_id:
+            current_tournament_id = int(current_tournament_id)
+        
+        # Check if we have session data for a different tournament
+        api_handler = APIDataHandler(request)
+        session_tournament_id = api_handler.get_tournament_id()
+        
+        # If tournament IDs don't match, clear stale session data
+        if session_tournament_id and session_tournament_id != current_tournament_id:
+            APIDataHandler.clear_tournament_session_data(request)
+        
+        return super().dispatch(request, *args, **kwargs)
+
     def get_api_handler(self):
         if self._api_handler is None:
             self._api_handler = APIDataHandler(self.request)
@@ -172,8 +188,8 @@ class TournamentDataEntryWizardView(CustomMixin, SessionWizardView):
         self._create_speaker_results(tournament, form_dict["5"], Debater.NOVICE, novices_to_update)
         self._update_rankings(tournament, teams_to_update, speakers_to_update, novices_to_update)
         
-        if hasattr(self.request, 'session') and 'tournament_api_url' in self.request.session:
-            del self.request.session['tournament_api_url']
+        # Clear tournament session data when done
+        APIDataHandler.clear_tournament_session_data(self.request)
         return redirect("core:tournament_detail", pk=tournament.id)
 
     def _create_team_results(self, tournament, form_data, type_of_place, teams_to_update, has_ghost_points=False, place=None):

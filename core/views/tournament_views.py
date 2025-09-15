@@ -8,11 +8,12 @@ from django.urls import reverse_lazy
 from django.views.generic import TemplateView
 from django_filters import ChoiceFilter, FilterSet
 from django_tables2 import Column
-
 from core.forms import (
     TournamentCreateForm,
     TournamentForm,
 )
+from core.utils.api_data import APIDataHandler
+from django.contrib import messages
 from core.models.debater import Debater
 from core.models.round import Round
 from core.models.team import Team
@@ -212,21 +213,26 @@ class TournamentCreateView(CustomCreateView):
         api_url = form.cleaned_data.get('api_url')
         
         if api_url:
-            from core.utils.api_data import APIDataHandler
+            APIDataHandler.clear_tournament_session_data(self.request)
+            
             api_handler = APIDataHandler(self.request)
             api_handler.set_api_url(api_url)
             
             is_valid, error_message = api_handler.validate_api_connection()
             if not is_valid:
-                from django.contrib import messages
                 messages.error(self.request, f"API Error: {error_message}")
                 form.add_error('api_url', f"API Error: {error_message}")
                 return self.form_invalid(form)
         
-        response = super().form_valid(form)
-        tournament = self.object
-        
-        return redirect(f"{reverse_lazy('core:tournament_dataentry')}?tournament={tournament.id}")
+            response = super().form_valid(form)
+            tournament = self.object
+            
+            # Set the tournament ID in session for this API workflow
+            api_handler.set_tournament_id(tournament.id)
+            
+            return redirect(f"{reverse_lazy('core:tournament_dataentry')}?tournament={tournament.id}")
+        return super().form_valid(form)
+
 class TournamentDeleteView(CustomDeleteView):
     model = Tournament
     success_url = reverse_lazy("core:tournament_list")
