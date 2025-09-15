@@ -39,7 +39,7 @@ class TournamentDataEntryWizardView(CustomMixin, SessionWizardView):
         VarsitySpeakerResultFormset, NoviceTeamResultFormset, NoviceSpeakerResultFormset, 
         UnplacedTeamResultFormset
     ]
-    template_name = "tournaments/base_dynamic_entry.html"
+    template_name = "tournaments/data_entry.html"
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
