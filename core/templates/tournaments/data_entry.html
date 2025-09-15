@@ -13,144 +13,43 @@
                     <form action="" method="POST" novalidate>
                         {% csrf_token %}
                         {{ wizard.management_form }}
-    {{ wizard.form.management_form }}
-    
-    <div class="formset-controls">
-        <button type="button" class="btn btn-success btn-sm" id="add-form-btn">
-            <i class="fas fa-plus"></i> Add 
-            {% if wizard.steps.current == "0" %}School
-            {% elif wizard.steps.current == "1" %}Debater
-            {% elif wizard.steps.current == "2" or wizard.steps.current == "4" %}Team
-            {% elif wizard.steps.current == "3" or wizard.steps.current == "5" %}Speaker
-            {% elif wizard.steps.current == "6" %}Unplaced Team
-            {% else %}Item{% endif %}
-        </button>
-        <small class="text-muted">Drag rows to reorder 
-            {% if wizard.steps.current == "0" %}schools
-            {% elif wizard.steps.current == "1" %}debaters
-            {% elif wizard.steps.current == "2" or wizard.steps.current == "4" %}teams
-            {% elif wizard.steps.current == "3" or wizard.steps.current == "5" %}speakers
-            {% elif wizard.steps.current == "6" %}unplaced teams
-            {% else %}items{% endif %}
-        </small>
-    </div>
-
-    <div class="table-responsive" id="formset-container" 
-         data-max-forms="{% if wizard.steps.current == "2" or wizard.steps.current == "4" or wizard.steps.current == "6" %}100{% else %}50{% endif %}"
-         data-form-type="{% if wizard.steps.current == "0" %}school{% elif wizard.steps.current == "1" %}debater{% elif wizard.steps.current == "2" or wizard.steps.current == "4" %}team{% elif wizard.steps.current == "3" or wizard.steps.current == "5" %}speaker{% elif wizard.steps.current == "6" %}unplaced_team{% else %}item{% endif %}"
-         data-ajax-url="{% url 'core:get_new_team_form' %}">
-        <table class="table table-bordered" id="formset-table">
-            <thead>
-                <tr>
-                    <th width="60">Place</th>
-                    <th width="40">Drag</th>
-                    <th>
-                        {% if wizard.steps.current == "0" %}School Details
-                        {% elif wizard.steps.current == "1" %}Debater Details
-                        {% elif wizard.steps.current == "2" or wizard.steps.current == "4" or wizard.steps.current == "6" %}Team Details
-                        {% elif wizard.steps.current == "3" or wizard.steps.current == "5" %}Speaker Details
-                        {% else %}Details{% endif %}
-                    </th>
-                    <th width="80">Actions</th>
-                </tr>
-            </thead>
-            <tbody class="sortable-formset">
-                {% for form in wizard.form.forms %}
-                    <tr class="formset-row" data-form-index="{{ forloop.counter0 }}">
-                        <td class="place-number">
-                            <span class="place-display">{{ forloop.counter }}</span>
-                        </td>
-                        <td class="drag-handle">
-                            <i class="fas fa-grip-vertical"></i>
-                        </td>
-                        <td class="form-fields">
-                            {% if form.ORDER %}{{ form.ORDER }}{% endif %}
-                            {% if form.DELETE %}{{ form.DELETE }}{% endif %}
-                            
-                            {# School creation form fields #}
-                            {% if wizard.steps.current == "0" %}
-                                <div class="row">
-                                    <div class="col-md-8">
-                                        {{ form.name|as_crispy_field }}
-                                    </div>
-                                    <div class="col-md-4">
-                                        {{ form.included_in_oty|as_crispy_field }}
-                                    </div>
-                                </div>
-                            
-                            {# Debater creation form fields #}
-                            {% elif wizard.steps.current == "1" %}
-                                {{ form.tournament_id }}
-                                <div class="row">
-                                    <div class="col-md-4">
-                                        {{ form.first_name|as_crispy_field }}
-                                    </div>
-                                    <div class="col-md-4">
-                                        {{ form.last_name|as_crispy_field }}
-                                    </div>
-                                    <div class="col-md-4">
-                                        {{ form.school|as_crispy_field }}
-                                    </div>
-                                </div>
-                            
-                            {# Team result form fields (varsity teams with ghost points) #}
-                            {% elif wizard.steps.current == "2" %}
-                                <div class="row">
-                                    <div class="col-md-6">
-                                        {{ form.debater_one|as_crispy_field }}
-                                    </div>
-                                    <div class="col-md-6">
-                                        {{ form.debater_two|as_crispy_field }}
-                                    </div>
-                                </div>
-                                {{ form.ghost_points|as_crispy_field }}
-                            
-                            {# Speaker result form fields #}
-                            {% elif wizard.steps.current == "3" or wizard.steps.current == "5" %}
-                                {{ form.speaker|as_crispy_field }}
-                                {{ form.tie|as_crispy_field }}
-                            
-                            {# Novice team result form fields (no ghost points) #}
-                            {% elif wizard.steps.current == "4" %}
-                                <div class="row">
-                                    <div class="col-md-6">
-                                        {{ form.debater_one|as_crispy_field }}
-                                    </div>
-                                    <div class="col-md-6">
-                                        {{ form.debater_two|as_crispy_field }}
-                                    </div>
-                                </div>
-                            
-                            {# Unplaced team form fields (no ghost points) #}
-                            {% elif wizard.steps.current == "6" %}
-                                <div class="row">
-                                    <div class="col-md-6">
-                                        {{ form.debater_one|as_crispy_field }}
-                                    </div>
-                                    <div class="col-md-6">
-                                        {{ form.debater_two|as_crispy_field }}
-                                    </div>
-                                </div>
-                            {% endif %}
-                        </td>
-                        <td class="text-center">
-                            <button type="button" class="btn btn-danger btn-sm delete-form" 
-                                    data-form-index="{{ forloop.counter0 }}" 
-                                    title="Delete 
-                                    {% if wizard.steps.current == "0" %}School
-                                    {% elif wizard.steps.current == "1" %}Debater
-                                    {% elif wizard.steps.current == "2" or wizard.steps.current == "4" %}Team
-                                    {% elif wizard.steps.current == "3" or wizard.steps.current == "5" %}Speaker
-                                    {% elif wizard.steps.current == "6" %}Unplaced Team
-                                    {% else %}Item{% endif %}">
-                                <i class="fas fa-trash"></i>
+                        {{ wizard.form.management_form }}
+                        
+                        <div class="formset-controls">
+                            <button type="button" class="btn btn-success btn-sm" id="add-form-btn">
+                                <i class="fas fa-plus"></i> Add {{ step_config.name }}
                             </button>
-                        </td>
-                    </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
+                            <small class="text-muted">Drag rows to reorder {{ step_config.name|lower }}s</small>
+                        </div>
+
+                        <div class="table-responsive" id="formset-container" 
+                             data-max-forms="250"
+                             data-form-type="{{ step_config.type }}"
+                             data-has-ghost-points="{% if step_config.has_ghost_points %}1{% else %}0{% endif %}"
+                             data-item-name="{{ step_config.name }}"
+                             data-ajax-url="{% url 'core:get_new_team_form' %}">
+                            <table class="table table-bordered" id="formset-table">
+                                <thead>
+                                    <tr>
+                                        <th width="60">Place</th>
+                                        <th width="40">Drag</th>
+                                        <th>{{ step_config.name }} Details</th>
+                                        <th width="80">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="sortable-formset">
+                                    {% for form in wizard.form.forms %}
+                                        {% with form=form form_index=forloop.counter0 place_number=forloop.counter %}
+                                            {% with field_rows=step_config.field_rows extra_fields=step_config.extra_fields %}
+                                                {% with item_name=step_config.name hidden_fields=step_config.hidden_fields %}
+                                                    {% include "tournaments/includes/formset_row.html" %}
+                                                {% endwith %}
+                                            {% endwith %}
+                                        {% endwith %}
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
 
 
 
@@ -170,28 +69,29 @@
                     </form>
                 </div>
             </div>
-            <div class="col-lg-4">
-                <div class="card sticky-top mb-2" style="top: 30px;">
-                    <div class="card-body">
-                        <h5 class="card-title">Create Debater</h5>
-                        <a href="{% url 'core:school_create' %}" target="_blank">Create new school</a>
-                        <hr />
-                        <form id="debater_create_form">
-                            {% csrf_token %}
-                            <input type="hidden" name="ajax" value="1">
-                            <div class="form-group">
-                                <label>Name</label>
-                                <input type="text" class="textinput textInput form-control" id="id_name">
-                            </div>
-                            {{ debater_form.school|as_crispy_field }}
-                            <input class="btn btn-primary"
-                                id="create_debater"
-                                value="Create"
-                                type="submit">
+        </div>
+        <div class="col-lg-4">
+            <div class="card sticky-top mb-2" style="top: 30px;">
+                <div class="card-body">
+                    <h5 class="card-title">Create Debater</h5>
+                    <a href="{% url 'core:school_create' %}" target="_blank">Create new school</a>
+                    <hr />
+                    <form id="debater_create_form">
+                        {% csrf_token %}
+                        <input type="hidden" name="ajax" value="1">
+                        <div class="form-group">
+                            <label>Name</label>
+                            <input type="text" class="textinput textInput form-control" id="id_name">
+                        </div>
+                        {{ debater_form.school|as_crispy_field }}
+                        <input class="btn btn-primary"
+                            id="create_debater"
+                            value="Create"
+                            type="submit">
                     </form>
                 </div>
             </div>
-            <div class="card sticky-top" style="top: 369px" px;">
+            <div class="card sticky-top" style="top: 369px;">
                 <div class="card-body">
                     <h5 class="card-title">Created Debaters</h5>
                     <ul id="new_debaters">

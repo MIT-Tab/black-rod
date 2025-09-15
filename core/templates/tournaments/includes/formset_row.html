@@ -1,0 +1,18 @@
+<tr class="formset-row" data-form-index="{{ form_index }}">
+    <td class="place-number">
+        <span class="place-display">{{ place_number }}</span>
+    </td>
+    <td class="drag-handle">
+        <i class="fas fa-grip-vertical"></i>
+    </td>
+    <td class="form-fields">
+        {% include "tournaments/includes/form_fields.html" with form=form field_rows=field_rows extra_fields=extra_fields hidden_fields=hidden_fields %}
+    </td>
+    <td class="text-center">
+        <button type="button" class="btn btn-danger btn-sm delete-form"
+                data-form-index="{{ form_index }}"
+                title="Delete {{ item_name }}">
+            <i class="fas fa-trash"></i>
+        </button>
+    </td>
+</tr>

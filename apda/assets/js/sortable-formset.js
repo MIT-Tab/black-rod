@@ -2,7 +2,14 @@ class SortableFormset {
     constructor(container, options = {}) {
         this.container = $(container);
         this.tbody = $('.sortable-formset');
-        this.options = { maxForms: 500, formType: null, ajaxUrl: null, ...options };
+        this.options = {
+            maxForms: 500,
+            formType: null,
+            ajaxUrl: null,
+            hasGhostPoints: false,
+            itemName: null,
+            ...options,
+        };
         this.bindEvents();
         this.updateDisplayOrder();
         this.initializeSortableWhenReady();
@@ -92,7 +99,12 @@ class SortableFormset {
         $.ajax({
             url: this.options.ajaxUrl,
             method: 'GET',
-            data: { form_index: formIndex, form_type: this.options.formType },
+            data: {
+                form_index: formIndex,
+                form_type: this.options.formType,
+                has_ghost_points: this.options.hasGhostPoints ? 1 : 0,
+                item_name: this.options.itemName,
+            },
             success: (response) => {
                 this.tbody.append(response.html);
                 this.updateFormManagement(formIndex + 1);
@@ -162,10 +174,14 @@ window.SortableFormset = SortableFormset;
 $(document).ready(function() {
     $('[data-form-type]').each(function() {
         const container = $(this);
+        const hasGhostPointsRaw = container.data('has-ghost-points');
+        const hasGhostPoints = hasGhostPointsRaw === true || hasGhostPointsRaw === 1 || hasGhostPointsRaw === '1';
         const options = {
             maxForms: parseInt(container.data('max-forms')) || 50,
             formType: container.data('form-type'),
-            ajaxUrl: container.data('ajax-url')
+            ajaxUrl: container.data('ajax-url'),
+            hasGhostPoints,
+            itemName: container.data('item-name') || null,
         };
         new SortableFormset(container, options);
     });
