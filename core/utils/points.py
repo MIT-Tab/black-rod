@@ -37,7 +37,7 @@ def team_points_for_size(num_teams, place, ghost_points=False):
             return 12 + math.floor((num_teams - 16) / 8)
         if place == 2:
             return 8 + math.floor((num_teams - 16) / 8)
-        if place < 5:
+        if place < 5 or (place == 5 and ghost_points):
             return 3 + 0.75 * math.floor((num_teams - 16) / 8)
         if place < 9 or ghost_points:
             return 0.5 * math.floor((num_teams - 16) / 8)
@@ -48,9 +48,9 @@ def team_points_for_size(num_teams, place, ghost_points=False):
             return 19
         if place == 2:
             return 15
-        if place < 5:
+        if place < 5 or (place == 5 and ghost_points):
             return 8.25
-        if place < 9:
+        if place < 9 or (place == 9 and ghost_points):
             return 3.5
         if place < 17 or ghost_points:
             return 0.75
@@ -60,9 +60,9 @@ def team_points_for_size(num_teams, place, ghost_points=False):
         return 20
     if place == 2:
         return 16
-    if place < 5:
+    if place < 5 or (place == 5 and ghost_points):
         return 9
-    if place < 9:
+    if place < 9 or (place == 9 and ghost_points):
         return 4
     if place < 17 or ghost_points:
         return 1.5
