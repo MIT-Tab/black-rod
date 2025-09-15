@@ -170,25 +170,24 @@
                     </form>
                 </div>
             </div>
-        </div>
-        <div class="col-lg-4">
-            <div class="card sticky-top mb-2" style="top: 30px;">
-                <div class="card-body">
-                    <h5 class="card-title">Create Debater</h5>
-                    <a href="{% url 'core:school_create' %}" target="_blank">Create new school</a>
-                    <hr />
-                    <form id="debater_create_form">
-                        {% csrf_token %}
-                        <input type="hidden" name="ajax" value="1">
-                        <div class="form-group">
-                            <label>Name</label>
-                            <input type="text" class="textinput textInput form-control" id="id_name">
-                        </div>
-                        {{ debater_form.school|as_crispy_field }}
-                        <input class="btn btn-primary"
-                               id="create_debater"
-                               value="Create"
-                               type="submit">
+            <div class="col-lg-4">
+                <div class="card sticky-top mb-2" style="top: 30px;">
+                    <div class="card-body">
+                        <h5 class="card-title">Create Debater</h5>
+                        <a href="{% url 'core:school_create' %}" target="_blank">Create new school</a>
+                        <hr />
+                        <form id="debater_create_form">
+                            {% csrf_token %}
+                            <input type="hidden" name="ajax" value="1">
+                            <div class="form-group">
+                                <label>Name</label>
+                                <input type="text" class="textinput textInput form-control" id="id_name">
+                            </div>
+                            {{ debater_form.school|as_crispy_field }}
+                            <input class="btn btn-primary"
+                                id="create_debater"
+                                value="Create"
+                                type="submit">
                     </form>
                 </div>
             </div>

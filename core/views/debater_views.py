@@ -1,6 +1,6 @@
 from dal import autocomplete
 from django.conf import settings
-from django.http import HttpResponse, JsonResponse
+from django.http import HttpResponse
 from django.urls import reverse_lazy
 from django_filters import FilterSet, ChoiceFilter, CharFilter
 from django_tables2 import Column
@@ -11,7 +11,6 @@ from core.forms import DebaterForm
 from core.models.debater import Debater
 from core.models.results.team import TeamResult
 from core.models.round import Round
-from core.models.school import School
 from core.models.standings.toty import TOTY
 from core.utils.generics import (
     CustomCreateView,

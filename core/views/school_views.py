@@ -1,6 +1,5 @@
 from dal import autocomplete
 from django.conf import settings
-from django.http import JsonResponse
 from django.shortcuts import redirect, reverse
 from django.urls import reverse_lazy
 from django_filters import FilterSet
@@ -151,5 +150,3 @@ class SchoolAutocomplete(autocomplete.Select2QuerySetView):
             qs = qs.filter(name__icontains=self.q)
 
         return qs
-
-
