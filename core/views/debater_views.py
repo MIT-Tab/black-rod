@@ -364,29 +364,3 @@ class DebaterAutocomplete(autocomplete.Select2QuerySetView):
             qs = qs.filter(school__id=school)
 
         return qs
-
-
-def check_and_delete_debater(request):
-    if request.method != 'POST':
-        return JsonResponse({'status': 'error', 'message': 'Invalid request method'})
-    
-    data = {k: request.POST.get(k, '').strip() for k in ['first_name', 'last_name', 'school']}
-    if not all(data.values()):
-        return JsonResponse({'status': 'error', 'message': 'Missing required data'})
-    
-    school = School.objects.get(id=data['school'])
-    debater = Debater.objects.filter(
-        first_name=data['first_name'], last_name=data['last_name'], school=school
-    ).first()
-    
-    if not debater:
-        return JsonResponse({'status': 'not_found', 'message': 'Debater not found'})
-
-    if (
-        TeamResult.objects.filter(team__debaters=debater).exists() 
-        or debater.speaker_results.exists()
-    ):
-        return JsonResponse({'status': 'has_results', 'message': 'Cannot delete - has tournament results'})
-    
-    debater.delete()
-    return JsonResponse({'status': 'deleted', 'message': 'Debater deleted'})
