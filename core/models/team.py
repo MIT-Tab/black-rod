@@ -11,28 +11,14 @@ class Team(models.Model):
     debaters = models.ManyToManyField(Debater, related_name="teams")
 
     def update_name(self):
-        # Optimize by fetching debaters once with school prefetch
-        debaters = list(self.debaters.select_related('school').all())
-        self.update_name_from_debaters(debaters)
-    
-    def update_name_from_debaters(self, debaters):
-        """Update team name from provided debater list (avoids additional DB queries)"""
-        if not debaters:
-            self.name = "Empty Team"
-            return
-            
-        if len(debaters) == 1:
-            self.name = f"{debaters[0].school.name} {debaters[0].last_name[0]}"
-            return
-            
         school_name = ""
-        if debaters[0].school == debaters[1].school:
-            school_name = debaters[0].school.name
-        else:
-            school_name = f"{debaters[0].school.name} / {debaters[1].school.name}"
 
-        initials = ''.join([debater.last_name[0] for debater in debaters])
-        self.name = f"{school_name} {initials}"
+        if self.debaters.first().school == self.debaters.last().school:
+            school_name = self.debaters.first().school.name
+        else:
+            school_name = f"{self.debaters.first().school.name} / {self.debaters.last().school.name}"
+
+        self.name = f"{school_name} {''.join([debater.last_name[0] for debater in self.debaters.all()])}"
 
     @property
     def debaters_display(self):
