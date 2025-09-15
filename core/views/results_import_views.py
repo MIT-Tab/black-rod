@@ -9,10 +9,8 @@ from core.forms import (
     UnplacedTeamResultFormset, VarsitySpeakerResultFormset, VarsityTeamResultFormset, 
     NoviceSpeakerResultFormset, NoviceTeamResultFormset,
 )
-from core.models import Team
 from core.utils.team import get_or_create_team_for_debaters
 from core.models.debater import Debater
-from core.models.school import School
 from core.models.tournament import Tournament
 from core.models.results.speaker import SpeakerResult
 from core.models.results.team import TeamResult

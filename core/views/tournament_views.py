@@ -1,10 +1,6 @@
 from datetime import timedelta
-import json
-import requests
-from urllib.parse import urlparse
 from dal import autocomplete
 from django.conf import settings
-from django.contrib import messages
 from django.db.models import Q
 from django.http import QueryDict
 from django.shortcuts import redirect
@@ -12,21 +8,13 @@ from django.urls import reverse_lazy
 from django.views.generic import TemplateView
 from django_filters import ChoiceFilter, FilterSet
 from django_tables2 import Column
-from formtools.wizard.views import SessionWizardView
-from haystack.query import SearchQuerySet
 
 from core.forms import (
-    DebaterReconciliationFormset,
-    SchoolReconciliationFormset,
     TournamentCreateForm,
-    TournamentDetailForm,
     TournamentForm,
-    TournamentImportForm,
-    TournamentSelectionForm,
 )
 from core.models.debater import Debater
 from core.models.round import Round
-from core.models.school import School
 from core.models.team import Team
 from core.models.tournament import Tournament
 from core.utils.generics import (
@@ -34,26 +22,9 @@ from core.utils.generics import (
     CustomDeleteView,
     CustomDetailView,
     CustomListView,
-    CustomMixin,
     CustomTable,
     CustomUpdateView,
     SeasonColumn,
-)
-from core.utils.import_management import (
-    CREATE,
-    LINK,
-    clean_keys,
-    create_debaters,
-    create_round_stats,
-    create_rounds,
-    create_schools,
-    create_speaker_awards,
-    create_team_awards,
-    create_teams,
-    get_dict,
-    get_num_novice_debaters,
-    get_num_teams,
-    lookup_school,
 )
 from core.utils.rounds import get_tab_card_data
 

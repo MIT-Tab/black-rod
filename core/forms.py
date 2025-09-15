@@ -164,14 +164,6 @@ class TournamentImportForm(forms.Form):
         validators=[URLValidator()],
     )
 
-
-class TournamentSelectionForm(forms.Form):
-    tournament = forms.ModelChoiceField(
-        queryset=Tournament.objects.all(),
-        widget=autocomplete.ModelSelect2(url="core:tournament_autocomplete"),
-    )
-
-
 class TeamResultForm(forms.Form):
     debater_one = forms.ModelChoiceField(
         label="Debater One",
@@ -201,53 +193,7 @@ class SpeakerResultForm(forms.Form):
     tie = forms.BooleanField(label="Tie", required=False)
 
 
-class BaseFormSetWithValidation(forms.BaseFormSet):
-    pass
-
-
-VarsityTeamResultFormset = formset_factory(
-    TeamResultForm, 
-    extra=0, 
-    max_num=100, 
-    can_delete=True, 
-    can_order=True
-)
-
-NoviceTeamResultFormset = formset_factory(
-    TeamResultForm, 
-    extra=0, 
-    max_num=50, 
-    can_delete=True, 
-    can_order=True
-)
-
-UnplacedTeamResultFormset = formset_factory(
-    TeamResultForm, 
-    extra=0, 
-    max_num=150, 
-    can_delete=True, 
-    can_order=True
-)
-
-VarsitySpeakerResultFormset = formset_factory(
-    SpeakerResultForm, 
-    extra=0, 
-    max_num=50, 
-    can_delete=True, 
-    can_order=True
-)
-
-NoviceSpeakerResultFormset = formset_factory(
-    SpeakerResultForm, 
-    extra=0, 
-    max_num=50, 
-    can_delete=True, 
-    can_order=True
-)
-
-
-
-class DebaterCreationFormsetBase(BaseFormSetWithValidation):
+class EmptyFormsValidFormSet(forms.BaseFormSet):
     def is_valid(self):
         if not self.forms:
             return True
@@ -258,15 +204,21 @@ class DebaterCreationFormsetBase(BaseFormSetWithValidation):
     def is_form_empty(self, form):
         form_data = form.data if hasattr(form, 'data') else {}
         prefix = form.prefix
-        required_fields = ['first_name', 'last_name', 'school']
+        required_fields = getattr(self, 'required_fields', [])
+        
         for field in required_fields:
             field_name = f'{prefix}-{field}' if prefix else field
             if form_data.get(field_name, '').strip():
                 return False
         return True
 
+class DebaterCreationFormsetBase(EmptyFormsValidFormSet):
+    required_fields = ['first_name', 'last_name', 'school']
 
-class SchoolCreationFormsetBase(BaseFormSetWithValidation):
+
+class SchoolCreationFormsetBase(EmptyFormsValidFormSet):
+    required_fields = ['name']
+    
     def clean(self):
         if not self.forms:
             return
@@ -285,83 +237,30 @@ class SchoolCreationFormsetBase(BaseFormSetWithValidation):
                     name = form.cleaned_data.get('name', '').strip()
                     if name in existing_schools:
                         form.cleaned_data['DELETE'] = True
-    
-    def is_valid(self):
-        if not self.forms:
-            return True
-        is_valid = super().is_valid()
-        all_empty = all(self.is_form_empty(form) for form in self.forms)
-        return is_valid or all_empty
-    
-    def is_form_empty(self, form):
-        form_data = form.data if hasattr(form, 'data') else {}
-        prefix = form.prefix
-        required_fields = ['name']
-        for field in required_fields:
-            field_name = f'{prefix}-{field}' if prefix else field
-            if form_data.get(field_name, '').strip():
-                return False
-        return True
 
+IMPORT_FORMSET_PARAMS = {
+    'extra': 0,
+    'can_delete': True,
+    'can_order': True,
+    'max_num': 150,
+}
 
-DebaterCreationFormset = formset_factory(
-    DebaterForm, 
-    formset=DebaterCreationFormsetBase,
-    extra=0, 
-    max_num=500, 
-    can_delete=True
-)
+CREATION_FORMSET_PARAMS = {
+    'extra': 0,
+    'can_delete': True,
+    'can_order': False,
+    'max_num': 500,
+}
 
+VarsityTeamResultFormset = formset_factory(TeamResultForm, **IMPORT_FORMSET_PARAMS)
+NoviceTeamResultFormset = formset_factory(TeamResultForm, **IMPORT_FORMSET_PARAMS)
+UnplacedTeamResultFormset = formset_factory(TeamResultForm, **IMPORT_FORMSET_PARAMS)
 
-SchoolCreationFormset = formset_factory(
-    SchoolForm, 
-    formset=SchoolCreationFormsetBase,
-    extra=0, 
-    max_num=500, 
-    can_delete=True
-)
+VarsitySpeakerResultFormset = formset_factory(SpeakerResultForm, **IMPORT_FORMSET_PARAMS)
+NoviceSpeakerResultFormset = formset_factory(SpeakerResultForm, **IMPORT_FORMSET_PARAMS)
 
-
-class SchoolReconciliationForm(forms.Form):
-    id = forms.FloatField(widget=forms.HiddenInput())
-
-    server_name = forms.CharField(label="Server School Name")
-
-    school = forms.ModelChoiceField(
-        queryset=School.objects.all(),
-        widget=autocomplete.ModelSelect2(url="core:school_autocomplete"),
-        required=False,
-    )
-
-
-class DebaterReconciliationForm(forms.Form):
-    id = forms.FloatField(widget=forms.HiddenInput())
-    school_id = forms.FloatField(widget=forms.HiddenInput())
-    status = forms.FloatField(widget=forms.HiddenInput())
-
-    server_name = forms.CharField(label="Server Debater Name")
-    server_school_name = forms.CharField(label="Server School Name", disabled=True)
-    server_hybrid_school_name = forms.CharField(
-        label="Server Hybrid School Name", disabled=True, required=False
-    )
-
-    school = forms.ModelChoiceField(
-        queryset=School.objects.all(),
-        widget=autocomplete.ModelSelect2(url="core:school_autocomplete"),
-        required=False,
-    )
-
-    debater = forms.ModelChoiceField(
-        queryset=Debater.objects.all(),
-        widget=autocomplete.ModelSelect2(
-            url="core:debater_autocomplete", forward=["school"]
-        ),
-        required=False,
-    )
-
-
-SchoolReconciliationFormset = formset_factory(SchoolReconciliationForm, extra=0)
-DebaterReconciliationFormset = formset_factory(DebaterReconciliationForm, extra=0)
+DebaterCreationFormset = formset_factory(DebaterForm, formset=DebaterCreationFormsetBase, **CREATION_FORMSET_PARAMS)
+SchoolCreationFormset = formset_factory(SchoolForm, formset=SchoolCreationFormsetBase, **CREATION_FORMSET_PARAMS)
 
 
 class TeamChoiceField(forms.ModelChoiceField):
