@@ -341,4 +341,4 @@ ONLINE_SEASONS = (
     "2021",
 )
 
-QUAL_BAR = 10.5
+QUAL_BAR = 11.5
