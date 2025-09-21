@@ -38,7 +38,7 @@
                                 </thead>
                                 <tbody class="sortable-formset">
                                     {% for form in wizard.form.forms %}
-                                        {% with form=form form_index=forloop.counter0 place_number=forloop.counter field_rows=step_config.field_rows extra_fields=step_config.extra_fields item_name=step_config.name hidden_fields=step_config.hidden_fields %}
+                                        {% with form=form form_index=forloop.counter0 place_number=forloop.counter form_type=step_config.type has_ghost_points=step_config.has_ghost_points item_name=step_config.name %}
                                             {% include "tournaments/includes/formset_row.html" %}
                                         {% endwith %}
                                     {% endfor %}

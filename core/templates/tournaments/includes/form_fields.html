@@ -1,18 +1,61 @@
-{% load crispy_forms_tags tags %}
+{% load crispy_forms_tags %}
+{# Always include management fields #}
 {% if form.ORDER %}{{ form.ORDER }}{% endif %}
 {% if form.DELETE %}{{ form.DELETE }}{% endif %}
-{% for hidden_field in hidden_fields %}
-    {{ form|form_field:hidden_field }}
-{% endfor %}
-{% for row in field_rows %}
+
+{# Handle hidden fields #}
+{% if form_type == "debater" and form.tournament_id %}
+    {{ form.tournament_id }}
+{% endif %}
+
+{# Render fields based on form type #}
+{% if form_type == "school" %}
     <div class="row">
-        {% for field in row %}
-            <div class="{{ field.css_class }}">
-                {{ form|form_field:field.name|as_crispy_field }}
-            </div>
-        {% endfor %}
+        <div class="col-md-8">
+            {{ form.name|as_crispy_field }}
+        </div>
+        <div class="col-md-4">
+            {{ form.included_in_oty|as_crispy_field }}
+        </div>
     </div>
-{% endfor %}
-{% for field_name in extra_fields %}
-    {{ form|form_field:field_name|as_crispy_field }}
-{% endfor %}
+
+{% elif form_type == "debater" %}
+    <div class="row">
+        <div class="col-md-4">
+            {{ form.first_name|as_crispy_field }}
+        </div>
+        <div class="col-md-4">
+            {{ form.last_name|as_crispy_field }}
+        </div>
+        <div class="col-md-4">
+            {{ form.school|as_crispy_field }}
+        </div>
+    </div>
+
+{% elif form_type == "team" %}
+    <div class="row">
+        <div class="col-md-6">
+            {{ form.debater_one|as_crispy_field }}
+        </div>
+        <div class="col-md-6">
+            {{ form.debater_two|as_crispy_field }}
+        </div>
+    </div>
+    {% if has_ghost_points and form.ghost_points %}
+        {{ form.ghost_points|as_crispy_field }}
+    {% endif %}
+
+{% elif form_type == "speaker" %}
+    <div class="row">
+        <div class="col-md-12">
+            {{ form.speaker|as_crispy_field }}
+        </div>
+    </div>
+    {{ form.tie|as_crispy_field }}
+    
+{% else %}
+    {# Fallback for any other form types - render all visible fields #}
+    {% for field in form.visible_fields %}
+        {{ field|as_crispy_field }}
+    {% endfor %}
+{% endif %}

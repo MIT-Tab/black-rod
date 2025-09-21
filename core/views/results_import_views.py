@@ -1,5 +1,3 @@
-from copy import deepcopy
-
 from django.conf import settings
 from django.shortcuts import redirect
 from django.http import JsonResponse
@@ -29,87 +27,35 @@ from core.utils.rankings import (
     update_soty, update_toty,
 )
 
-
-DEFAULT_FORM_LAYOUT = {
-    "field_rows": [],
-    "hidden_fields": [],
-    "extra_fields": [],
-}
-
-FORM_TYPE_LAYOUTS = {
-    "school": {
-        "field_rows": [
-            [
-                {"name": "name", "css_class": "col-md-8"},
-                {"name": "included_in_oty", "css_class": "col-md-4"},
-            ],
-        ],
-        "hidden_fields": [],
-        "extra_fields": [],
-    },
-    "debater": {
-        "field_rows": [
-            [
-                {"name": "first_name", "css_class": "col-md-4"},
-                {"name": "last_name", "css_class": "col-md-4"},
-                {"name": "school", "css_class": "col-md-4"},
-            ],
-        ],
-        "hidden_fields": ["tournament_id"],
-        "extra_fields": [],
-    },
-    "team": {
-        "field_rows": [
-            [
-                {"name": "debater_one", "css_class": "col-md-6"},
-                {"name": "debater_two", "css_class": "col-md-6"},
-            ],
-        ],
-        "hidden_fields": [],
-        "extra_fields": ["ghost_points"],
-    },
-    "speaker": {
-        "field_rows": [
-            [
-                {"name": "speaker", "css_class": "col-md-12"},
-            ],
-        ],
-        "hidden_fields": [],
-        "extra_fields": ["tie"],
-    },
-}
-
-
-STEP_CONFIGS = {
-    "0": {"type": "school", "name": "School"},
-    "1": {"type": "debater", "name": "Debater"},
-    "2": {"type": "team", "name": "Team", "has_ghost_points": True},
-    "3": {"type": "speaker", "name": "Speaker"},
-    "4": {"type": "team", "name": "Team"},
-    "5": {"type": "speaker", "name": "Speaker"},
-    "6": {"type": "team", "name": "Unplaced Team", "is_unplaced": True},
-}
-
-
-def get_form_layout(form_type, include_ghost_points=False):
-    """Return presentation metadata for a form type."""
-    layout = deepcopy(FORM_TYPE_LAYOUTS.get(form_type, DEFAULT_FORM_LAYOUT))
-    if form_type == "team" and not include_ghost_points:
-        layout["extra_fields"] = [
-            field for field in layout.get("extra_fields", []) if field != "ghost_points"
-        ]
-    return layout
-
 class TournamentDataEntryWizardView(CustomMixin, SessionWizardView):
     permission_required = "core.change_tournament"
     step_names = {
-        "0": "Create New Schools", "1": "Create New Debaters", "2": "Varsity Team Awards", 
-        "3": "Varsity Speaker Awards", "4": "Novice Team Awards", "5": "Novice Speaker Awards", 
+        "0": "Create New Schools", 
+        "1": "Create New Debaters", 
+        "2": "Varsity Team Awards", 
+        "3": "Varsity Speaker Awards", 
+        "4": "Novice Team Awards", 
+        "5": "Novice Speaker Awards", 
         "6": "Non-placing Teams"
     }
+    
+    step_configs = {
+        "0": {"type": "school", "name": "School", "has_ghost_points": False},
+        "1": {"type": "debater", "name": "Debater", "has_ghost_points": False},
+        "2": {"type": "team", "name": "Team", "has_ghost_points": True},
+        "3": {"type": "speaker", "name": "Speaker", "has_ghost_points": False},
+        "4": {"type": "team", "name": "Team", "has_ghost_points": False},
+        "5": {"type": "speaker", "name": "Speaker", "has_ghost_points": False},
+        "6": {"type": "team", "name": "Unplaced Team", "is_unplaced": True, "has_ghost_points": False},
+    }
+    
     form_list = [
-        SchoolCreationFormset, DebaterCreationFormset, VarsityTeamResultFormset, 
-        VarsitySpeakerResultFormset, NoviceTeamResultFormset, NoviceSpeakerResultFormset, 
+        SchoolCreationFormset, 
+        DebaterCreationFormset, 
+        VarsityTeamResultFormset, 
+        VarsitySpeakerResultFormset, 
+        NoviceTeamResultFormset, 
+        NoviceSpeakerResultFormset, 
         UnplacedTeamResultFormset
     ]
     template_name = "tournaments/data_entry.html"
@@ -133,6 +79,35 @@ class TournamentDataEntryWizardView(CustomMixin, SessionWizardView):
             APIDataHandler.clear_tournament_session_data(request)
         
         return super().dispatch(request, *args, **kwargs)
+        
+    def render_done(self, form, **kwargs):
+        """
+        Override the render_done method to bypass validation for step 0 (SchoolCreationFormset)
+        when using API data. This ensures we don't get validation errors for already created schools.
+        """
+        if self.has_api_data():
+            form_dict = {}
+            form_list = []
+            
+            for step in self.get_form_list():
+                if step == '0':
+                    form_obj = self.get_form(step=step, data=self.storage.get_step_data(step),
+                                           files=self.storage.get_step_files(step))
+                    form_obj.is_valid = lambda: True
+                    form_list.append(form_obj)
+                    form_dict[step] = form_obj
+                    continue
+                
+                form_obj = self.get_form(step=step, data=self.storage.get_step_data(step),
+                                       files=self.storage.get_step_files(step))
+                if not form_obj.is_valid():
+                    return self.render_revalidation_failure(step, form_obj, **kwargs)
+                form_list.append(form_obj)
+                form_dict[step] = form_obj
+            
+            return self.done(form_list, form_dict)
+        
+        return super().render_done(form, **kwargs)
 
     def get_api_handler(self):
         if self._api_handler is None:
@@ -220,8 +195,8 @@ class TournamentDataEntryWizardView(CustomMixin, SessionWizardView):
     def get_context_data(self, *args, **kwargs):
         context = super().get_context_data(*args, **kwargs)
         
-        # Define step-specific variables to reduce template repetition
-        step_config = self._get_step_config()
+        current_step = self.steps.current
+        step_config = self.step_configs.get(current_step, {"type": "item", "name": "Item"})
         
         context.update({
             "title": self.step_names[self.steps.current],
@@ -231,14 +206,6 @@ class TournamentDataEntryWizardView(CustomMixin, SessionWizardView):
             "step_config": step_config
         })
         return context
-    
-    def _get_step_config(self):
-        """Get configuration for the current step to reduce template repetition."""
-        current_step = self.steps.current
-        base_config = deepcopy(STEP_CONFIGS.get(current_step, {"type": "item", "name": "Item"}))
-        include_ghost_points = base_config.get("has_ghost_points", False)
-        base_config.update(get_form_layout(base_config.get("type"), include_ghost_points))
-        return base_config
 
     def process_step(self, form):
         step = self.steps.current
@@ -349,23 +316,22 @@ def get_new_team_form(request):
     has_ghost_points = request.GET.get('has_ghost_points') in {'1', 'true', 'True'}
     item_name = request.GET.get('item_name') or (form_type.replace('_', ' ').title() if form_type else 'Item')
     form_config = {
-        'team': (VarsityTeamResultFormset, '2'), 'speaker': (VarsitySpeakerResultFormset, '3'),
-        'school': (SchoolCreationFormset, '0'), 'debater': (DebaterCreationFormset, '1')
+        'team': (VarsityTeamResultFormset, '2'), 
+        'speaker': (VarsitySpeakerResultFormset, '3'),
+        'school': (SchoolCreationFormset, '0'), 
+        'debater': (DebaterCreationFormset, '1')
     }
     FormsetClass, step_prefix = form_config.get(form_type, (VarsitySpeakerResultFormset, '3'))
     empty_form = FormsetClass().empty_form
     empty_form.prefix = f'{step_prefix}-{form_index}'
     if hasattr(empty_form, 'fields') and 'ORDER' in empty_form.fields:
         empty_form.initial = {'ORDER': form_index + 1}
-    layout = get_form_layout(form_type, include_ghost_points=has_ghost_points)
     html = render_to_string('tournaments/includes/formset_row.html', {
         'form': empty_form,
         'form_index': form_index,
         'place_number': form_index + 1,
         'form_type': form_type,
-        'field_rows': layout.get('field_rows', []),
-        'extra_fields': layout.get('extra_fields', []),
-        'hidden_fields': layout.get('hidden_fields', []),
+        'has_ghost_points': has_ghost_points,
         'item_name': item_name,
     })
     return JsonResponse({'html': html})
