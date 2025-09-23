@@ -154,4 +154,17 @@ nav {
     }
 }
 
+.card {
+    overflow: visible !important;
+}
+
+.tab-pane.table-responsive {
+    overflow: visible !important;
+}
+
+.dropdown-menu {
+    z-index: 1050 !important;
+}
+
+
 @import "node_modules/bootstrap/scss/bootstrap";

@@ -1,5 +1,6 @@
 from django.conf import settings
 from django.shortcuts import render
+from django.http import Http404
 
 from core.models import COTY, NOTY, SOTY, TOTY, OnlineQUAL
 
@@ -7,7 +8,12 @@ from core.models import COTY, NOTY, SOTY, TOTY, OnlineQUAL
 def index(request):
     seasons = settings.SEASONS
     current_season = request.GET.get("season", settings.CURRENT_SEASON)
+    if current_season not in [s[0] for s in seasons]:
+        current_season = settings.CURRENT_SEASON
+
     default = request.GET.get("default", "toty")
+    if default not in ["toty", "coty", "soty", "noty"]:
+        default = "toty"
 
     toty = TOTY.objects.filter(season=current_season).order_by("-points")
     coty = COTY.objects.filter(season=current_season).order_by("-points")

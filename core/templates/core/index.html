@@ -59,7 +59,7 @@
                                         {% if season.0 == current_season %}{{ season.1 }}{% endif %}
                                     {% endfor %}
                                 </a>
-                                <div class="dropdown-menu">
+                                <div class="dropdown-menu dropdown-menu-right">
                                     {% for season in seasons %}
                                         <a class="dropdown-item {% if season.0 == current_season %}active{% endif %}"
                                            href="{{ request.path }}?season={{ season.0 }}&default=toty">{{ season.1 }}</a>
@@ -156,7 +156,7 @@
                                     {% if season.0 == current_season %}{{ season.1 }}{% endif %}
                                 {% endfor %}
                             </a>
-                            <div class="dropdown-menu">
+                            <div class="dropdown-menu dropdown-menu-right">
                                 {% for season in seasons %}
                                     <a class="dropdown-item {% if season.0 == current_season %}active{% endif %}"
                                        href="{{ request.path }}?season={{ season.0 }}&default=soty">{{ season.1 }}</a>
@@ -264,7 +264,7 @@
                                 {% if season.0 == current_season %}{{ season.1 }}{% endif %}
                             {% endfor %}
                         </a>
-                        <div class="dropdown-menu">
+                        <div class="dropdown-menu dropdown-menu-right">
                             {% for season in seasons %}
                                 <a class="dropdown-item {% if season.0 == current_season %}active{% endif %}"
                                    href="{{ request.path }}?season={{ season.0 }}&default=coty">{{ season.1 }}</a>
@@ -343,7 +343,7 @@
                         {% if season.0 == current_season %}{{ season.1 }}{% endif %}
                     {% endfor %}
                 </a>
-                <div class="dropdown-menu">
+                <div class="dropdown-menu dropdown-menu-right">
                     {% for season in seasons %}
                         <a class="dropdown-item {% if season.0 == current_season %}active{% endif %}"
                            href="{{ request.path }}?season={{ season.0 }}&default=noty">{{ season.1 }}</a>
@@ -442,7 +442,7 @@
                         {% if season.0 == current_season %}{{ season.1 }}{% endif %}
                     {% endfor %}
                 </a>
-                <div class="dropdown-menu">
+                <div class="dropdown-menu dropdown-menu-right">
                     {% for season in online_seasons %}
                         <a class="dropdown-item {% if season.0 == current_season %}active{% endif %}"
                            href="{{ request.path }}?season={{ season.0 }}&default=online_quals">{{ season.1 }}</a>
