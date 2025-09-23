@@ -342,3 +342,5 @@ ONLINE_SEASONS = (
 )
 
 QUAL_BAR = 11.5
+
+DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'

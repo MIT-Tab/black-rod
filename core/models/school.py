@@ -7,6 +7,9 @@ class School(models.Model):
 
     included_in_oty = models.BooleanField(default=True, verbose_name="Included in OTY")
 
+    class Meta:
+        ordering = ['name']
+
     def __str__(self):
         return self.name
 
