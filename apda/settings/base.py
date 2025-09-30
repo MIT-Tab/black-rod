@@ -135,8 +135,9 @@ if os.environ.get("ENV") == "development":
     }
     ALLOWED_HOSTS = ["*"]
     CACHES = {
-        "default": {
-            "BACKEND": "django.core.cache.backends.dummy.DummyCache",
+    "default": {
+        "BACKEND": "django.core.cache.backends.memcached.PyMemcacheCache",
+        "LOCATION": "127.0.0.1:11211",
         }
     }
 elif os.environ.get("ENV") == "production":
