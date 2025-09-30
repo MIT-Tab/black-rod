@@ -160,7 +160,7 @@ elif os.environ.get("ENV") == "production":
 
     CACHES = {
         "default": {
-            "BACKEND": "django.core.cache.backends.memcached.MemcachedCache",
+            "BACKEND": "django.core.cache.backends.memcached.PythonMemcacheCache",
             "LOCATION": "127.0.0.1:11211",
         }
     }
