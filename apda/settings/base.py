@@ -147,7 +147,7 @@ elif os.environ.get("ENV") == "production":
             "USER": "rodda",
             "PASSWORD": os.environ.get("DATABASE_PASSWORD", ""),
             "HOST": "localhost",
-            "PORT": "",
+            "PORT": "5433",
         }
     }
     import sentry_sdk
