@@ -348,7 +348,7 @@ class DebaterAutocomplete(autocomplete.Select2QuerySetView):
         return f"<{debater_id if debater_id is not None else ''}> {debater_name if debater_name else ''} ({school_name})"
 
     def get_queryset(self):
-        qs = Debater.objects.none()
+        qs = None
         if not self.q:
             qs = Debater.objects.all()
         else:
