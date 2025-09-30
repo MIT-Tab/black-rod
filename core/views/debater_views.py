@@ -342,23 +342,24 @@ class DebaterDeleteView(CustomDeleteView):
 
 class DebaterAutocomplete(autocomplete.Select2QuerySetView):
     def get_result_label(self, record):
-        return f"<{record.id}> {record.name} ({record.school.name})"
+        school_name = getattr(getattr(record, "school", None), "name", "")
+        debater_name = getattr(record, "name", None)
+        debater_id = getattr(record, "id", None)
+        return f"<{debater_id if debater_id is not None else ''}> {debater_name if debater_name else ''} ({school_name})"
 
     def get_queryset(self):
-        qs = None
+        qs = Debater.objects.none()
         if not self.q:
-            qs = Debater.objects
-        if self.q:
-            qs = SearchQuerySet().models(Debater).filter(content=self.q)
-
-            qs = [q.pk for q in qs.all()]
-
-            qs = Debater.objects.filter(id__in=qs)
+            qs = Debater.objects.all()
+        else:
+            sqs = SearchQuerySet().models(Debater).filter(content=self.q)
+            ids = [getattr(q, "pk", None) for q in sqs.all()]
+            ids = [i for i in ids if i is not None]
+            qs = Debater.objects.filter(id__in=ids)
 
         qs = qs.order_by("-pk")
 
         school = self.forwarded.get("school", None)
-
         if school:
             qs = qs.filter(school__id=school)
 

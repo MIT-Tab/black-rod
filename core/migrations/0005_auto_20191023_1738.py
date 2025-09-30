@@ -3,7 +3,6 @@
 import datetime
 
 from django.db import migrations, models
-from django.utils.timezone import utc
 
 
 class Migration(migrations.Migration):
@@ -17,7 +16,7 @@ class Migration(migrations.Migration):
             model_name="tournament",
             name="date",
             field=models.DateField(
-                default=datetime.datetime(2019, 10, 23, 17, 38, 28, 629673, tzinfo=utc)
+                default=datetime.datetime(2019, 10, 23, 17, 38, 28, 629673, tzinfo=datetime.timezone.utc)
             ),
             preserve_default=False,
         ),
