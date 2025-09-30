@@ -157,6 +157,8 @@ elif os.environ.get("ENV") == "production":
         dsn=os.environ.get("SENTRY_DSN", ""), integrations=[DjangoIntegration()]
     )
     ALLOWED_HOSTS = ["50.116.54.146", "results.apda.online"]
+    CSRF_TRUSTED_ORIGINS = ["https://results.apda.online"]
+
 
     CACHES = {
         "default": {
