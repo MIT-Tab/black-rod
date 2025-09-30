@@ -144,7 +144,7 @@ elif os.environ.get("ENV") == "production":
         "default": {
             "ENGINE": "django.db.backends.postgresql",
             "NAME": "standings",
-            "USER": "rodda",
+            "USER": os.environ.get("DATABASE_USERNAME", ""),
             "PASSWORD": os.environ.get("DATABASE_PASSWORD", ""),
             "HOST": "localhost",
             "PORT": "5433",
