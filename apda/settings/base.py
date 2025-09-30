@@ -144,10 +144,10 @@ elif os.environ.get("ENV") == "production":
         "default": {
             "ENGINE": "django.db.backends.postgresql",
             "NAME": "standings",
-            "USER": "rodda",
+            "USER": os.environ.get("DATABASE_USERNAME", ""),
             "PASSWORD": os.environ.get("DATABASE_PASSWORD", ""),
             "HOST": "localhost",
-            "PORT": "",
+            "PORT": "5433",
         }
     }
     import sentry_sdk
@@ -157,10 +157,12 @@ elif os.environ.get("ENV") == "production":
         dsn=os.environ.get("SENTRY_DSN", ""), integrations=[DjangoIntegration()]
     )
     ALLOWED_HOSTS = ["50.116.54.146", "results.apda.online"]
+    CSRF_TRUSTED_ORIGINS = ["https://results.apda.online"]
+
 
     CACHES = {
         "default": {
-            "BACKEND": "django.core.cache.backends.memcached.MemcachedCache",
+            "BACKEND": "django.core.cache.backends.memcached.PyMemcacheCache",
             "LOCATION": "127.0.0.1:11211",
         }
     }
@@ -194,7 +196,6 @@ TIME_ZONE = "UTC"
 
 USE_I18N = True
 
-USE_L10N = True
 
 USE_TZ = True
 
