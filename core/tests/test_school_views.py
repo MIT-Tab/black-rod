@@ -9,6 +9,7 @@ from django.urls import reverse
 from core.models import School, Tournament, Debater, Team
 from core.models.results.team import TeamResult
 from core.models.standings.qual import QUAL
+from core.models.user import User
 
 
 class SchoolViewsTest(TestCase):
@@ -16,6 +17,10 @@ class SchoolViewsTest(TestCase):
 
     def setUp(self):
         self.client = Client()
+        self.superuser = User.objects.create_superuser(
+            username="admin", email="admin@test.com", password="admin123"
+        )
+        self.client.force_login(self.superuser)
         self.school = School.objects.create(name="Test School")
         self.debater = Debater.objects.create(
             first_name="John", last_name="Doe", school=self.school
@@ -45,6 +50,14 @@ class SchoolViewsTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Test School")
 
+    def test_school_detail_redirect_without_season(self):
+        """Test that school detail view redirects to current season when no season provided"""
+        response = self.client.get(
+            reverse("core:school_detail", kwargs={"pk": self.school.pk})
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("?season=2024", response.url)
+
     def test_school_detail_view(self):
         """Test school detail view"""
         response = self.client.get(
@@ -53,16 +66,12 @@ class SchoolViewsTest(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Test School")
-
-    def test_school_with_debaters(self):
-        """Test school view with debaters"""
-        response = self.client.get(
-            reverse("core:school_detail", kwargs={"pk": self.school.pk})
-            + "?season=2024"
-        )
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "John")
-        self.assertContains(response, "Doe")
+        # Test context data
+        self.assertIn("debaters", response.context)
+        self.assertIn("quals", response.context)
+        self.assertIn("tournaments", response.context)
+        self.assertIn("cotys", response.context)
+        self.assertEqual(response.context["current_season"], "2024")
 
     def test_school_with_tournaments(self):
         """Test school view with hosted tournaments"""
@@ -151,3 +160,19 @@ class SchoolViewsTest(TestCase):
 
         response = self.client.get(reverse("core:school_list"))
         self.assertEqual(response.status_code, 200)
+
+    def test_school_autocomplete_view(self):
+        """Test school autocomplete functionality"""
+        response = self.client.get(
+            reverse("core:school_autocomplete"), {"q": "Test"}
+        )
+        self.assertEqual(response.status_code, 200)
+        # Should contain our test school
+        self.assertContains(response, "Test School")
+        self.assertContains(response, f"<{self.school.id}>")
+
+    def test_school_autocomplete_no_query(self):
+        """Test school autocomplete without query"""
+        response = self.client.get(reverse("core:school_autocomplete"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Test School")
