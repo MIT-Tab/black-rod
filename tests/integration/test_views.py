@@ -1,11 +1,15 @@
 # pylint: disable=import-outside-toplevel
 from datetime import date
 import pytest
-from django.test import TestCase, Client
+from django.conf import settings
+from django.test import TestCase, Client, override_settings
+from django.urls import reverse
 
 from core.models.school import School
 from core.models.debater import Debater
+from core.models.team import Team
 from core.models.tournament import Tournament
+from core.models.standings.toty import TOTY
 
 
 class ViewTestCase(TestCase):
@@ -143,3 +147,52 @@ def test_model_creation():
     school = School.objects.create(name="Pytest School")
     assert school.name == "Pytest School"
     assert school.included_in_oty is True
+
+
+class IndexViewTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.school = School.objects.create(name="Index School", included_in_oty=True)
+        self.debaters = [
+            Debater.objects.create(first_name="Alex", last_name="First", school=self.school),
+            Debater.objects.create(first_name="Blair", last_name="Second", school=self.school),
+        ]
+        self.team = Team.objects.create(name="")
+        self.team.debaters.add(*self.debaters)
+        self.team.update_name()
+        self.team.save()
+        self.tournament = Tournament.objects.create(
+            name="Index Tournament",
+            host=self.school,
+            date=date.today(),
+            season="2024",
+            num_teams=16,
+        )
+        TOTY.objects.create(season="2024", team=self.team, points=18)
+
+    @override_settings(ONLINE_SEASONS=("2024",), ONLINE_QUAL_BAR=9.5, LAST_NOTY_SEASON=2025)
+    def test_index_sets_online_context_for_online_season(self):
+        response = self.client.get(
+            reverse("core:index"), {"season": "2024", "default": "coty"}
+        )
+
+        self.assertEqual(response.status_code, 200)
+        context = response.context
+        self.assertEqual(context["current_season"], "2024")
+        self.assertEqual(context["default"], "coty")
+        self.assertTrue(context["using_online_quals"])
+        self.assertEqual(context["online_qual_bar"], 9.5)
+        self.assertTrue(context["render_noty"])
+
+    @override_settings(LAST_NOTY_SEASON=2000)
+    def test_index_sanitizes_inputs_and_disables_noty(self):
+        response = self.client.get(
+            reverse("core:index"), {"season": "1900", "default": "invalid"}
+        )
+
+        self.assertEqual(response.status_code, 200)
+        context = response.context
+        self.assertEqual(context["current_season"], settings.CURRENT_SEASON)
+        self.assertEqual(context["default"], "toty")
+        self.assertFalse(context["using_online_quals"])
+        self.assertFalse(context["render_noty"])

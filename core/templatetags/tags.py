@@ -53,9 +53,18 @@ def opponent_side(round, team):
 
 
 @register.filter
-def number(num):
-    num = Decimal(num).normalize()
-    return num
+def number(num, exponent=None):
+    decimal_value = Decimal(num)
+
+    if exponent is not None:
+        try:
+            quantizer = Decimal("1").scaleb(int(exponent))
+            decimal_value = decimal_value.quantize(quantizer)
+        except (ValueError, ArithmeticError):
+            # Fall back to default normalization when the exponent is invalid.
+            pass
+
+    return decimal_value.normalize()
 
 
 @register.filter

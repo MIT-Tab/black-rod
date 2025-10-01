@@ -40,6 +40,11 @@ backup.sql
 # env
 .env
 
+# coverage artifacts
+.coverage*
+htmlcov/
+coverage.xml
+
 # deploy script
 deploy.sh
 bin/gunicorn_start

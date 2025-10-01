@@ -10,6 +10,7 @@ from core.models import School, Tournament, Debater, Team
 from core.models.debater import QualPoints
 from core.models.results.team import TeamResult
 from core.models.results.speaker import SpeakerResult
+from core.models.standings.coty import COTY
 from core.models.standings.qual import QUAL
 from core.models.standings.toty import TOTY, TOTYReaff
 from core.models.standings.online_qual import OnlineQUAL
@@ -180,7 +181,12 @@ class RankingsUtilsTest(TestCase):
 
     def test_update_qual_points(self):
         """Test update_qual_points function"""
-        # Create team results
+        # Configure tournament to auto-qual top four
+        self.tournament.autoqual_bar = 4
+        self.tournament.save()
+
+        expected_points = self.tournament.get_qual_points(place=3)
+
         TeamResult.objects.create(
             team=self.team,
             tournament=self.tournament,
@@ -191,13 +197,22 @@ class RankingsUtilsTest(TestCase):
         # Call update_qual_points
         rankings.update_qual_points(self.team, "2024")
 
-        # Check that QualPoints were created
-        qual_points = QualPoints.objects.filter(debater__in=self.team.debaters.all(), season="2024")
-        self.assertGreater(qual_points.count(), 0)
+        qual_points = QualPoints.objects.filter(
+            debater__in=self.team.debaters.all(), season="2024"
+        )
+        self.assertEqual(qual_points.count(), 2)
+        for qp in qual_points:
+            self.assertAlmostEqual(qp.points, expected_points)
 
-        # Check that QUAL records were created
-        quals = QUAL.objects.filter(debater__in=self.team.debaters.all(), season="2024")
-        self.assertGreater(quals.count(), 0)
+        quals = QUAL.objects.filter(
+            debater__in=self.team.debaters.all(), season="2024", qual_type=QUAL.POINTS
+        )
+        self.assertEqual(quals.count(), 2)
+
+        coty = COTY.objects.get(season="2024", school=self.school)
+        self.assertAlmostEqual(
+            coty.points, expected_points * 2 + len(self.team.debaters.all()) * 6
+        )
 
     def test_redo_rankings_toty(self):
         """Test redo_rankings function for toty"""
@@ -223,8 +238,44 @@ class RankingsUtilsTest(TestCase):
         self.assertIsNotNone(toty)
         self.assertEqual(toty.place, 1)
 
+    def test_redo_rankings_handles_ties_and_zero_entries(self):
+        other_school = School.objects.create(name="Second School", included_in_oty=True)
+        debater_a = Debater.objects.create(
+            first_name="Pat", last_name="Riley", school=other_school
+        )
+        debater_b = Debater.objects.create(
+            first_name="Morgan", last_name="Shaw", school=other_school
+        )
+        team_b = Team.objects.create(name="Alpha")
+        team_b.debaters.add(debater_a, debater_b)
+
+        team_c_school = School.objects.create(name="Zero School", included_in_oty=True)
+        debater_c1 = Debater.objects.create(
+            first_name="Dana", last_name="Cole", school=team_c_school
+        )
+        debater_c2 = Debater.objects.create(
+            first_name="Reese", last_name="Poe", school=team_c_school
+        )
+        team_c = Team.objects.create(name="Zero")
+        team_c.debaters.add(debater_c1, debater_c2)
+
+        TOTY.objects.create(season="2024", team=self.team, points=18)
+        TOTY.objects.create(season="2024", team=team_b, points=18)
+        TOTY.objects.create(season="2024", team=team_c, points=0)
+
+        rankings.redo_rankings(TOTY.objects.filter(season="2024"), "2024", "toty")
+
+        placements = {
+            toty.team_id: (toty.place, toty.tied)
+            for toty in TOTY.objects.filter(points__gt=0)
+        }
+        self.assertEqual(placements[self.team.id], (1, True))
+        self.assertEqual(placements[team_b.id], (1, True))
+        self.assertNotIn(team_c.id, placements)
+        self.assertFalse(TOTY.objects.filter(team=team_c, season="2024").exists())
+
     def test_update_online_quals(self):
-        """Test update_online_quals function"""
+        """Test update_online_quals awards points and promotes quals for online seasons"""
         # Create tournament with online quals
         online_tournament = Tournament.objects.create(
             name="Online Tournament",
@@ -243,13 +294,22 @@ class RankingsUtilsTest(TestCase):
             place=1,
         )
 
-        # Call update_online_quals
-        rankings.update_online_quals(self.team, "2024")
+        with self.settings(ONLINE_SEASONS=("2024",), ONLINE_QUAL_BAR=10):
+            rankings.update_online_quals(self.team, "2024")
 
-        # Check that OnlineQUAL was created
-        online_qual = OnlineQUAL.objects.filter(team=self.team, season="2024")
-        self.assertEqual(online_qual.count(), 1)
-        self.assertGreater(online_qual.first().points, 0)
+        online_qual = OnlineQUAL.objects.filter(
+            debater__in=self.team.debaters.all(), season="2024"
+        ).order_by("debater_id")
+        self.assertEqual(online_qual.count(), 2)
+        for oq in online_qual:
+            self.assertAlmostEqual(oq.points, 12.5)
+            self.assertAlmostEqual(oq.marker_one, 12.5)
+        self.assertTrue(all(oq.tournament_one == online_tournament for oq in online_qual))
+
+        quals = QUAL.objects.filter(
+            debater__in=self.team.debaters.all(), season="2024", qual_type=QUAL.POINTS
+        )
+        self.assertEqual(quals.count(), 2)
 
     def test_update_toty_no_debaters(self):
         """Test update_toty with team having no debaters"""
@@ -297,9 +357,12 @@ class RankingsUtilsTest(TestCase):
             host=self.school,
             date=date(2024, 2, 1),
             season="2019",  # Use a season before LAST_NOTY_SEASON
-            noty=True,
             num_teams=16,
         )
+        Tournament.objects.filter(pk=novice_tournament.pk).update(
+            noty=True, num_novice_debaters=20
+        )
+        novice_tournament.refresh_from_db()
 
         # Create speaker results for novice
         SpeakerResult.objects.create(
@@ -313,7 +376,7 @@ class RankingsUtilsTest(TestCase):
         try:
             noty = rankings.update_noty(self.debater1, 2019)
             self.assertIsNotNone(noty)
+            self.assertAlmostEqual(noty.points, novice_tournament.get_noty_points(1))
         except AttributeError:
             # Settings not available
             self.skipTest("Settings not available")
-
