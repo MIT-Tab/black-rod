@@ -1,4 +1,4 @@
-# pylint: disable=unused-wildcard-import,wildcard-import,unused-import
+# pylint: disable=unused-wildcard-import,wildcard-import,unused-import,abstract-class-instantiated
 import sentry_sdk
 from sentry_sdk.integrations.django import DjangoIntegration
 

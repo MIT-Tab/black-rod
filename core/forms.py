@@ -4,16 +4,11 @@ from dal import autocomplete
 from django import forms
 from django.conf import settings
 from django.core.validators import URLValidator
-from django.core.exceptions import ValidationError
-from django.forms import formset_factory, Select
-from django.utils.safestring import mark_safe
-import json
+from django.forms import formset_factory
 from django_summernote.widgets import SummernoteInplaceWidget
 
 from core.models import Team, TOTYReaff
 from core.models.debater import Debater, QualPoints, Reaff
-from core.models.results.speaker import SpeakerResult
-from core.models.results.team import TeamResult
 from core.models.school import School
 from core.models.standings.coty import COTY
 from core.models.standings.noty import NOTY
@@ -185,7 +180,7 @@ class SpeakerResultForm(forms.Form):
         widget=autocomplete.ModelSelect2(url="core:debater_autocomplete"),
         required=False,
     )
-    
+
     tie = forms.BooleanField(label="Tie", required=False)
 
 
@@ -195,18 +190,18 @@ class DebaterCreationFormsetBase(forms.BaseFormSet):
 
 class SchoolCreationFormsetBase(forms.BaseFormSet):
     required_fields = ['name']
-    
+
     def clean(self):
         if not self.forms:
             return
-        
+
         school_names = []
         for form in self.forms:
             if form.cleaned_data and not form.cleaned_data.get('DELETE'):
                 name = form.cleaned_data.get('name', '').strip()
                 if name:
                     school_names.append(name)
-        
+
         if school_names:
             existing_schools = set(School.objects.filter(name__in=school_names).values_list('name', flat=True))
             for form in self.forms:

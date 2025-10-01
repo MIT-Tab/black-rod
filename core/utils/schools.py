@@ -15,6 +15,6 @@ def get_debaters_for_season(school, season):
             return int(season) - int(debater.first_season) + 1
         except (ValueError, TypeError):
             return 0
-    
+
     debaters.sort(key=years_on_team, reverse=True)
     return debaters

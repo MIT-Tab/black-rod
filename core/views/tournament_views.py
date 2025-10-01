@@ -1,6 +1,7 @@
 from datetime import timedelta
 from dal import autocomplete
 from django.conf import settings
+from django.contrib import messages
 from django.db.models import Q
 from django.http import QueryDict
 from django.shortcuts import redirect
@@ -13,7 +14,6 @@ from core.forms import (
     TournamentForm,
 )
 from core.utils.api_data import APIDataHandler
-from django.contrib import messages
 from core.models.debater import Debater
 from core.models.round import Round
 from core.models.team import Team
@@ -211,25 +211,25 @@ class TournamentCreateView(CustomCreateView):
 
     def form_valid(self, form):
         api_url = form.cleaned_data.get('api_url')
-        
+
         if api_url:
             APIDataHandler.clear_tournament_session_data(self.request)
-            
+
             api_handler = APIDataHandler(self.request)
             api_handler.set_api_url(api_url)
-            
+
             is_valid, error_message = api_handler.validate_api_connection()
             if not is_valid:
                 messages.error(self.request, f"API Error: {error_message}")
                 form.add_error('api_url', f"API Error: {error_message}")
                 return self.form_invalid(form)
-        
+
             response = super().form_valid(form)
             tournament = self.object
-            
+
             # Set the tournament ID in session for this API workflow
             api_handler.set_tournament_id(tournament.id)
-            
+
             return redirect(f"{reverse_lazy('core:tournament_dataentry')}?tournament={tournament.id}")
         return super().form_valid(form)
 

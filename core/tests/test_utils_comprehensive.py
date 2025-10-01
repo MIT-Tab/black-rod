@@ -43,12 +43,12 @@ class PointsUtilsTest(TestCase):
         """Test team_points_for_size function"""
         # Test small tournaments (< 8 teams)
         self.assertEqual(points.team_points_for_size(6, 1), 0)
-        
+
         # Test medium tournaments (8-15 teams)
         self.assertEqual(points.team_points_for_size(10, 1), 8)
         self.assertEqual(points.team_points_for_size(10, 2), 4)
         self.assertEqual(points.team_points_for_size(10, 3), 0)
-        
+
         # Test large tournaments (16-71 teams)
         self.assertEqual(points.team_points_for_size(20, 1), 12)  # 12 + floor((20-16)/8) = 12 + 0 = 12
         self.assertEqual(points.team_points_for_size(24, 1), 13)  # floor((24-16)/8) = floor(8/8) = 1, so 12 + 1 = 13
@@ -56,10 +56,10 @@ class PointsUtilsTest(TestCase):
         self.assertEqual(points.team_points_for_size(24, 3), 3.75)  # 3 + 0.75 * 1 = 3.75
         self.assertEqual(points.team_points_for_size(24, 5), 0.5)   # 0.5 * 1 = 0.5
         self.assertEqual(points.team_points_for_size(24, 10), 0)
-        
+
         # Test with ghost points
         self.assertEqual(points.team_points_for_size(24, 5, ghost_points=True), 3.75)
-        
+
         # Test tournaments with 72-79 teams
         self.assertEqual(points.team_points_for_size(75, 1), 19)
         self.assertEqual(points.team_points_for_size(75, 2), 15)
@@ -67,7 +67,7 @@ class PointsUtilsTest(TestCase):
         self.assertEqual(points.team_points_for_size(75, 5), 3.5)   # place < 9
         self.assertEqual(points.team_points_for_size(75, 10), 0.75) # place < 17
         self.assertEqual(points.team_points_for_size(75, 20), 0)   # place >= 17
-        
+
         # Test very large tournaments (>= 80 teams)
         self.assertEqual(points.team_points_for_size(80, 1), 20)
         self.assertEqual(points.team_points_for_size(80, 2), 16)
@@ -81,17 +81,17 @@ class PointsUtilsTest(TestCase):
         """Test speaker_points_for_size function"""
         # Test small tournaments
         self.assertEqual(points.speaker_points_for_size(6, 1), 0)
-        
+
         # Test medium tournaments (8-15 teams)
         self.assertEqual(points.speaker_points_for_size(10, 1), 8)
         self.assertEqual(points.speaker_points_for_size(10, 2), 5.5)  # 8 - 2.5*(2-1) = 5.5
         self.assertEqual(points.speaker_points_for_size(10, 3), 3)     # 8 - 2.5*(3-1) = 3
-        
+
         # Test large tournaments (16-79 teams)
         self.assertEqual(points.speaker_points_for_size(20, 1), 12)    # 12 + floor((20-16)/8) = 12 + 0 = 12
         self.assertEqual(points.speaker_points_for_size(24, 1), 13)    # 12 + 1 = 13
         self.assertEqual(points.speaker_points_for_size(24, 2), 10.5)  # 13 - 2.5 = 10.5
-        
+
         # Test very large tournaments (>= 80 teams)
         self.assertEqual(points.speaker_points_for_size(80, 1), 20)
         self.assertEqual(points.speaker_points_for_size(80, 2), 17.5)  # 20 - 2.5 = 17.5
@@ -101,11 +101,10 @@ class PointsUtilsTest(TestCase):
         # Test with small number of novices
         self.assertEqual(points.novice_points_for_size(5, 1), 10)   # min(20, 10 + floor(5/8)) = 10
         self.assertEqual(points.novice_points_for_size(5, 2), 7.5)  # 10 - 2.5 = 7.5
-        
+
         # Test with large number of novices
         self.assertEqual(points.novice_points_for_size(20, 1), 12)  # min(20, 10 + floor(20/8)) = min(20, 12) = 12
         self.assertEqual(points.novice_points_for_size(20, 2), 9.5)  # 12 - 2.5 = 9.5
-        """Test points calculation functions"""
         # Test various points calculation methods
         if hasattr(points, "calculate_speaks"):
             try:

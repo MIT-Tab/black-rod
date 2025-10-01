@@ -1,9 +1,8 @@
-import urllib.request
-
 from django.conf import settings
 from django.core.cache import cache
 from django.core.cache.utils import make_template_fragment_key
 from django.shortcuts import reverse
+from django.test import Client
 
 from core.models.debater import Debater, QualPoints, Reaff
 from core.models.results.team import TeamResult
@@ -13,7 +12,6 @@ from core.models.standings.online_qual import OnlineQUAL
 from core.models.standings.qual import QUAL
 from core.models.standings.soty import SOTY
 from core.models.standings.toty import TOTY, TOTYReaff
-from django.test import Client
 
 
 def get_qualled_debaters(school, season):
@@ -304,7 +302,7 @@ def update_qual_points(team, season=settings.CURRENT_SEASON):
             if latest_season is None or int(latest_season) < current_season:
                 debater.latest_season = settings.CURRENT_SEASON
                 debater.save()
-                
+
         for result in results:
             if result.place != -1 and result.place <= result.tournament.autoqual_bar:
                 try:
@@ -533,16 +531,16 @@ def update_online_quals(team, season=settings.CURRENT_SEASON):
     return True
 
 def place_as_round(place):
-        rounds = [
-            (1, "1st"),
-            (2, "2nd"),
-            (4, "Semi-Finalist"),
-            (8, "Quarter-Finalist"),
-            (16, "Octo-Finalist"),
-            (32, "Double Octo-Finalist"),
-            (64, "Quadruple Octo-Finalist"),
-        ]
-        for cutoff, name in rounds:
-            if place <= cutoff:
-                return name
-        return f"Top {place}"
+    rounds = [
+        (1, "1st"),
+        (2, "2nd"),
+        (4, "Semi-Finalist"),
+        (8, "Quarter-Finalist"),
+        (16, "Octo-Finalist"),
+        (32, "Double Octo-Finalist"),
+        (64, "Quadruple Octo-Finalist"),
+    ]
+    for cutoff, name in rounds:
+        if place <= cutoff:
+            return name
+    return f"Top {place}"

@@ -30,15 +30,15 @@ from core.utils.rankings import (
 class TournamentDataEntryWizardView(CustomMixin, SessionWizardView):
     permission_required = "core.change_tournament"
     step_names = {
-        "0": "Create New Schools", 
-        "1": "Create New Debaters", 
-        "2": "Varsity Team Awards", 
-        "3": "Varsity Speaker Awards", 
-        "4": "Novice Team Awards", 
-        "5": "Novice Speaker Awards", 
+        "0": "Create New Schools",
+        "1": "Create New Debaters",
+        "2": "Varsity Team Awards",
+        "3": "Varsity Speaker Awards",
+        "4": "Novice Team Awards",
+        "5": "Novice Speaker Awards",
         "6": "Non-placing Teams"
     }
-    
+
     step_configs = {
         "0": {"type": "school", "name": "School", "has_ghost_points": False},
         "1": {"type": "debater", "name": "Debater", "has_ghost_points": False},
@@ -48,38 +48,39 @@ class TournamentDataEntryWizardView(CustomMixin, SessionWizardView):
         "5": {"type": "speaker", "name": "Speaker", "has_ghost_points": False},
         "6": {"type": "team", "name": "Unplaced Team", "is_unplaced": True, "has_ghost_points": False},
     }
-    
+
     form_list = [
-        SchoolCreationFormset, 
-        DebaterCreationFormset, 
-        VarsityTeamResultFormset, 
-        VarsitySpeakerResultFormset, 
-        NoviceTeamResultFormset, 
-        NoviceSpeakerResultFormset, 
+        SchoolCreationFormset,
+        DebaterCreationFormset,
+        VarsityTeamResultFormset,
+        VarsitySpeakerResultFormset,
+        NoviceTeamResultFormset,
+        NoviceSpeakerResultFormset,
         UnplacedTeamResultFormset
     ]
     template_name = "tournaments/data_entry.html"
-    
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._api_handler = None
+        self._tournament = None
 
     def dispatch(self, request, *args, **kwargs):
         # Get the tournament ID from URL parameters
         current_tournament_id = request.GET.get("tournament")
         if current_tournament_id:
             current_tournament_id = int(current_tournament_id)
-        
+
         # Check if we have session data for a different tournament
         api_handler = APIDataHandler(request)
         session_tournament_id = api_handler.get_tournament_id()
-        
+
         # If tournament IDs don't match, clear stale session data
         if session_tournament_id and session_tournament_id != current_tournament_id:
             APIDataHandler.clear_tournament_session_data(request)
-        
+
         return super().dispatch(request, *args, **kwargs)
-        
+
     def render_done(self, form, **kwargs):
         """
         Override the render_done method to bypass validation for step 0 (SchoolCreationFormset)
@@ -88,7 +89,7 @@ class TournamentDataEntryWizardView(CustomMixin, SessionWizardView):
         if self.has_api_data():
             form_dict = {}
             form_list = []
-            
+
             for step in self.get_form_list():
                 if step == '0':
                     form_obj = self.get_form(step=step, data=self.storage.get_step_data(step),
@@ -97,16 +98,16 @@ class TournamentDataEntryWizardView(CustomMixin, SessionWizardView):
                     form_list.append(form_obj)
                     form_dict[step] = form_obj
                     continue
-                
+
                 form_obj = self.get_form(step=step, data=self.storage.get_step_data(step),
                                        files=self.storage.get_step_files(step))
                 if not form_obj.is_valid():
                     return self.render_revalidation_failure(step, form_obj, **kwargs)
                 form_list.append(form_obj)
                 form_dict[step] = form_obj
-            
+
             return self.done(form_list, form_dict)
-        
+
         return super().render_done(form, **kwargs)
 
     def get_api_handler(self):
@@ -131,7 +132,7 @@ class TournamentDataEntryWizardView(CustomMixin, SessionWizardView):
                 form.initial = fresh_initial
                 form = form.__class__(initial=fresh_initial, prefix=form.prefix, **form.form_kwargs if hasattr(form, 'form_kwargs') else {})
             return form
-        
+
         return super().get_form(step, data, files)
 
     def _get_tournament(self):
@@ -146,15 +147,15 @@ class TournamentDataEntryWizardView(CustomMixin, SessionWizardView):
         handler = self.get_api_handler()
         if step == "0":
             return handler.get_new_schools_from_api()
-        elif step == "1":
+        if step == "1":
             return handler.get_new_debaters_from_api()
-        elif step in ["2", "3", "4", "5", "6"]:
+        if step in ["2", "3", "4", "5", "6"]:
             endpoints = {
-                "2": 'varsity-team-placements', "3": 'varsity-speaker-awards', 
+                "2": 'varsity-team-placements', "3": 'varsity-speaker-awards',
                 "4": 'novice-team-placements', "5": 'novice-speaker-awards', "6": 'non-placing-teams'
             }
             endpoint = endpoints[step]
-            return (handler.get_teams_from_api(endpoint) if step in ["2", "4", "6"] 
+            return (handler.get_teams_from_api(endpoint) if step in ["2", "4", "6"]
                    else handler.get_speakers_from_api(endpoint))
         return []
 
@@ -162,24 +163,24 @@ class TournamentDataEntryWizardView(CustomMixin, SessionWizardView):
         configs = {
             "2": (Debater.VARSITY, "team", {"place__gt": 0}),
             "3": (Debater.VARSITY, "speaker", {"place__gt": 0}),
-            "4": (Debater.NOVICE, "team", {"place__gt": 0}), 
+            "4": (Debater.NOVICE, "team", {"place__gt": 0}),
             "5": (Debater.NOVICE, "speaker", {"place__gt": 0}),
             "6": (Debater.VARSITY, "team", {"place": -1})
         }
         if step not in configs:
             return []
         type_of_place, result_type, place_filter = configs[step]
-        
+
         if result_type == "speaker":
             results = SpeakerResult.objects.filter(
                 tournament=tournament, type_of_place=type_of_place, **place_filter
             ).select_related('debater', 'debater__school').order_by("place")
             return [{"speaker": r.debater, "tie": r.tie} for r in results]
-        
+
         results = TeamResult.objects.filter(
             tournament=tournament, type_of_place=type_of_place, **place_filter
         ).select_related('team').prefetch_related('team__debaters__school').order_by("place")
-        
+
         initial = []
         for result in results:
             debaters = list(result.team.debaters.all())
@@ -194,10 +195,10 @@ class TournamentDataEntryWizardView(CustomMixin, SessionWizardView):
 
     def get_context_data(self, *args, **kwargs):
         context = super().get_context_data(*args, **kwargs)
-        
+
         current_step = self.steps.current
         step_config = self.step_configs.get(current_step, {"type": "item", "name": "Item"})
-        
+
         context.update({
             "title": self.step_names[self.steps.current],
             "debater_form": DebaterForm(),
@@ -211,16 +212,16 @@ class TournamentDataEntryWizardView(CustomMixin, SessionWizardView):
         step = self.steps.current
         if not self.has_api_data():
             return super().process_step(form)
-            
+
         if step == "0":
-            school_data = [{'name': fd['name'], 'included_in_oty': fd.get('included_in_oty', True)} 
+            school_data = [{'name': fd['name'], 'included_in_oty': fd.get('included_in_oty', True)}
                           for fd in form.cleaned_data if fd.get('name')]
             if school_data:
                 self.get_api_handler().create_schools_from_data(school_data)
         elif step == "1":
-            debater_data = [{'first_name': fd['first_name'], 'last_name': fd['last_name'], 
+            debater_data = [{'first_name': fd['first_name'], 'last_name': fd['last_name'],
                            'school': fd['school'], 'tournament_id': fd.get('tournament_id')}
-                          for fd in form.cleaned_data 
+                          for fd in form.cleaned_data
                           if fd.get('first_name') and fd.get('last_name') and fd.get('school')]
             if debater_data:
                 self.get_api_handler().create_debaters_from_data(debater_data)
@@ -240,7 +241,7 @@ class TournamentDataEntryWizardView(CustomMixin, SessionWizardView):
         self._create_speaker_results(tournament, form_dict["3"], Debater.VARSITY, speakers_to_update)
         self._create_speaker_results(tournament, form_dict["5"], Debater.NOVICE, novices_to_update)
         self._update_rankings(tournament, teams_to_update, speakers_to_update, novices_to_update)
-        
+
         # Clear tournament session data when done
         APIDataHandler.clear_tournament_session_data(self.request)
         return redirect("core:tournament_detail", pk=tournament.id)
@@ -298,7 +299,7 @@ class TournamentDataEntryWizardView(CustomMixin, SessionWizardView):
             update_noty(debater)
 
         rankings_to_update = [
-            (TOTY, "toty"), (SOTY, "soty"), (NOTY, "noty"), 
+            (TOTY, "toty"), (SOTY, "soty"), (NOTY, "noty"),
             (COTY, "coty"), (OnlineQUAL, "online_quals")
         ]
         for model, cache_type in rankings_to_update:
@@ -316,9 +317,9 @@ def get_new_team_form(request):
     has_ghost_points = request.GET.get('has_ghost_points') in {'1', 'true', 'True'}
     item_name = request.GET.get('item_name') or (form_type.replace('_', ' ').title() if form_type else 'Item')
     form_config = {
-        'team': (VarsityTeamResultFormset, '2'), 
+        'team': (VarsityTeamResultFormset, '2'),
         'speaker': (VarsitySpeakerResultFormset, '3'),
-        'school': (SchoolCreationFormset, '0'), 
+        'school': (SchoolCreationFormset, '0'),
         'debater': (DebaterCreationFormset, '1')
     }
     FormsetClass, step_prefix = form_config.get(form_type, (VarsitySpeakerResultFormset, '3'))
