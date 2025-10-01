@@ -18,4 +18,7 @@ def sync_apda_permissions_on_login(request, user, **kwargs):
     can_view = "private_side_viewer" in roles
     if user.can_view_private_videos != can_view:
         user.can_view_private_videos = can_view
-        user.save(update_fields=["can_view_private_videos"])
+        try:
+            user.save(update_fields=["can_view_private_videos"])
+        except ValueError:
+            user.save()

@@ -1,5 +1,6 @@
 # pylint: disable=import-outside-toplevel
 from datetime import date
+from django.conf import settings
 from django.test import TestCase, Client
 from django.urls import reverse
 
@@ -17,8 +18,8 @@ class TournamentViewsTest(TestCase):
         self.tournament = Tournament.objects.create(
             manual_name="Test Tournament",
             host=self.school,
-            date=date(2024, 1, 1),
-            season="2024",
+            date=date.today(),
+            season=settings.CURRENT_SEASON,
         )
         self.debater = Debater.objects.create(
             first_name="Test", last_name="Debater", school=self.school
@@ -78,18 +79,27 @@ class TournamentViewsTest(TestCase):
     def test_tournament_filter_by_season(self):
         """Test filtering tournaments by season"""
         # Create another tournament in different season
-        tournament_2025 = Tournament.objects.create(
-            manual_name="2025 Tournament",
+        next_season = str(int(settings.CURRENT_SEASON) + 1)
+        tournament_next = Tournament.objects.create(
+            manual_name=f"{next_season} Tournament",
             host=self.school,
-            date=date(2025, 1, 1),
-            season="2025",
+            date=date(int(next_season), 1, 1),
+            season=next_season,
+        )
+        # Add results to the next season tournament too
+        next_team = Team.objects.create(name="Next Team")
+        TeamResult.objects.create(
+            tournament=tournament_next,
+            team=next_team,
+            place=1,
+            type_of_place=Debater.VARSITY,
+            ghost_points=False,
         )
 
-        response = self.client.get(reverse("core:tournament_list"), {"season": "2024"})
-        print(response.content)  # Debugging line to check response content
+        response = self.client.get(reverse("core:tournament_list"), {"season": settings.CURRENT_SEASON})
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Test Tournament")
-        self.assertNotContains(response, "2025 Tournament")
+        self.assertNotContains(response, f"{next_season} Tournament")
 
     def test_tournament_with_qualifications(self):
         """Test tournament with qualification type"""

@@ -1,0 +1,124 @@
+name: PR Checks
+
+on:
+  pull_request:
+    branches: [ master, main ]
+
+jobs:
+  pylint:
+    name: Python Linting
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10.16'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m venv venv
+          source venv/bin/activate
+          pip install --upgrade pip setuptools wheel -c constraints.txt
+          pip install -r requirements.txt -c constraints.txt
+          pip install pylint
+
+      - name: Run Pylint
+        run: |
+          source venv/bin/activate
+          pylint apda apdaonline core --ignore-patterns='^tests?$'
+
+  lint_html:
+    name: HTML Linting
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10.16'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m venv venv
+          source venv/bin/activate
+          pip install --upgrade pip setuptools wheel -c constraints.txt
+          pip install -r requirements.txt -c constraints.txt
+          pip install djlint
+
+      - name: Run djlint
+        run: |
+          source venv/bin/activate
+          djlint core/templates
+
+  lint_js:
+    name: JavaScript Linting
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run ESLint
+        run: npm run lint
+
+  test:
+    name: Tests with Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10.16'
+          cache: 'pip'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Python dependencies
+        run: |
+          python -m venv venv
+          source venv/bin/activate
+          pip install --upgrade pip setuptools wheel -c constraints.txt
+          pip install -r requirements.txt -c constraints.txt
+          pip install pytest pytest-django pytest-cov
+
+      - name: Build frontend assets
+        run: |
+          npm install
+          npm run build
+
+      - name: Run tests with coverage
+        env:
+          ENV: testing
+          DEBUG: 1
+        run: |
+          source venv/bin/activate
+          pytest
+
+      - name: Upload coverage reports
+        uses: codecov/codecov-action@v4
+        if: always()
+        with:
+          fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}

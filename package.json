@@ -5,7 +5,9 @@
   "main": "index.js",
   "scripts": {
     "build": "webpack --config webpack.config.js --progress --color --mode=development",
-    "watch": "webpack --config webpack.config.js --watch --mode=development"
+    "watch": "webpack --config webpack.config.js --watch --mode=development",
+    "lint": "eslint webpack.config.js 'apda/assets/js/**/*.js'",
+    "lint:fix": "eslint webpack.config.js 'apda/assets/js/**/*.js' --fix"
   },
   "repository": {
     "type": "git",
@@ -13,6 +15,9 @@
   },
   "author": "Rodda John",
   "license": "MIT",
+  "engines": {
+    "node": "20.19.4"
+  },
   "bugs": {
     "url": "https://github.com/MIT-Tab/black-rod/issues"
   },
@@ -22,13 +27,19 @@
     "@babel/preset-env": "^7.28.3",
     "autoprefixer": "^10.4.21",
     "babel-loader": "^9.2.1",
-    "bootstrap-datepicker": "1.9.0",
     "css-loader": "^6.11.0",
+    "eslint": "^8.57.1",
+    "eslint-config-airbnb-base": "^15.0.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-import-resolver-webpack": "^0.13.10",
+    "eslint-plugin-import": "^2.32.0",
+    "eslint-plugin-prettier": "^5.5.4",
     "less": "^4.4.1",
     "less-loader": "^11.1.4",
     "postcss": "^8.5.6",
     "postcss-loader": "^7.3.4",
     "precss": "4.0.0",
+    "prettier": "^3.6.2",
     "sass": "^1.91.0",
     "sass-loader": "^13.3.3",
     "style-loader": "^3.3.4",
@@ -38,9 +49,44 @@
   },
   "dependencies": {
     "bootstrap": "4.6.0",
+    "bootstrap-datepicker": "1.9.0",
     "jquery": "^3.7.1",
     "jquery-ui": "^1.14.1",
     "popper.js": "1.16.1",
     "select2": "4.0.11"
+  },
+  "eslintConfig": {
+    "extends": ["airbnb-base", "prettier"],
+    "plugins": ["prettier"],
+    "rules": {
+      "prettier/prettier": "error",
+      "no-bitwise": "off",
+      "no-alert": "off",
+      "max-len": ["error", 120],
+      "import/no-unresolved": "off"
+    },
+    "env": {
+      "browser": true,
+      "jquery": true
+    }
+  },
+  "prettier": {
+    "trailingComma": "all",
+    "tabWidth": 2,
+    "semi": true,
+    "singleQuote": false,
+    "printWidth": 80
+  },
+  "babel": {
+    "presets": [
+      [
+        "@babel/preset-env",
+        {
+          "targets": {
+            "browsers": [">0.5%", "last 2 versions", "not dead"]
+          }
+        }
+      ]
+    ]
   }
 }
