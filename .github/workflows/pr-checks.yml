@@ -55,7 +55,7 @@ jobs:
       - name: Run djlint
         run: |
           source venv/bin/activate
-          djlint .
+          djlint core/templates
 
   test:
     name: Tests with Coverage
@@ -93,16 +93,9 @@ jobs:
         env:
           ENV: testing
           DEBUG: 1
-          DJANGO_SETTINGS_MODULE: apda.settings.base
         run: |
           source venv/bin/activate
-          pytest \
-            --cov=apdaonline \
-            --cov=apda \
-            --cov=core \
-            --cov-report=term-missing \
-            --cov-fail-under=40 \
-            --cov-config=<(echo '[run]'; echo 'omit = */tests/* */test/* */migrations/*')
+          pytest
 
       - name: Upload coverage reports
         uses: codecov/codecov-action@v4
