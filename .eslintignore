@@ -1,0 +1,7 @@
+node_modules/
+venv310/
+htmlcov/
+apda/static_root/
+apda/assets/webpack_bundles/
+*.min.js
+webpack-stats.json

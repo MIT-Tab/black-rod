@@ -1,0 +1,29 @@
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "apda.settings.base"
+testpaths = ["tests/unit", "tests/integration"]
+addopts = "--cov=core --cov=apda --cov=apdaonline --cov-report=term-missing --cov-fail-under=80 --reuse-db"
+python_files = ["tests.py", "test_*.py", "*_tests.py"]
+
+[tool.coverage.run]
+branch = true
+source = ["core", "apda"]
+omit = [
+    "*/migrations/*",
+    "*/tests/*",
+    "*/test_*.py",
+    "*/tests.py",
+    "manage.py",
+    "update_otys.py",
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+    "if settings.DEBUG",
+]
+
+[tool.coverage.html]
+directory = "htmlcov"
