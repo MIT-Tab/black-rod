@@ -235,9 +235,9 @@ class TournamentDataEntryWizardView(CustomMixin, SessionWizardView):
         SpeakerResult.objects.filter(tournament=tournament).delete()
         QUAL.objects.filter(tournament=tournament).delete()
 
-        self._create_team_results(tournament, form_dict["2"], Debater.VARSITY, teams_to_update, True)
-        self._create_team_results(tournament, form_dict["4"], Debater.NOVICE, teams_to_update, False)
-        self._create_team_results(tournament, form_dict["6"], Debater.VARSITY, teams_to_update, False, -1)
+        self._create_team_results(tournament, form_dict["2"], Debater.VARSITY, teams_to_update, has_ghost_points=True)
+        self._create_team_results(tournament, form_dict["4"], Debater.NOVICE, teams_to_update)
+        self._create_team_results(tournament, form_dict["6"], Debater.VARSITY, teams_to_update, place=-1)
         self._create_speaker_results(tournament, form_dict["3"], Debater.VARSITY, speakers_to_update)
         self._create_speaker_results(tournament, form_dict["5"], Debater.NOVICE, novices_to_update)
         self._update_rankings(tournament, teams_to_update, speakers_to_update, novices_to_update)
@@ -246,7 +246,9 @@ class TournamentDataEntryWizardView(CustomMixin, SessionWizardView):
         APIDataHandler.clear_tournament_session_data(self.request)
         return redirect("core:tournament_detail", pk=tournament.id)
 
-    def _create_team_results(self, tournament, form_data, type_of_place, teams_to_update, has_ghost_points=False, place=None):
+    def _create_team_results(self, tournament, form_data, type_of_place, teams_to_update, **kwargs):
+        has_ghost_points = kwargs.get('has_ghost_points', False)
+        place = kwargs.get('place', None)
         results_to_create = []
         for i, team_data in enumerate(form_data.cleaned_data):
             debater_one = team_data.get("debater_one")
