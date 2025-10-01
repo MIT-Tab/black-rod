@@ -326,11 +326,12 @@ def test_tournament_autocomplete_only_unentered(school):
 
 
 def test_schedule_view_groups_by_month(school):
+    year = int(settings.CURRENT_SEASON)
     Tournament.objects.create(
         name="Alpha",
         manual_name="Alpha",
         host=school,
-        date=date(2024, 1, 5),
+        date=date(year, 1, 5),
         season=settings.CURRENT_SEASON,
         qual_type=0,
     )
@@ -338,7 +339,7 @@ def test_schedule_view_groups_by_month(school):
         name="Beta",
         manual_name="Beta",
         host=school,
-        date=date(2024, 1, 12),
+        date=date(year, 1, 12),
         season=settings.CURRENT_SEASON,
         qual_type=1,
     )
@@ -346,19 +347,19 @@ def test_schedule_view_groups_by_month(school):
         name="Gamma",
         manual_name="Gamma",
         host=school,
-        date=date(2024, 2, 2),
+        date=date(year, 2, 2),
         season=settings.CURRENT_SEASON,
         qual_type=2,
     )
 
-    request = RequestFactory().get("/schedule/?season=2024")
+    request = RequestFactory().get(f"/schedule/?season={settings.CURRENT_SEASON}")
     request.user = SimpleNamespace(is_authenticated=True, has_perms=lambda perms: True)
 
     view = tv.ScheduleView()
     view.setup(request)
     context = view.get_context_data()
 
-    assert context["current_season"] == "2024"
+    assert context["current_season"] == settings.CURRENT_SEASON
     jan_entry = next(item for item in context["tournaments"] if item["month"] == 1)
     jan_names = [t.name for week in jan_entry["weeks"] for t in week["tournaments"]]
     assert "Alpha" in jan_names

@@ -3,6 +3,7 @@
 Tests for school views
 """
 from datetime import date
+from django.conf import settings
 from django.test import TestCase, Client
 from django.urls import reverse
 
@@ -56,13 +57,13 @@ class SchoolViewsTest(TestCase):
             reverse("core:school_detail", kwargs={"pk": self.school.pk})
         )
         self.assertEqual(response.status_code, 302)
-        self.assertIn("?season=2024", response.url)
+        self.assertIn(f"?season={settings.CURRENT_SEASON}", response.url)
 
     def test_school_detail_view(self):
         """Test school detail view"""
         response = self.client.get(
             reverse("core:school_detail", kwargs={"pk": self.school.pk})
-            + "?season=2024"
+            + f"?season={settings.CURRENT_SEASON}"
         )
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Test School")
@@ -71,7 +72,7 @@ class SchoolViewsTest(TestCase):
         self.assertIn("quals", response.context)
         self.assertIn("tournaments", response.context)
         self.assertIn("cotys", response.context)
-        self.assertEqual(response.context["current_season"], "2024")
+        self.assertEqual(response.context["current_season"], settings.CURRENT_SEASON)
 
     def test_school_with_tournaments(self):
         """Test school view with hosted tournaments"""
