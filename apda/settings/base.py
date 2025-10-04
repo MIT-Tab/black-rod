@@ -272,10 +272,19 @@ NAV_MENU_LEFT = [
     {"name": "Videos", "url": "core:video_list", "root": True},
     {"name": "Schedule", "url": "core:schedule_view", "root": True},
     {
+        "name": "School Admin",
+        "url": "core:school_admin_dashboard",
+        "validators": ["core.menu_validators.is_school_admin"],
+    },
+    {
         "name": "Admin",
         "url": "/admin/",
         "validators": ["menu_generator.validators.is_superuser"],
         "submenu": [
+            {
+                "name": "Manage School Admins",
+                "url": "core:manage_school_admins",
+            },
             {
                 "name": "Django Admin",
                 "url": "/admin/",

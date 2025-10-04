@@ -3,6 +3,7 @@ from .results.speaker import SpeakerResult
 from .results.team import TeamResult
 from .round import Round, RoundStats
 from .school import School, SchoolLookup
+from .school_admin import SchoolAdmin
 from .site_settings import SiteSetting
 from .standings.coty import COTY
 from .standings.noty import NOTY
@@ -22,6 +23,7 @@ __all__ = [
     "QualPoints",
     "School",
     "SchoolLookup",
+    "SchoolAdmin",
     "Team",
     "Tournament",
     "Round",
