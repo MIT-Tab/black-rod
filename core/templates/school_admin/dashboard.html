@@ -1,0 +1,86 @@
+{% extends "base/base.html" %}
+{% load tags %}
+{% block content %}
+    <div class="row mt-lg-5 ml-lg-2 mr-lg-2 mb-lg-5 m-1">
+        <div class="col-lg-12">
+            <div class="card m-2">
+                <div class="card-body">
+                    <h5 class="card-title">School Admin Dashboard</h5>
+                    <p class="card-text">
+                        Manage debaters for your school{% if schools.count > 1 %}s{% endif %}.
+                        You can edit debaters who have competed in the last 6 years (since {{ six_years_ago }}).
+                    </p>
+
+                    {% if schools %}
+                        {% for school in schools %}
+                            <div class="card mt-3">
+                                <div class="card-header">
+                                    <h6 class="mb-0">
+                                        {{ school.name }}
+                                        <a href="{% url 'core:school_admin_debater_create' school.id %}" 
+                                           class="btn btn-sm btn-success float-right">
+                                            Create New Debater
+                                        </a>
+                                    </h6>
+                                </div>
+                                <div class="card-body">
+                                    {% with debaters=debaters_data|dict_item:school.id %}
+                                        {% if debaters %}
+                                            <div class="table-responsive">
+                                                <table class="table table-sm table-striped">
+                                                    <thead>
+                                                        <tr>
+                                                            <th>ID</th>
+                                                            <th>Name</th>
+                                                            <th>Status</th>
+                                                            <th>First Season</th>
+                                                            <th>Latest Season</th>
+                                                            <th>Actions</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {% for debater in debaters %}
+                                                            <tr>
+                                                                <td>{{ debater.id }}</td>
+                                                                <td>
+                                                                    <a href="{% url 'core:debater_detail' debater.id %}">
+                                                                        {{ debater.first_name }} {{ debater.last_name }}
+                                                                    </a>
+                                                                </td>
+                                                                <td>
+                                                                    {% if debater.status == 1 %}
+                                                                        <span class="badge badge-primary badge-pill px-3 py-2">Varsity</span>
+                                                                    {% else %}
+                                                                        <span class="badge badge-secondary badge-pill px-3 py-2">Novice</span>
+                                                                    {% endif %}
+                                                                </td>
+                                                                <td>{{ debater.first_season }}</td>
+                                                                <td>{{ debater.latest_season }}</td>
+                                                                <td>
+                                                                    <a href="{% url 'core:school_admin_debater_update' debater.id %}" 
+                                                                       class="btn btn-sm btn-info">
+                                                                        Edit
+                                                                    </a>
+                                                                </td>
+                                                            </tr>
+                                                        {% endfor %}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        {% else %}
+                                            <p class="text-muted">No debaters active in the last 6 years.</p>
+                                        {% endif %}
+                                    {% endwith %}
+                                </div>
+                            </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="alert alert-warning">
+                            No schools are assigned to your account. Please contact a site administrator.
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock content %}

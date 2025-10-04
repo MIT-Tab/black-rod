@@ -7,6 +7,7 @@ from core.views import (
     noty_views,
     results_import_views,
     round_views,
+    school_admin_views,
     school_views,
     soty_views,
     team_views,
@@ -194,5 +195,45 @@ urlpatterns = [
         "core/rankings-recompute/",
         admin_views.RankingsRecomputeView.as_view(),
         name="rankings_recompute",
+    ),
+    path(
+        "core/school-admin/",
+        school_admin_views.SchoolAdminDashboardView.as_view(),
+        name="school_admin_dashboard",
+    ),
+    path(
+        "core/school-admin/<int:school_id>/debaters/",
+        school_admin_views.SchoolAdminDebaterListView.as_view(),
+        name="school_admin_debater_list",
+    ),
+    path(
+        "core/school-admin/debater/<int:pk>/edit/",
+        school_admin_views.SchoolAdminDebaterUpdateView.as_view(),
+        name="school_admin_debater_update",
+    ),
+    path(
+        "core/school-admin/<int:school_id>/debater/create/",
+        school_admin_views.SchoolAdminDebaterCreateView.as_view(),
+        name="school_admin_debater_create",
+    ),
+    path(
+        "core/manage-school-admins/",
+        school_admin_views.SuperuserSchoolAdminManagementView.as_view(),
+        name="manage_school_admins",
+    ),
+    path(
+        "core/manage-school-admins/add/",
+        school_admin_views.SchoolAdminAddView.as_view(),
+        name="school_admin_add",
+    ),
+    path(
+        "core/manage-school-admins/remove/",
+        school_admin_views.SchoolAdminRemoveView.as_view(),
+        name="school_admin_remove",
+    ),
+    path(
+        "core/user-autocomplete/",
+        school_admin_views.UserAutocompleteView.as_view(),
+        name="user_autocomplete",
     ),
 ]

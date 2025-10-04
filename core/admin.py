@@ -22,6 +22,7 @@ from core.models import (
     Round,
     RoundStats,
     School,
+    SchoolAdmin as SchoolAdminModel,
     SchoolLookup,
     SiteSetting,
     SOTY,
@@ -385,3 +386,12 @@ admin.site.register(Round)
 admin.site.register(RoundStats)
 
 admin.site.register(SchoolLookup)
+
+
+@admin.register(SchoolAdminModel)
+class SchoolAdminAdmin(admin.ModelAdmin):
+    list_display = ("user", "school", "created_at")
+    list_filter = ("school", "created_at")
+    search_fields = ("user__username", "user__email", "school__name")
+    autocomplete_fields = ("user", "school")
+    ordering = ("school__name", "user__username")

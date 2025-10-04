@@ -10,6 +10,7 @@ import "jquery-ui/ui/widgets/mouse";
 import "jquery-ui/ui/widget";
 
 import "./sortable-formset";
+import "./school_admin_management";
 
 function getCookie(name) {
   let cookieValue = null;

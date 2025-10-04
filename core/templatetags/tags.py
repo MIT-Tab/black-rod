@@ -145,3 +145,10 @@ def form_field(form, field_name):
         return form[field_name]
     except Exception:
         return ""
+
+
+@register.filter
+def dict_item(dictionary, key):
+    if not dictionary:
+        return None
+    return dictionary.get(key)
