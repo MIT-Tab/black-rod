@@ -119,7 +119,8 @@ if os.environ.get("ENV") != "production":
     # Default cache setting
     CACHES = {
         "default": {
-            "BACKEND": "django.core.cache.backends.dummy.DummyCache",
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+            "LOCATION": "unique-snowflake",
         }
     }
 
@@ -136,7 +137,8 @@ if os.environ.get("ENV") == "development":
     ALLOWED_HOSTS = ["*"]
     CACHES = {
         "default": {
-            "BACKEND": "django.core.cache.backends.dummy.DummyCache",
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+            "LOCATION": "unique-snowflake",
         }
     }
 elif os.environ.get("ENV") == "production":
