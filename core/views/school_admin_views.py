@@ -28,6 +28,10 @@ class SchoolAdminMixin(UserPassesTestMixin):
     def get_school_admin_schools(self):
         return School.objects.filter(admins__user=self.request.user)
 
+    def get_six_years_ago(self):
+        """Helper to get the season from 6 years ago."""
+        return str(int(settings.CURRENT_SEASON) - 6)
+
 
 class SchoolAdminDashboardView(SchoolAdminMixin, TemplateView):
     template_name = "school_admin/dashboard.html"
@@ -35,22 +39,21 @@ class SchoolAdminDashboardView(SchoolAdminMixin, TemplateView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         schools = self.get_school_admin_schools()
+        six_years_ago = self.get_six_years_ago()
+
         context['schools'] = schools
+        context['six_years_ago'] = six_years_ago
         context['is_superuser'] = self.request.user.is_superuser
 
-        current_year = int(settings.CURRENT_SEASON)
-        six_years_ago = str(current_year - 6)
-
-        debaters_data = {}
-        for school in schools:
-            debaters = Debater.objects.filter(
+        # Get debaters for each school
+        debaters_data = {
+            school.id: Debater.objects.filter(
                 school=school,
                 latest_season__gte=six_years_ago
             ).order_by('-latest_season', 'last_name', 'first_name')
-            debaters_data[school.id] = debaters
-
+            for school in schools
+        }
         context['debaters_data'] = debaters_data
-        context['six_years_ago'] = six_years_ago
         return context
 
 
@@ -82,19 +85,15 @@ class SchoolAdminDebaterListView(SchoolAdminMixin, ListView):
         if not SchoolAdmin.objects.filter(user=self.request.user, school=school).exists():
             raise Http404
 
-        current_year = int(settings.CURRENT_SEASON)
-        six_years_ago = str(current_year - 6)
-
         return Debater.objects.filter(
             school=school,
-            latest_season__gte=six_years_ago
+            latest_season__gte=self.get_six_years_ago()
         ).order_by('-latest_season', 'last_name', 'first_name')
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        school_id = self.kwargs.get('school_id')
-        context['school'] = get_object_or_404(School, id=school_id)
-        context['six_years_ago'] = str(int(settings.CURRENT_SEASON) - 6)
+        context['school'] = get_object_or_404(School, id=self.kwargs.get('school_id'))
+        context['six_years_ago'] = self.get_six_years_ago()
         return context
 
 
@@ -110,24 +109,17 @@ class SchoolAdminDebaterForm(forms.ModelForm):
 
         current_year = int(settings.CURRENT_SEASON)
         six_years_ago = current_year - 6
-        oldest_year = 2004
 
-        first_season_choices = [
-            (str(year), f"{year}-{str(year+1)[2:]}")
-            for year in range(current_year, oldest_year - 1, -1)
-        ]
-
-        latest_season_choices = [
-            (str(year), f"{year}-{str(year+1)[2:]}")
-            for year in range(current_year, six_years_ago - 1, -1)
-        ]
+        # Helper to create season choices
+        def season_choices(start_year, end_year):
+            return [(str(year), f"{year}-{str(year+1)[2:]}") for year in range(start_year, end_year - 1, -1)]
 
         self.fields['first_season'] = forms.ChoiceField(
-            choices=first_season_choices,
+            choices=season_choices(current_year, 2004),
             initial=settings.CURRENT_SEASON
         )
         self.fields['latest_season'] = forms.ChoiceField(
-            choices=latest_season_choices,
+            choices=season_choices(current_year, six_years_ago),
             initial=settings.CURRENT_SEASON
         )
 
@@ -162,10 +154,8 @@ class SchoolAdminDebaterUpdateView(SchoolAdminMixin, UpdateView):
         if not SchoolAdmin.objects.filter(user=self.request.user, school=obj.school).exists():
             raise Http404
 
-        current_year = int(settings.CURRENT_SEASON)
-        six_years_ago = str(current_year - 6)
-
-        if obj.latest_season < six_years_ago:
+        # Ensure debater is within the last 6 years
+        if obj.latest_season < self.get_six_years_ago():
             raise Http404
 
         return obj
