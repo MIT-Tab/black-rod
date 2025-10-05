@@ -63,10 +63,11 @@ class Command(BaseCommand):
         debaters_to_update = []
         
         for debater in debaters_without_first_season:
-            # Check tournaments this debater competed in via team results
-            team_result_seasons = set(
-                debater.team_results.values_list('tournament__season', flat=True)
-            )
+            # Check tournaments this debater competed in via their teams' results
+            team_result_seasons = set()
+            for team in debater.teams.all():
+                seasons = team.team_results.values_list('tournament__season', flat=True)
+                team_result_seasons.update(seasons)
             
             # Check tournaments this debater competed in via speaker results
             speaker_result_seasons = set(
