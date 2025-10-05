@@ -151,7 +151,8 @@ class APIDataHandler:
                     last_name=data['last_name'],
                     school=data['school'],
                     first_season=settings.CURRENT_SEASON,
-                    latest_season=settings.CURRENT_SEASON
+                    latest_season=settings.CURRENT_SEASON,
+                    status=Debater.NOVICE
                 ))
                 debater_mapping_info.append(tournament_id)
 
