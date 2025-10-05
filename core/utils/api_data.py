@@ -1,5 +1,6 @@
 from urllib.parse import urlparse
 import requests
+from django.conf import settings
 from django.db import transaction
 from core.models.debater import Debater
 from core.models.school import School
@@ -148,7 +149,9 @@ class APIDataHandler:
                 debaters_to_create.append(Debater(
                     first_name=data['first_name'],
                     last_name=data['last_name'],
-                    school=data['school']
+                    school=data['school'],
+                    first_season=settings.CURRENT_SEASON,
+                    latest_season=settings.CURRENT_SEASON
                 ))
                 debater_mapping_info.append(tournament_id)
 

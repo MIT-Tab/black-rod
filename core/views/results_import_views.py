@@ -79,6 +79,9 @@ class TournamentDataEntryWizardView(CustomMixin, SessionWizardView):
         if session_tournament_id and session_tournament_id != current_tournament_id:
             APIDataHandler.clear_tournament_session_data(request)
 
+        if current_tournament_id:
+            api_handler.set_tournament_id(current_tournament_id)
+
         return super().dispatch(request, *args, **kwargs)
 
     def render_done(self, form, **kwargs):
@@ -136,10 +139,16 @@ class TournamentDataEntryWizardView(CustomMixin, SessionWizardView):
         return super().get_form(step, data, files)
 
     def _get_tournament(self):
-        if not hasattr(self, '_tournament'):
+        if not hasattr(self, '_tournament') or self._tournament is None:
             tournament_id = self.request.GET.get("tournament")
+
             if not tournament_id:
-                raise ValueError("Tournament ID must be provided as a URL parameter")
+                api_handler = self.get_api_handler()
+                tournament_id = api_handler.get_tournament_id()
+
+            if not tournament_id:
+                raise ValueError("Tournament ID must be provided as a URL parameter or session")
+
             self._tournament = Tournament.objects.get(id=int(tournament_id))
         return self._tournament
 
@@ -250,7 +259,14 @@ class TournamentDataEntryWizardView(CustomMixin, SessionWizardView):
         has_ghost_points = kwargs.get('has_ghost_points', False)
         place = kwargs.get('place', None)
         results_to_create = []
+
+        if not hasattr(form_data, 'cleaned_data') or not form_data.cleaned_data:
+            return
+
         for i, team_data in enumerate(form_data.cleaned_data):
+            if team_data.get('DELETE'):
+                continue
+                
             debater_one = team_data.get("debater_one")
             debater_two = team_data.get("debater_two")
             if not (debater_one and debater_two):
@@ -259,18 +275,31 @@ class TournamentDataEntryWizardView(CustomMixin, SessionWizardView):
             teams_to_update.append(team)
             final_place = place if place is not None else team_data.get("ORDER", i + 1)
             result_data = {
-                'tournament': tournament, 'team': team, 'type_of_place': type_of_place,
+                'tournament': tournament,
+                'team': team,
+                'type_of_place': type_of_place,
                 'place': final_place
             }
             if has_ghost_points:
                 result_data['ghost_points'] = team_data.get("ghost_points", 0)
+
+            if tournament is None:
+                raise ValueError(f"Tournament is None when creating TeamResult for team {team.id}")
+
             results_to_create.append(TeamResult(**result_data))
         if results_to_create:
             TeamResult.objects.bulk_create(results_to_create)
 
     def _create_speaker_results(self, tournament, form_data, type_of_place, speakers_to_update):
         results_to_create = []
+        
+        if not hasattr(form_data, 'cleaned_data') or not form_data.cleaned_data:
+            return
+            
         for i, speaker_data in enumerate(form_data.cleaned_data):
+            if speaker_data.get('DELETE'):
+                continue
+                
             speaker = speaker_data.get("speaker")
             if not speaker:
                 continue

@@ -46,7 +46,7 @@ def test_dispatch_clears_stale_tournament_session_data(monkeypatch):
     response = view.dispatch(request)
 
     assert response.content == b"ok"
-    assert request.session == {"other": "keep"}
+    assert request.session == {"other": "keep", "tournament_id": 2}
 
 
 def test_get_form_initial_uses_database_seed_for_results():
@@ -371,3 +371,24 @@ def test_get_new_team_form_sets_order_for_speaker(monkeypatch):
     assert response.status_code == 200
     payload = json.loads(response.content)
     assert payload["html"] == {"ORDER": 2}
+
+
+def test_get_tournament_falls_back_to_session():
+    """Test that _get_tournament can retrieve tournament from session when GET param is missing"""
+    school = School.objects.create(name="Test School", included_in_oty=True)
+    tournament = Tournament.objects.create(
+        name="Test Tournament",
+        host=school,
+        date=date(2024, 1, 1),
+        season=settings.CURRENT_SEASON,
+    )
+
+    request = make_request(method="post", path="/wizard/")
+    request.session["tournament_id"] = tournament.id
+
+    view = riv.TournamentDataEntryWizardView()
+    view.request = request
+
+    retrieved_tournament = view._get_tournament()
+    assert retrieved_tournament.id == tournament.id
+    assert retrieved_tournament.name == "Test School"
