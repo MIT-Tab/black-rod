@@ -81,7 +81,7 @@ class Command(BaseCommand):
 
             for debater in duplicate_group:
                 has_results = (
-                    debater.team_results.exists() or 
+                    debater.teams.exists() or 
                     debater.speaker_results.exists()
                 )
                 
