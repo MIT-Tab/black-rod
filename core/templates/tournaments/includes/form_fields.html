@@ -11,10 +11,13 @@
 {# Render fields based on form type #}
 {% if form_type == "school" %}
     <div class="row">
-        <div class="col-md-8">
+        <div class="col-md-5">
             {{ form.name|as_crispy_field }}
         </div>
         <div class="col-md-4">
+            {{ form.existing_school|as_crispy_field }}
+        </div>
+        <div class="col-md-3">
             {{ form.included_in_oty|as_crispy_field }}
         </div>
     </div>

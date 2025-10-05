@@ -8,7 +8,7 @@ from .school import School
 class Debater(models.Model):
     first_name = models.CharField(max_length=32, blank=False)
 
-    last_name = models.CharField(max_length=32, blank=False)
+    last_name = models.CharField(max_length=32, blank=True, default='')
 
     school = models.ForeignKey(
         School,

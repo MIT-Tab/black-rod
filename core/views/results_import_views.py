@@ -223,8 +223,33 @@ class TournamentDataEntryWizardView(CustomMixin, SessionWizardView):
             return super().process_step(form)
 
         if step == "0":
-            school_data = [{'name': fd['name'], 'included_in_oty': fd.get('included_in_oty', True)}
-                          for fd in form.cleaned_data if fd.get('name')]
+            school_data = []
+            school_mapping = {}
+            
+            for fd in form.cleaned_data:
+                if not fd.get('name'):
+                    continue
+                    
+                # Check if user wants to link to an existing school
+                if fd.get('existing_school'):
+                    # Create a SchoolLookup to map the new name to the existing school
+                    from core.models.school import SchoolLookup
+                    existing_school = fd['existing_school']
+                    school_name = fd['name']
+                    
+                    # Create or update the lookup
+                    lookup, created = SchoolLookup.objects.update_or_create(
+                        server_name=school_name,
+                        defaults={'school': existing_school}
+                    )
+                    school_mapping[school_name] = existing_school
+                else:
+                    # Create a new school as usual
+                    school_data.append({
+                        'name': fd['name'], 
+                        'included_in_oty': fd.get('included_in_oty', True)
+                    })
+            
             if school_data:
                 self.get_api_handler().create_schools_from_data(school_data)
         elif step == "1":

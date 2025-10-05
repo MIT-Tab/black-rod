@@ -3,7 +3,7 @@ import requests
 from django.conf import settings
 from django.db import transaction
 from core.models.debater import Debater
-from core.models.school import School
+from core.models.school import School, SchoolLookup
 
 
 class APIDataHandler:
@@ -102,6 +102,11 @@ class APIDataHandler:
         school_names = {d.get('school_name') for d in new_debater_data if d.get('school_id') == -1 and d.get('school_name')}
         schools_by_id = {s.id: s for s in School.objects.filter(id__in=school_ids)}
         schools_by_name = {s.name: s for s in School.objects.filter(name__in=school_names)}
+        
+        # Also check SchoolLookup for mapped names
+        school_lookups = SchoolLookup.objects.filter(server_name__in=school_names).select_related('school')
+        for lookup in school_lookups:
+            schools_by_name[lookup.server_name] = lookup.school
 
         debater_list = []
         for debater_data in new_debater_data:

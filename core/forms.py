@@ -19,6 +19,14 @@ from core.models.video import Video
 
 
 class SchoolForm(forms.ModelForm):
+    existing_school = forms.ModelChoiceField(
+        queryset=School.objects.all(),
+        required=False,
+        label="Link to Existing School",
+        help_text="If this school already exists under a different name, select it here instead of creating a new one",
+        widget=autocomplete.ModelSelect2(url="core:school_autocomplete"),
+    )
+    
     class Meta:
         model = School
         fields = ("name", "included_in_oty")
@@ -30,6 +38,7 @@ class DebaterForm(forms.ModelForm):
         widget=autocomplete.ModelSelect2(url="core:school_autocomplete"),
     )
     tournament_id = forms.CharField(widget=forms.HiddenInput(), required=False)
+    last_name = forms.CharField(max_length=32, required=False)
 
     class Meta:
         model = Debater
@@ -197,18 +206,30 @@ class SchoolCreationFormsetBase(forms.BaseFormSet):
 
         school_names = []
         for form in self.forms:
-            if form.cleaned_data and not form.cleaned_data.get('DELETE'):
-                name = form.cleaned_data.get('name', '').strip()
-                if name:
-                    school_names.append(name)
+            # Skip forms that don't have cleaned_data or are already marked for deletion
+            if not form.cleaned_data or form.cleaned_data.get('DELETE'):
+                continue
+                
+            name = form.cleaned_data.get('name', '').strip()
+            existing_school = form.cleaned_data.get('existing_school')
+            
+            # If linking to existing school, skip creating new one
+            if existing_school:
+                form.cleaned_data['DELETE'] = True
+                continue
+                
+            if name:
+                school_names.append(name)
 
         if school_names:
             existing_schools = set(School.objects.filter(name__in=school_names).values_list('name', flat=True))
             for form in self.forms:
-                if form.cleaned_data and not form.cleaned_data.get('DELETE'):
-                    name = form.cleaned_data.get('name', '').strip()
-                    if name in existing_schools:
-                        form.cleaned_data['DELETE'] = True
+                if not form.cleaned_data or form.cleaned_data.get('DELETE'):
+                    continue
+                    
+                name = form.cleaned_data.get('name', '').strip()
+                if name in existing_schools:
+                    form.cleaned_data['DELETE'] = True
 
 IMPORT_FORMSET_PARAMS = {
     'extra': 0,
