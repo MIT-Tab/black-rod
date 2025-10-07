@@ -26,7 +26,7 @@ class SchoolForm(forms.ModelForm):
         help_text="If this school already exists under a different name, select it here instead of creating a new one",
         widget=autocomplete.ModelSelect2(url="core:school_autocomplete"),
     )
-    
+
     class Meta:
         model = School
         fields = ("name", "included_in_oty")
@@ -209,15 +209,15 @@ class SchoolCreationFormsetBase(forms.BaseFormSet):
             # Skip forms that don't have cleaned_data or are already marked for deletion
             if not form.cleaned_data or form.cleaned_data.get('DELETE'):
                 continue
-                
+
             name = form.cleaned_data.get('name', '').strip()
             existing_school = form.cleaned_data.get('existing_school')
-            
+
             # If linking to existing school, skip creating new one
             if existing_school:
                 form.cleaned_data['DELETE'] = True
                 continue
-                
+
             if name:
                 school_names.append(name)
 
@@ -226,7 +226,7 @@ class SchoolCreationFormsetBase(forms.BaseFormSet):
             for form in self.forms:
                 if not form.cleaned_data or form.cleaned_data.get('DELETE'):
                     continue
-                    
+
                 name = form.cleaned_data.get('name', '').strip()
                 if name in existing_schools:
                     form.cleaned_data['DELETE'] = True

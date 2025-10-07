@@ -276,6 +276,7 @@ NAV_MENU_LEFT = [
             {"name": "Debaters", "url": "core:debater_list", "root": True},
             {"name": "Tournaments", "url": "core:tournament_list", "root": True},
             {"name": "Teams", "url": "core:team_list", "root": True},
+            {"name": "Stats", "url": "core:stats", "root": True},
         ],
     },
     {"name": "Videos", "url": "core:video_list", "root": True},

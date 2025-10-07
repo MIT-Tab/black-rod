@@ -12,6 +12,7 @@ from core.forms import (
 from core.utils.team import get_or_create_team_for_debaters
 from core.models.debater import Debater
 from core.models.tournament import Tournament
+from core.models.school import SchoolLookup
 from core.models.results.speaker import SpeakerResult
 from core.models.results.team import TeamResult
 from core.models.standings.coty import COTY
@@ -225,18 +226,17 @@ class TournamentDataEntryWizardView(CustomMixin, SessionWizardView):
         if step == "0":
             school_data = []
             school_mapping = {}
-            
+
             for fd in form.cleaned_data:
                 if not fd.get('name'):
                     continue
-                    
+
                 # Check if user wants to link to an existing school
                 if fd.get('existing_school'):
                     # Create a SchoolLookup to map the new name to the existing school
-                    from core.models.school import SchoolLookup
                     existing_school = fd['existing_school']
                     school_name = fd['name']
-                    
+
                     # Create or update the lookup
                     lookup, created = SchoolLookup.objects.update_or_create(
                         server_name=school_name,
@@ -246,10 +246,10 @@ class TournamentDataEntryWizardView(CustomMixin, SessionWizardView):
                 else:
                     # Create a new school as usual
                     school_data.append({
-                        'name': fd['name'], 
+                        'name': fd['name'],
                         'included_in_oty': fd.get('included_in_oty', True)
                     })
-            
+
             if school_data:
                 self.get_api_handler().create_schools_from_data(school_data)
         elif step == "1":
@@ -291,7 +291,7 @@ class TournamentDataEntryWizardView(CustomMixin, SessionWizardView):
         for i, team_data in enumerate(form_data.cleaned_data):
             if team_data.get('DELETE'):
                 continue
-                
+
             debater_one = team_data.get("debater_one")
             debater_two = team_data.get("debater_two")
             if not (debater_one and debater_two):
@@ -317,14 +317,14 @@ class TournamentDataEntryWizardView(CustomMixin, SessionWizardView):
 
     def _create_speaker_results(self, tournament, form_data, type_of_place, speakers_to_update):
         results_to_create = []
-        
+
         if not hasattr(form_data, 'cleaned_data') or not form_data.cleaned_data:
             return
-            
+
         for i, speaker_data in enumerate(form_data.cleaned_data):
             if speaker_data.get('DELETE'):
                 continue
-                
+
             speaker = speaker_data.get("speaker")
             if not speaker:
                 continue

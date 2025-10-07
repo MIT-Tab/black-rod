@@ -102,7 +102,7 @@ class APIDataHandler:
         school_names = {d.get('school_name') for d in new_debater_data if d.get('school_id') == -1 and d.get('school_name')}
         schools_by_id = {s.id: s for s in School.objects.filter(id__in=school_ids)}
         schools_by_name = {s.name: s for s in School.objects.filter(name__in=school_names)}
-        
+
         # Also check SchoolLookup for mapped names
         school_lookups = SchoolLookup.objects.filter(server_name__in=school_names).select_related('school')
         for lookup in school_lookups:

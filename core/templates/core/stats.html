@@ -1,0 +1,126 @@
+{% extends "base/base.html" %}
+{% load humanize %}
+{% load static %}
+
+{% block title %}APDA Statistics{% endblock title %}
+
+{% block content %}
+<div class="container-fluid mt-4 mb-5">
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="bg-white shadow-sm rounded p-4 border-left border-primary" style="border-left-width: 4px !important;">
+                <h1 class="mb-1">APDA Statistics</h1>
+                <p class="text-dark mb-0">Digital records since 2004</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="row mb-4">
+        <div class="col-12 mb-3">
+            <h5 class="text-uppercase font-weight-bold text-dark mb-3">Overall Numbers</h5>
+        </div>
+        {% include "core/stats/_kpi_card.html" with label="Tournaments" value=total_tournaments|intcomma sublabel="Since 2004" color="success" %}
+        {% include "core/stats/_kpi_card.html" with label="Debaters" value=total_debaters|intcomma sublabel="Since 2004" color="primary" %}
+        {% include "core/stats/_kpi_card.html" with label="Schools" value=total_schools|intcomma sublabel="Since 2004" color="danger" %}
+        {% include "core/stats/_kpi_card.html" with label="Unique Teams" value=total_teams|intcomma sublabel="Since 2004" color="warning" %}
+    </div>
+
+    {% include "core/stats/_chart_section.html" %}
+
+    <div class="row mb-4">
+        <div class="col-12 mb-3">
+            <h5 class="text-uppercase font-weight-bold text-dark mb-3">Key Metrics</h5>
+        </div>
+        <div class="col-lg col-md-4 col-sm-6 mb-3">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-body text-center">
+                    <div class="text-dark text-uppercase small mb-2">Avg Tournament Size</div>
+                    <div class="h3 mb-0 font-weight-bold">{{ avg_tournament_size }}</div>
+                    <div class="small text-dark mt-1">teams</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg col-md-4 col-sm-6 mb-3">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-body text-center">
+                    <div class="text-dark text-uppercase small mb-2">Multi-Season Debaters</div>
+                    <div class="h3 mb-0 font-weight-bold">{{ multi_season_percentage }}%</div>
+                    <div class="small text-dark mt-1">2+ seasons</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg col-md-4 col-sm-6 mb-3">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-body text-center">
+                    <div class="text-dark text-uppercase small mb-2">Recurring Teams</div>
+                    <div class="h3 mb-0 font-weight-bold">{{ teams_with_multiple_tournaments|intcomma }}</div>
+                    <div class="small text-dark mt-1">3+ tournaments</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg col-md-4 col-sm-6 mb-3">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-body text-center">
+                    <div class="text-dark text-uppercase small mb-2">Team Results</div>
+                    <div class="h3 mb-0 font-weight-bold">{{ total_team_results|intcomma }}</div>
+                    <div class="small text-dark mt-1">recorded</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg col-md-4 col-sm-6 mb-3">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-body text-center">
+                    <div class="text-dark text-uppercase small mb-2">Speaker Results</div>
+                    <div class="h3 mb-0 font-weight-bold">{{ total_speaker_results|intcomma }}</div>
+                    <div class="small text-dark mt-1">recorded</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row mb-4">
+        <div class="col-12 mb-3">
+            <h5 class="text-uppercase font-weight-bold text-dark mb-3">School Accomplishments</h5>
+        </div>
+        
+        {% include "core/stats/_school_table.html" with title="Most Tournaments Hosted" count_label="Count" items=schools_by_tournament_count value_field="tournament_count" %}
+        {% include "core/stats/_school_table.html" with title="Lifetime COTY Points" count_label="Points" items=schools_by_coty_points value_field="total_coty_points" %}
+    </div>
+
+    <div class="row mb-4">
+        <div class="col-12 mb-3">
+            <h5 class="text-uppercase font-weight-bold text-dark mb-3">Participation Leaders</h5>
+        </div>
+        
+        {% include "core/stats/_participation_table.html" with title="Most Tournaments Attended by a Debater" col1_header="Debater" col2_header="School" col3_header="Count" items=debaters_by_tournament_count %}
+        {% include "core/stats/_participation_table.html" with title="Most Tournaments Attended by a Team" col1_header="Team" col2_header="Debaters" col3_header="Count" items=teams_by_tournament_count %}
+        {% include "core/stats/_participation_table.html" with title="Most Recorded Rounds" col1_header="Debater" col2_header="School" col3_header="Rounds" items=debaters_by_round_count %}
+    </div>
+
+    <div class="row">
+        <div class="col-12">
+            <div class="card bg-light border-0">
+                <div class="card-body py-2">
+                    <small class="text-dark">
+                        <strong>Note:</strong> APDA was founded in the 1980s. Digital records on this website begin in 2004. 
+                        Statistics are cached and updated hourly.
+                    </small>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+<script>
+    // Pass data from Django to JavaScript
+    window.statsData = {
+        debaters: {{ debaters_by_season|safe }},
+        teams: {{ teams_by_season|safe }},
+        toty: {{ toty_points_by_season|safe }},
+        tournaments: {{ tournaments_by_season|safe }},
+        medianStats: {{ median_stats_by_season|safe }}
+    };
+</script>
+<script src="{% static 'js/stats.js' %}"></script>
+{% endblock content %}

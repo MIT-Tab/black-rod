@@ -21,6 +21,7 @@ app_name = "core"
 
 urlpatterns = [
     path("", views.index, name="index"),
+    path("stats/", views.stats, name="stats"),
     path("core/schools/", school_views.SchoolListView.as_view(), name="school_list"),
     path(
         "core/schools/<int:pk>",

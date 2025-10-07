@@ -1,0 +1,71 @@
+<div class="row mb-4">
+    <div class="col-12 mb-3">
+        <h5 class="text-uppercase font-weight-bold text-dark mb-3">Historical Trends</h5>
+    </div>
+    <div class="col-12">
+        <div class="card shadow-sm border-0">
+            <div class="card-body">
+                <ul class="nav nav-tabs mb-3" id="chartTabs" role="tablist">
+                    <li class="nav-item">
+                        <a class="nav-link active" id="debaters-tab" data-toggle="tab" href="#debaters-chart" role="tab">
+                            Debaters per Season
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" id="teams-tab" data-toggle="tab" href="#teams-chart" role="tab">
+                            Unique Teams per Season
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" id="toty-tab" data-toggle="tab" href="#toty-chart" role="tab">
+                            Total TOTY Points per Season
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" id="tournaments-tab" data-toggle="tab" href="#tournaments-chart" role="tab">
+                            Tournament Activity
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" id="median-size-tab" data-toggle="tab" href="#median-size-chart" role="tab">
+                            Median Tournament Size
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" id="median-novices-tab" data-toggle="tab" href="#median-novices-chart" role="tab">
+                            Median Novices per Tournament
+                        </a>
+                    </li>
+                </ul>
+                <div class="tab-content">
+                    <div class="tab-pane fade show active" id="debaters-chart" role="tabpanel">
+                        <canvas id="debatersChart" height="80"></canvas>
+                        <div class="alert alert-info mt-3 mb-0">
+                            <small><strong>Note:</strong> Debater counts include only those who received awards (team or speaker results). 
+                            Non-placing debaters were not systematically tracked until the 2025-26 season.</small>
+                        </div>
+                    </div>
+                    <div class="tab-pane fade" id="teams-chart" role="tabpanel">
+                        <canvas id="teamsChart" height="80"></canvas>
+                        <div class="alert alert-info mt-3 mb-0">
+                            <small><strong>Note:</strong> Team counts include only teams that received awards or were entered in results. 
+                            Non-placing teams were not systematically tracked until the 2025-26 season.</small>
+                        </div>
+                    </div>
+                    <div class="tab-pane fade" id="toty-chart" role="tabpanel">
+                        <canvas id="totyChart" height="80"></canvas>
+                    </div>
+                    <div class="tab-pane fade" id="tournaments-chart" role="tabpanel">
+                        <canvas id="tournamentsChart" height="80"></canvas>
+                    </div>
+                    <div class="tab-pane fade" id="median-size-chart" role="tabpanel">
+                        <canvas id="medianSizeChart" height="80"></canvas>
+                    </div>
+                    <div class="tab-pane fade" id="median-novices-chart" role="tabpanel">
+                        <canvas id="medianNovicesChart" height="80"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
