@@ -162,8 +162,14 @@ def stats(request):
         Prefetch('debaters', queryset=Debater.objects.select_related('school'))
     ).order_by('-tournament_count')[:10]
 
+    # Debaters ranked by recorded rounds (number of videos they appear in)
     debaters_by_round_count = Debater.objects.annotate(
-        round_count=Count('round_stats', distinct=True)
+        round_count=(
+            Count('pm_videos', distinct=True) +
+            Count('lo_videos', distinct=True) +
+            Count('mg_videos', distinct=True) +
+            Count('mo_videos', distinct=True)
+        )
     ).filter(round_count__gt=0).select_related('school').order_by('-round_count')[:10]
 
     context = {
