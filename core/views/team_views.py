@@ -1,5 +1,6 @@
 from dal import autocomplete
-from django.db.models import Q
+from django.db.models import Max, Min, Q
+from django.db.models.functions import Lower
 from django.urls import reverse_lazy
 from django_filters import FilterSet
 from django_tables2 import Column
@@ -29,10 +30,32 @@ class TeamFilter(FilterSet):
 class TeamTable(CustomTable):
     id = Column(linkify=True)
     name = Column(linkify=True)
+    debaters_display = Column()
 
     class Meta:
         model = Team
         fields = ("id", "name", "debaters_display")
+
+    def order_debaters_display(self, queryset, is_descending):
+        queryset = queryset.annotate(
+            first_debater_last=Min(Lower("debaters__last_name")),
+            first_debater_first=Min(Lower("debaters__first_name")),
+            second_debater_last=Max(Lower("debaters__last_name")),
+            second_debater_first=Max(Lower("debaters__first_name")),
+        )
+
+        order_by = [
+            "first_debater_last",
+            "first_debater_first",
+            "second_debater_last",
+            "second_debater_first",
+            "pk",
+        ]
+
+        if is_descending:
+            order_by = [f"-{field}" for field in order_by]
+
+        return queryset.order_by(*order_by), True
 
 
 class TeamListView(CustomListView):
