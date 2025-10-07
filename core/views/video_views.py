@@ -26,8 +26,13 @@ from core.utils.perms import has_perm
 
 
 class VideoFilter(FilterSet):
+    tags_all = TagFilter(
+        match="all",
+        label="Contains all of these tags",
+        widget=autocomplete.TaggitSelect2("core:tag_autocomplete_no_create"),
+    )
     tags = TagFilter(
-        field_name="tags__name",
+        label="Contains any of these tags",
         widget=autocomplete.TaggitSelect2("core:tag_autocomplete_no_create"),
     )
     tournament__season = ChoiceFilter(
