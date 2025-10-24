@@ -10,6 +10,7 @@ from core.views import (
     school_admin_views,
     school_views,
     soty_views,
+    merge_debater_views,
     team_views,
     toty_views,
     tournament_views,
@@ -231,6 +232,16 @@ urlpatterns = [
         "core/manage-school-admins/remove/",
         school_admin_views.SchoolAdminRemoveView.as_view(),
         name="school_admin_remove",
+    ),
+    path(
+        "core/merge-debaters/request/",
+        merge_debater_views.MergeDebaterRequestCreateView.as_view(),
+        name="merge_debater_request_create",
+    ),
+    path(
+        "core/merge-debaters/review/",
+        merge_debater_views.MergeDebaterRequestReviewView.as_view(),
+        name="merge_debater_request_review",
     ),
     path(
         "core/user-autocomplete/",

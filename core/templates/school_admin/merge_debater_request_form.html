@@ -1,0 +1,328 @@
+{% extends "base/base.html" %}
+
+{% block title %}Merge Debaters{% endblock title %}
+
+{% block content %}
+<div class="row mt-4 mb-5">
+    <div class="col-lg-10 col-xl-8 mx-auto">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <h2 class="h4 mb-3">Request Debater Merge</h2>
+                <p class="text-muted mb-4">
+                    Select two debaters who should be combined into a single record. Debaters must have
+                    competed in the current or previous season ({{ allowed_seasons|join:" or " }}), and at least one
+                    must be from a school you administer.
+                </p>
+
+                {% if messages %}
+                    {% for message in messages %}
+                        <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                            {{ message }}
+                            <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+                                <span aria-hidden="true">&times;</span>
+                            </button>
+                        </div>
+                    {% endfor %}
+                {% endif %}
+
+                {% if form.non_field_errors %}
+                    <div class="alert alert-danger">
+                        {% for error in form.non_field_errors %}
+                            <div>{{ error }}</div>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+
+                <form method="post" novalidate>
+                    {% csrf_token %}
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h5 class="mt-2">Debater A</h5>
+                            <div class="form-group">
+                                {{ form.school_one.label_tag }}
+                                {{ form.school_one }}
+                                {% for error in form.school_one.errors %}
+                                    <div class="invalid-feedback d-block">{{ error }}</div>
+                                {% endfor %}
+                            </div>
+                            <div class="form-group">
+                                {{ form.debater_one.label_tag }}
+                                {{ form.debater_one }}
+                                {% for error in form.debater_one.errors %}
+                                    <div class="invalid-feedback d-block">{{ error }}</div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <h5 class="mt-2">Debater B</h5>
+                            <div class="form-group">
+                                {{ form.school_two.label_tag }}
+                                {{ form.school_two }}
+                                {% for error in form.school_two.errors %}
+                                    <div class="invalid-feedback d-block">{{ error }}</div>
+                                {% endfor %}
+                            </div>
+                            <div class="form-group">
+                                {{ form.debater_two.label_tag }}
+                                {{ form.debater_two }}
+                                {% for error in form.debater_two.errors %}
+                                    <div class="invalid-feedback d-block">{{ error }}</div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="border-top pt-3 mt-3">
+                        <h5 class="mb-2">Which record should be kept?</h5>
+                        {% for subwidget in form.keep_debater %}
+                            <div class="form-check">
+                                {{ subwidget.tag }}
+                                <label class="form-check-label" for="{{ subwidget.id_for_label }}">{{ subwidget.choice_label }}</label>
+                            </div>
+                        {% endfor %}
+                        {% for error in form.keep_debater.errors %}
+                            <div class="invalid-feedback d-block">{{ error }}</div>
+                        {% endfor %}
+                    </div>
+
+                    <div class="mt-4 d-flex justify-content-end">
+                        <a href="{% url 'core:school_admin_dashboard' %}" class="btn btn-secondary mr-2">Cancel</a>
+                        <button type="submit" class="btn btn-primary">Submit Merge Request</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div class="card shadow-sm mt-4">
+            <div class="card-body">
+                <h3 class="h5 mb-3">Selected Debaters Overview</h3>
+                <div class="table-responsive">
+                    <table class="table table-sm mb-0">
+                        <thead class="thead-light">
+                            <tr>
+                                <th scope="col">Role</th>
+                                <th scope="col">Debater</th>
+                                <th scope="col">School</th>
+                                <th scope="col" class="text-center">Team Results</th>
+                                <th scope="col" class="text-center">Speaker Results</th>
+                                <th scope="col" class="text-center">Round Stats</th>
+                                <th scope="col" class="text-center">Videos</th>
+                            </tr>
+                        </thead>
+                        <tbody id="selected-debater-summary">
+                            <tr>
+                                <td colspan="7" class="text-muted text-center">Select debaters to see a quick summary.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="card shadow-sm mt-4">
+            <div class="card-body">
+                <h3 class="h5 mb-3">Your Recent Merge Requests</h3>
+                {% if user_pending_requests %}
+                    <div class="alert alert-warning py-2 mb-3">
+                        <strong>{{ user_pending_requests|length }}</strong> pending request{{ user_pending_requests|length|pluralize }} awaiting review.
+                    </div>
+                {% endif %}
+                {% if user_pending_requests or user_recent_requests %}
+                    <div class="table-responsive">
+                        <table class="table table-sm table-striped mb-0">
+                            <thead>
+                                <tr>
+                                    <th scope="col">Created</th>
+                                    <th scope="col">Primary</th>
+                                    <th scope="col">Secondary</th>
+                                    <th scope="col">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for item in user_pending_requests %}
+                                    {% with req=item.instance %}
+                                        <tr class="table-warning">
+                                            <td>{{ req.created_at|date:"M d, Y H:i" }}</td>
+                                <td>
+                                    {% if req.primary_debater %}
+                                        <a href="{{ req.primary_debater.get_absolute_url }}">{{ req.primary_debater.name }}</a>
+                                    {% else %}
+                                        {{ item.primary_display_name }}
+                                    {% endif %}
+                                    {% if item.primary_display_school %}
+                                        <div class="text-muted small">{{ item.primary_display_school }}</div>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if req.secondary_debater %}
+                                        <a href="{{ req.secondary_debater.get_absolute_url }}">{{ req.secondary_debater.name }}</a>
+                                    {% else %}
+                                        {{ item.secondary_display_name }}
+                                    {% endif %}
+                                    {% if item.secondary_display_school %}
+                                        <div class="text-muted small">{{ item.secondary_display_school }}</div>
+                                    {% endif %}
+                                </td>
+                                            <td>Pending</td>
+                                        </tr>
+                                    {% endwith %}
+                                {% endfor %}
+                                {% for item in user_recent_requests %}
+                                    {% with req=item.instance %}
+                                        <tr>
+                                            <td>{{ req.created_at|date:"M d, Y H:i" }}</td>
+                                            <td>
+                                                {% if req.primary_debater %}
+                                                    <a href="{{ req.primary_debater.get_absolute_url }}">{{ req.primary_debater.name }}</a>
+                                                {% else %}
+                                                    {{ item.primary_display_name }}
+                                                {% endif %}
+                                                {% if item.primary_display_school %}
+                                                    <div class="text-muted small">{{ item.primary_display_school }}</div>
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                {% if req.secondary_debater %}
+                                                    <a href="{{ req.secondary_debater.get_absolute_url }}">{{ req.secondary_debater.name }}</a>
+                                                {% else %}
+                                                    {{ item.secondary_display_name }}
+                                                {% endif %}
+                                                {% if item.secondary_display_school %}
+                                                    <div class="text-muted small">{{ item.secondary_display_school }}</div>
+                                                {% endif %}
+                                            </td>
+                                            <td class="text-capitalize">{{ req.status }}</td>
+                                        </tr>
+                                    {% endwith %}
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <p class="text-muted mb-0">No merge requests submitted yet.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+{{ school_one_debaters|json_script:"school-one-debaters-data" }}
+{{ school_two_debaters|json_script:"school-two-debaters-data" }}
+{{ debater_data_map|json_script:"debater-data-map" }}
+
+<script>
+    (function() {
+        const schoolOneData = JSON.parse(document.getElementById('school-one-debaters-data').textContent || '[]');
+        const schoolTwoData = JSON.parse(document.getElementById('school-two-debaters-data').textContent || '[]');
+        const debaterSummaryMap = JSON.parse(document.getElementById('debater-data-map').textContent || '{}');
+
+        const groupBySchool = (data) => {
+            return data.reduce((acc, item) => {
+                (acc[item.school_id] = acc[item.school_id] || []).push(item);
+                return acc;
+            }, {});
+        };
+
+        const schoolOneMap = groupBySchool(schoolOneData);
+        const schoolTwoMap = groupBySchool(schoolTwoData);
+
+        const schoolOneSelect = document.getElementById('{{ form.school_one.id_for_label }}');
+        const debaterOneSelect = document.getElementById('{{ form.debater_one.id_for_label }}');
+        const schoolTwoSelect = document.getElementById('{{ form.school_two.id_for_label }}');
+        const debaterTwoSelect = document.getElementById('{{ form.debater_two.id_for_label }}');
+        const summaryBody = document.getElementById('selected-debater-summary');
+
+        const addOptions = (select, entries, placeholder) => {
+            const currentValue = select.dataset.selected || select.value;
+            while (select.firstChild) {
+                select.removeChild(select.firstChild);
+            }
+            const defaultOption = document.createElement('option');
+            defaultOption.value = '';
+            defaultOption.textContent = placeholder;
+            select.appendChild(defaultOption);
+
+            entries.forEach((entry) => {
+                const option = document.createElement('option');
+                option.value = entry.id;
+                option.textContent = entry.name;
+                if (String(entry.id) === currentValue) {
+                    option.selected = true;
+                }
+                select.appendChild(option);
+            });
+            if (!select.value && currentValue) {
+                select.value = currentValue;
+            }
+        };
+
+        const handleSchoolChange = (schoolSelect, debaterSelect, mapping, placeholder) => {
+            const schoolId = schoolSelect.value ? Number(schoolSelect.value) : null;
+            const entries = schoolId && mapping[schoolId] ? mapping[schoolId] : [];
+            addOptions(debaterSelect, entries, placeholder);
+            schoolSelect.dataset.selected = schoolSelect.value || '';
+            debaterSelect.dataset.selected = debaterSelect.value || '';
+            updateSummary();
+        };
+
+        const buildSummaryRow = (label, selectElement) => {
+            const debaterId = selectElement && selectElement.value ? selectElement.value : '';
+            const data = debaterSummaryMap[debaterId];
+            if (!debaterId || !data) {
+                return `<tr><td>${label}</td><td colspan="6" class="text-muted">Select a debater</td></tr>`;
+            }
+            const counts = data.counts || {};
+            const metrics = [
+                counts.team_results ?? 0,
+                counts.speaker_results ?? 0,
+                counts.round_stats ?? 0,
+                counts.videos ?? 0,
+            ];
+            return `
+                <tr>
+                    <td>${label}</td>
+                    <td>${data.name || ''}</td>
+                    <td>${data.school || ''}</td>
+                    ${metrics.map((value) => `<td class="text-center font-weight-semibold">${value}</td>`).join('')}
+                </tr>
+            `;
+        };
+
+        const updateSummary = () => {
+            if (!summaryBody) {
+                return;
+            }
+            summaryBody.innerHTML = [
+                buildSummaryRow('Debater A', debaterOneSelect),
+                buildSummaryRow('Debater B', debaterTwoSelect),
+            ].join('');
+        };
+
+        if (schoolOneSelect && debaterOneSelect) {
+            schoolOneSelect.addEventListener('change', () => {
+                handleSchoolChange(schoolOneSelect, debaterOneSelect, schoolOneMap, 'Select a debater');
+            });
+            debaterOneSelect.addEventListener('change', updateSummary);
+            if (schoolOneSelect.dataset.selected || schoolOneSelect.value) {
+                handleSchoolChange(schoolOneSelect, debaterOneSelect, schoolOneMap, 'Select a debater');
+            }
+        }
+
+        if (schoolTwoSelect && debaterTwoSelect) {
+            schoolTwoSelect.addEventListener('change', () => {
+                handleSchoolChange(schoolTwoSelect, debaterTwoSelect, schoolTwoMap, 'Select a debater');
+            });
+            debaterTwoSelect.addEventListener('change', updateSummary);
+            if (schoolTwoSelect.dataset.selected || schoolTwoSelect.value) {
+                handleSchoolChange(schoolTwoSelect, debaterTwoSelect, schoolTwoMap, 'Select a debater');
+            }
+        }
+
+        document.querySelectorAll('input[name="{{ form.keep_debater.html_name }}"]').forEach((input) => {
+            input.classList.add('form-check-input');
+        });
+
+        updateSummary();
+    })();
+</script>
+{% endblock content %}

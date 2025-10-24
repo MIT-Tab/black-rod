@@ -284,13 +284,23 @@ NAV_MENU_LEFT = [
     {
         "name": "School Admin",
         "url": "core:school_admin_dashboard",
+        "root": True,
         "validators": ["core.menu_validators.is_school_admin"],
+        "submenu": [
+            {"name": "Dashboard", "url": "core:school_admin_dashboard"},
+            {"name": "Merge Debaters", "url": "core:merge_debater_request_create"},
+        ],
     },
     {
         "name": "Admin",
         "url": "/admin/",
         "validators": ["menu_generator.validators.is_superuser"],
         "submenu": [
+            {
+                "name": "Merge Debater Requests",
+                "url": "core:merge_debater_request_review",
+                "validators": ["menu_generator.validators.is_superuser"],
+            },
             {
                 "name": "Manage School Admins",
                 "url": "core:manage_school_admins",

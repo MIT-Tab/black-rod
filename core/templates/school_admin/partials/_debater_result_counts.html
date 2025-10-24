@@ -1,0 +1,26 @@
+{% if counts %}
+    <ul class="list-group list-group-flush">
+        <li class="list-group-item d-flex justify-content-between align-items-center">
+            Team results
+            <span class="badge badge-primary badge-pill">{{ counts.team_results }}</span>
+        </li>
+        <li class="list-group-item d-flex justify-content-between align-items-center">
+            Speaker results
+            <span class="badge badge-primary badge-pill">{{ counts.speaker_results }}</span>
+        </li>
+        <li class="list-group-item d-flex justify-content-between align-items-center">
+            Round stats
+            <span class="badge badge-primary badge-pill">{{ counts.round_stats }}</span>
+        </li>
+        <li class="list-group-item d-flex justify-content-between align-items-center">
+            Videos
+            <span class="badge badge-primary badge-pill">{{ counts.videos }}</span>
+        </li>
+        <li class="list-group-item d-flex justify-content-between align-items-center font-weight-bold">
+            Total
+            <span class="badge badge-dark badge-pill">{{ counts.total }}</span>
+        </li>
+    </ul>
+{% else %}
+    <p class="text-muted mb-0">No results found for this debater in the tracked seasons.</p>
+{% endif %}
