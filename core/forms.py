@@ -9,6 +9,7 @@ from django_summernote.widgets import SummernoteInplaceWidget
 
 from core.models import Team, TOTYReaff
 from core.models.debater import Debater, QualPoints, Reaff
+from core.models.debater_alias_group import DebaterAliasGroup
 from core.models.school import School
 from core.models.standings.coty import COTY
 from core.models.standings.noty import NOTY
@@ -37,12 +38,18 @@ class DebaterForm(forms.ModelForm):
         queryset=School.objects.all(),
         widget=autocomplete.ModelSelect2(url="core:school_autocomplete"),
     )
+    alias_group = forms.ModelChoiceField(
+        queryset=DebaterAliasGroup.objects.all(),
+        widget=autocomplete.ModelSelect2(url="core:alias_group_autocomplete"),
+        required=False,
+        help_text="Optional: link this affiliation to an existing alias group.",
+    )
     tournament_id = forms.CharField(widget=forms.HiddenInput(), required=False)
     last_name = forms.CharField(max_length=32, required=False)
 
     class Meta:
         model = Debater
-        fields = ("first_name", "last_name", "school")
+        fields = ("first_name", "last_name", "school", "alias_group")
 
 
 class VideoForm(forms.ModelForm):

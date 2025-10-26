@@ -2,6 +2,7 @@ from django.conf import settings
 from django.db import models
 from django.shortcuts import reverse
 
+from .debater_alias_group import DebaterAliasGroup
 from .school import School
 
 
@@ -9,6 +10,14 @@ class Debater(models.Model):
     first_name = models.CharField(max_length=32, blank=False)
 
     last_name = models.CharField(max_length=32, blank=True, default='')
+
+    alias_group = models.ForeignKey(
+        DebaterAliasGroup,
+        on_delete=models.SET_NULL,
+        related_name="debaters",
+        blank=True,
+        null=True,
+    )
 
     school = models.ForeignKey(
         School,

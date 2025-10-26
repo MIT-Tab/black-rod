@@ -8,7 +8,7 @@ from datetime import date
 from django.test import TestCase, Client
 from django.urls import reverse
 
-from core.models import School, Tournament, Debater
+from core.models import School, Tournament, Debater, DebaterAliasGroup
 from core.models.results.speaker import SpeakerResult
 
 
@@ -114,3 +114,24 @@ class DebaterViewsTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "John")
         self.assertContains(response, "Doe")
+
+    def test_also_debated_under_section(self):
+        alias_group = DebaterAliasGroup.objects.create(label="John Doe")
+        self.debater.alias_group = alias_group
+        self.debater.save()
+
+        alias_school = School.objects.create(name="Alias School")
+        alias = Debater.objects.create(
+            first_name="John",
+            last_name="Doe",
+            school=alias_school,
+            alias_group=alias_group,
+        )
+
+        response = self.client.get(
+            reverse("core:debater_detail", kwargs={"pk": self.debater.pk})
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Also Debated Under")
+        self.assertContains(response, alias_school.name)
