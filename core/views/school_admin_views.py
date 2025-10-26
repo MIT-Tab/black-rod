@@ -15,6 +15,7 @@ from django.views.generic import CreateView, ListView, TemplateView, UpdateView,
 from django_filters import FilterSet, CharFilter
 
 from core.models.debater import Debater
+from core.models.debater_alias_group import DebaterAliasGroup
 from core.models.school import School
 from core.models.school_admin import SchoolAdmin
 
@@ -98,9 +99,16 @@ class SchoolAdminDebaterListView(SchoolAdminMixin, ListView):
 
 
 class SchoolAdminDebaterForm(forms.ModelForm):
+    alias_group = forms.ModelChoiceField(
+        queryset=DebaterAliasGroup.objects.all(),
+        widget=autocomplete.ModelSelect2(url="core:alias_group_autocomplete"),
+        required=False,
+        help_text="Link this debater to an existing alias group if applicable.",
+    )
+
     class Meta:
         model = Debater
-        fields = ('first_name', 'last_name', 'status', 'first_season', 'latest_season')
+        fields = ('first_name', 'last_name', 'status', 'first_season', 'latest_season', 'alias_group')
 
     def __init__(self, *args, school=None, user=None, **kwargs):
         super().__init__(*args, **kwargs)

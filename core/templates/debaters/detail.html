@@ -38,6 +38,21 @@
             </tr>
         </tbody>
     </table>
+    {% if also_debated_under %}
+        <div class="mt-3">
+            <h6 class="text-uppercase text-muted">Also Debated Under</h6>
+            <ul class="pl-3">
+                {% for alias in also_debated_under %}
+                    <li>
+                        <a href="{{ alias.get_absolute_url }}">{{ alias.name }}</a>
+                        {% if alias.school %}
+                            <span class="text-muted">({{ alias.school.name }})</span>
+                        {% endif %}
+                    </li>
+                {% endfor %}
+            </ul>
+        </div>
+    {% endif %}
 {% endblock detail_view %}
 {% block left_column %}
     {% if totys|length > 0 or sotys|length > 0 or notys|length > 0 %}

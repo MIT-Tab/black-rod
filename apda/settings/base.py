@@ -305,6 +305,11 @@ NAV_MENU_LEFT = [
                 "url": "/core/admin-tools/",
                 "validators": ["menu_generator.validators.is_superuser"],
             },
+            {
+                "name": "Potential Debater Links",
+                "url": "core:debater_alias_suggestions",
+                "validators": ["menu_generator.validators.is_superuser"],
+            },
         ],
     },
     {

@@ -15,6 +15,7 @@ from .team import Team
 from .tournament import Tournament
 from .user import User
 from .video import Video
+from .debater_alias_group import DebaterAliasGroup
 
 __all__ = [
     "User",
@@ -40,4 +41,5 @@ __all__ = [
     "SiteSetting",
     "Video",
     "QualBar",
+    "DebaterAliasGroup",
 ]

@@ -76,6 +76,11 @@ urlpatterns = [
         debater_views.DebaterAutocomplete.as_view(),
         name="debater_autocomplete",
     ),
+    path(
+        "core/debater-alias-groups/autocomplete",
+        debater_views.DebaterAliasGroupAutocomplete.as_view(),
+        name="alias_group_autocomplete",
+    ),
     path("core/teams/", team_views.TeamListView.as_view(), name="team_list"),
     path(
         "core/teams/<int:pk>", team_views.TeamDetailView.as_view(), name="team_detail"
@@ -196,6 +201,11 @@ urlpatterns = [
         "core/rankings-recompute/",
         admin_views.RankingsRecomputeView.as_view(),
         name="rankings_recompute",
+    ),
+    path(
+        "core/admin/debater-aliases/",
+        admin_views.DebaterAliasSuggestionView.as_view(),
+        name="debater_alias_suggestions",
     ),
     path(
         "core/school-admin/",
