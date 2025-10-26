@@ -7,6 +7,13 @@ from core.utils.rankings import get_qualled_debaters, place_as_round
 register = template.Library()
 
 
+def _as_bool(value):
+    """Coerce template values into booleans."""
+    if isinstance(value, str):
+        return value.lower() in {"1", "true", "yes", "y", "t"}
+    return bool(value)
+
+
 @register.filter
 def wl(round, team):
     gov_wins = [1, 3, 6]
@@ -131,9 +138,23 @@ def years_on_team(current_season, first_season):
 
 
 @register.filter
-def place_as_round_filter(place):
-    """Convert numeric place to round name (e.g., 1 -> '1st', 4 -> 'Semi-Finalist')"""
-    return place_as_round(place)
+def place_as_round_filter(place, ghost_points=False):
+    """
+    Convert numeric place to round name (e.g., 1 -> '1st', 4 -> 'Semi-Finalist').
+    When ghost points are present, return the Alternate label instead.
+    """
+    if _as_bool(ghost_points):
+        return "Alternate"
+
+    try:
+        place_value = int(place)
+    except (TypeError, ValueError):
+        return ""
+
+    if place_value <= 0:
+        return ""
+
+    return place_as_round(place_value)
 
 
 @register.filter
