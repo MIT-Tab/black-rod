@@ -293,7 +293,7 @@
                                 {% if type == 'team' %}
                                     <td></td>
                                     <td class="short-row">{{ award.get_type_of_place_display }} Team Award</td>
-                                    <td class="short-row">{{ award.place }}</td>
+                                    <td class="short-row">{{ award.place|place_as_round_filter:award.ghost_points }}</td>
                                     <td colspan="{% if tournament.tab_card and user.is_authenticated %}4{% else %}3{% endif %}"
                                         class="short-row">
                                         <a href="{{ award.team.get_absolute_url }}">{{ award.team }}</a>
@@ -302,7 +302,7 @@
                                 {% if type == 'speaker' %}
                                     <td></td>
                                     <td class="short-row">{{ award.get_type_of_place_display }} Speaker Award</td>
-                                    <td class="short-row">{{ award.place }}</td>
+                                    <td class="short-row">{{ award.place|place_as_round_filter }}</td>
                                     <td class="short-row"
                                         colspan="{% if tournament.tab_card and user.is_authenticated %}4{% else %}3{% endif %}">
                                     </td>

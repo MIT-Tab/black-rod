@@ -1,3 +1,4 @@
+{% load tags %}
 <table class="table table-striped table-hover table-bordered">
     <thead>
         <th>Place</th>
@@ -9,7 +10,7 @@
     <tbody>
         {% for result in results %}
             <tr>
-                <td>{{ result.place }}</td>
+                <td>{{ result.place|place_as_round_filter }}</td>
                 <td>
                     <a href="{% url 'core:tournament_detail' pk=result.tournament.id %}">{{ result.tournament.name }}</a>
                 </td>

@@ -8,7 +8,7 @@
     <tbody>
         {% for result in results %}
             <tr>
-                <td>{% if result.ghost_points %}Alternate{% else %}{{ forloop.counter|place_as_round_filter }}{% endif %}</td>
+                <td>{{ forloop.counter|place_as_round_filter:result.ghost_points }}</td>
                 <td>
                     <a href="{% url 'core:team_detail' pk=result.team.id %}">{{ result.team }}</a>
                 </td>
