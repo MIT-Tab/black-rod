@@ -11,6 +11,7 @@ from django_summernote.widgets import SummernoteInplaceWidget
 from core.models import Team, TOTYReaff
 from core.models.debater import Debater, QualPoints, Reaff
 from core.models.merge_request import MergeDebaterRequest
+from core.models.claim_request import ClaimDebaterRequest
 from core.models.debater_alias_group import DebaterAliasGroup
 from core.models.school import School
 from core.models.school_admin import SchoolAdmin
@@ -568,3 +569,106 @@ class MergeDebaterRequestForm(forms.Form):
         cleaned_data["secondary_debater"] = secondary
 
         return cleaned_data
+
+
+class ClaimDebaterRequestForm(forms.Form):
+    school = forms.ModelChoiceField(
+        label="Select School",
+        queryset=School.objects.all(),
+        widget=autocomplete.ModelSelect2(url="core:school_autocomplete"),
+        help_text="First, select the school you debated for",
+    )
+
+    debater = forms.ModelChoiceField(
+        label="Select Debater to Claim",
+        queryset=Debater.objects.all(),
+        widget=autocomplete.ModelSelect2(
+            url="core:debater_autocomplete",
+            forward=['school']
+        ),
+        help_text="Then search for and select your debater profile",
+    )
+
+    def __init__(self, *args, user=None, **kwargs):
+        self.user = user
+        super().__init__(*args, **kwargs)
+
+        if self.user is None:
+            raise ValueError("ClaimDebaterRequestForm requires a user.")
+
+    def clean(self):
+        cleaned_data = super().clean()
+        school = cleaned_data.get('school')
+        debater = cleaned_data.get('debater')
+
+        # Verify the debater belongs to the selected school
+        if school and debater and debater.school != school:
+            raise forms.ValidationError(
+                "The selected debater does not belong to the selected school."
+            )
+
+        return cleaned_data
+
+    def clean_debater(self):
+        debater = self.cleaned_data.get("debater")
+
+        if not debater:
+            return debater
+
+        # Check if debater already has a user
+        if debater.user:
+            raise forms.ValidationError(
+                "This debater has already been claimed by another user."
+            )
+
+        # Check if there's already a pending request for this debater
+        existing_pending = ClaimDebaterRequest.objects.filter(
+            debater=debater,
+            status=ClaimDebaterRequest.STATUS_PENDING
+        ).exists()
+
+        if existing_pending:
+            raise forms.ValidationError(
+                "A pending claim request already exists for this debater."
+            )
+
+        # Check if the user already has a pending request for this debater
+        user_pending = ClaimDebaterRequest.objects.filter(
+            requested_by=self.user,
+            debater=debater,
+            status=ClaimDebaterRequest.STATUS_PENDING
+        ).exists()
+
+        if user_pending:
+            raise forms.ValidationError(
+                "You already have a pending claim request for this debater."
+            )
+
+        return debater
+
+
+class DebaterProfileEditForm(forms.ModelForm):
+    paradigm = forms.URLField(
+        required=False,
+        label="Paradigm (Google Doc Link)",
+        help_text="Link to your Google Doc paradigm. Make sure sharing is enabled so others can view it.",
+        widget=forms.URLInput(attrs={'placeholder': 'https://docs.google.com/document/d/...'})
+    )
+
+    class Meta:
+        model = Debater
+        fields = ['first_name', 'last_name', 'paradigm']
+        labels = {
+            'first_name': 'First Name',
+            'last_name': 'Last Name',
+        }
+
+    def clean_paradigm(self):
+        paradigm = self.cleaned_data.get('paradigm')
+
+        if paradigm and 'docs.google.com' not in paradigm:
+            raise forms.ValidationError(
+                "Paradigm must be a Google Docs link. Please ensure it's a link to a Google Doc."
+            )
+
+        return paradigm

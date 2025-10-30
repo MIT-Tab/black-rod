@@ -1,0 +1,73 @@
+{% extends "base/base.html" %}
+
+{% block title %}Claim Debater Profile{% endblock title %}
+
+{% block content %}
+<div class="row mt-4 mb-5">
+    <div class="col-lg-8 col-xl-6 mx-auto">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <h2 class="h4 mb-3">Claim Your Debater Profile</h2>
+                <p class="text-muted mb-4">
+                    Search for your debater profile in our database and submit a request to claim it.
+                    Once approved by an administrator, you'll be able to edit your profile and add a paradigm.
+                </p>
+
+                {% if messages %}
+                    {% for message in messages %}
+                        <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                            {{ message }}
+                            <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+                                <span aria-hidden="true">&times;</span>
+                            </button>
+                        </div>
+                    {% endfor %}
+                {% endif %}
+
+                {% if form.non_field_errors %}
+                    <div class="alert alert-danger">
+                        {% for error in form.non_field_errors %}
+                            <div>{{ error }}</div>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+
+                {% if rate_limit_reached %}
+                    <div class="alert alert-warning">
+                        You have reached the daily limit for claim requests. Please try again tomorrow.
+                    </div>
+                {% endif %}
+
+                <form method="post" novalidate id="claim-debater-form">
+                    {% csrf_token %}
+                    {{ form.media }}
+                    <div class="form-group">
+                        {{ form.school.label_tag }}
+                        {{ form.school }}
+                        <small class="form-text text-muted">{{ form.school.help_text }}</small>
+                        {% for error in form.school.errors %}
+                            <div class="invalid-feedback d-block">{{ error }}</div>
+                        {% endfor %}
+                    </div>
+                    
+                    <div class="form-group">
+                        {{ form.debater.label_tag }}
+                        {{ form.debater }}
+                        <small class="form-text text-muted">{{ form.debater.help_text }}</small>
+                        {% for error in form.debater.errors %}
+                            <div class="invalid-feedback d-block">{{ error }}</div>
+                        {% endfor %}
+                    </div>
+
+                    <div class="mt-4 d-flex justify-content-end">
+                        <a href="{% url 'core:my_debater_profile' %}" class="btn btn-secondary mr-2">Back to My Profile</a>
+                        <button type="submit" class="btn btn-primary" {% if rate_limit_reached %}disabled{% endif %}>
+                            Submit Claim Request
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock content %}

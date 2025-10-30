@@ -36,6 +36,7 @@ from core.models import (
     Video,
     Debater,
     MergeDebaterRequest,
+    ClaimDebaterRequest,
     DebaterAliasGroup,
 )
 from core.resources import (
@@ -218,6 +219,33 @@ class MergeDebaterRequestAdmin(admin.ModelAdmin):
         "requested_by",
         "processed_by",
     )
+
+
+@admin.register(ClaimDebaterRequest)
+class ClaimDebaterRequestAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "debater",
+        "requested_by",
+        "status",
+        "created_at",
+        "processed_by",
+        "processed_at",
+    )
+    list_filter = ("status", "created_at", "processed_at")
+    search_fields = (
+        "debater__first_name",
+        "debater__last_name",
+        "requested_by__username",
+        "requested_by__email",
+    )
+    ordering = ("-created_at",)
+    raw_id_fields = (
+        "debater",
+        "requested_by",
+        "processed_by",
+    )
+    readonly_fields = ("created_at", "processed_at")
 
 
 @admin.register(NOTY)

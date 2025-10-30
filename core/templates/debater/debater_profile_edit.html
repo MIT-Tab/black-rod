@@ -1,0 +1,100 @@
+{% extends "base/base.html" %}
+
+{% block title %}Edit Profile - {{ object.name }}{% endblock title %}
+
+{% block content %}
+<div class="row mt-4 mb-5">
+    <div class="col-lg-8 col-xl-6 mx-auto">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <h2 class="h4 mb-3">Edit Your Debater Profile</h2>
+                <p class="text-muted mb-4">
+                    Update your basic information and add or edit your paradigm.
+                    Your paradigm should be a link to a Google Doc with sharing enabled.
+                </p>
+
+                {% if messages %}
+                    {% for message in messages %}
+                        <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                            {{ message }}
+                            <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+                                <span aria-hidden="true">&times;</span>
+                            </button>
+                        </div>
+                    {% endfor %}
+                {% endif %}
+
+                <form method="post" novalidate>
+                    {% csrf_token %}
+                    
+                    <div class="form-group">
+                        {{ form.first_name.label_tag }}
+                        {{ form.first_name }}
+                        {% for error in form.first_name.errors %}
+                            <div class="invalid-feedback d-block">{{ error }}</div>
+                        {% endfor %}
+                    </div>
+
+                    <div class="form-group">
+                        {{ form.last_name.label_tag }}
+                        {{ form.last_name }}
+                        {% for error in form.last_name.errors %}
+                            <div class="invalid-feedback d-block">{{ error }}</div>
+                        {% endfor %}
+                    </div>
+
+                    <div class="form-group">
+                        {{ form.paradigm.label_tag }}
+                        {{ form.paradigm }}
+                        <small class="form-text text-muted">{{ form.paradigm.help_text }}</small>
+                        {% for error in form.paradigm.errors %}
+                            <div class="invalid-feedback d-block">{{ error }}</div>
+                        {% endfor %}
+                    </div>
+
+                    <div class="alert alert-info mt-3">
+                        <strong>Tip:</strong> Make sure your Google Doc is shared with "Anyone with the link can view" 
+                        so that others can access your paradigm.
+                    </div>
+
+                    <div class="mt-4 d-flex justify-content-between">
+                        <a href="{{ object.get_absolute_url }}" class="btn btn-secondary">Back to Profile</a>
+                        <button type="submit" class="btn btn-primary">Save Changes</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div class="card shadow-sm mt-4">
+            <div class="card-body">
+                <h3 class="h5 mb-3">Profile Information</h3>
+                <dl class="row mb-0">
+                    <dt class="col-sm-4">School:</dt>
+                    <dd class="col-sm-8">{{ object.school.name|default:"Unknown" }}</dd>
+                    
+                    <dt class="col-sm-4">First Season:</dt>
+                    <dd class="col-sm-8">{{ object.first_season|default:"—" }}</dd>
+                    
+                    <dt class="col-sm-4">Latest Season:</dt>
+                    <dd class="col-sm-8">{{ object.latest_season|default:"—" }}</dd>
+                    
+                    <dt class="col-sm-4">Status:</dt>
+                    <dd class="col-sm-8">{{ object.get_status_display }}</dd>
+                </dl>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .form-control {
+        border: 1px solid #ced4da;
+        border-radius: 0.25rem;
+        padding: 0.375rem 0.75rem;
+    }
+    .form-control:focus {
+        border-color: #80bdff;
+        box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+    }
+</style>
+{% endblock content %}

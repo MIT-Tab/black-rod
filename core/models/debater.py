@@ -28,6 +28,22 @@ class Debater(models.Model):
     )
     # WHAT IF AFFILIATION CHANGES ?  Considered new debater
 
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="claimed_debaters",
+        blank=True,
+        null=True,
+        help_text="User who has claimed this debater profile",
+    )
+
+    paradigm = models.URLField(
+        max_length=500,
+        blank=True,
+        null=True,
+        help_text="Link to Google Doc paradigm (must have sharing enabled)",
+    )
+
     first_season = models.CharField(max_length=16, blank=True, null=True)
     latest_season = models.CharField(max_length=16, blank=True, null=True)
 

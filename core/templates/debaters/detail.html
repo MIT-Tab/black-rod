@@ -4,6 +4,14 @@
     {{ object }}
 {% endblock title %}
 {% block detail_view %}
+    {% if object.user == request.user or request.user.is_superuser %}
+        <div class="mb-3">
+            <a href="{% url 'core:debater_profile_edit' object.pk %}" class="btn btn-primary btn-sm">
+                <i class="fas fa-edit"></i> Edit Profile
+            </a>
+        </div>
+    {% endif %}
+    
     <table class="table table-bordered">
         <thead>
             <th>Field</th>
@@ -36,6 +44,16 @@
                     {{ object.latest_season }}-{{ object.latest_season|add:"1"|stringformat:"s"|slice:"2:4" }}
                 </td>
             </tr>
+            {% if object.paradigm %}
+            <tr>
+                <td>Paradigm</td>
+                <td>
+                    <a href="{{ object.paradigm }}" target="_blank" rel="noopener noreferrer">
+                        <i class="fas fa-external-link-alt"></i> View Paradigm
+                    </a>
+                </td>
+            </tr>
+            {% endif %}
         </tbody>
     </table>
     {% if also_debated_under %}

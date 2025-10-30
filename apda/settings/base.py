@@ -282,13 +282,23 @@ NAV_MENU_LEFT = [
     {"name": "Videos", "url": "core:video_list", "root": True},
     {"name": "Schedule", "url": "core:schedule_view", "root": True},
     {
-        "name": "School Admin",
-        "url": "core:school_admin_dashboard",
+        "name": "My Account",
+        "url": "core:my_debater_profile",
         "root": True,
-        "validators": ["core.menu_validators.is_school_admin"],
+        "validators": ["django.contrib.auth.context_processors.auth"],
         "submenu": [
-            {"name": "Dashboard", "url": "core:school_admin_dashboard"},
-            {"name": "Merge Debaters", "url": "core:merge_debater_request_create"},
+            {"name": "My Profile", "url": "core:my_debater_profile"},
+            {"name": "Claim Debater Profile", "url": "core:claim_debater_request_create"},
+            {
+                "name": "School Dashboard",
+                "url": "core:school_admin_dashboard",
+                "validators": ["core.menu_validators.is_school_admin"],
+            },
+            {
+                "name": "Merge Debaters",
+                "url": "core:merge_debater_request_create",
+                "validators": ["core.menu_validators.is_school_admin"],
+            },
         ],
     },
     {
@@ -299,6 +309,11 @@ NAV_MENU_LEFT = [
             {
                 "name": "Merge Debater Requests",
                 "url": "core:merge_debater_request_review",
+                "validators": ["menu_generator.validators.is_superuser"],
+            },
+            {
+                "name": "Claim Debater Requests",
+                "url": "core:claim_debater_request_review",
                 "validators": ["menu_generator.validators.is_superuser"],
             },
             {
