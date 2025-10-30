@@ -1,0 +1,102 @@
+{% extends "base/base.html" %}
+
+{% block content %}
+    <div class="row mt-lg-5 ml-lg-2 mr-lg-2 mb-lg-5 m-1">
+        <div class="col-12">
+            <div class="card shadow-lg rounded-l5">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <div>
+                            <h5 class="card-title mb-1">Potential Debater Links</h5>
+                            <p class="text-muted mb-0">Same-name debaters from different schools who competed within three seasons.</p>
+                        </div>
+                        <span class="badge badge-pill badge-secondary">{{ suggestions|length }} suggestions</span>
+                    </div>
+
+                    {% if messages %}
+                        {% for message in messages %}
+                            <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                                {{ message }}
+                                <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+                                    <span aria-hidden="true">&times;</span>
+                                </button>
+                            </div>
+                        {% endfor %}
+                    {% endif %}
+
+                    {% if suggestions %}
+                        <div class="table-responsive">
+                            <table class="table table-sm table-hover align-middle mb-0">
+                                <thead class="thead-light text-uppercase small">
+                                    <tr>
+                                        <th style="min-width: 240px;">Debater</th>
+                                        <th style="min-width: 240px;">Potential Match</th>
+                                        <th style="width: 170px;">Overlap</th>
+                                        <th style="width: 120px;" class="text-right">Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for pair in suggestions %}
+                                        <tr>
+                                            <td class="align-middle py-2">
+                                                <div class="font-weight-bold text-dark">{{ pair.debater_one.name }}</div>
+                                                <div class="text-muted small">
+                                                    ID {{ pair.debater_one.id }}
+                                                    &middot;
+                                                    {% if pair.debater_one.school %}
+                                                        {{ pair.debater_one.school.name }}
+                                                    {% else %}
+                                                        Unknown School
+                                                    {% endif %}
+                                                    &middot;
+                                                    {{ pair.debater_one.first_season|default:"?" }} – {{ pair.debater_one.latest_season|default:"?" }}
+                                                </div>
+                                            </td>
+                                            <td class="align-middle py-2">
+                                                <div class="font-weight-bold text-dark">{{ pair.debater_two.name }}</div>
+                                                <div class="text-muted small">
+                                                    ID {{ pair.debater_two.id }}
+                                                    &middot;
+                                                    {% if pair.debater_two.school %}
+                                                        {{ pair.debater_two.school.name }}
+                                                    {% else %}
+                                                        Unknown School
+                                                    {% endif %}
+                                                    &middot;
+                                                    {{ pair.debater_two.first_season|default:"?" }} – {{ pair.debater_two.latest_season|default:"?" }}
+                                                </div>
+                                            </td>
+                                            <td class="align-middle py-2">
+                                                {% if pair.season_gap is not None %}
+                                                    <span class="badge badge-info px-2 py-1 text-uppercase small">
+                                                        Gap {{ pair.season_gap }} yr{% if pair.season_gap != 1 %}s{% endif %}
+                                                    </span>
+                                                {% else %}
+                                                    <span class="badge badge-light px-2 py-1 text-uppercase small">Gap Unknown</span>
+                                                {% endif %}
+                                            </td>
+                                            <td class="text-right align-middle py-2">
+                                                <form method="post" class="d-inline">
+                                                    {% csrf_token %}
+                                                    <input type="hidden" name="debater_one" value="{{ pair.debater_one.id }}">
+                                                    <input type="hidden" name="debater_two" value="{{ pair.debater_two.id }}">
+                                                    <button type="submit" class="btn btn-success btn-sm shadow-sm px-3">
+                                                        <i class="fas fa-link mr-1"></i> Link
+                                                    </button>
+                                                </form>
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <div class="alert alert-success mb-0" role="alert">
+                            No outstanding potential matches found. Nice work!
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock content %}
