@@ -423,14 +423,10 @@ class VideoAdmin(admin.ModelAdmin):
     list_filter = ("tournament", "round", "permissions", "tags")
     search_fields = (
         "tournament__name",
-        "pm__first_name",
-        "pm__last_name",
-        "lo__first_name",
-        "lo__last_name",
-        "mg__first_name",
-        "mg__last_name",
-        "mo__first_name",
-        "mo__last_name",
+        "pm__name",
+        "lo__name",
+        "mg__name",
+        "mo__name",
         "case",
         "description",
     )

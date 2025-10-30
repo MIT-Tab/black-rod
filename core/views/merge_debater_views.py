@@ -253,7 +253,6 @@ class MergeDebaterRequestReviewView(LoginRequiredMixin, UserPassesTestMixin, Tem
         with transaction.atomic():
             merge_request = (
                 MergeDebaterRequest.objects.select_for_update()
-                .select_related("primary_debater", "secondary_debater")
                 .filter(pk=request_id)
                 .first()
             )
