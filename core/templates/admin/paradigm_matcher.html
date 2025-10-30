@@ -1,0 +1,232 @@
+{% extends "base/base.html" %}
+
+{% block title %}Paradigm CSV Matcher - Admin{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-12">
+            <h1>Paradigm CSV Matcher <span class="badge bg-warning">Admin Only</span></h1>
+            <p class="text-muted">Match paradigm CSV records to existing debater profiles. This tool will be removed once matching is complete.</p>
+        </div>
+    </div>
+
+    <!-- Statistics -->
+    <div class="row mt-3">
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Total CSV Records</h5>
+                    <p class="card-text display-6">{{ total_csv_records }}</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Already Matched</h5>
+                    <p class="card-text display-6 text-success">{{ already_matched }}</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-body">
+                    <h5 class="card-title">Remaining</h5>
+                    <p class="card-text display-6 text-warning">{{ total_csv_records|add:"-"|add:already_matched }}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Records with Matches -->
+    {% if records_with_matches %}
+    <div class="row mt-5">
+        <div class="col-12">
+            <h2>Records with Potential Matches</h2>
+            <p class="text-muted">CSV entries with fuzzy name matches. Click "Apply Match" to assign the paradigm to a debater.</p>
+        </div>
+    </div>
+
+    {% for record in records_with_matches %}
+    <div class="card mb-3 match-card" data-csv-name="{{ record.csv_record.name }}">
+        <div class="card-header bg-light">
+            <div class="row align-items-center">
+                <div class="col-md-8">
+                    <h5 class="mb-0">
+                        <strong>{{ record.csv_record.name }}</strong>
+                        <span class="badge bg-secondary ms-2">{{ record.csv_record.affiliation }}</span>
+                        <span class="badge bg-info ms-1">{{ record.csv_record.class_year }}</span>
+                    </h5>
+                    <small class="text-muted">
+                        <a href="{{ record.csv_record.paradigm_link }}" target="_blank" rel="noopener">
+                            {{ record.csv_record.paradigm_link|truncatechars:60 }}
+                        </a>
+                    </small>
+                </div>
+                <div class="col-md-4 text-end">
+                    <button class="btn btn-sm btn-outline-secondary skip-btn">Skip</button>
+                </div>
+            </div>
+        </div>
+        <div class="card-body">
+            <h6>Potential Matches:</h6>
+            <div class="list-group">
+                {% for debater, score in record.potential_matches %}
+                <div class="list-group-item">
+                    <div class="row align-items-center">
+                        <div class="col-md-6">
+                            <strong>{{ debater.first_name }} {{ debater.last_name }}</strong>
+                            {% if debater.school %}
+                            <span class="badge bg-primary ms-2">{{ debater.school.name }}</span>
+                            {% else %}
+                            <span class="badge bg-secondary ms-2">No School</span>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-3">
+                            <small class="text-muted">Match: {{ score|floatformat:2|floatformat:0 }}%</small>
+                            <div class="progress" style="height: 5px;">
+                                <div class="progress-bar" role="progressbar" 
+                                     style="width: {{ score|floatformat:2|floatformat:0 }}%;"
+                                     aria-valuenow="{{ score|floatformat:2|floatformat:0 }}" 
+                                     aria-valuemin="0" 
+                                     aria-valuemax="100">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3 text-end">
+                            <button class="btn btn-success btn-sm apply-match-btn"
+                                    data-debater-id="{{ debater.id }}"
+                                    data-csv-name="{{ record.csv_record.name }}">
+                                Apply Match
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+    {% endif %}
+
+    <!-- Records without Matches -->
+    {% if records_without_matches %}
+    <div class="row mt-5">
+        <div class="col-12">
+            <h2>Records with No Matches</h2>
+            <p class="text-muted">CSV entries with no fuzzy name matches found. These may need manual review or the debater may not exist in the system.</p>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Affiliation</th>
+                            <th>Class Year</th>
+                            <th>Paradigm Link</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for record in records_without_matches %}
+                        <tr>
+                            <td>{{ record.csv_record.name }}</td>
+                            <td>{{ record.csv_record.affiliation }}</td>
+                            <td>{{ record.csv_record.class_year }}</td>
+                            <td>
+                                <a href="{{ record.csv_record.paradigm_link }}" target="_blank" rel="noopener">
+                                    {{ record.csv_record.paradigm_link|truncatechars:50 }}
+                                </a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if not records_with_matches and not records_without_matches %}
+    <div class="row mt-5">
+        <div class="col-12">
+            <div class="alert alert-success" role="alert">
+                <h4 class="alert-heading">All Done!</h4>
+                <p>All CSV records have been matched. You can now safely remove this tool.</p>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Handle apply match button clicks
+    document.querySelectorAll('.apply-match-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            const debaterId = this.dataset.debaterId;
+            const csvName = this.dataset.csvName;
+            const card = this.closest('.match-card');
+            
+            if (!confirm('Apply this paradigm to the selected debater?')) {
+                return;
+            }
+            
+            fetch('{% url "core:paradigm_matcher_apply" %}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-CSRFToken': '{{ csrf_token }}'
+                },
+                body: new URLSearchParams({
+                    'debater_id': debaterId,
+                    'csv_name': csvName
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    card.style.transition = 'opacity 0.5s';
+                    card.style.opacity = '0';
+                    setTimeout(() => card.remove(), 500);
+                    
+                    // Show success message
+                    const alert = document.createElement('div');
+                    alert.className = 'alert alert-success alert-dismissible fade show';
+                    alert.innerHTML = `
+                        ${data.message}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    `;
+                    document.querySelector('.container').insertBefore(alert, document.querySelector('.container').firstChild);
+                } else {
+                    alert('Error: ' + data.error);
+                }
+            })
+            .catch(error => {
+                alert('Error applying match: ' + error);
+            });
+        });
+    });
+    
+    // Handle skip button clicks
+    document.querySelectorAll('.skip-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            const card = this.closest('.match-card');
+            const csvName = card.dataset.csvName;
+            
+            if (!confirm('Skip this record? It will remain in the unmatched list on next page load.')) {
+                return;
+            }
+            
+            card.style.transition = 'opacity 0.5s';
+            card.style.opacity = '0';
+            setTimeout(() => card.remove(), 500);
+        });
+    });
+});
+</script>
+{% endblock %}
