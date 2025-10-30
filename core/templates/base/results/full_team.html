@@ -58,8 +58,8 @@
         {% for result in results %}
             <tr>
                 {% if result.type == 'award' %}
-                    {% if result.result.place > 0 %}
-                        <td>{{ result.result.place }}</td>
+                    {% if result.result.place > 0 or result.result.ghost_points %}
+                        <td>{{ result.result.place|place_as_round_filter:result.result.ghost_points }}</td>
                     {% else %}
                         <td></td>
                     {% endif %}
@@ -70,7 +70,7 @@
                     <td>{{ result.result.tournament.get_season_display }}</td>
                     <td>{{ result.result.get_type_of_place_display }}</td>
                 {% else %}
-                    <td>{{ result.result.place }}</td>
+                    <td>{{ result.result.place|place_as_round_filter }}</td>
                     <td>{{ result.record }}</td>
                     <td>
                         <a href="{% url 'core:tournament_detail' pk=result.tournament.id %}">{{ result.tournament.name }}</a>

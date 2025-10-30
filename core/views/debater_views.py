@@ -2,6 +2,7 @@ from dal import autocomplete
 from django import forms
 from django.conf import settings
 from django.http import HttpResponse
+from django.db.models import Q
 from django.urls import reverse_lazy
 from django_filters import FilterSet, CharFilter
 from django_tables2 import Column
@@ -9,6 +10,7 @@ from haystack.query import SearchQuerySet
 
 from core.forms import DebaterForm
 from core.models.debater import Debater
+from core.models.debater_alias_group import DebaterAliasGroup
 from core.models.results.team import TeamResult
 from core.models.round import Round
 from core.models.standings.toty import TOTY
@@ -278,6 +280,16 @@ class DebaterDetailView(CustomDetailView):
 
         context["teams"] = teams
 
+        also_debated_under = []
+        if self.object.alias_group:
+            also_debated_under = list(
+                self.object.alias_group.debaters.exclude(pk=self.object.pk)
+                .select_related("school")
+                .order_by("school__name", "first_name", "last_name")
+            )
+
+        context["also_debated_under"] = also_debated_under
+
         context["videos"] = []
         context["videos"] += list(self.object.pm_videos.all())
         context["videos"] += list(self.object.lo_videos.all())
@@ -342,7 +354,8 @@ class DebaterDeleteView(CustomDeleteView):
 
 class DebaterAutocomplete(autocomplete.Select2QuerySetView):
     def get_result_label(self, record):
-        return f"<{record.id}> {record.name} ({record.school.name})"
+        school_name = record.school.name if record.school else "Unaffiliated"
+        return f"<{record.id}> {record.name} ({school_name})"
 
     def get_queryset(self):
         qs = None
@@ -363,3 +376,21 @@ class DebaterAutocomplete(autocomplete.Select2QuerySetView):
             qs = qs.filter(school__id=school)
 
         return qs
+
+
+class DebaterAliasGroupAutocomplete(autocomplete.Select2QuerySetView):
+    def get_queryset(self):
+        qs = DebaterAliasGroup.objects.prefetch_related("debaters").order_by("label", "id")
+
+        if self.q:
+            qs = qs.filter(
+                Q(label__icontains=self.q)
+            )
+
+        return qs
+
+    def get_result_label(self, item):
+        alias_count = item.debaters.count()
+        if alias_count:
+            return f"{item.name} ({alias_count} linked debater{'s' if alias_count != 1 else ''})"
+        return item.name

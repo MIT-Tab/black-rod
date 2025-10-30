@@ -3,6 +3,9 @@ from django.shortcuts import redirect
 from django.http import JsonResponse
 from django.template.loader import render_to_string
 from formtools.wizard.views import SessionWizardView
+import logging
+
+from haystack import connections
 
 from core.forms import (
     DebaterForm, DebaterCreationFormset, SchoolForm, SchoolCreationFormset,
@@ -275,6 +278,36 @@ class TournamentDataEntryWizardView(CustomMixin, SessionWizardView):
         self._create_speaker_results(tournament, form_dict["3"], Debater.VARSITY, speakers_to_update)
         self._create_speaker_results(tournament, form_dict["5"], Debater.NOVICE, novices_to_update)
         self._update_rankings(tournament, teams_to_update, speakers_to_update, novices_to_update)
+
+        # Re-index affected debaters in Haystack.
+        # bulk_create/bulk_update do not emit save signals, so ensure Haystack index is updated for
+        # debaters who were part of updated teams or speaker results.
+        try:
+            debaters_to_reindex = set()
+            # teams_to_update contains Team instances; include their debaters
+            for team in teams_to_update:
+                if team:
+                    for d in team.debaters.all():
+                        debaters_to_reindex.add(d)
+
+            # speakers_to_update and novices_to_update contain Debater instances
+            for d in speakers_to_update:
+                if d:
+                    debaters_to_reindex.add(d)
+            for d in novices_to_update:
+                if d:
+                    debaters_to_reindex.add(d)
+
+            if debaters_to_reindex:
+                ui = connections['default'].get_unified_index()
+                debater_index = ui.get_index(Debater)
+                for debater in debaters_to_reindex:
+                    try:
+                        debater_index.update_object(debater)
+                    except Exception:
+                        logging.exception('Failed to update haystack index for Debater id=%s', getattr(debater, 'id', None))
+        except Exception:
+            logging.exception('Error while attempting to reindex debaters after import')
 
         # Clear tournament session data when done
         APIDataHandler.clear_tournament_session_data(self.request)

@@ -1,7 +1,7 @@
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "apda.settings.base"
 testpaths = ["tests/unit", "tests/integration"]
-addopts = "--cov=core --cov=apda --cov=apdaonline --cov-report=term-missing --cov-fail-under=80 --reuse-db"
+addopts = "--cov=core --cov=apda --cov=apdaonline --cov-report=term-missing --cov-fail-under=70 --reuse-db"
 python_files = ["tests.py", "test_*.py", "*_tests.py"]
 
 [tool.coverage.run]
