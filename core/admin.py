@@ -35,6 +35,7 @@ from core.models import (
     User,
     Video,
     Debater,
+    MergeDebaterRequest,
     DebaterAliasGroup,
 )
 from core.resources import (
@@ -188,6 +189,35 @@ class TeamResultAdmin(ImportExportModelAdmin):
 @admin.register(SpeakerResult)
 class SpeakerResultAdmin(ImportExportModelAdmin):
     resource_class = SpeakerResultResource
+
+
+@admin.register(MergeDebaterRequest)
+class MergeDebaterRequestAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "primary_debater",
+        "secondary_debater",
+        "status",
+        "requested_by",
+        "created_at",
+        "processed_by",
+        "processed_at",
+    )
+    list_filter = ("status", "created_at", "processed_at")
+    search_fields = (
+        "primary_debater__first_name",
+        "primary_debater__last_name",
+        "secondary_debater__first_name",
+        "secondary_debater__last_name",
+        "requested_by__username",
+    )
+    ordering = ("status", "created_at")
+    raw_id_fields = (
+        "primary_debater",
+        "secondary_debater",
+        "requested_by",
+        "processed_by",
+    )
 
 
 @admin.register(NOTY)

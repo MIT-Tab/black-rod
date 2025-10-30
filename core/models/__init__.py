@@ -15,6 +15,7 @@ from .team import Team
 from .tournament import Tournament
 from .user import User
 from .video import Video
+from .merge_request import MergeDebaterRequest
 from .debater_alias_group import DebaterAliasGroup
 
 __all__ = [
@@ -41,5 +42,6 @@ __all__ = [
     "SiteSetting",
     "Video",
     "QualBar",
+    "MergeDebaterRequest",
     "DebaterAliasGroup",
 ]

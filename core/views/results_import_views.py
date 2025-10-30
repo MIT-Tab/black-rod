@@ -1,9 +1,9 @@
+import logging
 from django.conf import settings
 from django.shortcuts import redirect
 from django.http import JsonResponse
 from django.template.loader import render_to_string
 from formtools.wizard.views import SessionWizardView
-import logging
 
 from haystack import connections
 
