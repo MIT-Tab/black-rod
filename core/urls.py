@@ -13,7 +13,6 @@ from core.views import (
     soty_views,
     merge_debater_views,
     claim_debater_views,
-    paradigm_matcher_views,
     team_views,
     toty_views,
     tournament_views,
@@ -275,22 +274,6 @@ urlpatterns = [
         "core/debater/<int:pk>/edit-profile/",
         claim_debater_views.DebaterProfileEditView.as_view(),
         name="debater_profile_edit",
-    ),
-    # Paradigm CSV Matcher (Admin Only - Temporary)
-    path(
-        "core/admin/paradigm-matcher/",
-        paradigm_matcher_views.paradigm_matcher_view,
-        name="paradigm_matcher",
-    ),
-    path(
-        "core/admin/paradigm-matcher/apply/",
-        paradigm_matcher_views.apply_paradigm_match,
-        name="paradigm_matcher_apply",
-    ),
-    path(
-        "core/admin/paradigm-matcher/skip/",
-        paradigm_matcher_views.skip_paradigm_match,
-        name="paradigm_matcher_skip",
     ),
     path(
         "core/user-autocomplete/",

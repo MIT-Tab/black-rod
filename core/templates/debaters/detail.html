@@ -44,7 +44,7 @@
                     {{ object.latest_season }}-{{ object.latest_season|add:"1"|stringformat:"s"|slice:"2:4" }}
                 </td>
             </tr>
-            {% if object.paradigm %}
+            {% if object.paradigm and user.is_authenticated and user.can_view_private_videos %}
             <tr>
                 <td>Paradigm</td>
                 <td>
