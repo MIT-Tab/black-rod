@@ -282,6 +282,12 @@ NAV_MENU_LEFT = [
     {"name": "Videos", "url": "core:video_list", "root": True},
     {"name": "Schedule", "url": "core:schedule_view", "root": True},
     {
+        "name": "My Profile",
+        "url": "core:my_debater_profile",
+        "root": True,
+        "validators": ["django.contrib.auth.context_processors.auth"],
+    },
+    {
         "name": "School Admin",
         "url": "core:school_admin_dashboard",
         "root": True,
@@ -299,6 +305,11 @@ NAV_MENU_LEFT = [
             {
                 "name": "Merge Debater Requests",
                 "url": "core:merge_debater_request_review",
+                "validators": ["menu_generator.validators.is_superuser"],
+            },
+            {
+                "name": "Claim Debater Requests",
+                "url": "core:claim_debater_request_review",
                 "validators": ["menu_generator.validators.is_superuser"],
             },
             {

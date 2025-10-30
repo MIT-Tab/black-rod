@@ -1,0 +1,159 @@
+{% extends "base/base.html" %}
+
+{% block title %}My Debater Profile{% endblock title %}
+
+{% block content %}
+<div class="container mt-4 mb-5">
+    <h1 class="h3 mb-4">My Debater Profile</h1>
+    
+    {% if messages %}
+        {% for message in messages %}
+            <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                {{ message }}
+                <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+        {% endfor %}
+    {% endif %}
+
+    {% if claimed_debaters %}
+        <div class="card shadow-sm mb-4">
+            <div class="card-body">
+                <h2 class="h5 mb-3">
+                    <i class="fas fa-user-check text-success mr-2"></i>
+                    My Claimed Profiles
+                </h2>
+                <div class="list-group">
+                    {% for debater in claimed_debaters %}
+                    <div class="list-group-item">
+                        <div class="d-flex w-100 justify-content-between align-items-start">
+                            <div>
+                                <h5 class="mb-1">
+                                    <a href="{{ debater.get_absolute_url }}">{{ debater.name }}</a>
+                                </h5>
+                                <p class="mb-1">
+                                    <strong>School:</strong> 
+                                    {% if debater.school %}
+                                        <a href="{% url 'core:school_detail' debater.school.pk %}">{{ debater.school.name }}</a>
+                                    {% else %}
+                                        Unknown
+                                    {% endif %}
+                                </p>
+                                <p class="mb-1 text-muted">
+                                    <small>
+                                        Seasons: {{ debater.first_season }} - {{ debater.latest_season }}
+                                        | Status: {{ debater.get_status_display }}
+                                    </small>
+                                </p>
+                                {% if debater.paradigm %}
+                                    <p class="mb-0">
+                                        <small>
+                                            <i class="fas fa-file-alt mr-1"></i>
+                                            <a href="{{ debater.paradigm }}" target="_blank" rel="noopener noreferrer">
+                                                View Paradigm
+                                            </a>
+                                        </small>
+                                    </p>
+                                {% endif %}
+                            </div>
+                            <div>
+                                <a href="{% url 'core:debater_profile_edit' debater.pk %}" class="btn btn-primary btn-sm">
+                                    <i class="fas fa-edit mr-1"></i> Edit Profile
+                                </a>
+                                <a href="{{ debater.get_absolute_url }}" class="btn btn-secondary btn-sm">
+                                    <i class="fas fa-eye mr-1"></i> View Public Profile
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    {% else %}
+        <div class="alert alert-info">
+            <i class="fas fa-info-circle mr-2"></i>
+            You haven't claimed any debater profiles yet.
+            <a href="{% url 'core:claim_debater_request_create' %}" class="alert-link">Claim your profile now</a>
+        </div>
+    {% endif %}
+
+    <div class="row">
+        <div class="col-md-6">
+            <div class="card shadow-sm mb-4">
+                <div class="card-body">
+                    <h2 class="h5 mb-3">
+                        <i class="fas fa-clock text-warning mr-2"></i>
+                        Pending Claim Requests
+                    </h2>
+                    {% if pending_requests %}
+                        <div class="list-group list-group-flush">
+                            {% for request in pending_requests %}
+                            <div class="list-group-item px-0">
+                                <div class="d-flex w-100 justify-content-between">
+                                    <h6 class="mb-1">{{ request.debater.name }}</h6>
+                                    <small class="text-muted">{{ request.created_at|date:"M d, Y" }}</small>
+                                </div>
+                                <p class="mb-1">
+                                    <small>
+                                        School: {{ request.debater.school.name|default:"Unknown" }}
+                                    </small>
+                                </p>
+                                <span class="badge badge-warning">Pending Review</span>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <p class="text-muted mb-0">No pending requests.</p>
+                    {% endif %}
+                    
+                    <div class="mt-3">
+                        <a href="{% url 'core:claim_debater_request_create' %}" class="btn btn-outline-primary btn-sm">
+                            <i class="fas fa-plus mr-1"></i> Submit New Claim Request
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6">
+            <div class="card shadow-sm mb-4">
+                <div class="card-body">
+                    <h2 class="h5 mb-3">
+                        <i class="fas fa-history text-secondary mr-2"></i>
+                        Recent Claim Requests
+                    </h2>
+                    {% if recent_requests %}
+                        <div class="list-group list-group-flush">
+                            {% for request in recent_requests %}
+                            <div class="list-group-item px-0">
+                                <div class="d-flex w-100 justify-content-between">
+                                    <h6 class="mb-1">{{ request.debater.name }}</h6>
+                                    <small class="text-muted">{{ request.created_at|date:"M d, Y" }}</small>
+                                </div>
+                                <p class="mb-1">
+                                    <small>
+                                        School: {{ request.debater.school.name|default:"Unknown" }}
+                                    </small>
+                                </p>
+                                {% if request.status == "approved" %}
+                                    <span class="badge badge-success">Approved</span>
+                                {% elif request.status == "denied" %}
+                                    <span class="badge badge-danger">Denied</span>
+                                    {% if request.denial_reason %}
+                                        <p class="mt-2 mb-0"><small><strong>Reason:</strong> {{ request.denial_reason }}</small></p>
+                                    {% endif %}
+                                {% endif %}
+                            </div>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <p class="text-muted mb-0">No recent requests.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock content %}

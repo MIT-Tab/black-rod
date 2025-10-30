@@ -4,6 +4,7 @@ from core.views import (
     admin_views,
     coty_views,
     debater_views,
+    debater_profile_views,
     noty_views,
     results_import_views,
     round_views,
@@ -11,6 +12,7 @@ from core.views import (
     school_views,
     soty_views,
     merge_debater_views,
+    claim_debater_views,
     team_views,
     toty_views,
     tournament_views,
@@ -252,6 +254,26 @@ urlpatterns = [
         "core/merge-debaters/review/",
         merge_debater_views.MergeDebaterRequestReviewView.as_view(),
         name="merge_debater_request_review",
+    ),
+    path(
+        "core/my-profile/",
+        debater_profile_views.MyDebaterProfileView.as_view(),
+        name="my_debater_profile",
+    ),
+    path(
+        "core/claim-debater/request/",
+        claim_debater_views.ClaimDebaterRequestCreateView.as_view(),
+        name="claim_debater_request_create",
+    ),
+    path(
+        "core/claim-debater/review/",
+        claim_debater_views.ClaimDebaterRequestReviewView.as_view(),
+        name="claim_debater_request_review",
+    ),
+    path(
+        "core/debater/<int:pk>/edit-profile/",
+        claim_debater_views.DebaterProfileEditView.as_view(),
+        name="debater_profile_edit",
     ),
     path(
         "core/user-autocomplete/",
