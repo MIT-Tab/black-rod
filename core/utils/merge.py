@@ -2,7 +2,6 @@ from django.db import IntegrityError, transaction
 from django.db.models import Q
 
 from core.models import (
-    Debater,
     NOTY,
     OnlineQUAL,
     QUAL,
@@ -33,7 +32,7 @@ class MergeError(Exception):
 def _season_token(value):
     if value is None:
         return None
-    return str(value).split("-")[0]
+    return str(value).split("-", maxsplit=1)[0]
 
 
 def get_debater_result_counts(debater):

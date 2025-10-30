@@ -499,7 +499,7 @@ class MergeDebaterRequestForm(forms.Form):
     def _season_token(self, value):
         if value is None:
             return None
-        return str(value).split("-")[0]
+        return str(value).split("-", maxsplit=1)[0]
 
     def clean(self):
         cleaned_data = super().clean()
