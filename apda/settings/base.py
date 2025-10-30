@@ -282,19 +282,23 @@ NAV_MENU_LEFT = [
     {"name": "Videos", "url": "core:video_list", "root": True},
     {"name": "Schedule", "url": "core:schedule_view", "root": True},
     {
-        "name": "My Profile",
+        "name": "My Account",
         "url": "core:my_debater_profile",
         "root": True,
         "validators": ["django.contrib.auth.context_processors.auth"],
-    },
-    {
-        "name": "School Admin",
-        "url": "core:school_admin_dashboard",
-        "root": True,
-        "validators": ["core.menu_validators.is_school_admin"],
         "submenu": [
-            {"name": "Dashboard", "url": "core:school_admin_dashboard"},
-            {"name": "Merge Debaters", "url": "core:merge_debater_request_create"},
+            {"name": "My Profile", "url": "core:my_debater_profile"},
+            {"name": "Claim Debater Profile", "url": "core:claim_debater_request_create"},
+            {
+                "name": "School Dashboard",
+                "url": "core:school_admin_dashboard",
+                "validators": ["core.menu_validators.is_school_admin"],
+            },
+            {
+                "name": "Merge Debaters",
+                "url": "core:merge_debater_request_create",
+                "validators": ["core.menu_validators.is_school_admin"],
+            },
         ],
     },
     {
