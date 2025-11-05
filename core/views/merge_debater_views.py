@@ -4,6 +4,7 @@ from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
 from django.core.cache import cache
 from django.db import transaction
+from django.db.models import Count, Q
 from django.shortcuts import redirect
 from django.urls import reverse_lazy
 from django.utils import timezone
@@ -17,8 +18,11 @@ from core.utils.merge import MergeError, get_debater_result_counts, merge_debate
 def _serialize_merge_request(merge_request):
     primary = merge_request.primary_debater
     secondary = merge_request.secondary_debater
-    primary_counts = get_debater_result_counts(primary)
-    secondary_counts = get_debater_result_counts(secondary)
+    
+    # Safely get counts - handle None debaters
+    primary_counts = get_debater_result_counts(primary) if primary else None
+    secondary_counts = get_debater_result_counts(secondary) if secondary else None
+    
     return {
         "instance": merge_request,
         "primary_counts": primary_counts,
@@ -101,18 +105,39 @@ class MergeDebaterRequestCreateView(SchoolAdminRequiredMixin, FormView):
                 return None
             cached = debater_data_cache.get(debater.pk)
             if cached is None:
-                counts = get_debater_result_counts(debater) or {}
+                # Check if debater has annotated counts (from optimized query)
+                if hasattr(debater, 'team_result_count'):
+                    # Use annotated counts - much faster!
+                    team_result_count = getattr(debater, 'team_result_count', 0)
+                    speaker_result_count = getattr(debater, 'speaker_result_count', 0)
+                    round_stat_count = getattr(debater, 'round_stat_count', 0)
+                    video_count = (
+                        getattr(debater, 'video_pm_count', 0) +
+                        getattr(debater, 'video_lo_count', 0) +
+                        getattr(debater, 'video_mg_count', 0) +
+                        getattr(debater, 'video_mo_count', 0)
+                    )
+                    total_count = team_result_count + speaker_result_count + round_stat_count + video_count
+                else:
+                    # Fallback to the old method for debater_one/debater_two
+                    counts = get_debater_result_counts(debater) or {}
+                    team_result_count = counts.get("team_results", 0)
+                    speaker_result_count = counts.get("speaker_results", 0)
+                    round_stat_count = counts.get("round_stats", 0)
+                    video_count = counts.get("videos", 0)
+                    total_count = counts.get("total", 0)
+                
                 debater_data_cache[debater.pk] = {
                     "id": debater.id,
                     "name": debater.name,
                     "school": debater.school.name if debater.school else "",
                     "school_id": debater.school_id,
                     "counts": {
-                        "team_results": counts.get("team_results", 0),
-                        "speaker_results": counts.get("speaker_results", 0),
-                        "round_stats": counts.get("round_stats", 0),
-                        "videos": counts.get("videos", 0),
-                        "total": counts.get("total", 0),
+                        "team_results": team_result_count,
+                        "speaker_results": speaker_result_count,
+                        "round_stats": round_stat_count,
+                        "videos": video_count,
+                        "total": total_count,
                     },
                 }
             return deepcopy(debater_data_cache[debater.pk])
@@ -135,6 +160,15 @@ class MergeDebaterRequestCreateView(SchoolAdminRequiredMixin, FormView):
                         latest_season__in=allowed_seasons,
                     )
                     .select_related("school")
+                    .annotate(
+                        team_result_count=Count('teams__team_results', distinct=True),
+                        speaker_result_count=Count('speaker_results', distinct=True),
+                        round_stat_count=Count('round_stats', distinct=True),
+                        video_pm_count=Count('pm_videos', distinct=True),
+                        video_lo_count=Count('lo_videos', distinct=True),
+                        video_mg_count=Count('mg_videos', distinct=True),
+                        video_mo_count=Count('mo_videos', distinct=True),
+                    )
                     .order_by("school__name", "last_name", "first_name")
                 )
                 school_one_debaters = [serialize_debater_obj(debater) for debater in school_one_qs]
@@ -146,6 +180,15 @@ class MergeDebaterRequestCreateView(SchoolAdminRequiredMixin, FormView):
                         latest_season__in=allowed_seasons,
                     )
                     .select_related("school")
+                    .annotate(
+                        team_result_count=Count('teams__team_results', distinct=True),
+                        speaker_result_count=Count('speaker_results', distinct=True),
+                        round_stat_count=Count('round_stats', distinct=True),
+                        video_pm_count=Count('pm_videos', distinct=True),
+                        video_lo_count=Count('lo_videos', distinct=True),
+                        video_mg_count=Count('mg_videos', distinct=True),
+                        video_mo_count=Count('mo_videos', distinct=True),
+                    )
                     .order_by("school__name", "last_name", "first_name")
                 )
                 school_two_debaters = [serialize_debater_obj(debater) for debater in school_two_qs]
@@ -250,74 +293,87 @@ class MergeDebaterRequestReviewView(LoginRequiredMixin, UserPassesTestMixin, Tem
             messages.error(request, "Invalid request submission.")
             return redirect(self.get_success_url())
 
-        with transaction.atomic():
-            merge_request = (
-                MergeDebaterRequest.objects.select_for_update()
-                .filter(pk=request_id)
-                .first()
-            )
+        # Fetch the merge request first, outside of transaction
+        try:
+            merge_request = MergeDebaterRequest.objects.select_related(
+                "primary_debater__school",
+                "secondary_debater__school"
+            ).get(pk=request_id)
+        except MergeDebaterRequest.DoesNotExist:
+            messages.error(request, "Merge request could not be found.")
+            return redirect(self.get_success_url())
 
-            if not merge_request:
-                messages.error(request, "Merge request could not be found.")
-                return redirect(self.get_success_url())
+        if not merge_request.is_pending:
+            messages.warning(request, "This merge request has already been processed.")
+            return redirect(self.get_success_url())
 
-            if not merge_request.is_pending:
-                messages.warning(request, "This merge request has already been processed.")
-                return redirect(self.get_success_url())
+        # Cache names before transaction in case objects get modified
+        primary_name = merge_request.primary_debater.name if merge_request.primary_debater else "Unknown"
+        secondary_name = merge_request.secondary_debater.name if merge_request.secondary_debater else "Unknown"
 
-            if action == "approve":
-                primary_name = merge_request.primary_debater.name if merge_request.primary_debater else "Unknown"
-                secondary_name = merge_request.secondary_debater.name if merge_request.secondary_debater else "Unknown"
-                try:
+        try:
+            with transaction.atomic():
+                # Re-fetch with lock inside transaction
+                merge_request = MergeDebaterRequest.objects.select_for_update().get(pk=request_id)
+
+                if action == "approve":
+                    # Perform the merge (this may raise exceptions)
                     merge_debaters(merge_request.primary_debater, merge_request.secondary_debater)
                     merge_request.refresh_from_db()
                     merge_request.secondary_debater = None
-                except MergeError as exc:
-                    messages.error(request, f"Merge failed: {exc}")
-                    return redirect(self.get_success_url())
-                except Exception as exc:  # pragma: no cover - safeguard
-                    messages.error(request, f"Unexpected error: {exc}")
-                    return redirect(self.get_success_url())
 
-                merge_request.status = MergeDebaterRequest.STATUS_APPROVED
-                merge_request.denial_reason = ""
-                messages.success(
-                    request,
-                    f"Merged {secondary_name} into {primary_name}.",
-                )
+                    merge_request.status = MergeDebaterRequest.STATUS_APPROVED
+                    merge_request.denial_reason = ""
+                    success_message = f"Merged {secondary_name} into {primary_name}."
+                else:
+                    reason = request.POST.get("denial_reason", "").strip()
+                    merge_request.status = MergeDebaterRequest.STATUS_DENIED
+                    merge_request.denial_reason = reason
+                    success_message = "Merge request denied."
+
+                # Update name fields from current debater objects
+                primary_obj = merge_request.primary_debater
+                if primary_obj:
+                    merge_request.primary_name = primary_obj.name
+                    merge_request.primary_school_name = (
+                        primary_obj.school.name if primary_obj.school else merge_request.primary_school_name
+                    )
+
+                secondary_obj = merge_request.secondary_debater
+                if secondary_obj:
+                    merge_request.secondary_name = secondary_obj.name
+                    merge_request.secondary_school_name = (
+                        secondary_obj.school.name if secondary_obj.school else merge_request.secondary_school_name
+                    )
+
+                # Save the changes
+                update_data = {
+                    "status": merge_request.status,
+                    "denial_reason": merge_request.denial_reason,
+                    "processed_by": request.user,
+                    "processed_at": timezone.now(),
+                    "primary_name": merge_request.primary_name,
+                    "primary_school_name": merge_request.primary_school_name,
+                    "secondary_name": merge_request.secondary_name,
+                    "secondary_school_name": merge_request.secondary_school_name,
+                    "secondary_debater_id": merge_request.secondary_debater_id,
+                }
+                MergeDebaterRequest.objects.filter(pk=merge_request.pk).update(**update_data)
+                
+            # Transaction completed successfully - we're now outside the atomic block
+            if action == "approve":
+                messages.success(request, success_message)
             else:
-                reason = request.POST.get("denial_reason", "").strip()
-                merge_request.status = MergeDebaterRequest.STATUS_DENIED
-                merge_request.denial_reason = reason
-                messages.info(request, "Merge request denied.")
-
-            primary_obj = merge_request.primary_debater
-            if primary_obj:
-                merge_request.primary_name = primary_obj.name
-                merge_request.primary_school_name = (
-                    primary_obj.school.name if primary_obj.school else merge_request.primary_school_name
-                )
-
-            secondary_obj = merge_request.secondary_debater
-            if secondary_obj:
-                merge_request.secondary_name = secondary_obj.name
-                merge_request.secondary_school_name = (
-                    secondary_obj.school.name if secondary_obj.school else merge_request.secondary_school_name
-                )
-
-            update_data = {
-                "status": merge_request.status,
-                "denial_reason": merge_request.denial_reason,
-                "processed_by": request.user,
-                "processed_at": timezone.now(),
-                "primary_name": merge_request.primary_name,
-                "primary_school_name": merge_request.primary_school_name,
-                "secondary_name": merge_request.secondary_name,
-                "secondary_school_name": merge_request.secondary_school_name,
-                "secondary_debater_id": merge_request.secondary_debater_id,
-            }
-            MergeDebaterRequest.objects.filter(pk=merge_request.pk).update(**update_data)
-            merge_request.refresh_from_db()
+                messages.info(request, success_message)
+                    
+        except MergeError as exc:
+            # Transaction will auto-rollback
+            messages.error(request, f"Merge failed: {exc}")
+        except Exception as exc:
+            # Transaction will auto-rollback
+            import traceback
+            traceback.print_exc()  # Debug: print full traceback
+            messages.error(request, f"Unexpected error: {exc}")
 
         return redirect(self.get_success_url())
 

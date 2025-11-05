@@ -13,6 +13,7 @@ from core.models import (
     Team,
     TeamResult,
     Video,
+    MergeDebaterRequest,
 )
 from core.models.standings.toty import TOTY
 from core.utils.rankings import (
@@ -68,6 +69,12 @@ def merge_debaters(primary, secondary):
 
     Returns a dict with metadata about the merge that callers may use for logging.
     """
+    # Validate that both debaters exist and have primary keys
+    if not primary or not primary.pk:
+        raise MergeError("Primary debater must have a valid primary key.")
+    if not secondary or not secondary.pk:
+        raise MergeError("Secondary debater must have a valid primary key.")
+    
     if primary.pk == secondary.pk:
         raise MergeError("Cannot merge a debater into itself.")
 
@@ -110,6 +117,9 @@ def merge_debaters(primary, secondary):
         _merge_teams(primary, secondary)
 
         _update_primary_profile(primary, secondary)
+
+        # Cancel any other pending merge requests involving these debaters
+        _cancel_pending_merge_requests(primary, secondary)
 
         secondary.delete()
 
@@ -187,6 +197,27 @@ def _merge_reaffs(primary, secondary):
     Reaff.objects.filter(new_debater=secondary).update(new_debater=primary)
 
 
+def _cancel_pending_merge_requests(primary, secondary):
+    """Cancel any pending merge requests involving the debaters being merged."""
+    from django.utils import timezone
+    
+    # Find all pending requests involving either debater
+    pending_requests = MergeDebaterRequest.objects.filter(
+        status=MergeDebaterRequest.STATUS_PENDING
+    ).filter(
+        Q(primary_debater=primary) | Q(secondary_debater=primary) |
+        Q(primary_debater=secondary) | Q(secondary_debater=secondary)
+    )
+    
+    # Mark them as auto-denied
+    for request in pending_requests:
+        request.status = MergeDebaterRequest.STATUS_DENIED
+        request.denial_reason = f"Auto-cancelled: One of these debaters was merged in another request."
+        request.processed_at = timezone.now()
+        request.processed_by = None  # System action
+        request.save()
+
+
 def _merge_teams(primary, secondary):
     teams = Team.objects.filter(debaters=secondary).distinct()
     for team in teams:
@@ -221,11 +252,22 @@ def _update_primary_profile(primary, secondary):
 
 
 def _rerun_rankings(primary, affected_teams, seasons):
+    # Get fresh team IDs to avoid stale objects
+    team_ids = [team.pk for team in affected_teams if team.pk]
+    
     for season in seasons:
-        for team in affected_teams:
-            update_toty(team, season=season)
-            update_online_quals(team, season=season)
-            update_qual_points(team, season=season)
+        # Re-fetch teams to avoid stale object issues
+        teams = Team.objects.filter(pk__in=team_ids)
+        
+        for team in teams:
+            try:
+                update_toty(team, season=season)
+                update_online_quals(team, season=season)
+                update_qual_points(team, season=season)
+            except Exception as e:
+                # Log but don't fail the whole merge if ranking update fails
+                print(f"Warning: Failed to update rankings for team {team.pk} in season {season}: {e}")
+                continue
 
         update_soty(primary, season=season)
         update_noty(primary, season=season)

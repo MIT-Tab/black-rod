@@ -335,6 +335,11 @@ NAV_MENU_LEFT = [
                 "url": "core:debater_alias_suggestions",
                 "validators": ["menu_generator.validators.is_superuser"],
             },
+            {
+                "name": "Potential Debater Merges",
+                "url": "core:merge_suggestions",
+                "validators": ["menu_generator.validators.is_superuser"],
+            },
         ],
     },
     {

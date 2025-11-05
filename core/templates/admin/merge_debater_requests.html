@@ -148,7 +148,13 @@
                                         {{ item.secondary_display_name }}
                                     {% endif %}
                                 </td>
-                                <td>{{ request.processed_by.get_full_name|default:request.processed_by.username }}</td>
+                                <td>
+                                    {% if request.processed_by %}
+                                        {{ request.processed_by.get_full_name|default:request.processed_by.username }}
+                                    {% else %}
+                                        <span class="text-muted">System</span>
+                                    {% endif %}
+                                </td>
                                 <td>{{ request.denial_reason|default:"" }}</td>
                             </tr>
                         {% endwith %}
