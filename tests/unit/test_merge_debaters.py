@@ -243,3 +243,149 @@ def test_merge_debaters_same_raises_error():
 
     with pytest.raises(MergeError):
         merge_debaters(debater, debater)
+
+
+@pytest.mark.django_db
+def test_merge_debaters_updates_existing_qual_with_missing_details():
+    school = School.objects.create(name="Qual School")
+    primary = Debater.objects.create(
+        first_name="Primary",
+        last_name="Qual",
+        school=school,
+        first_season=settings.CURRENT_SEASON,
+        latest_season=settings.CURRENT_SEASON,
+    )
+    secondary = Debater.objects.create(
+        first_name="Secondary",
+        last_name="Qual",
+        school=school,
+        first_season=settings.CURRENT_SEASON,
+        latest_season=settings.CURRENT_SEASON,
+    )
+    tournament = Tournament.objects.create(
+        name="Qual Event",
+        season=settings.CURRENT_SEASON,
+        date=date.today(),
+        host=school,
+        num_teams=10,
+        num_debaters=20,
+        num_novice_debaters=4,
+        num_novice_teams=2,
+    )
+
+    QUAL.objects.create(
+        debater=primary,
+        season=settings.CURRENT_SEASON,
+        qual_type=QUAL.POINTS,
+        tournament=None,
+        place=-1,
+        points=-1,
+    )
+    QUAL.objects.create(
+        debater=secondary,
+        season=settings.CURRENT_SEASON,
+        qual_type=QUAL.POINTS,
+        tournament=tournament,
+        place=2,
+        points=10,
+        tied=True,
+    )
+
+    SpeakerResult.objects.create(
+        tournament=tournament,
+        debater=primary,
+        type_of_place=Debater.VARSITY,
+        place=1,
+    )
+
+    merge_debaters(primary, secondary)
+
+    quals = QUAL.objects.filter(
+        debater=primary,
+        season=settings.CURRENT_SEASON,
+        qual_type=QUAL.POINTS,
+    )
+    assert quals.count() == 1
+
+    qual = quals.get()
+    assert qual.tournament == tournament
+    assert qual.place == 2
+    assert qual.points == 10
+    assert qual.tied is True
+
+
+@pytest.mark.django_db
+def test_merge_debaters_retains_existing_qual_details_when_present():
+    school = School.objects.create(name="Qual School Two")
+    primary = Debater.objects.create(
+        first_name="Primary",
+        last_name="Existing",
+        school=school,
+        first_season=settings.CURRENT_SEASON,
+        latest_season=settings.CURRENT_SEASON,
+    )
+    secondary = Debater.objects.create(
+        first_name="Secondary",
+        last_name="Existing",
+        school=school,
+        first_season=settings.CURRENT_SEASON,
+        latest_season=settings.CURRENT_SEASON,
+    )
+    tournament_primary = Tournament.objects.create(
+        name="Primary Event",
+        season=settings.CURRENT_SEASON,
+        date=date.today(),
+        host=school,
+        num_teams=10,
+        num_debaters=20,
+        num_novice_debaters=4,
+        num_novice_teams=2,
+    )
+    tournament_secondary = Tournament.objects.create(
+        name="Secondary Event",
+        season=settings.CURRENT_SEASON,
+        date=date.today(),
+        host=school,
+        num_teams=10,
+        num_debaters=20,
+        num_novice_debaters=4,
+        num_novice_teams=2,
+    )
+
+    QUAL.objects.create(
+        debater=primary,
+        season=settings.CURRENT_SEASON,
+        qual_type=QUAL.POINTS,
+        tournament=tournament_primary,
+        place=3,
+        points=9,
+    )
+    QUAL.objects.create(
+        debater=secondary,
+        season=settings.CURRENT_SEASON,
+        qual_type=QUAL.POINTS,
+        tournament=tournament_secondary,
+        place=5,
+        points=7,
+    )
+
+    SpeakerResult.objects.create(
+        tournament=tournament_primary,
+        debater=primary,
+        type_of_place=Debater.VARSITY,
+        place=1,
+    )
+
+    merge_debaters(primary, secondary)
+
+    quals = QUAL.objects.filter(
+        debater=primary,
+        season=settings.CURRENT_SEASON,
+        qual_type=QUAL.POINTS,
+    )
+    assert quals.count() == 1
+
+    qual = quals.get()
+    assert qual.tournament == tournament_primary
+    assert qual.place == 3
+    assert qual.points == 9

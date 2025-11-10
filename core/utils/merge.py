@@ -164,19 +164,39 @@ def _merge_qual_points(primary, secondary, seasons):
 
 def _merge_qualifications(primary, secondary):
     for qual in list(secondary.quals.all()):
-        qual.debater = primary
-        try:
-            qual.save()
-        except IntegrityError:
-            existing = QUAL.objects.filter(
-                debater=primary,
-                season=qual.season,
-                qual_type=qual.qual_type,
-            ).first()
-            if existing and not existing.tournament and qual.tournament:
+        existing = QUAL.objects.filter(
+            debater=primary,
+            season=qual.season,
+            qual_type=qual.qual_type,
+        ).first()
+
+        if existing:
+            fields_to_update = []
+
+            if qual.tournament and not existing.tournament:
                 existing.tournament = qual.tournament
-                existing.save(update_fields=["tournament"])
+                fields_to_update.append("tournament")
+
+            if qual.place != -1 and (existing.place == -1 or qual.place < existing.place):
+                existing.place = qual.place
+                fields_to_update.append("place")
+
+            if qual.points != -1 and qual.points > existing.points:
+                existing.points = qual.points
+                fields_to_update.append("points")
+
+            if qual.tied and not existing.tied:
+                existing.tied = True
+                fields_to_update.append("tied")
+
+            if fields_to_update:
+                existing.save(update_fields=fields_to_update)
+
             qual.delete()
+            continue
+
+        qual.debater = primary
+        qual.save()
 
 
 def _merge_standings(primary, secondary):
