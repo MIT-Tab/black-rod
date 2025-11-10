@@ -389,3 +389,79 @@ def test_merge_debaters_retains_existing_qual_details_when_present():
     assert qual.tournament == tournament_primary
     assert qual.place == 3
     assert qual.points == 9
+
+
+@pytest.mark.django_db
+def test_merge_debaters_handles_existing_autoqual_previous_season():
+    school = School.objects.create(name="Legacy Qual School")
+    prev_season = str(int(settings.CURRENT_SEASON) - 1)
+
+    partner = Debater.objects.create(
+        first_name="Partner",
+        last_name="Prev",
+        school=school,
+        first_season=prev_season,
+        latest_season=prev_season,
+    )
+    primary = Debater.objects.create(
+        first_name="Primary",
+        last_name="Prev",
+        school=school,
+        first_season=prev_season,
+        latest_season=prev_season,
+    )
+    secondary = Debater.objects.create(
+        first_name="Secondary",
+        last_name="Prev",
+        school=school,
+        first_season=prev_season,
+        latest_season=prev_season,
+    )
+
+    tournament = Tournament.objects.create(
+        name="Legacy Event",
+        season=prev_season,
+        date=date.today(),
+        host=school,
+        num_teams=10,
+        num_debaters=20,
+        num_novice_debaters=4,
+        num_novice_teams=2,
+        autoqual_bar=4,
+        qual_type=QUAL.EXPANSION,
+    )
+
+    team = Team.objects.create(name="Legacy Team")
+    team.debaters.set([secondary, partner])
+    team.update_name()
+    team.save()
+
+    TeamResult.objects.create(
+        tournament=tournament,
+        team=team,
+        type_of_place=Debater.VARSITY,
+        place=2,
+    )
+
+    QUAL.objects.create(
+        debater=primary,
+        season=prev_season,
+        qual_type=QUAL.EXPANSION,
+    )
+    QUAL.objects.create(
+        debater=secondary,
+        season=prev_season,
+        qual_type=QUAL.EXPANSION,
+        tournament=tournament,
+    )
+
+    merge_debaters(primary, secondary)
+
+    quals = QUAL.objects.filter(
+        debater=primary,
+        season=prev_season,
+        qual_type=QUAL.EXPANSION,
+    )
+    assert quals.count() == 1
+    qual = quals.get()
+    assert qual.tournament == tournament

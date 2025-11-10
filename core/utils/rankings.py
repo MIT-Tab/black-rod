@@ -305,15 +305,15 @@ def update_qual_points(team, season=settings.CURRENT_SEASON):
 
         for result in results:
             if result.place != -1 and result.place <= result.tournament.autoqual_bar:
-                try:
-                    qual = QUAL.objects.create(
-                        season=season,
-                        tournament=result.tournament,
-                        qual_type=result.tournament.qual_type,
-                        debater=debater,
-                    )
-                except:
-                    pass
+                qual, created = QUAL.objects.get_or_create(
+                    season=season,
+                    debater=debater,
+                    qual_type=result.tournament.qual_type,
+                    defaults={"tournament": result.tournament},
+                )
+                if not created and result.tournament and not qual.tournament:
+                    qual.tournament = result.tournament
+                    qual.save(update_fields=["tournament"])
 
         results = results.filter(tournament__qual=True)
 
