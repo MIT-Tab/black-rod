@@ -168,15 +168,27 @@ class APIDataHandler:
         if not created_debaters or not created_debaters[0].id:
             created_debaters = self._find_created_debaters(debaters_to_create)
 
-        tournament_to_db_mapping = existing_mapping.copy()
         for i, tournament_id in enumerate(debater_mapping_info):
             if tournament_id and i < len(created_debaters) and created_debaters[i]:
-                tournament_to_db_mapping[str(tournament_id)] = created_debaters[i].id
+                self.link_tournament_debater(tournament_id, created_debaters[i])
 
-        if self.request and tournament_to_db_mapping:
-            self.request.session['tournament_debater_mapping'] = tournament_to_db_mapping
-        self._debater_id_map.update(tournament_to_db_mapping)
         return len(debaters_to_create)
+
+    def link_tournament_debater(self, tournament_id, debater):
+        if not tournament_id or debater is None:
+            return
+
+        debater_id = getattr(debater, 'id', debater)
+        if not debater_id:
+            return
+
+        tournament_key = str(tournament_id)
+        self._debater_id_map[tournament_key] = debater_id
+
+        if self.request and hasattr(self.request, 'session'):
+            mapping = dict(self.request.session.get('tournament_debater_mapping', {}))
+            mapping[tournament_key] = debater_id
+            self.request.session['tournament_debater_mapping'] = mapping
 
     def _find_created_debaters(self, debaters_to_create):
         created_debaters = []

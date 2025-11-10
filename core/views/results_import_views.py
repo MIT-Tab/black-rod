@@ -256,12 +256,30 @@ class TournamentDataEntryWizardView(CustomMixin, SessionWizardView):
             if school_data:
                 self.get_api_handler().create_schools_from_data(school_data)
         elif step == "1":
-            debater_data = [{'first_name': fd['first_name'], 'last_name': fd['last_name'],
-                           'school': fd['school'], 'tournament_id': fd.get('tournament_id')}
-                          for fd in form.cleaned_data
-                          if fd.get('first_name') and fd.get('last_name') and fd.get('school')]
+            api_handler = self.get_api_handler()
+            debater_data = []
+
+            for fd in form.cleaned_data:
+                if not fd:
+                    continue
+
+                existing_debater = fd.get('existing_debater')
+                tournament_id = fd.get('tournament_id')
+                if existing_debater:
+                    if tournament_id:
+                        api_handler.link_tournament_debater(tournament_id, existing_debater)
+                    continue
+
+                if fd.get('first_name') and fd.get('last_name') and fd.get('school'):
+                    debater_data.append({
+                        'first_name': fd['first_name'],
+                        'last_name': fd['last_name'],
+                        'school': fd['school'],
+                        'tournament_id': tournament_id
+                    })
+
             if debater_data:
-                self.get_api_handler().create_debaters_from_data(debater_data)
+                api_handler.create_debaters_from_data(debater_data)
         return super().process_step(form)
 
     def done(self, form_list, form_dict):

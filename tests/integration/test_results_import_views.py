@@ -135,6 +135,7 @@ def test_get_form_initial_uses_database_seed_for_results():
 def test_process_step_creates_entities_from_api(monkeypatch):
     schools_created = []
     debaters_created = []
+    linked_debaters = []
 
     class DummyHandler:
         def create_schools_from_data(self, data):
@@ -142,6 +143,9 @@ def test_process_step_creates_entities_from_api(monkeypatch):
 
         def create_debaters_from_data(self, data):
             debaters_created.extend(data)
+
+        def link_tournament_debater(self, tournament_id, debater):
+            linked_debaters.append((tournament_id, debater))
 
     monkeypatch.setattr(riv.TournamentDataEntryWizardView, "has_api_data", lambda self: True)
     monkeypatch.setattr(riv.SessionWizardView, "process_step", lambda self, form: "ok")
@@ -163,15 +167,24 @@ def test_process_step_creates_entities_from_api(monkeypatch):
 
     view.steps.current = "1"
     school_obj = object()
+    existing = SimpleNamespace(id=99)
     form.cleaned_data = [
         {"first_name": "Deb", "last_name": "Ater", "school": school_obj, "tournament_id": 10},
         {"first_name": "", "last_name": "", "school": None},
+        {
+            "first_name": "Existing",
+            "last_name": "Debater",
+            "school": school_obj,
+            "tournament_id": 11,
+            "existing_debater": existing,
+        },
     ]
 
     assert view.process_step(form) == "ok"
     assert debaters_created == [
         {"first_name": "Deb", "last_name": "Ater", "school": school_obj, "tournament_id": 10}
     ]
+    assert linked_debaters == [(11, existing)]
 
 
 def test_get_form_prefills_api_initial(monkeypatch):

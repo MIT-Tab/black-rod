@@ -216,6 +216,16 @@ def test_create_debaters_from_data_persists_and_maps(handler, api_request):
     assert handler._debater_id_map["101"] == saved.id
 
 
+def test_link_tournament_debater_updates_session(handler, api_request):
+    school = School.objects.create(name="Linked", included_in_oty=True)
+    debater = Debater.objects.create(first_name="Link", last_name="Able", school=school)
+
+    handler.link_tournament_debater(404, debater)
+
+    assert api_request.session["tournament_debater_mapping"] == {"404": debater.id}
+    assert handler._debater_id_map["404"] == debater.id
+
+
 def test_create_debaters_uses_lookup_when_bulk_create_drops_ids(handler, monkeypatch):
     school = School.objects.create(name="Fallback", included_in_oty=True)
 

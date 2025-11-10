@@ -1,9 +1,10 @@
 from copy import deepcopy
+import logging
 
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
 from django.core.cache import cache
-from django.db import transaction
+from django.db import transaction, IntegrityError
 from django.db.models import Count, Q
 from django.shortcuts import redirect
 from django.urls import reverse_lazy
@@ -13,6 +14,8 @@ from django.views.generic import FormView, TemplateView
 from core.forms import MergeDebaterRequestForm
 from core.models import Debater, MergeDebaterRequest, SchoolAdmin
 from core.utils.merge import MergeError, get_debater_result_counts, merge_debaters
+
+logger = logging.getLogger(__name__)
 
 
 def _serialize_merge_request(merge_request):
@@ -401,12 +404,96 @@ class MergeDebaterRequestReviewView(LoginRequiredMixin, UserPassesTestMixin, Tem
                     
         except MergeError as exc:
             # Transaction will auto-rollback
-            messages.error(request, f"Merge failed: {exc}")
+            error_msg = str(exc)
+            
+            # Provide more user-friendly messages for common errors
+            if "primary key" in error_msg.lower():
+                user_message = "Merge failed: One of the selected debaters no longer exists. Please refresh the page and try again."
+            elif "cannot merge a debater into itself" in error_msg.lower():
+                user_message = "Merge failed: Cannot merge a debater into themselves."
+            else:
+                user_message = f"Merge failed: {error_msg}"
+            
+            messages.error(request, user_message)
+            
+            # Log to Sentry with additional context
+            logger.error(
+                f"MergeError during debater merge request #{request_id}",
+                exc_info=True,
+                extra={
+                    "request_id": request_id,
+                    "primary_debater": primary_name,
+                    "secondary_debater": secondary_name,
+                    "user": request.user.username,
+                    "error_type": "MergeError",
+                }
+            )
+            
+        except IntegrityError as exc:
+            # Transaction will auto-rollback
+            error_msg = str(exc)
+            
+            # Check for common database constraint violations
+            if "unique" in error_msg.lower() or "duplicate" in error_msg.lower():
+                user_message = (
+                    "Merge failed: A database constraint was violated. This usually means "
+                    "the debaters have conflicting records that cannot be automatically merged. "
+                    "Please contact a technical administrator for assistance."
+                )
+            elif "foreign key" in error_msg.lower():
+                user_message = (
+                    "Merge failed: Database relationship error. "
+                    "Please contact a technical administrator for assistance."
+                )
+            else:
+                user_message = (
+                    "Merge failed: A database error occurred. "
+                    "Please contact a technical administrator for assistance."
+                )
+            
+            messages.error(request, user_message)
+            
+            # Log to Sentry with full context
+            logger.error(
+                f"IntegrityError during debater merge request #{request_id}",
+                exc_info=True,
+                extra={
+                    "request_id": request_id,
+                    "primary_debater": primary_name,
+                    "secondary_debater": secondary_name,
+                    "user": request.user.username,
+                    "error_type": "IntegrityError",
+                    "db_error": error_msg,
+                }
+            )
+            
         except Exception as exc:
             # Transaction will auto-rollback
-            import traceback
-            traceback.print_exc()  # Debug: print full traceback
-            messages.error(request, f"Unexpected error: {exc}")
+            error_msg = str(exc)
+            error_type = type(exc).__name__
+            
+            # Generic user-facing message
+            user_message = (
+                "An unexpected error occurred while processing the merge request. "
+                "The merge has been cancelled and no changes were made. "
+                "Please contact a technical administrator if this problem persists."
+            )
+            
+            messages.error(request, user_message)
+            
+            # Log full details to Sentry
+            logger.error(
+                f"Unexpected error during debater merge request #{request_id}",
+                exc_info=True,
+                extra={
+                    "request_id": request_id,
+                    "primary_debater": primary_name,
+                    "secondary_debater": secondary_name,
+                    "user": request.user.username,
+                    "error_type": error_type,
+                    "error_message": error_msg,
+                }
+            )
 
         return redirect(self.get_success_url())
 

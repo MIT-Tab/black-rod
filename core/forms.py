@@ -42,6 +42,13 @@ class DebaterForm(forms.ModelForm):
         queryset=School.objects.all(),
         widget=autocomplete.ModelSelect2(url="core:school_autocomplete"),
     )
+    existing_debater = forms.ModelChoiceField(
+        queryset=Debater.objects.all(),
+        required=False,
+        label="Link to Existing Debater",
+        help_text="If this debater already exists under a different spelling, link them here.",
+        widget=autocomplete.ModelSelect2(url="core:debater_autocomplete"),
+    )
     alias_group = forms.ModelChoiceField(
         queryset=DebaterAliasGroup.objects.all(),
         widget=autocomplete.ModelSelect2(url="core:alias_group_autocomplete"),
@@ -206,6 +213,40 @@ class SpeakerResultForm(forms.Form):
 
 class DebaterCreationFormsetBase(forms.BaseFormSet):
     required_fields = ['first_name', 'last_name', 'school']
+
+    def clean(self):
+        if not self.forms:
+            return
+
+        seen_signatures = set()
+        for form in self.forms:
+            if not form.cleaned_data or form.cleaned_data.get('DELETE'):
+                continue
+
+            existing_debater = form.cleaned_data.get('existing_debater')
+            if existing_debater:
+                form.cleaned_data['DELETE'] = True
+                continue
+
+            first_name = form.cleaned_data.get('first_name', '').strip()
+            last_name = form.cleaned_data.get('last_name', '').strip()
+            school = form.cleaned_data.get('school')
+
+            if not (first_name and last_name and school):
+                continue
+
+            signature = (first_name.lower(), last_name.lower(), getattr(school, 'pk', None))
+            if signature in seen_signatures:
+                form.cleaned_data['DELETE'] = True
+                continue
+            seen_signatures.add(signature)
+
+            if Debater.objects.filter(
+                first_name__iexact=first_name,
+                last_name__iexact=last_name,
+                school=school,
+            ).exists():
+                form.cleaned_data['DELETE'] = True
 
 
 class SchoolCreationFormsetBase(forms.BaseFormSet):
