@@ -78,6 +78,14 @@
                                     <form method="post" class="d-inline">
                                         {% csrf_token %}
                                         <input type="hidden" name="request_id" value="{{ request.id }}">
+                                        <input type="hidden" name="action" value="swap">
+                                        <button type="submit" class="btn btn-outline-secondary btn-sm mb-1" title="Swap which debater to keep">
+                                            <i class="fas fa-exchange-alt"></i>
+                                        </button>
+                                    </form>
+                                    <form method="post" class="d-inline">
+                                        {% csrf_token %}
+                                        <input type="hidden" name="request_id" value="{{ request.id }}">
                                         <input type="hidden" name="action" value="approve">
                                         <button type="submit" class="btn btn-success btn-sm mb-1">
                                             <i class="fas fa-check mr-1"></i> Accept

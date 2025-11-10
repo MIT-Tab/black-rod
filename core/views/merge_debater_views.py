@@ -289,8 +289,41 @@ class MergeDebaterRequestReviewView(LoginRequiredMixin, UserPassesTestMixin, Tem
         request_id = request.POST.get("request_id")
         action = request.POST.get("action")
 
-        if not request_id or action not in {"approve", "deny"}:
+        if not request_id or action not in {"approve", "deny", "swap"}:
             messages.error(request, "Invalid request submission.")
+            return redirect(self.get_success_url())
+        
+        # Handle swap action separately
+        if action == "swap":
+            try:
+                merge_request = MergeDebaterRequest.objects.select_related(
+                    "primary_debater__school",
+                    "secondary_debater__school"
+                ).get(pk=request_id)
+                
+                if not merge_request.is_pending:
+                    messages.warning(request, "This merge request has already been processed.")
+                    return redirect(self.get_success_url())
+                
+                # Swap the debaters
+                primary_debater = merge_request.primary_debater
+                primary_name = merge_request.primary_name
+                primary_school_name = merge_request.primary_school_name
+                
+                merge_request.primary_debater = merge_request.secondary_debater
+                merge_request.primary_name = merge_request.secondary_name
+                merge_request.primary_school_name = merge_request.secondary_school_name
+                
+                merge_request.secondary_debater = primary_debater
+                merge_request.secondary_name = primary_name
+                merge_request.secondary_school_name = primary_school_name
+                
+                merge_request.save()
+                
+                messages.success(request, "Debaters swapped successfully.")
+            except MergeDebaterRequest.DoesNotExist:
+                messages.error(request, "Merge request could not be found.")
+            
             return redirect(self.get_success_url())
 
         # Fetch the merge request first, outside of transaction

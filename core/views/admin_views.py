@@ -311,10 +311,60 @@ class MergeSuggestionsView(UserPassesTestMixin, TemplateView):
         except Debater.DoesNotExist:
             return JsonResponse({"success": False, "error": "Unable to find one of the selected debaters."})
 
+        # Ensure the debater with more results is kept as primary (avoid N+1 queries)
+        debaters_with_counts = Debater.objects.filter(
+            pk__in=[debater_one.pk, debater_two.pk]
+        ).annotate(
+            team_result_count=Count('teams__team_results', distinct=True),
+            speaker_result_count=Count('speaker_results', distinct=True),
+            round_stat_count=Count('round_stats', distinct=True),
+            pm_video_count=Count('pm_videos', distinct=True),
+            lo_video_count=Count('lo_videos', distinct=True),
+            mg_video_count=Count('mg_videos', distinct=True),
+            mo_video_count=Count('mo_videos', distinct=True),
+        ).select_related('school')
+        
+        debaters_dict = {d.pk: d for d in debaters_with_counts}
+        debater_one_annotated = debaters_dict.get(debater_one.pk)
+        debater_two_annotated = debaters_dict.get(debater_two.pk)
+        
+        # Calculate totals and determine primary/secondary
+        if debater_one_annotated and debater_two_annotated:
+            one_total = (
+                debater_one_annotated.team_result_count +
+                debater_one_annotated.speaker_result_count +
+                debater_one_annotated.round_stat_count +
+                debater_one_annotated.pm_video_count +
+                debater_one_annotated.lo_video_count +
+                debater_one_annotated.mg_video_count +
+                debater_one_annotated.mo_video_count
+            )
+            two_total = (
+                debater_two_annotated.team_result_count +
+                debater_two_annotated.speaker_result_count +
+                debater_two_annotated.round_stat_count +
+                debater_two_annotated.pm_video_count +
+                debater_two_annotated.lo_video_count +
+                debater_two_annotated.mg_video_count +
+                debater_two_annotated.mo_video_count
+            )
+            
+            # Swap if debater_two has more results
+            if two_total > one_total:
+                primary_debater = debater_two
+                secondary_debater = debater_one
+            else:
+                primary_debater = debater_one
+                secondary_debater = debater_two
+        else:
+            # Fallback if annotations fail
+            primary_debater = debater_one
+            secondary_debater = debater_two
+
         # Check if request already exists
         existing = MergeDebaterRequest.objects.filter(
-            Q(primary_debater=debater_one, secondary_debater=debater_two) |
-            Q(primary_debater=debater_two, secondary_debater=debater_one)
+            Q(primary_debater=primary_debater, secondary_debater=secondary_debater) |
+            Q(primary_debater=secondary_debater, secondary_debater=primary_debater)
         ).filter(status=MergeDebaterRequest.STATUS_PENDING).first()
         
         if existing:
@@ -323,12 +373,12 @@ class MergeSuggestionsView(UserPassesTestMixin, TemplateView):
         # Create merge request
         MergeDebaterRequest.objects.create(
             requested_by=request.user,
-            primary_debater=debater_one,
-            secondary_debater=debater_two,
-            primary_name=debater_one.name if debater_one else "",
-            primary_school_name=debater_one.school.name if debater_one and debater_one.school else "",
-            secondary_name=debater_two.name if debater_two else "",
-            secondary_school_name=debater_two.school.name if debater_two and debater_two.school else "",
+            primary_debater=primary_debater,
+            secondary_debater=secondary_debater,
+            primary_name=primary_debater.name if primary_debater else "",
+            primary_school_name=primary_debater.school.name if primary_debater and primary_debater.school else "",
+            secondary_name=secondary_debater.name if secondary_debater else "",
+            secondary_school_name=secondary_debater.school.name if secondary_debater and secondary_debater.school else "",
         )
         
         # Clear the cache so next page load shows updated suggestions
@@ -336,7 +386,7 @@ class MergeSuggestionsView(UserPassesTestMixin, TemplateView):
         
         return JsonResponse({
             "success": True,
-            "message": f"Merge request created for {debater_one.name} and {debater_two.name}."
+            "message": f"Merge request created for {primary_debater.name} and {secondary_debater.name}."
         })
 
     def get_context_data(self, **kwargs):

@@ -426,18 +426,29 @@ class MergeDebaterRequestForm(forms.Form):
             str(int(settings.CURRENT_SEASON) - 1),
         }
 
-        admin_schools = (
-            School.objects.filter(admins__user=self.user)
-            .distinct()
-            .order_by("name")
-        )
-        active_schools = (
-            School.objects.filter(
-                debaters__latest_season__in=self.allowed_seasons
+        # Superusers can select from any school
+        if self.user.is_superuser:
+            admin_schools = (
+                School.objects.filter(
+                    debaters__latest_season__in=self.allowed_seasons
+                )
+                .distinct()
+                .order_by("name")
             )
-            .distinct()
-            .order_by("name")
-        )
+            active_schools = admin_schools
+        else:
+            admin_schools = (
+                School.objects.filter(admins__user=self.user)
+                .distinct()
+                .order_by("name")
+            )
+            active_schools = (
+                School.objects.filter(
+                    debaters__latest_season__in=self.allowed_seasons
+                )
+                .distinct()
+                .order_by("name")
+            )
 
         self.fields["school_one"].queryset = admin_schools
         self.fields["school_two"].queryset = active_schools
@@ -532,17 +543,19 @@ class MergeDebaterRequestForm(forms.Form):
                 "Both debaters must have competed in the current or previous season."
             )
 
-        admin_school_ids = set(
-            SchoolAdmin.objects.filter(user=self.user).values_list("school_id", flat=True)
-        )
-
-        if (
-            debater_one.school_id not in admin_school_ids
-            and debater_two.school_id not in admin_school_ids
-        ):
-            raise forms.ValidationError(
-                "At least one selected debater must attend a school you administer."
+        # Superusers can merge any debaters, regular users must administer at least one school
+        if not self.user.is_superuser:
+            admin_school_ids = set(
+                SchoolAdmin.objects.filter(user=self.user).values_list("school_id", flat=True)
             )
+
+            if (
+                debater_one.school_id not in admin_school_ids
+                and debater_two.school_id not in admin_school_ids
+            ):
+                raise forms.ValidationError(
+                    "At least one selected debater must attend a school you administer."
+                )
 
         keep_choices = {choice[0] for choice in self.fields["keep_debater"].choices}
         if keep not in keep_choices:
