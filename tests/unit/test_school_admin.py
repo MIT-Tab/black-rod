@@ -4,6 +4,7 @@ import pytest
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
+from django.db import IntegrityError
 from django.test import Client, TestCase
 from django.urls import reverse
 
@@ -26,6 +27,7 @@ class SchoolAdminModelTest(TestCase):
         self.assertEqual(admin.user, self.user)
         self.assertEqual(admin.school, self.school)
         self.assertIsNotNone(admin.created_at)
+        self.assertFalse(admin.primary)
 
     def test_school_admin_string_representation(self):
         admin = SchoolAdmin.objects.create(user=self.user, school=self.school)
@@ -51,6 +53,18 @@ class SchoolAdminModelTest(TestCase):
         admin1 = SchoolAdmin.objects.create(user=self.user, school=self.school)
         admin2 = SchoolAdmin.objects.create(user=user2, school=self.school)
         self.assertEqual(SchoolAdmin.objects.filter(school=self.school).count(), 2)
+
+    def test_only_one_primary_per_school(self):
+        user2 = User.objects.create_user(
+            username="admin2",
+            email="admin2@example.com",
+            password="pass123"
+        )
+        SchoolAdmin.objects.create(user=self.user, school=self.school, primary=True)
+        admin2 = SchoolAdmin.objects.create(user=user2, school=self.school, primary=False)
+        admin2.primary = True
+        with self.assertRaises(IntegrityError):
+            admin2.save()
 
 
 class SchoolAdminDashboardViewTest(TestCase):

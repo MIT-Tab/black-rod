@@ -328,3 +328,177 @@ class SchoolAdminPermissionEdgeCasesTest(TestCase):
         
         login_success = self.client.login(username='inactive', password='pass123')
         self.assertFalse(login_success)
+
+
+class SchoolAdminManagementPermissionsTest(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.school = School.objects.create(name="Management School")
+        self.primary_user = User.objects.create_user(
+            username="primary-admin",
+            email="primary@example.com",
+            password="pass123"
+        )
+        self.primary_admin = SchoolAdmin.objects.create(
+            user=self.primary_user,
+            school=self.school,
+            primary=True
+        )
+        self.other_user = User.objects.create_user(
+            username="secondary-admin",
+            email="secondary@example.com",
+            password="pass123"
+        )
+        self.other_admin = SchoolAdmin.objects.create(
+            user=self.other_user,
+            school=self.school,
+            primary=False
+        )
+        self.superuser = User.objects.create_superuser(
+            username="super-manager",
+            email="super-manager@example.com",
+            password="superpass"
+        )
+
+    def test_non_primary_can_add_admin(self):
+        new_user = User.objects.create_user(
+            username="third-admin",
+            email="third@example.com",
+            password="pass123"
+        )
+        self.client.login(username="secondary-admin", password="pass123")
+        response = self.client.post(
+            reverse("core:school_admin_add"),
+            {
+                "school_id": self.school.id,
+                "user_id": new_user.id,
+            }
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(
+            SchoolAdmin.objects.filter(user=new_user, school=self.school).exists()
+        )
+
+    def test_non_primary_can_remove_self(self):
+        self.client.login(username="secondary-admin", password="pass123")
+        response = self.client.post(
+            reverse("core:school_admin_remove"),
+            {"school_admin_id": self.other_admin.id}
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(
+            SchoolAdmin.objects.filter(id=self.other_admin.id).exists()
+        )
+
+    def test_non_primary_cannot_remove_other_admin(self):
+        self.client.login(username="secondary-admin", password="pass123")
+        response = self.client.post(
+            reverse("core:school_admin_remove"),
+            {"school_admin_id": self.primary_admin.id}
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertTrue(
+            SchoolAdmin.objects.filter(id=self.primary_admin.id).exists()
+        )
+
+    def test_primary_cannot_remove_self(self):
+        self.client.login(username="primary-admin", password="pass123")
+        response = self.client.post(
+            reverse("core:school_admin_remove"),
+            {"school_admin_id": self.primary_admin.id}
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertTrue(
+            SchoolAdmin.objects.filter(id=self.primary_admin.id).exists()
+        )
+
+    def test_primary_can_remove_other_admin(self):
+        self.client.login(username="primary-admin", password="pass123")
+        response = self.client.post(
+            reverse("core:school_admin_remove"),
+            {"school_admin_id": self.other_admin.id}
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(
+            SchoolAdmin.objects.filter(id=self.other_admin.id).exists()
+        )
+
+    def test_primary_can_transfer_then_remove_self(self):
+        self.client.login(username="primary-admin", password="pass123")
+        response = self.client.post(
+            reverse("core:school_admin_set_primary"),
+            {"school_admin_id": self.other_admin.id}
+        )
+        self.assertEqual(response.status_code, 200)
+        self.primary_admin.refresh_from_db()
+        self.other_admin.refresh_from_db()
+        self.assertFalse(self.primary_admin.primary)
+        self.assertTrue(self.other_admin.primary)
+
+        remove_response = self.client.post(
+            reverse("core:school_admin_remove"),
+            {"school_admin_id": self.primary_admin.id}
+        )
+        self.assertEqual(remove_response.status_code, 200)
+        self.assertFalse(
+            SchoolAdmin.objects.filter(id=self.primary_admin.id).exists()
+        )
+
+    def test_superuser_must_assign_new_primary_before_removing(self):
+        self.client.login(username="super-manager", password="superpass")
+        response = self.client.post(
+            reverse("core:school_admin_remove"),
+            {"school_admin_id": self.primary_admin.id}
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertTrue(
+            SchoolAdmin.objects.filter(id=self.primary_admin.id).exists()
+        )
+
+    def test_superuser_can_transfer_primary_and_remove_old(self):
+        self.client.login(username="super-manager", password="superpass")
+        transfer = self.client.post(
+            reverse("core:school_admin_set_primary"),
+            {"school_admin_id": self.other_admin.id}
+        )
+        self.assertEqual(transfer.status_code, 200)
+        self.primary_admin.refresh_from_db()
+        self.other_admin.refresh_from_db()
+        self.assertFalse(self.primary_admin.primary)
+        self.assertTrue(self.other_admin.primary)
+
+        removal = self.client.post(
+            reverse("core:school_admin_remove"),
+            {"school_admin_id": self.primary_admin.id}
+        )
+        self.assertEqual(removal.status_code, 200)
+        self.assertFalse(
+            SchoolAdmin.objects.filter(id=self.primary_admin.id).exists()
+        )
+
+    def test_non_primary_cannot_set_primary(self):
+        self.client.login(username="secondary-admin", password="pass123")
+        response = self.client.post(
+            reverse("core:school_admin_set_primary"),
+            {"school_admin_id": self.primary_admin.id}
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_first_admin_added_becomes_primary(self):
+        new_school = School.objects.create(name="Brand New School")
+        new_user = User.objects.create_user(
+            username="brand-new-admin",
+            email="brandnew@example.com",
+            password="pass123"
+        )
+        self.client.login(username="super-manager", password="superpass")
+        response = self.client.post(
+            reverse("core:school_admin_add"),
+            {
+                "school_id": new_school.id,
+                "user_id": new_user.id,
+            }
+        )
+        self.assertEqual(response.status_code, 200)
+        admin = SchoolAdmin.objects.get(user=new_user, school=new_school)
+        self.assertTrue(admin.primary)

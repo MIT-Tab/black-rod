@@ -251,6 +251,11 @@ urlpatterns = [
         name="school_admin_remove",
     ),
     path(
+        "core/manage-school-admins/primary/",
+        school_admin_views.SchoolAdminPrimaryUpdateView.as_view(),
+        name="school_admin_set_primary",
+    ),
+    path(
         "core/merge-debaters/request/",
         merge_debater_views.MergeDebaterRequestCreateView.as_view(),
         name="merge_debater_request_create",

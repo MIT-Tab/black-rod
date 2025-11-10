@@ -456,8 +456,8 @@ admin.site.register(SchoolLookup)
 
 @admin.register(SchoolAdminModel)
 class SchoolAdminAdmin(admin.ModelAdmin):
-    list_display = ("user", "school", "created_at")
-    list_filter = ("school", "created_at")
+    list_display = ("user", "school", "primary", "created_at")
+    list_filter = ("school", "primary", "created_at")
     search_fields = ("user__username", "user__email", "school__name")
     autocomplete_fields = ("user", "school")
     ordering = ("school__name", "user__username")

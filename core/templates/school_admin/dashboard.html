@@ -12,6 +12,126 @@
                     </p>
 
                     {% if schools %}
+                        <div class="card mt-3" id="school-admin-management">
+                            <div class="card-header">
+                                <h6 class="mb-0">Manage School Admins</h6>
+                            </div>
+                            <div class="card-body">
+                                <script>
+                                    window.userAutocompleteUrl = '{% url "core:user_autocomplete" %}';
+                                    window.schoolAdminAddUrl = '{% url "core:school_admin_add" %}';
+                                    window.schoolAdminRemoveUrl = '{% url "core:school_admin_remove" %}';
+                                    window.schoolAdminPrimaryUrl = '{% url "core:school_admin_set_primary" %}';
+                                    window.csrfToken = '{{ csrf_token }}';
+                                </script>
+                                <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+                                <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+
+                                <p class="text-muted mb-2">
+                                    Use this table to add, remove, or transfer primary status for admins at your school{% if schools.count > 1 %}s{% endif %}.
+                                </p>
+                                <p class="text-muted small mb-3">
+                                    Primaries can transfer their role and remove others. If you are not the primary, the remove button will only remove your own access.
+                                </p>
+
+                                <div class="table-responsive">
+                                    <table class="table table-sm table-bordered">
+                                        <thead class="thead-light">
+                                            <tr>
+                                                <th style="width: 25%;">School</th>
+                                                <th style="width: 40%;">Current Admins</th>
+                                                <th style="width: 35%;">Add Admin</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% for school in schools %}
+                                                {% with admins=school_admins|dict_item:school.id %}
+                                                {% with role=school_admin_roles|dict_item:school.id %}
+                                                {% with current_admin=current_school_admins|dict_item:school.id %}
+                                                <tr>
+                                                    <td><strong>{{ school.name }}</strong></td>
+                                                    <td>
+                                                        <ul class="list-unstyled mb-0 admin-list"
+                                                            id="admin-list-{{ school.id }}"
+                                                            data-school-id="{{ school.id }}"
+                                                            data-role="{{ role }}"
+                                                            data-current-user-id="{{ request.user.id }}"
+                                                            data-current-admin-id="{% if current_admin %}{{ current_admin.id }}{% endif %}">
+                                                            {% for admin in admins %}
+                                                                <li class="d-flex justify-content-between align-items-center py-1 admin-entry"
+                                                                    data-admin-id="{{ admin.id }}"
+                                                                    data-user-id="{{ admin.user.id }}">
+                                                                    <div class="d-flex align-items-center">
+                                                                        <strong>{{ admin.user.username }}</strong>
+                                                                        {% if admin.primary %}
+                                                                        <span class="badge badge-primary badge-pill ml-2 admin-primary-badge">Primary</span>
+                                                                        {% endif %}
+                                                                        {% if admin.user.email %}
+                                                                        <small class="text-muted ml-2">({{ admin.user.email }})</small>
+                                                                        {% endif %}
+                                                                    </div>
+                                                                    <div class="btn-group btn-group-sm admin-actions" role="group">
+                                                                        {% if not admin.primary %}
+                                                                            {% if role == 'superuser' %}
+                                                                                <button class="btn btn-outline-primary btn-sm make-primary"
+                                                                                        data-school-id="{{ school.id }}"
+                                                                                        data-admin-id="{{ admin.id }}">
+                                                                                    Make Primary
+                                                                                </button>
+                                                                                <button class="btn btn-danger btn-sm remove-admin"
+                                                                                        data-school-id="{{ school.id }}"
+                                                                                        data-admin-id="{{ admin.id }}">
+                                                                                    Remove
+                                                                                </button>
+                                                                            {% elif role == 'primary' and current_admin and admin.id != current_admin.id %}
+                                                                                <button class="btn btn-outline-primary btn-sm make-primary"
+                                                                                        data-school-id="{{ school.id }}"
+                                                                                        data-admin-id="{{ admin.id }}">
+                                                                                    Make Primary
+                                                                                </button>
+                                                                                <button class="btn btn-danger btn-sm remove-admin"
+                                                                                        data-school-id="{{ school.id }}"
+                                                                                        data-admin-id="{{ admin.id }}">
+                                                                                    Remove
+                                                                                </button>
+                                                                            {% elif role == 'admin' and current_admin and admin.id == current_admin.id %}
+                                                                                <button class="btn btn-danger btn-sm remove-admin"
+                                                                                        data-school-id="{{ school.id }}"
+                                                                                        data-admin-id="{{ admin.id }}"
+                                                                                        data-self-remove="true">
+                                                                                    Remove Yourself
+                                                                                </button>
+                                                                            {% endif %}
+                                                                        {% endif %}
+                                                                    </div>
+                                                                </li>
+                                                            {% empty %}
+                                                                <li class="text-muted py-1"><em>No admins</em></li>
+                                                            {% endfor %}
+                                                        </ul>
+                                                    </td>
+                                                    <td>
+                                                        <form class="add-admin-form d-flex" data-school-id="{{ school.id }}">
+                                                            {% csrf_token %}
+                                                            <select class="form-control form-control-sm user-autocomplete flex-grow-1" 
+                                                                    id="user-select-{{ school.id }}"
+                                                                    name="user_id"
+                                                                    data-school-id="{{ school.id }}">
+                                                                <option value="">Search user...</option>
+                                                            </select>
+                                                            <button type="submit" class="btn btn-sm btn-success ml-1" style="white-space: nowrap;">Add</button>
+                                                        </form>
+                                                    </td>
+                                                </tr>
+                                                {% endwith %}
+                                                {% endwith %}
+                                                {% endwith %}
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
                         {% for school in schools %}
                             <div class="card mt-3">
                                 <div class="card-header">

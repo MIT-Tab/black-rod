@@ -7,7 +7,8 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.mixins import UserPassesTestMixin
 from django.core.cache import cache
 from django.core.paginator import Paginator
-from django.db.models import Q, Count
+from django.db import transaction
+from django.db.models import Q, Count, Prefetch
 from django.http import Http404, HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404
 from django.urls import reverse_lazy
@@ -22,9 +23,35 @@ from core.models.school_admin import SchoolAdmin
 User = get_user_model()
 
 
+def is_school_admin(user):
+    return SchoolAdmin.objects.filter(user=user).exists()
+
+
+def user_can_manage_school(user, school):
+    return user.is_superuser or SchoolAdmin.objects.filter(user=user, school=school).exists()
+
+
+def user_role_for_school(user, school):
+    if user.is_superuser:
+        return "superuser"
+
+    admin_record = SchoolAdmin.objects.filter(user=user, school=school).first()
+    if not admin_record:
+        return None
+    if admin_record.primary:
+        return "primary"
+    return "admin"
+
+
+class SchoolAdminManagementPermissionMixin(UserPassesTestMixin):
+    def test_func(self):
+        user = self.request.user
+        return user.is_authenticated and (user.is_superuser or is_school_admin(user))
+
+
 class SchoolAdminMixin(UserPassesTestMixin):
     def test_func(self):
-        return self.request.user.is_authenticated and SchoolAdmin.objects.filter(user=self.request.user).exists()
+        return self.request.user.is_authenticated and is_school_admin(self.request.user)
 
     def get_school_admin_schools(self):
         return School.objects.filter(admins__user=self.request.user)
@@ -39,19 +66,41 @@ class SchoolAdminDashboardView(SchoolAdminMixin, TemplateView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        schools = self.get_school_admin_schools()
+        schools = self.get_school_admin_schools().prefetch_related(
+            'admins__user',
+            Prefetch(
+                'debaters',
+                queryset=Debater.objects.filter(
+                    latest_season__gte=self.get_six_years_ago()
+                ).order_by('-latest_season', 'last_name', 'first_name'),
+                to_attr='recent_debaters'
+            )
+        )
         six_years_ago = self.get_six_years_ago()
 
         context['schools'] = schools
         context['six_years_ago'] = six_years_ago
         context['is_superuser'] = self.request.user.is_superuser
 
+        admins_by_school = {}
+        roles_by_school = {}
+        current_admin_by_school = {}
+        for school in schools:
+            admins = sorted(
+                school.admins.all(),
+                key=lambda admin: (-int(admin.primary), admin.user.username.lower())
+            )
+            admins_by_school[school.id] = admins
+            roles_by_school[school.id] = user_role_for_school(self.request.user, school)
+            current_admin_by_school[school.id] = next((a for a in admins if a.user_id == self.request.user.id), None)
+
+        context['school_admins'] = admins_by_school
+        context['school_admin_roles'] = roles_by_school
+        context['current_school_admins'] = current_admin_by_school
+
         # Get debaters for each school
         debaters_data = {
-            school.id: Debater.objects.filter(
-                school=school,
-                latest_season__gte=six_years_ago
-            ).order_by('-latest_season', 'last_name', 'first_name')
+            school.id: getattr(school, 'recent_debaters', [])
             for school in schools
         }
         context['debaters_data'] = debaters_data
@@ -263,7 +312,7 @@ class SuperuserSchoolAdminManagementView(UserPassesTestMixin, TemplateView):
                 'debaters',
                 filter=Q(debaters__latest_season__gte=six_years_ago)
             )
-        ).order_by('-active_debater_count', 'name')
+        ).prefetch_related('admins__user').order_by('-active_debater_count', 'name')
 
         paginator = Paginator(schools, 15)
         page_number = self.request.GET.get('page')
@@ -271,7 +320,10 @@ class SuperuserSchoolAdminManagementView(UserPassesTestMixin, TemplateView):
 
         school_data = []
         for school in page_obj:
-            admins = SchoolAdmin.objects.filter(school=school).select_related('user')
+            admins = sorted(
+                school.admins.all(),
+                key=lambda admin: (-int(admin.primary), admin.user.username.lower())
+            )
             school_data.append({
                 'school': school,
                 'active_debater_count': school.active_debater_count,
@@ -283,10 +335,7 @@ class SuperuserSchoolAdminManagementView(UserPassesTestMixin, TemplateView):
         return context
 
 
-class SchoolAdminAddView(UserPassesTestMixin, View):
-    def test_func(self):
-        return self.request.user.is_authenticated and self.request.user.is_superuser
-
+class SchoolAdminAddView(SchoolAdminManagementPermissionMixin, View):
     def post(self, request, *args, **kwargs):
         school_id = request.POST.get('school_id')
         user_id = request.POST.get('user_id')
@@ -297,10 +346,27 @@ class SchoolAdminAddView(UserPassesTestMixin, View):
         school = get_object_or_404(School, id=school_id)
         user = get_object_or_404(User, id=user_id)
 
-        school_admin, created = SchoolAdmin.objects.get_or_create(
-            user=user,
-            school=school
-        )
+        if not user_can_manage_school(request.user, school):
+            return JsonResponse({'error': 'You cannot manage admins for this school.'}, status=403)
+
+        # Non-primary school admins can add admins, so no extra role gating here.
+        school_admin = SchoolAdmin.objects.filter(user=user, school=school).first()
+        created = False
+
+        if not school_admin:
+            with transaction.atomic():
+                school_admin = SchoolAdmin.objects.create(
+                    user=user,
+                    school=school,
+                )
+                has_primary = SchoolAdmin.objects.filter(
+                    school=school,
+                    primary=True
+                ).exclude(id=school_admin.id).exists()
+                if not has_primary:
+                    school_admin.primary = True
+                    school_admin.save(update_fields=['primary'])
+            created = True
 
         return JsonResponse({
             'success': True,
@@ -310,14 +376,12 @@ class SchoolAdminAddView(UserPassesTestMixin, View):
                 'user_id': user.id,
                 'username': user.username,
                 'email': user.email,
+                'primary': school_admin.primary,
             }
         })
 
 
-class SchoolAdminRemoveView(UserPassesTestMixin, View):
-    def test_func(self):
-        return self.request.user.is_authenticated and self.request.user.is_superuser
-
+class SchoolAdminRemoveView(SchoolAdminManagementPermissionMixin, View):
     def post(self, request, *args, **kwargs):
         school_admin_id = request.POST.get('school_admin_id')
 
@@ -325,14 +389,73 @@ class SchoolAdminRemoveView(UserPassesTestMixin, View):
             return JsonResponse({'error': 'Missing school_admin_id'}, status=400)
 
         school_admin = get_object_or_404(SchoolAdmin, id=school_admin_id)
+
+        if not user_can_manage_school(request.user, school_admin.school):
+            return JsonResponse({'error': 'You cannot manage admins for this school.'}, status=403)
+
+        requester_role = user_role_for_school(request.user, school_admin.school)
+
+        if requester_role not in {'superuser', 'primary', 'admin'}:
+            return JsonResponse({'error': 'Permission denied.'}, status=403)
+
+        if requester_role == 'admin' and school_admin.user_id != request.user.id:
+            return JsonResponse({'error': 'You can only remove yourself.'}, status=403)
+
+        if requester_role == 'primary' and school_admin.user_id == request.user.id:
+            return JsonResponse({'error': 'Transfer primary status before removing yourself.'}, status=400)
+
+        if school_admin.primary:
+            return JsonResponse({'error': 'Assign a new primary before removing this admin.'}, status=400)
+
         school_admin.delete()
 
         return JsonResponse({'success': True})
 
 
+class SchoolAdminPrimaryUpdateView(SchoolAdminManagementPermissionMixin, View):
+    def post(self, request, *args, **kwargs):
+        school_admin_id = request.POST.get('school_admin_id')
+
+        if not school_admin_id:
+            return JsonResponse({'error': 'Missing school_admin_id'}, status=400)
+
+        school_admin = get_object_or_404(SchoolAdmin, id=school_admin_id)
+
+        if not user_can_manage_school(request.user, school_admin.school):
+            return JsonResponse({'error': 'You cannot manage admins for this school.'}, status=403)
+
+        requester_role = user_role_for_school(request.user, school_admin.school)
+        if requester_role not in {'superuser', 'primary'}:
+            return JsonResponse({'error': 'Only primaries or superusers can set the primary.'}, status=403)
+
+        if requester_role == 'primary' and school_admin.user_id == request.user.id:
+            return JsonResponse({'error': 'You are already the primary admin.'}, status=400)
+
+        previous_primary = SchoolAdmin.objects.filter(
+            school=school_admin.school,
+            primary=True
+        ).exclude(id=school_admin.id).first()
+
+        with transaction.atomic():
+            SchoolAdmin.objects.filter(
+                school=school_admin.school,
+                primary=True
+            ).exclude(id=school_admin.id).update(primary=False)
+            school_admin.primary = True
+            school_admin.save(update_fields=['primary'])
+
+        return JsonResponse({
+            'success': True,
+            'primary_admin_id': school_admin.id,
+            'demoted_admin_id': previous_primary.id if previous_primary else None,
+            'school_id': school_admin.school_id,
+        })
+
+
 class UserAutocompleteView(autocomplete.Select2QuerySetView):
     def get_queryset(self):
-        if not self.request.user.is_superuser:
+        user = self.request.user
+        if not (user.is_superuser or is_school_admin(user)):
             return User.objects.none()
 
         qs = User.objects.all().order_by('username')
