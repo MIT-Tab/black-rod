@@ -3,7 +3,6 @@ import logging
 
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
-from django.core.cache import cache
 from django.db import transaction, IntegrityError
 from django.db.models import Count, Q
 from django.shortcuts import redirect
@@ -52,22 +51,12 @@ class MergeDebaterRequestCreateView(SchoolAdminRequiredMixin, FormView):
     form_class = MergeDebaterRequestForm
     success_url = reverse_lazy("core:merge_debater_request_create")
 
-    RATE_LIMIT = 5
-
     def get_form_kwargs(self):
         kwargs = super().get_form_kwargs()
         kwargs["user"] = self.request.user
         return kwargs
 
     def form_valid(self, form):
-        if self._is_rate_limited():
-            form.add_error(
-                None,
-                "You have reached the daily limit for merge requests. "
-                "Please try again tomorrow or contact an administrator.",
-            )
-            return self.form_invalid(form)
-
         primary = form.cleaned_data["primary_debater"]
         secondary = form.cleaned_data["secondary_debater"]
         MergeDebaterRequest.objects.create(
@@ -79,8 +68,6 @@ class MergeDebaterRequestCreateView(SchoolAdminRequiredMixin, FormView):
             secondary_name=secondary.name if secondary else "",
             secondary_school_name=secondary.school.name if secondary and secondary.school else "",
         )
-        self._increment_rate_limit()
-
         messages.success(
             self.request,
             "Merge request submitted. A site administrator will review it shortly.",
@@ -242,18 +229,6 @@ class MergeDebaterRequestCreateView(SchoolAdminRequiredMixin, FormView):
             return Debater.objects.select_related("school").get(pk=int(debater_id))
         except (ValueError, Debater.DoesNotExist):
             return None
-
-    def _rate_limit_cache_key(self):
-        today = timezone.now().date().isoformat()
-        return f"merge_request_limit_{self.request.user.pk}_{today}"
-
-    def _is_rate_limited(self):
-        return cache.get(self._rate_limit_cache_key(), 0) >= self.RATE_LIMIT
-
-    def _increment_rate_limit(self):
-        key = self._rate_limit_cache_key()
-        count = cache.get(key, 0)
-        cache.set(key, count + 1, 86400)
 
 
 class MergeDebaterRequestReviewView(LoginRequiredMixin, UserPassesTestMixin, TemplateView):
