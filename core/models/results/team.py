@@ -14,7 +14,10 @@ class TeamResult(models.Model):
         Team, on_delete=models.CASCADE, related_name="team_results"
     )
 
-    type_of_place = models.IntegerField(choices=Debater.STATUS, default=Debater.VARSITY)
+    NOVICE = 0
+    VARSITY = 1
+    STATUS = ((VARSITY, "Varsity"), (NOVICE, "Novice"))
+    type_of_place = models.IntegerField(choices=STATUS, default=VARSITY)
 
     # -1 -> did not place
     place = models.IntegerField(default=-1)

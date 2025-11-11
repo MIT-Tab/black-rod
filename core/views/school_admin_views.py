@@ -155,14 +155,39 @@ class SchoolAdminDebaterForm(forms.ModelForm):
         help_text="Link this debater to an existing alias group if applicable.",
     )
 
+    DINO_CONTACT_FIELDS = {
+        'dino_to_contact_opt_in': {
+            'label': "Open to Dino TO/observer outreach",
+            'help_text': (
+                "Visible only for Dinos. Enable if this debater wants tournaments to reach out about TOing."
+            ),
+        },
+        'dino_judge_contact_opt_in': {
+            'label': "Open to Dino judging outreach",
+            'help_text': (
+                "Visible only for Dinos. Enable if this debater is open to judging when tournaments need dinos."
+            ),
+        },
+    }
+
     class Meta:
         model = Debater
-        fields = ('first_name', 'last_name', 'status', 'first_season', 'latest_season', 'alias_group')
+        fields = (
+            'first_name',
+            'last_name',
+            'status',
+            'first_season',
+            'latest_season',
+            'alias_group',
+            'dino_to_contact_opt_in',
+            'dino_judge_contact_opt_in',
+        )
 
     def __init__(self, *args, school=None, user=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.school = school
         self.user = user
+        self.show_dino_contact_fields = self._should_show_dino_contact_fields()
 
         current_year = int(settings.CURRENT_SEASON)
         six_years_ago = current_year - 6
@@ -180,6 +205,36 @@ class SchoolAdminDebaterForm(forms.ModelForm):
             initial=settings.CURRENT_SEASON
         )
 
+        for field_name, meta in self.DINO_CONTACT_FIELDS.items():
+            field = self.fields.get(field_name)
+            if not field:
+                continue
+            field.label = meta['label']
+            field.help_text = meta['help_text']
+            if not self.show_dino_contact_fields:
+                field.widget = forms.HiddenInput()
+
+    def _should_show_dino_contact_fields(self):
+        if getattr(self.instance, "status", None) == Debater.DINO:
+            return True
+
+        if self.is_bound:
+            status_key = self.add_prefix('status')
+            status_value = self.data.get(status_key)
+            try:
+                return int(status_value) == Debater.DINO
+            except (TypeError, ValueError):
+                return False
+
+        initial_status = self.initial.get('status')
+        if initial_status is None:
+            return False
+
+        try:
+            return int(initial_status) == Debater.DINO
+        except (TypeError, ValueError):
+            return initial_status == Debater.DINO
+
     def clean(self):
         cleaned_data = super().clean()
         first_season = cleaned_data.get('first_season')
@@ -196,6 +251,11 @@ class SchoolAdminDebaterForm(forms.ModelForm):
             raise forms.ValidationError(
                 f"Latest season must be within the last 6 years (>= {six_years_ago})."
             )
+
+        status = cleaned_data.get('status', getattr(self.instance, 'status', None))
+        if status != Debater.DINO:
+            for field_name in self.DINO_CONTACT_FIELDS:
+                cleaned_data[field_name] = False
 
         return cleaned_data
 

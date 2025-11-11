@@ -46,6 +46,26 @@
                                         | Status: {{ debater.get_status_display }}
                                     </small>
                                 </p>
+                                {% if debater.is_dino %}
+                                    <p class="mb-1">
+                                        <small>
+                                            <strong>Dino Outreach:</strong>
+                                            TO -
+                                            {% if debater.dino_to_contact_opt_in %}
+                                                <span class="text-success">Open</span>
+                                            {% else %}
+                                                <span class="text-muted">Closed</span>
+                                            {% endif %}
+                                            |
+                                            Judging -
+                                            {% if debater.dino_judge_contact_opt_in %}
+                                                <span class="text-success">Open</span>
+                                            {% else %}
+                                                <span class="text-muted">Closed</span>
+                                            {% endif %}
+                                        </small>
+                                    </p>
+                                {% endif %}
                                 {% if debater.paradigm %}
                                     <p class="mb-0">
                                         <small>

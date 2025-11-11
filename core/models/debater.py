@@ -49,8 +49,17 @@ class Debater(models.Model):
 
     NOVICE = 0
     VARSITY = 1
-    STATUS = ((VARSITY, "Varsity"), (NOVICE, "Novice"))
+    DINO = 2
+    STATUS = ((VARSITY, "Varsity"), (NOVICE, "Novice"), (DINO, "Dino"))
     status = models.IntegerField(choices=STATUS, default=VARSITY)
+    dino_to_contact_opt_in = models.BooleanField(
+        default=False,
+        help_text="If enabled, tournaments know this DINO is open to TO/observer outreach.",
+    )
+    dino_judge_contact_opt_in = models.BooleanField(
+        default=False,
+        help_text="If enabled, tournaments know this DINO is open to judging outreach.",
+    )
 
     def save(self, *args, **kwargs):
         if not self.pk:
@@ -59,6 +68,10 @@ class Debater(models.Model):
                 self.first_season = current_season
             if not self.latest_season:
                 self.latest_season = current_season
+        if self.status != self.DINO:
+            self.dino_to_contact_opt_in = False
+            self.dino_judge_contact_opt_in = False
+
         super().save(*args, **kwargs)
 
         for team in self.teams.all():
@@ -69,6 +82,10 @@ class Debater(models.Model):
     def name(self):
         name = f"{self.first_name} {self.last_name}"
         return name.strip()
+
+    @property
+    def is_dino(self):
+        return self.status == self.DINO
 
     def get_absolute_url(self):
         return reverse("core:debater_detail", kwargs={"pk": self.id})

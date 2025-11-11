@@ -44,12 +44,60 @@
                     </div>
 
                     <div class="form-group">
+                        {{ form.status.label_tag }}
+                        {{ form.status }}
+                        {% for error in form.status.errors %}
+                            <div class="invalid-feedback d-block">{{ error }}</div>
+                        {% endfor %}
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group col-md-6">
+                            {{ form.first_season.label_tag }}
+                            {{ form.first_season }}
+                            {% for error in form.first_season.errors %}
+                                <div class="invalid-feedback d-block">{{ error }}</div>
+                            {% endfor %}
+                        </div>
+                        <div class="form-group col-md-6">
+                            {{ form.latest_season.label_tag }}
+                            {{ form.latest_season }}
+                            {% for error in form.latest_season.errors %}
+                                <div class="invalid-feedback d-block">{{ error }}</div>
+                            {% endfor %}
+                        </div>
+                    </div>
+
+                    <div class="form-group">
                         {{ form.paradigm.label_tag }}
                         {{ form.paradigm }}
                         <small class="form-text text-muted">{{ form.paradigm.help_text }}</small>
                         {% for error in form.paradigm.errors %}
                             <div class="invalid-feedback d-block">{{ error }}</div>
                         {% endfor %}
+                    </div>
+
+                    <div id="dino-contact-section" class="{% if not form.show_dino_contact_opt_in %}d-none{% endif %}">
+                        <div class="form-group form-check mt-3">
+                            {{ form.dino_to_contact_opt_in }}
+                            <label class="form-check-label ml-2" for="{{ form.dino_to_contact_opt_in.id_for_label }}">
+                                {{ form.dino_to_contact_opt_in.label }}
+                            </label>
+                            <small class="form-text text-muted">{{ form.dino_to_contact_opt_in.help_text }}</small>
+                            {% for error in form.dino_to_contact_opt_in.errors %}
+                                <div class="invalid-feedback d-block">{{ error }}</div>
+                            {% endfor %}
+                        </div>
+                        <div class="form-group form-check">
+                            {{ form.dino_judge_contact_opt_in }}
+                            <label class="form-check-label ml-2" for="{{ form.dino_judge_contact_opt_in.id_for_label }}">
+                                {{ form.dino_judge_contact_opt_in.label }}
+                            </label>
+                            <small class="form-text text-muted">{{ form.dino_judge_contact_opt_in.help_text }}</small>
+                            {% for error in form.dino_judge_contact_opt_in.errors %}
+                                <div class="invalid-feedback d-block">{{ error }}</div>
+                            {% endfor %}
+                        </div>
                     </div>
 
                     <div class="alert alert-info mt-3">
@@ -97,4 +145,44 @@
         box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
     }
 </style>
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const statusSelect = document.getElementById('{{ form.status.id_for_label }}');
+        const contactSection = document.getElementById('dino-contact-section');
+        const contactCheckboxes = contactSection ? contactSection.querySelectorAll('input[type="checkbox"]') : [];
+        const fallbackDinoValue = '{{ form.instance.DINO|default:"2" }}';
+        const dinoValue = statusSelect ? (statusSelect.dataset.dinoValue || fallbackDinoValue) : fallbackDinoValue;
+
+        function toggleElement(element, shouldShow) {
+            if (!element) {
+                return;
+            }
+            if (shouldShow) {
+                element.classList.remove('d-none');
+            } else {
+                element.classList.add('d-none');
+            }
+        }
+
+        function updateDinoControls() {
+            if (!statusSelect) {
+                return;
+            }
+            const isDino = statusSelect.value === dinoValue;
+            toggleElement(contactSection, isDino);
+
+            contactCheckboxes.forEach((checkbox) => {
+                checkbox.disabled = !isDino;
+                if (!isDino) {
+                    checkbox.checked = false;
+                }
+            });
+        }
+
+        if (statusSelect) {
+            statusSelect.addEventListener('change', updateDinoControls);
+            updateDinoControls();
+        }
+    });
+</script>
 {% endblock content %}

@@ -54,6 +54,29 @@
                 </td>
             </tr>
             {% endif %}
+            {% if object.is_dino %}
+            <tr>
+                <td>Dino Outreach</td>
+                <td>
+                    <div>
+                        <strong>TO:</strong>
+                        {% if object.dino_to_contact_opt_in %}
+                            <span class="text-success">Open to outreach.</span>
+                        {% else %}
+                            <span class="text-muted">Not currently accepting outreach.</span>
+                        {% endif %}
+                    </div>
+                    <div class="mt-1">
+                        <strong>Judging:</strong>
+                        {% if object.dino_judge_contact_opt_in %}
+                            <span class="text-success">Open to outreach.</span>
+                        {% else %}
+                            <span class="text-muted">Not currently accepting outreach.</span>
+                        {% endif %}
+                    </div>
+                </td>
+            </tr>
+            {% endif %}
         </tbody>
     </table>
     {% if also_debated_under %}

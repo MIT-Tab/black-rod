@@ -702,6 +702,18 @@ class ClaimDebaterRequestForm(forms.Form):
 
 
 class DebaterProfileEditForm(forms.ModelForm):
+    SEASON_LOWEST_YEAR = 2004
+
+    dino_to_contact_opt_in = forms.BooleanField(
+        required=False,
+        label="I'm open to TO outreach",
+        help_text="Check this if you'd like tournaments to reach out when they need dino TOs.",
+    )
+    dino_judge_contact_opt_in = forms.BooleanField(
+        required=False,
+        label="I'm open to judging outreach",
+        help_text="Check this if you'd like tournaments to reach out when they need dino judges.",
+    )
     paradigm = forms.URLField(
         required=False,
         label="Paradigm (Google Doc Link)",
@@ -711,11 +723,95 @@ class DebaterProfileEditForm(forms.ModelForm):
 
     class Meta:
         model = Debater
-        fields = ['first_name', 'last_name', 'paradigm']
+        fields = [
+            'first_name',
+            'last_name',
+            'status',
+            'first_season',
+            'latest_season',
+            'paradigm',
+            'dino_to_contact_opt_in',
+            'dino_judge_contact_opt_in',
+        ]
         labels = {
             'first_name': 'First Name',
             'last_name': 'Last Name',
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.show_dino_contact_opt_in = self._should_show_dino_contact_fields()
+
+        # Status select setup
+        self.fields['status'].label = "Status"
+        self.fields['status'].choices = Debater.STATUS
+        self.fields['status'].widget.attrs.setdefault('class', 'form-control')
+        self.fields['status'].widget.attrs['data-dino-value'] = str(Debater.DINO)
+
+        # Season dropdowns
+        current_year = int(settings.CURRENT_SEASON)
+        first_initial = self.instance.first_season or ""
+        latest_initial = self.instance.latest_season or ""
+
+        self.fields['first_season'] = forms.ChoiceField(
+            required=False,
+            label="First Season",
+            choices=self._season_choices(current_year, self.SEASON_LOWEST_YEAR, first_initial),
+            initial=first_initial,
+            widget=forms.Select(attrs={'class': 'form-control'}),
+        )
+
+        self.fields['latest_season'] = forms.ChoiceField(
+            required=False,
+            label="Latest Season",
+            choices=self._season_choices(current_year, self.SEASON_LOWEST_YEAR, latest_initial),
+            initial=latest_initial,
+            widget=forms.Select(attrs={'class': 'form-control'}),
+        )
+
+        # Text inputs should use consistent styling
+        for field_name in ('first_name', 'last_name', 'paradigm'):
+            if field_name in self.fields:
+                self.fields[field_name].widget.attrs.setdefault('class', 'form-control')
+
+        dino_fields = ['dino_to_contact_opt_in', 'dino_judge_contact_opt_in']
+        for field_name in dino_fields:
+            field = self.fields[field_name]
+            css_class = field.widget.attrs.get('class', '')
+            field.widget.attrs['class'] = f"{css_class} form-check-input".strip()
+
+    def _season_choices(self, start_year, min_year, include_value=None):
+        def format_label(year_value):
+            try:
+                year_int = int(year_value)
+            except (TypeError, ValueError):
+                return str(year_value)
+            next_year = str(year_int + 1)[-2:]
+            return f"{year_int}-{next_year}"
+
+        choices = [('', 'Select season')]
+        for year in range(start_year, min_year - 1, -1):
+            year_str = str(year)
+            choices.append((year_str, format_label(year_str)))
+
+        if include_value and include_value not in {choice[0] for choice in choices if choice[0]}:
+            choices.append((include_value, format_label(include_value)))
+
+        return choices
+
+    def _should_show_dino_contact_fields(self):
+        status_source = None
+        if self.is_bound:
+            status_source = self.data.get(self.add_prefix('status'))
+        elif 'status' in self.initial:
+            status_source = self.initial['status']
+        elif hasattr(self.instance, 'status'):
+            status_source = self.instance.status
+
+        try:
+            return int(status_source) == Debater.DINO
+        except (TypeError, ValueError):
+            return status_source == Debater.DINO
 
     def clean_paradigm(self):
         paradigm = self.cleaned_data.get('paradigm')
@@ -726,3 +822,29 @@ class DebaterProfileEditForm(forms.ModelForm):
             )
 
         return paradigm
+
+    def clean(self):
+        cleaned_data = super().clean()
+        first_season = cleaned_data.get('first_season') or ''
+        latest_season = cleaned_data.get('latest_season') or ''
+
+        if first_season and latest_season:
+            try:
+                if int(first_season) > int(latest_season):
+                    raise forms.ValidationError("First season cannot be after latest season.")
+            except ValueError:
+                raise forms.ValidationError("Season values must be valid years.")
+
+        status = cleaned_data.get('status')
+        try:
+            status_value = int(status)
+        except (TypeError, ValueError):
+            status_value = None
+
+        if status_value != Debater.DINO:
+            cleaned_data['dino_to_contact_opt_in'] = False
+            cleaned_data['dino_judge_contact_opt_in'] = False
+
+        cleaned_data['status'] = status_value
+
+        return cleaned_data
