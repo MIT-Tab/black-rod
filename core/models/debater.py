@@ -68,8 +68,8 @@ class Debater(models.Model):
                 self.first_season = current_season
             if not self.latest_season:
                 self.latest_season = current_season
+        # Only clear judge opt-in for non-dinos; TO opt-in is available for all statuses
         if self.status != self.DINO:
-            self.dino_to_contact_opt_in = False
             self.dino_judge_contact_opt_in = False
 
         super().save(*args, **kwargs)

@@ -707,12 +707,12 @@ class DebaterProfileEditForm(forms.ModelForm):
     dino_to_contact_opt_in = forms.BooleanField(
         required=False,
         label="I'm open to TO outreach",
-        help_text="Check this if you'd like tournaments to reach out when they need dino TOs.",
+        help_text="Check this if you'd like tournaments to reach out when they need TOs.",
     )
     dino_judge_contact_opt_in = forms.BooleanField(
         required=False,
         label="I'm open to judging outreach",
-        help_text="Check this if you'd like tournaments to reach out when they need dino judges.",
+        help_text="Check this if you'd like tournaments to reach out when they need judges. (Dinos only)",
     )
     paradigm = forms.URLField(
         required=False,
@@ -740,7 +740,8 @@ class DebaterProfileEditForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.show_dino_contact_opt_in = self._should_show_dino_contact_fields()
+        self.show_to_contact_opt_in = True  # Always show TO opt-in
+        self.show_judge_contact_opt_in = self._should_show_judge_contact_field()
 
         # Status select setup
         self.fields['status'].label = "Status"
@@ -774,11 +775,13 @@ class DebaterProfileEditForm(forms.ModelForm):
             if field_name in self.fields:
                 self.fields[field_name].widget.attrs.setdefault('class', 'form-control')
 
-        dino_fields = ['dino_to_contact_opt_in', 'dino_judge_contact_opt_in']
-        for field_name in dino_fields:
-            field = self.fields[field_name]
-            css_class = field.widget.attrs.get('class', '')
-            field.widget.attrs['class'] = f"{css_class} form-check-input".strip()
+        # TO opt-in always gets form-check-input
+        self.fields['dino_to_contact_opt_in'].widget.attrs['class'] = 'form-check-input'
+        
+        # Judge opt-in gets form-check-input and dino-only data attribute
+        judge_field = self.fields['dino_judge_contact_opt_in']
+        judge_field.widget.attrs['class'] = 'form-check-input'
+        judge_field.widget.attrs['data-dino-only'] = 'true'
 
     def _season_choices(self, start_year, min_year, include_value=None):
         def format_label(year_value):
@@ -799,7 +802,8 @@ class DebaterProfileEditForm(forms.ModelForm):
 
         return choices
 
-    def _should_show_dino_contact_fields(self):
+    def _should_show_judge_contact_field(self):
+        """Judge contact field is only for dinos"""
         status_source = None
         if self.is_bound:
             status_source = self.data.get(self.add_prefix('status'))
@@ -841,8 +845,8 @@ class DebaterProfileEditForm(forms.ModelForm):
         except (TypeError, ValueError):
             status_value = None
 
+        # Only clear judge opt-in for non-dinos; TO opt-in is available for all
         if status_value != Debater.DINO:
-            cleaned_data['dino_to_contact_opt_in'] = False
             cleaned_data['dino_judge_contact_opt_in'] = False
 
         cleaned_data['status'] = status_value

@@ -423,7 +423,11 @@ class DinoAggregatedDebater:
             return
         
         # Has alias group - need to aggregate
-        alias_debaters = self.debater.alias_group.debaters.filter(status=Debater.DINO)
+        # For judge database, only look at dinos; for TO database, look at all statuses
+        if self.opt_in_type == 'judge':
+            alias_debaters = self.debater.alias_group.debaters.filter(status=Debater.DINO)
+        else:  # 'to'
+            alias_debaters = self.debater.alias_group.debaters.all()
         
         # Get schools (excluding "Unaffiliated") with IDs for linking
         schools_dict = {}
@@ -451,7 +455,7 @@ class DinoAggregatedDebater:
             unaffiliated = opted_in.filter(school__name__iexact="unaffiliated").first()
             link_debater = unaffiliated if unaffiliated else opted_in.first()
         else:
-            # Fallback to any dino in the group
+            # Fallback to any in the group
             link_debater = alias_debaters.first()
         
         # Set display values
@@ -460,7 +464,7 @@ class DinoAggregatedDebater:
         self.last_name = link_debater.last_name
         # Store schools as list of (id, name) tuples sorted by name
         self.schools = sorted(schools_dict.items(), key=lambda x: x[1])
-        self.status = "Dino"
+        self.status = link_debater.get_status_display()
 
 
 class DinoTable(CustomTable):
@@ -561,9 +565,8 @@ class DinoTOListView(CustomListView):
     filterset_class = DebaterFilter
 
     def get_queryset(self):
-        # Get all dinos with TO opt-in, apply filters first
+        # Get all debaters (any status) with TO opt-in, apply filters first
         qs = Debater.objects.filter(
-            status=Debater.DINO,
             dino_to_contact_opt_in=True
         ).select_related('alias_group', 'school')
         
@@ -592,9 +595,8 @@ class DinoTOListView(CustomListView):
     def get_filterset(self, filterset_class):
         """Get the filterset instance, filtering on the base Debater queryset"""
         kwargs = self.get_filterset_kwargs(filterset_class)
-        # Override the queryset to be the base Debater queryset
+        # Override the queryset to be the base Debater queryset (any status with TO opt-in)
         kwargs['queryset'] = Debater.objects.filter(
-            status=Debater.DINO,
             dino_to_contact_opt_in=True
         )
         return filterset_class(**kwargs)
