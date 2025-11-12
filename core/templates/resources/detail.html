@@ -1,0 +1,85 @@
+{% extends "base/detail.html" %}
+{% load tags %}
+{% block title %}
+    {{ object.title }}
+{% endblock title %}
+{% block detail_view %}
+    <table class="table table-bordered">
+        <thead>
+            <th>Field</th>
+            <th>Value</th>
+        </thead>
+        <tbody>
+            <tr>
+                <td>Title</td>
+                <td>{{ object.title }}</td>
+            </tr>
+            <tr>
+                <td>Type</td>
+                <td>{{ object.get_resource_type_display }}</td>
+            </tr>
+            <tr>
+                <td>Authors</td>
+                <td>
+                    {% for author in object.authors.all %}
+                        <a href="{{ author.get_absolute_url }}">{{ author.name }}</a>{% if not forloop.last %}, {% endif %}
+                    {% endfor %}
+                </td>
+            </tr>
+            <tr>
+                <td>Content Link</td>
+                <td>
+                    <a href="{{ object.content_link }}" target="_blank" rel="noopener noreferrer">View Content</a>
+                </td>
+            </tr>
+            <tr>
+                <td>Viewing Permission</td>
+                <td>{{ object.get_viewing_permission_display }}</td>
+            </tr>
+            <tr>
+                <td>Created</td>
+                <td>{{ object.created_at|date:"F d, Y" }}</td>
+            </tr>
+            {% if object.tags.all %}
+            <tr>
+                <td>Tags</td>
+                <td>
+                    {% for tag in object.tags.all %}
+                        <a href="{% url 'core:resource_list' %}?tags={{ tag.slug }}" class="badge badge-secondary">{{ tag.name }}</a>
+                    {% endfor %}
+                </td>
+            </tr>
+            {% endif %}
+        </tbody>
+    </table>
+{% endblock detail_view %}
+{% block added_information_view %}
+    <div class="card mb-3">
+        <div class="card-body">
+            <h5 class="card-title">Description</h5>
+            {% if object.description %}
+                <p style="white-space: pre-wrap;">{{ object.description }}</p>
+            {% else %}
+                <p class="text-muted">No description provided.</p>
+            {% endif %}
+        </div>
+    </div>
+
+    {% if object.usage_permissions %}
+    <div class="card mb-3">
+        <div class="card-body">
+            <h5 class="card-title">Usage Permissions</h5>
+            <p style="white-space: pre-wrap;">{{ object.usage_permissions }}</p>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="card">
+        <div class="card-body">
+            <h5 class="card-title">Access Content</h5>
+            <a href="{{ object.content_link }}" target="_blank" rel="noopener noreferrer" class="btn btn-primary">
+                <i class="fas fa-external-link-alt"></i> View Resource
+            </a>
+        </div>
+    </div>
+{% endblock added_information_view %}

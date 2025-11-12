@@ -21,6 +21,7 @@ from core.models.standings.qual import QUAL
 from core.models.standings.soty import SOTY
 from core.models.tournament import Tournament
 from core.models.video import Video
+from core.models.resource import Resource
 
 
 class SchoolForm(forms.ModelForm):
@@ -119,6 +120,92 @@ class VideoForm(forms.ModelForm):
             Row("case", "description", "tags"),
             Submit("Create", "Create"),
         )
+
+
+class ResourceForm(forms.ModelForm):
+    class Meta:
+        model = Resource
+        fields = (
+            "title",
+            "authors",
+            "resource_type",
+            "content_link",
+            "description",
+            "usage_permissions",
+            "viewing_permission",
+            "tags",
+        )
+
+        widgets = {
+            "authors": autocomplete.ModelSelect2Multiple(url="core:debater_autocomplete"),
+            "description": forms.Textarea(attrs={'rows': 5}),
+            "usage_permissions": forms.Textarea(attrs={'rows': 4}),
+            "tags": autocomplete.TaggitSelect2("core:resource_tag_autocomplete"),
+        }
+        
+        labels = {
+            "viewing_permission": "Viewing Permission",
+            "content_link": "Content Link",
+        }
+        
+        help_texts = {
+            "viewing_permission": "Public means discoverable by Google search. Requires Login uses the same permission as viewing videos.",
+            "authors": "At least one author is required. Only people with claimed debater profiles can be authors.",
+        }
+
+    def __init__(self, *args, **kwargs):
+        self.user = kwargs.pop('user', None)
+        super().__init__(*args, **kwargs)
+
+        # If user is not a superuser, restrict tag creation
+        if self.user and not self.user.is_superuser:
+            self.fields['tags'].widget = autocomplete.TaggitSelect2("core:resource_tag_autocomplete_no_create")
+            
+            # Set initial authors to user's claimed debaters if creating new resource
+            if not self.instance.pk and self.user.claimed_debaters.exists():
+                self.fields['authors'].initial = self.user.claimed_debaters.all()
+
+        self.helper = FormHelper()
+        self.helper.layout = Layout(
+            Row(
+                Column("title", css_class="col-md-8"),
+                Column("resource_type", css_class="col-md-4"),
+            ),
+            Div(css_class="border-top my-3"),
+            "authors",
+            Div(css_class="border-top my-3"),
+            "content_link",
+            "description",
+            "usage_permissions",
+            Div(css_class="border-top my-3"),
+            Row(
+                Column("viewing_permission", css_class="col-md-6"),
+                Column("tags", css_class="col-md-6"),
+            ),
+            Submit("save", "Save"),
+        )
+    
+    def clean_authors(self):
+        """Ensure at least one author is selected and non-superusers include themselves."""
+        authors = self.cleaned_data.get('authors')
+        if not authors or authors.count() == 0:
+            raise forms.ValidationError("At least one author is required.")
+        
+        # If user is not a superuser, ensure they are an author
+        if self.user and not self.user.is_superuser:
+            user_debaters = self.user.claimed_debaters.all()
+            if user_debaters.exists():
+                # Check if at least one of the user's debaters is in the authors list
+                if not any(debater in authors for debater in user_debaters):
+                    raise forms.ValidationError(
+                        "You must include yourself as an author. Please select one of your claimed debater profiles."
+                    )
+        
+        return authors
+        authors = self.cleaned_data.get('authors')
+        if not authors or authors.count() == 0:
+            raise forms.ValidationError("At least one author is required.")
+        return authors
 
 
 class TournamentForm(forms.ModelForm):

@@ -17,6 +17,7 @@ from core.views import (
     toty_views,
     tournament_views,
     video_views,
+    resource_views,
     views,
 )
 
@@ -146,6 +147,48 @@ urlpatterns = [
         "core/videos/tags/<str:slug>",
         video_views.TagDetail.as_view(),
         name="tag_detail",
+    ),
+    # Resource URLs
+    path("core/resources/", resource_views.ResourceListView.as_view(), name="resource_list"),
+    path(
+        "core/resources/<int:pk>",
+        resource_views.ResourceDetailView.as_view(),
+        name="resource_detail",
+    ),
+    path(
+        "core/resources/<int:pk>/edit",
+        resource_views.ResourceUpdateView.as_view(),
+        name="resource_update",
+    ),
+    path(
+        "core/resources/<int:pk>/delete",
+        resource_views.ResourceDeleteView.as_view(),
+        name="resource_delete",
+    ),
+    path(
+        "core/resources/create",
+        resource_views.ResourceCreateView.as_view(),
+        name="resource_create"
+    ),
+    path(
+        "core/resources/my-resources",
+        resource_views.MyResourcesView.as_view(),
+        name="my_resources"
+    ),
+    path(
+        "core/resources/tags",
+        resource_views.ResourceTagAutocomplete.as_view(create_field="name"),
+        name="resource_tag_autocomplete",
+    ),
+    path(
+        "core/resources/tags_no_create",
+        resource_views.ResourceTagAutocomplete.as_view(),
+        name="resource_tag_autocomplete_no_create",
+    ),
+    path(
+        "core/resources/tags/<str:slug>",
+        resource_views.ResourceTagDetail.as_view(),
+        name="resource_tag_detail",
     ),
     path(
         "core/tournaments/",

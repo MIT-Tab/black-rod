@@ -284,6 +284,7 @@ NAV_MENU_LEFT = [
         "submenu": [
             {"name": "Videos", "url": "core:video_list", "root": True},
             {"name": "Schedule", "url": "core:schedule_view", "root": True},
+            {"name": "Resource Database", "url": "core:resource_list", "root": True},
             {"name": "Judge Database", "url": "core:judge_list", "root": True},
             {"name": "TO Database", "url": "core:to_list", "root": True},
         ],
@@ -296,6 +297,8 @@ NAV_MENU_LEFT = [
         "submenu": [
             {"name": "My Profile", "url": "core:my_debater_profile"},
             {"name": "Claim Debater Profile", "url": "core:claim_debater_request_create"},
+            {"name": "Create Resource", "url": "core:resource_create"},
+            {"name": "My Resources", "url": "core:my_resources"},
             {
                 "name": "School Dashboard",
                 "url": "core:school_admin_dashboard",
@@ -314,6 +317,11 @@ NAV_MENU_LEFT = [
         "validators": ["menu_generator.validators.is_superuser"],
         "submenu": [
             {
+                "name": "Django Admin",
+                "url": "/admin/",
+                "validators": ["menu_generator.validators.is_superuser"],
+            },
+            {
                 "name": "Merge Debater Requests",
                 "url": "core:merge_debater_request_review",
                 "validators": ["menu_generator.validators.is_superuser"],
@@ -326,16 +334,6 @@ NAV_MENU_LEFT = [
             {
                 "name": "Manage School Admins",
                 "url": "core:manage_school_admins",
-            },
-            {
-                "name": "Django Admin",
-                "url": "/admin/",
-                "validators": ["menu_generator.validators.is_superuser"],
-            },
-            {
-                "name": "Admin Tools",
-                "url": "/core/admin-tools/",
-                "validators": ["menu_generator.validators.is_superuser"],
             },
             {
                 "name": "Potential Debater Links",

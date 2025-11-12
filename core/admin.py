@@ -34,6 +34,8 @@ from core.models import (
     Tournament,
     User,
     Video,
+    Resource,
+    ResourceTag,
     Debater,
     MergeDebaterRequest,
     ClaimDebaterRequest,
@@ -447,6 +449,33 @@ class VideoAdmin(admin.ModelAdmin):
         return obj.get_absolute_url()
 
 
+@admin.register(Resource)
+class ResourceAdmin(admin.ModelAdmin):
+    list_display = ("title", "resource_type", "viewing_permission", "created_at", "created_by")
+    list_filter = ("resource_type", "viewing_permission", "tags", "created_at")
+    search_fields = (
+        "title",
+        "description",
+        "usage_permissions",
+        "authors__first_name",
+        "authors__last_name",
+    )
+    filter_horizontal = ("authors", "tags")
+    readonly_fields = ("created_at", "updated_at", "get_absolute_url")
+    fieldsets = (
+        ("Basic Information", {"fields": ("title", "resource_type", "authors")}),
+        ("Content", {"fields": ("content_link", "description", "usage_permissions")}),
+        ("Permissions & Tags", {"fields": ("viewing_permission", "tags")}),
+        ("Metadata", {"fields": ("created_by", "created_at", "updated_at", "get_absolute_url")}),
+    )
+
+    @admin.display(
+        description="Resource URL"
+    )
+    def get_absolute_url(self, obj):
+        return obj.get_absolute_url()
+
+
 
 admin.site.register(Round)
 admin.site.register(RoundStats)
@@ -461,3 +490,10 @@ class SchoolAdminAdmin(admin.ModelAdmin):
     search_fields = ("user__username", "user__email", "school__name")
     autocomplete_fields = ("user", "school")
     ordering = ("school__name", "user__username")
+
+
+@admin.register(ResourceTag)
+class ResourceTagAdmin(admin.ModelAdmin):
+    list_display = ("name", "slug")
+    search_fields = ("name", "slug")
+    ordering = ("name",)

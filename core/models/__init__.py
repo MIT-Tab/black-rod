@@ -15,6 +15,8 @@ from .team import Team
 from .tournament import Tournament
 from .user import User
 from .video import Video
+from .resource import Resource
+from .tags import ResourceTag, TaggedResource
 from .merge_request import MergeDebaterRequest
 from .claim_request import ClaimDebaterRequest
 from .debater_alias_group import DebaterAliasGroup
@@ -42,6 +44,9 @@ __all__ = [
     "OnlineQUAL",
     "SiteSetting",
     "Video",
+    "Resource",
+    "ResourceTag",
+    "TaggedResource",
     "QualBar",
     "MergeDebaterRequest",
     "ClaimDebaterRequest",
