@@ -411,6 +411,11 @@ class DinoAggregatedDebater:
         """Property for table column access - returns the schools list"""
         return self.schools
     
+    @property
+    def latest_year(self):
+        """Property for table column access - returns the latest season string (e.g. '2024-25')"""
+        return self.latest_season
+    
     def _process_alias_group(self):
         """Process alias group to determine display values"""
         if not self.debater.alias_group:
@@ -420,6 +425,8 @@ class DinoAggregatedDebater:
             self.last_name = self.debater.last_name
             self.schools = [(self.debater.school.id, self.debater.school.name)] if self.debater.school else []
             self.status = self.debater.get_status_display()
+            self.latest_season = self.debater.latest_season
+            self.latest_season_year = self._parse_season_year(self.debater.latest_season)
             return
         
         # Has alias group - need to aggregate
@@ -432,10 +439,18 @@ class DinoAggregatedDebater:
         # Get schools (excluding "Unaffiliated") with IDs for linking
         schools_dict = {}
         unaffiliated_schools = {}
+        latest_season_affiliated = None
+        latest_season_affiliated_year = None
+        
         for d in alias_debaters:
             if d.school:
                 if d.school.name.lower() != "unaffiliated":
                     schools_dict[d.school.id] = d.school.name
+                    # Track latest season from affiliated schools
+                    season_year = self._parse_season_year(d.latest_season)
+                    if season_year and (latest_season_affiliated_year is None or season_year > latest_season_affiliated_year):
+                        latest_season_affiliated_year = season_year
+                        latest_season_affiliated = d.latest_season
                 else:
                     unaffiliated_schools[d.school.id] = d.school.name
         
@@ -465,6 +480,29 @@ class DinoAggregatedDebater:
         # Store schools as list of (id, name) tuples sorted by name
         self.schools = sorted(schools_dict.items(), key=lambda x: x[1])
         self.status = link_debater.get_status_display()
+        # Use the latest affiliated season, or fall back to link_debater's season
+        self.latest_season = latest_season_affiliated if latest_season_affiliated is not None else link_debater.latest_season
+        self.latest_season_year = latest_season_affiliated_year if latest_season_affiliated_year is not None else self._parse_season_year(link_debater.latest_season)
+    
+    def _parse_season_year(self, season):
+        """Parse season string to integer year, return None if invalid"""
+        if not season:
+            return None
+        try:
+            return int(str(season).split('-')[0])
+        except (ValueError, IndexError):
+            return None
+    
+    def _format_season_display(self, season):
+        """Format season year to display format (e.g., '2024' -> '2024-25')"""
+        if not season:
+            return None
+        try:
+            year = int(str(season).split('-')[0])
+            next_year = str(year + 1)[2:]
+            return f"{year}-{next_year}"
+        except (ValueError, IndexError):
+            return season  # Return as-is if parsing fails
 
 
 class DinoTable(CustomTable):
@@ -473,11 +511,13 @@ class DinoTable(CustomTable):
     first_name = Column(verbose_name="First Name")
     last_name = Column(verbose_name="Last Name")
     school_name = Column(verbose_name="School", orderable=False)
+    latest_year = Column(verbose_name="Last Year Debated", order_by="-latest_year")
     
     class Meta:
         # Don't specify model since we're using custom objects
-        fields = ("id", "first_name", "last_name", "school_name")
+        fields = ("id", "first_name", "last_name", "school_name", "latest_year")
         attrs = {"class": "table table-striped"}
+        order_by = "-latest_year"
     
     def render_id(self, record):
         from django.utils.html import format_html
@@ -506,6 +546,18 @@ class DinoTable(CustomTable):
         
         # Join with commas
         return mark_safe(", ".join(str(link) for link in school_links))
+    
+    def render_latest_year(self, record):
+        """Render the latest season - returns the full season string formatted as YYYY-YY"""
+        if not record.latest_season:
+            return ""
+        # Format the season from "2024" to "2024-25"
+        try:
+            year = int(str(record.latest_season).split('-')[0])
+            next_year = str(year + 1)[2:]
+            return f"{year}-{next_year}"
+        except (ValueError, IndexError):
+            return record.latest_season  # Return as-is if parsing fails
 
 
 class DinoJudgeListView(CustomListView):
@@ -539,6 +591,9 @@ class DinoJudgeListView(CustomListView):
                 seen_alias_groups.add(debater.alias_group.id)
             
             aggregated_dinos.append(DinoAggregatedDebater(debater, 'judge'))
+        
+        # Sort by latest year (most recent first), then by name
+        aggregated_dinos.sort(key=lambda d: (-d.latest_season_year if d.latest_season_year else -9999, d.last_name, d.first_name))
         
         return aggregated_dinos
     
@@ -586,6 +641,9 @@ class DinoTOListView(CustomListView):
                 seen_alias_groups.add(debater.alias_group.id)
             
             aggregated_dinos.append(DinoAggregatedDebater(debater, 'to'))
+        
+        # Sort by latest year (most recent first), then by name
+        aggregated_dinos.sort(key=lambda d: (-d.latest_season_year if d.latest_season_year else -9999, d.last_name, d.first_name))
         
         return aggregated_dinos
     
