@@ -2,6 +2,7 @@ import "bootstrap";
 
 import "bootstrap-datepicker/build/build.less";
 import "../css/app.scss";
+import "../css/navigation.scss"
 
 import "bootstrap-datepicker";
 
