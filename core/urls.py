@@ -55,6 +55,16 @@ urlpatterns = [
         "core/debaters/", debater_views.DebaterListView.as_view(), name="debater_list"
     ),
     path(
+        "core/dino-judges/",
+        debater_views.DinoJudgeListView.as_view(),
+        name="judge_list",
+    ),
+    path(
+        "core/dino-tos/",
+        debater_views.DinoTOListView.as_view(),
+        name="to_list",
+    ),
+    path(
         "core/debaters/<int:pk>",
         debater_views.DebaterDetailView.as_view(),
         name="debater_detail",

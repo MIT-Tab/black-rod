@@ -267,7 +267,6 @@ SOCIALACCOUNT_EMAIL_VERIFICATION = "none"
 SITE_ID = 1
 
 NAV_MENU_LEFT = [
-    {"name": "Standings", "url": "core:index"},
     {
         "name": "Results",
         "url": "/asdfa",
@@ -279,13 +278,21 @@ NAV_MENU_LEFT = [
             {"name": "Stats", "url": "core:stats", "root": True},
         ],
     },
-    {"name": "Videos", "url": "core:video_list", "root": True},
-    {"name": "Schedule", "url": "core:schedule_view", "root": True},
+    {
+        "name": "Resources",
+        "url": "/asdfa",
+        "submenu": [
+            {"name": "Videos", "url": "core:video_list", "root": True},
+            {"name": "Schedule", "url": "core:schedule_view", "root": True},
+            {"name": "Judge Database", "url": "core:judge_list", "root": True},
+            {"name": "TO Database", "url": "core:to_list", "root": True},
+        ],
+    },
     {
         "name": "My Account",
         "url": "core:my_debater_profile",
         "root": True,
-        "validators": ["django.contrib.auth.context_processors.auth"],
+        "validators": ["menu_generator.validators.is_authenticated"],
         "submenu": [
             {"name": "My Profile", "url": "core:my_debater_profile"},
             {"name": "Claim Debater Profile", "url": "core:claim_debater_request_create"},

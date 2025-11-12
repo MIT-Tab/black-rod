@@ -394,3 +394,207 @@ class DebaterAliasGroupAutocomplete(autocomplete.Select2QuerySetView):
         if alias_count:
             return f"{item.name} ({alias_count} linked debater{'s' if alias_count != 1 else ''})"
         return item.name
+
+
+class DinoAggregatedDebater:
+    """
+    Represents a single dino entry that may aggregate multiple debater profiles
+    through alias groups.
+    """
+    def __init__(self, debater, opt_in_type):
+        self.debater = debater
+        self.opt_in_type = opt_in_type  # 'judge' or 'to'
+        self._process_alias_group()
+    
+    @property
+    def school_name(self):
+        """Property for table column access - returns the schools list"""
+        return self.schools
+    
+    def _process_alias_group(self):
+        """Process alias group to determine display values"""
+        if not self.debater.alias_group:
+            # No alias group, use debater directly
+            self.id = self.debater.id
+            self.first_name = self.debater.first_name
+            self.last_name = self.debater.last_name
+            self.schools = [(self.debater.school.id, self.debater.school.name)] if self.debater.school else []
+            self.status = self.debater.get_status_display()
+            return
+        
+        # Has alias group - need to aggregate
+        alias_debaters = self.debater.alias_group.debaters.filter(status=Debater.DINO)
+        
+        # Get schools (excluding "Unaffiliated") with IDs for linking
+        schools_dict = {}
+        unaffiliated_schools = {}
+        for d in alias_debaters:
+            if d.school:
+                if d.school.name.lower() != "unaffiliated":
+                    schools_dict[d.school.id] = d.school.name
+                else:
+                    unaffiliated_schools[d.school.id] = d.school.name
+        
+        # If no affiliated schools, include unaffiliated
+        if not schools_dict and unaffiliated_schools:
+            schools_dict = unaffiliated_schools
+        
+        # Determine which profile to link based on opt-in type
+        if self.opt_in_type == 'judge':
+            opted_in = alias_debaters.filter(dino_judge_contact_opt_in=True)
+        else:  # 'to'
+            opted_in = alias_debaters.filter(dino_to_contact_opt_in=True)
+        
+        # Pick the profile to link
+        if opted_in.exists():
+            # Check for unaffiliated profile among opted-in
+            unaffiliated = opted_in.filter(school__name__iexact="unaffiliated").first()
+            link_debater = unaffiliated if unaffiliated else opted_in.first()
+        else:
+            # Fallback to any dino in the group
+            link_debater = alias_debaters.first()
+        
+        # Set display values
+        self.id = link_debater.id
+        self.first_name = link_debater.first_name
+        self.last_name = link_debater.last_name
+        # Store schools as list of (id, name) tuples sorted by name
+        self.schools = sorted(schools_dict.items(), key=lambda x: x[1])
+        self.status = "Dino"
+
+
+class DinoTable(CustomTable):
+    """Custom table for displaying aggregated dino entries"""
+    id = Column(verbose_name="ID")
+    first_name = Column(verbose_name="First Name")
+    last_name = Column(verbose_name="Last Name")
+    school_name = Column(verbose_name="School", orderable=False)
+    
+    class Meta:
+        # Don't specify model since we're using custom objects
+        fields = ("id", "first_name", "last_name", "school_name")
+        attrs = {"class": "table table-striped"}
+    
+    def render_id(self, record):
+        from django.utils.html import format_html
+        return format_html('<a href="/core/debaters/{}">{}</a>', record.id, record.id)
+    
+    def render_first_name(self, record):
+        from django.utils.html import format_html
+        return format_html('<a href="/core/debaters/{}">{}</a>', record.id, record.first_name)
+    
+    def render_last_name(self, record):
+        from django.utils.html import format_html
+        return format_html('<a href="/core/debaters/{}">{}</a>', record.id, record.last_name)
+    
+    def render_school_name(self, record):
+        from django.utils.html import format_html
+        from django.utils.safestring import mark_safe
+        
+        if not record.schools:
+            return ""
+        
+        # Create links for each school
+        school_links = [
+            format_html('<a href="/core/schools/{}">{}</a>', school_id, school_name)
+            for school_id, school_name in record.schools
+        ]
+        
+        # Join with commas
+        return mark_safe(", ".join(str(link) for link in school_links))
+
+
+class DinoJudgeListView(CustomListView):
+    """List of graduated debaters open to judging opportunities"""
+    public_view = True
+    model = Debater
+    table_class = DinoTable
+    template_name = "debaters/judge_list.html"
+    filterset_class = DebaterFilter
+
+    def get_queryset(self):
+        # Get all dinos with judge opt-in, apply filters first
+        qs = Debater.objects.filter(
+            status=Debater.DINO,
+            dino_judge_contact_opt_in=True
+        ).select_related('alias_group', 'school')
+        
+        # Apply filters from filterset
+        if hasattr(self, 'filterset') and self.filterset is not None:
+            qs = self.filterset.qs
+        
+        # Track which alias groups we've already included
+        seen_alias_groups = set()
+        aggregated_dinos = []
+        
+        for debater in qs.order_by('last_name', 'first_name'):
+            if debater.alias_group:
+                # Skip if we've already processed this alias group
+                if debater.alias_group.id in seen_alias_groups:
+                    continue
+                seen_alias_groups.add(debater.alias_group.id)
+            
+            aggregated_dinos.append(DinoAggregatedDebater(debater, 'judge'))
+        
+        return aggregated_dinos
+    
+    def get_table_data(self):
+        return self.get_queryset()
+    
+    def get_filterset(self, filterset_class):
+        """Get the filterset instance, filtering on the base Debater queryset"""
+        kwargs = self.get_filterset_kwargs(filterset_class)
+        # Override the queryset to be the base Debater queryset
+        kwargs['queryset'] = Debater.objects.filter(
+            status=Debater.DINO,
+            dino_judge_contact_opt_in=True
+        )
+        return filterset_class(**kwargs)
+
+
+class DinoTOListView(CustomListView):
+    """List of graduated debaters open to tournament observer opportunities"""
+    public_view = True
+    model = Debater
+    table_class = DinoTable
+    template_name = "debaters/to_list.html"
+    filterset_class = DebaterFilter
+
+    def get_queryset(self):
+        # Get all dinos with TO opt-in, apply filters first
+        qs = Debater.objects.filter(
+            status=Debater.DINO,
+            dino_to_contact_opt_in=True
+        ).select_related('alias_group', 'school')
+        
+        # Apply filters from filterset
+        if hasattr(self, 'filterset') and self.filterset is not None:
+            qs = self.filterset.qs
+        
+        # Track which alias groups we've already included
+        seen_alias_groups = set()
+        aggregated_dinos = []
+        
+        for debater in qs.order_by('last_name', 'first_name'):
+            if debater.alias_group:
+                # Skip if we've already processed this alias group
+                if debater.alias_group.id in seen_alias_groups:
+                    continue
+                seen_alias_groups.add(debater.alias_group.id)
+            
+            aggregated_dinos.append(DinoAggregatedDebater(debater, 'to'))
+        
+        return aggregated_dinos
+    
+    def get_table_data(self):
+        return self.get_queryset()
+    
+    def get_filterset(self, filterset_class):
+        """Get the filterset instance, filtering on the base Debater queryset"""
+        kwargs = self.get_filterset_kwargs(filterset_class)
+        # Override the queryset to be the base Debater queryset
+        kwargs['queryset'] = Debater.objects.filter(
+            status=Debater.DINO,
+            dino_to_contact_opt_in=True
+        )
+        return filterset_class(**kwargs)
