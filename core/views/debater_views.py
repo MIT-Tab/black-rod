@@ -511,13 +511,13 @@ class DinoTable(CustomTable):
     first_name = Column(verbose_name="First Name")
     last_name = Column(verbose_name="Last Name")
     school_name = Column(verbose_name="School", orderable=False)
-    latest_year = Column(verbose_name="Last Year Debated", order_by="-latest_year")
+    latest_year = Column(verbose_name="Last Year Debated", order_by="latest_year")
     
     class Meta:
         # Don't specify model since we're using custom objects
         fields = ("id", "first_name", "last_name", "school_name", "latest_year")
         attrs = {"class": "table table-striped"}
-        order_by = "-latest_year"
+        order_by = "latest_year"
     
     def render_id(self, record):
         from django.utils.html import format_html
@@ -592,8 +592,8 @@ class DinoJudgeListView(CustomListView):
             
             aggregated_dinos.append(DinoAggregatedDebater(debater, 'judge'))
         
-        # Sort by latest year (most recent first), then by name
-        aggregated_dinos.sort(key=lambda d: (-d.latest_season_year if d.latest_season_year else -9999, d.last_name, d.first_name))
+        # Sort by latest year (oldest first), then by name
+        aggregated_dinos.sort(key=lambda d: (d.latest_season_year if d.latest_season_year else 9999, d.last_name, d.first_name))
         
         return aggregated_dinos
     
@@ -642,8 +642,8 @@ class DinoTOListView(CustomListView):
             
             aggregated_dinos.append(DinoAggregatedDebater(debater, 'to'))
         
-        # Sort by latest year (most recent first), then by name
-        aggregated_dinos.sort(key=lambda d: (-d.latest_season_year if d.latest_season_year else -9999, d.last_name, d.first_name))
+        # Sort by latest year (oldest first), then by name
+        aggregated_dinos.sort(key=lambda d: (d.latest_season_year if d.latest_season_year else 9999, d.last_name, d.first_name))
         
         return aggregated_dinos
     

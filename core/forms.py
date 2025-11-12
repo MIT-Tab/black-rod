@@ -151,6 +151,7 @@ class ResourceForm(forms.ModelForm):
         help_texts = {
             "viewing_permission": "Public means discoverable by Google search. Requires Login uses the same permission as viewing videos.",
             "authors": "At least one author is required. Only people with claimed debater profiles can be authors.",
+            "tags": "",  # Remove default "A comma-separated list of tags." caption
         }
 
     def __init__(self, *args, **kwargs):
