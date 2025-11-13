@@ -310,14 +310,6 @@ def test_done_rebuilds_results_and_triggers_rankings(monkeypatch):
     monkeypatch.setattr(riv, "update_noty", lambda debater, season=settings.CURRENT_SEASON: speaker_calls["noty"].append(debater))
     monkeypatch.setattr(riv, "redo_rankings", lambda qs, season, cache_type: redo_calls.append(cache_type))
 
-    original_clear = riv.APIDataHandler.clear_tournament_session_data
-
-    def spy_clear(request=None):  # pylint: disable=unused-argument
-        cleared["done"] = True
-        return original_clear(request)
-
-    monkeypatch.setattr(riv.APIDataHandler, "clear_tournament_session_data", staticmethod(spy_clear))
-
     request = make_request(method="post", path=f"/wizard/?tournament={tournament.id}")
     view = riv.TournamentDataEntryWizardView()
     view.request = request

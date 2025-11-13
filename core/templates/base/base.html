@@ -8,6 +8,7 @@
                 crossorigin="anonymous"></script>
         {% load static %}
         <link rel="shortcut icon" href="{% static 'favicon.ico' %}" type="image/x-icon">
+        {% block extra_head %}{% endblock extra_head %}
         <title>
             {% block title %}
                 APDA Results

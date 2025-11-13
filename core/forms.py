@@ -32,6 +32,12 @@ class SchoolForm(forms.ModelForm):
         help_text="If this school already exists under a different name, select it here instead of creating a new one",
         widget=autocomplete.ModelSelect2(url="core:school_autocomplete"),
     )
+    included_in_oty = forms.BooleanField(
+        required=False,
+        initial=True,
+        widget=forms.HiddenInput(),
+    )
+    server_name = forms.CharField(widget=forms.HiddenInput(), required=False)
 
     class Meta:
         model = School
@@ -57,6 +63,7 @@ class DebaterForm(forms.ModelForm):
         help_text="Optional: link this affiliation to an existing alias group.",
     )
     tournament_id = forms.CharField(widget=forms.HiddenInput(), required=False)
+    school_name = forms.CharField(widget=forms.HiddenInput(), required=False)
     last_name = forms.CharField(max_length=32, required=False)
 
     class Meta:
@@ -286,6 +293,10 @@ class TeamResultForm(forms.Form):
     )
 
     ghost_points = forms.BooleanField(label="Ghost Points", required=False)
+    
+    # Hidden fields for tracking new debaters by tournament ID
+    debater_one_tournament_id = forms.CharField(widget=forms.HiddenInput(), required=False)
+    debater_two_tournament_id = forms.CharField(widget=forms.HiddenInput(), required=False)
 
 
 class SpeakerResultForm(forms.Form):
@@ -297,6 +308,9 @@ class SpeakerResultForm(forms.Form):
     )
 
     tie = forms.BooleanField(label="Tie", required=False)
+    
+    # Hidden field for tracking new speakers by tournament ID
+    tournament_id = forms.CharField(widget=forms.HiddenInput(), required=False)
 
 
 class DebaterCreationFormsetBase(forms.BaseFormSet):

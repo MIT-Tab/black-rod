@@ -15,6 +15,20 @@ def _as_bool(value):
 
 
 @register.filter
+def get_item(dictionary, key):
+    """Get an item from a dictionary in a template."""
+    if not isinstance(dictionary, dict):
+        return None
+    return dictionary.get(key)
+
+
+@register.filter
+def attr(obj, attribute):
+    """Get an attribute from an object in a template."""
+    return getattr(obj, attribute, None)
+
+
+@register.filter
 def wl(round, team):
     gov_wins = [1, 3, 6]
     opp_wins = [2, 4, 6]

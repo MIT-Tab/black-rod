@@ -1,4 +1,5 @@
 from datetime import timedelta
+from urllib.parse import urlencode
 from dal import autocomplete
 from django.conf import settings
 from django.contrib import messages
@@ -28,6 +29,7 @@ from core.utils.generics import (
     SeasonColumn,
 )
 from core.utils.rounds import get_tab_card_data
+from core.views.results_import_views import TournamentDataEntryView
 
 
 class TournamentFilter(FilterSet):
@@ -213,24 +215,22 @@ class TournamentCreateView(CustomCreateView):
         api_url = form.cleaned_data.get('api_url')
 
         if api_url:
-            APIDataHandler.clear_tournament_session_data(self.request)
 
             api_handler = APIDataHandler(self.request)
             api_handler.set_api_url(api_url)
 
             is_valid, error_message = api_handler.validate_api_connection()
             if not is_valid:
-                messages.error(self.request, f"API Error: {error_message}")
                 form.add_error('api_url', f"API Error: {error_message}")
                 return self.form_invalid(form)
 
-            response = super().form_valid(form)
+            super_response = super().form_valid(form)
             tournament = self.object
 
-            # Set the tournament ID in session for this API workflow
-            api_handler.set_tournament_id(tournament.id)
+            # Redirect to the data entry view with tournament and API URL as query parameters
+            params = urlencode({'tournament': tournament.id, 'api_url': api_url})
+            return redirect(f"{reverse_lazy('core:tournament_dataentry')}?{params}")
 
-            return redirect(f"{reverse_lazy('core:tournament_dataentry')}?tournament={tournament.id}")
         return super().form_valid(form)
 
 class TournamentDeleteView(CustomDeleteView):
