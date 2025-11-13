@@ -1,83 +1,98 @@
 {% extends "base/base.html" %}
 {% load crispy_forms_tags %}
+{% load tags %}
+{% load render_bundle from webpack_loader %}
+
+{% block extra_head %}
+<script>
+// Tab configuration accessible to JavaScript
+window.TAB_CONFIG = {
+    'schools': {name: 'Schools', type: 'school', hasGhostPoints: false, prefix: 'schools'},
+    'debaters': {name: 'Debaters', type: 'debater', hasGhostPoints: false, prefix: 'debaters'},
+    'varsity_teams': {name: 'Team', type: 'team', hasGhostPoints: true, prefix: 'varsity_teams'},
+    'varsity_speakers': {name: 'Speaker', type: 'speaker', hasGhostPoints: false, prefix: 'varsity_speakers'},
+    'novice_teams': {name: 'Team', type: 'team', hasGhostPoints: false, prefix: 'novice_teams'},
+    'novice_speakers': {name: 'Speaker', type: 'speaker', hasGhostPoints: false, prefix: 'novice_speakers'},
+    'unplaced_teams': {name: 'Unplaced Team', type: 'team', hasGhostPoints: false, prefix: 'unplaced_teams'}
+};
+
+// New entities from API that need to be tracked
+window.NEW_ENTITIES = {{ new_entities_json|safe }};
+
+// Check has_api_data template variable
+window.hasApiData = {{ has_api_data|yesno:"true,false" }};
+</script>
+{% endblock extra_head %}
+
+
 {% block content %}
-    <div class="row mt-5 mb-5 mr-2 ml-2">
-        <div class="col-lg-8">
-            {{ wizard.form.media }}
-            <div class="card mb-3">
+<div class="container-fluid mt-4 mb-5">
+    <div class="row">
+        <div class="col-lg-9">
+            <div class="card">
+                <div class="card-header">
+                    <h4 class="mb-0">Tournament Results Import: {{ tournament.name }}</h4>
+                </div>
                 <div class="card-body">
-                    <h5 class="card-title pb-2">
-                        {{ title }}
-                        <div class="float-right">Step {{ wizard.steps.step1 }} of {{ wizard.steps.count }}</div>
-                    </h5>
-                    <form action="" method="POST" novalidate>
+                    {% if error_message %}
+                    <div class="alert alert-danger" role="alert">
+                        <i class="fas fa-exclamation-circle"></i>
+                        {{ error_message }}
+                    </div>
+                    {% endif %}
+                    {% for formset in formsets.values %}
+                        {% if forloop.first %}
+                            {{ formset.media }}
+                        {% endif %}
+                    {% endfor %}
+                    
+                    <form id="data-entry-form" method="POST" novalidate>
                         {% csrf_token %}
-                        {{ wizard.management_form }}
-                        {{ wizard.form.management_form }}
-                        <div class="formset-controls">
-                            <button type="button" class="btn btn-success btn-sm" id="add-form-btn">
-                                <i class="fas fa-plus"></i> Add {{ step_config.name }}
-                            </button>
-                            <small class="text-muted">Drag rows to reorder {{ step_config.name|lower }}s</small>
+                        <input type="hidden" name="tournament" value="{{ tournament.id }}">
+                        {% if current_api_url %}
+                        <input type="hidden" name="api_url" value="{{ current_api_url }}">
+                        {% endif %}
+                        
+                        {% include "tournaments/includes/data_entry_tabs.html" %}
+
+                        <div class="tab-content mt-3" id="dataEntryTabContent">
+                            {% if has_api_data %}
+                            {% include "tournaments/includes/formset_tab_pane.html" with tab_id="schools" tab_name="Schools" formset=formsets.schools form_type="school" has_ghost_points=False item_name="School" is_active=True %}
+
+                            {% include "tournaments/includes/formset_tab_pane.html" with tab_id="debaters" tab_name="Debaters" formset=formsets.debaters form_type="debater" has_ghost_points=False item_name="Debater" is_active=False %}
+                            {% endif %}
+
+                            {% if has_api_data %}
+                                {% include "tournaments/includes/formset_tab_pane.html" with tab_id="varsity_teams" tab_name="Varsity Teams" formset=formsets.varsity_teams form_type="team" has_ghost_points=True item_name="Team" is_active=False %}
+                            {% else %}
+                                {% include "tournaments/includes/formset_tab_pane.html" with tab_id="varsity_teams" tab_name="Varsity Teams" formset=formsets.varsity_teams form_type="team" has_ghost_points=True item_name="Team" is_active=True %}
+                            {% endif %}
+
+                            {% include "tournaments/includes/formset_tab_pane.html" with tab_id="varsity_speakers" tab_name="Varsity Speakers" formset=formsets.varsity_speakers form_type="speaker" has_ghost_points=False item_name="Speaker" is_active=False %}
+
+                            {% include "tournaments/includes/formset_tab_pane.html" with tab_id="novice_teams" tab_name="Novice Teams" formset=formsets.novice_teams form_type="team" has_ghost_points=False item_name="Team" is_active=False %}
+
+                            {% include "tournaments/includes/formset_tab_pane.html" with tab_id="novice_speakers" tab_name="Novice Speakers" formset=formsets.novice_speakers form_type="speaker" has_ghost_points=False item_name="Speaker" is_active=False %}
+
+                            {% include "tournaments/includes/formset_tab_pane.html" with tab_id="unplaced_teams" tab_name="Non-placing Teams" formset=formsets.unplaced_teams form_type="team" has_ghost_points=False item_name="Unplaced Team" is_active=False %}
                         </div>
 
-                        <div class="table-responsive" id="formset-container" 
-                             data-max-forms="250"
-                             data-form-type="{{ step_config.type }}"
-                             data-has-ghost-points="{% if step_config.has_ghost_points %}1{% else %}0{% endif %}"
-                             data-item-name="{{ step_config.name }}"
-                             data-ajax-url="{% url 'core:get_new_team_form' %}">
-                            <table class="table table-bordered" id="formset-table">
-                                <thead>
-                                    <tr>
-                                        <th width="60">Place</th>
-                                        <th width="40">Drag</th>
-                                        <th>{{ step_config.name }} Details</th>
-                                        <th width="80">Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody class="sortable-formset">
-                                    {% for form in wizard.form.forms %}
-                                        {% with form=form form_index=forloop.counter0 place_number=forloop.counter form_type=step_config.type has_ghost_points=step_config.has_ghost_points item_name=step_config.name %}
-                                            {% include "tournaments/includes/formset_row.html" %}
-                                        {% endwith %}
-                                    {% endfor %}
-                                </tbody>
-                            </table>
+                        {# Submit Button #}
+                        <div class="mt-4 pt-3 border-top">
+                            <button type="submit" class="btn btn-primary btn-lg float-right">
+                                <i class="fas fa-save"></i> Save All Results
+                            </button>
+                            <a href="{% url 'core:tournament_detail' pk=tournament.id %}" 
+                               class="btn btn-outline-secondary btn-lg">
+                                <i class="fas fa-times"></i> Cancel
+                            </a>
                         </div>
-                        <input type="submit" class="btn btn-primary float-right" value="Save and Continue" />
-                        {% if wizard.steps.prev %}
-                            <button name="wizard_goto_step" type="submit" class="btn btn-outline-secondary float-right mr-2" value="{{ wizard.steps.prev }}">Prev</button>
-                            <button name="wizard_goto_step" type="submit" class="btn btn-outline float-right mr-2" value="{{ wizard.steps.first }}">First</button>
-                        {% endif %}
                     </form>
                 </div>
             </div>
         </div>
-        <div class="col-lg-4">
-            <div class="card sticky-top mb-2" style="top: 30px;">
-                <div class="card-body">
-                    <h5 class="card-title">Create Debater</h5>
-                    <a href="{% url 'core:school_create' %}" target="_blank">Create new school</a>
-                    <hr />
-                    <form id="debater_create_form">
-                        {% csrf_token %}
-                        <input type="hidden" name="ajax" value="1">
-                        <div class="form-group">
-                            <label>Name</label>
-                            <input type="text" class="textinput textInput form-control" id="id_name">
-                        </div>
-                        {{ debater_form.school|as_crispy_field }}
-                        <input class="btn btn-primary" id="create_debater" value="Create" type="submit">
-                    </form>
-                </div>
-            </div>
-            <div class="card sticky-top" style="top: 369px;">
-                <div class="card-body">
-                    <h5 class="card-title">Created Debaters</h5>
-                    <ul id="new_debaters"></ul>
-                </div>
-            </div>
-        </div>
+
+        {% include "tournaments/includes/data_entry_sidebar.html" %}
     </div>
+</div>
 {% endblock content %}

@@ -1,0 +1,67 @@
+<ul class="nav nav-tabs" id="dataEntryTabs" role="tablist">
+    {% if has_api_data %}
+    <li class="nav-item">
+        <a class="nav-link active" 
+           id="schools-tab" 
+           data-toggle="tab" 
+           href="#schools-pane" 
+           role="tab">
+            Schools
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link" 
+           id="debaters-tab" 
+           data-toggle="tab" 
+           href="#debaters-pane" 
+           role="tab">
+            Debaters
+        </a>
+    </li>
+    {% endif %}
+    <li class="nav-item">
+        <a class="nav-link {% if not has_api_data %}active{% endif %}" 
+           id="varsity_teams-tab" 
+           data-toggle="tab" 
+           href="#varsity_teams-pane" 
+           role="tab">
+            Varsity Teams
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link" 
+           id="varsity_speakers-tab" 
+           data-toggle="tab" 
+           href="#varsity_speakers-pane" 
+           role="tab">
+            Varsity Speakers
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link" 
+           id="novice_teams-tab" 
+           data-toggle="tab" 
+           href="#novice_teams-pane" 
+           role="tab">
+            Novice Teams
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link" 
+           id="novice_speakers-tab" 
+           data-toggle="tab" 
+           href="#novice_speakers-pane" 
+           role="tab">
+            Novice Speakers
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link" 
+           id="unplaced_teams-tab" 
+           data-toggle="tab" 
+           href="#unplaced_teams-pane" 
+           role="tab">
+            Non-placing Teams
+        </a>
+    </li>
+</ul>

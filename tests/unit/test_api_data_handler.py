@@ -1,48 +1,29 @@
 import json
 from types import SimpleNamespace
-
 import pytest
 import requests
 
 from core.models.debater import Debater
 from core.models.school import School
 from core.utils.api_data import APIDataHandler
+from django.conf import settings
 
 
 pytestmark = pytest.mark.django_db
 
 
 @pytest.fixture
-def api_request():
-    return SimpleNamespace(session={})
+def handler():
+    return APIDataHandler(SimpleNamespace())
 
 
-@pytest.fixture
-def handler(api_request):
-    return APIDataHandler(api_request)
-
-
-def test_set_api_url_normalizes_and_persists(handler, api_request):
+def test_set_api_url_normalizes_and_persists(handler):
     handler.set_api_url("apda.online/path")
 
     assert handler.get_api_url() == "https://apda.online"
-    assert api_request.session["tournament_api_url"] == "https://apda.online"
     assert handler.should_use_api_data() is True
 
 
-def test_clear_tournament_session_data_removes_expected_keys(api_request):
-    api_request.session.update(
-        {
-            "tournament_api_url": "https://apda.online",
-            "tournament_debater_mapping": {"1": 2},
-            "tournament_id": 5,
-            "unrelated": "keep-me",
-        }
-    )
-
-    APIDataHandler.clear_tournament_session_data(api_request)
-
-    assert api_request.session == {"unrelated": "keep-me"}
 
 
 def test_validate_api_connection_handles_api_error(handler, monkeypatch):
@@ -130,12 +111,20 @@ def test_get_new_schools_filters_existing(handler):
 
     schools = handler.get_new_schools_from_api()
 
-    assert schools == [{"name": "New School", "included_in_oty": True}]
+    assert schools == [
+        {"name": "New School", "included_in_oty": True, "server_name": "New School"}
+    ]
 
 
 def test_get_new_debaters_maps_by_id_and_name(handler):
     school_id_match = School.objects.create(name="Alpha", included_in_oty=True)
     school_name_match = School.objects.create(name="Beta", included_in_oty=True)
+    existing = Debater.objects.create(
+        first_name="Alice",
+        last_name="Anderson",
+        school=school_id_match,
+        latest_season=settings.CURRENT_SEASON,
+    )
 
     handler._make_api_request = lambda endpoint: {
         "new_debater_data": [
@@ -168,20 +157,72 @@ def test_get_new_debaters_maps_by_id_and_name(handler):
 
     debaters = handler.get_new_debaters_from_api()
 
-    assert len(debaters) == 3
+    assert len(debaters) == 2
+
+    assert handler._debater_id_map["11"] == existing.id
 
     first = debaters[0]
-    assert first["first_name"] == "Alice"
-    assert first["last_name"] == "Anderson"
-    assert first["school"] == school_id_match
+    assert first["first_name"] == "Bob"
+    assert first["school"] == school_name_match
 
     second = debaters[1]
-    assert second["first_name"] == "Bob"
-    assert second["school"] == school_name_match
+    assert second["first_name"] == "Cara"
+    assert second["school"] is None
 
-    third = debaters[2]
-    assert third["first_name"] == "Cara"
-    assert third["school"] is None
+
+def test_get_new_debaters_keeps_old_matches(handler):
+    school = School.objects.create(name="Gamma", included_in_oty=True)
+    Debater.objects.create(
+        first_name="Harold",
+        last_name="Hill",
+        school=school,
+        latest_season="2018",
+    )
+
+    handler._make_api_request = lambda endpoint: {
+        "new_debater_data": [
+            {
+                "name": "Harold Hill",
+                "school_id": school.id,
+                "school_name": "",
+                "debater_id": 201,
+            }
+        ]
+    }
+
+    debaters = handler.get_new_debaters_from_api()
+
+    assert len(debaters) == 1
+    assert debaters[0]["first_name"] == "Harold"
+    assert "201" not in handler._debater_id_map
+
+
+def test_get_teams_from_api_detects_debater_id(handler):
+    handler._make_api_request = lambda endpoint: {
+        "varsity_team_placements": [
+            [
+                {"debater_id": 301},
+                {"debater_id": 302},
+            ]
+        ]
+    }
+
+    teams = handler.get_teams_from_api("varsity-team-placements")
+
+    assert teams[0]["debater_one_tournament_id"] == 301
+    assert teams[0]["debater_two_tournament_id"] == 302
+
+
+def test_get_speakers_from_api_detects_debater_id(handler):
+    handler._make_api_request = lambda endpoint: {
+        "varsity_speaker_awards": [
+            {"debater_id": 501},
+        ]
+    }
+
+    speakers = handler.get_speakers_from_api("varsity-speaker-awards")
+
+    assert speakers[0]["tournament_id"] == 501
 
 
 def test_create_schools_from_data_returns_queryset(handler):
@@ -195,7 +236,7 @@ def test_create_schools_from_data_returns_queryset(handler):
     assert created.included_in_oty is False
 
 
-def test_create_debaters_from_data_persists_and_maps(handler, api_request):
+def test_create_debaters_from_data_persists_and_maps(handler):
     school = School.objects.create(name="Mapped", included_in_oty=True)
 
     created_count = handler.create_debaters_from_data(
@@ -212,17 +253,15 @@ def test_create_debaters_from_data_persists_and_maps(handler, api_request):
 
     assert created_count == 1
     saved = Debater.objects.get(first_name="Dan")
-    assert api_request.session["tournament_debater_mapping"] == {"101": saved.id}
     assert handler._debater_id_map["101"] == saved.id
 
 
-def test_link_tournament_debater_updates_session(handler, api_request):
+def test_link_tournament_debater_updates_session(handler):
     school = School.objects.create(name="Linked", included_in_oty=True)
     debater = Debater.objects.create(first_name="Link", last_name="Able", school=school)
 
     handler.link_tournament_debater(404, debater)
 
-    assert api_request.session["tournament_debater_mapping"] == {"404": debater.id}
     assert handler._debater_id_map["404"] == debater.id
 
 
@@ -264,11 +303,18 @@ def test_find_debater_from_ref_prefers_direct_ids(handler):
     assert result == direct
 
 
-def test_find_debater_from_ref_uses_cached_mapping(handler, api_request):
+def test_find_debater_from_ref_supports_debater_id(handler):
+    school = School.objects.create(name="DeRef", included_in_oty=True)
+    linked = Debater.objects.create(first_name="Gale", last_name="Gray", school=school)
+    handler._debater_id_map["808"] = linked.id
+
+    assert handler._find_debater_from_ref({"debater_id": 808}) == linked
+
+
+def test_find_debater_from_ref_uses_cached_mapping(handler):
     school = School.objects.create(name="Cached", included_in_oty=True)
     linked = Debater.objects.create(first_name="Gina", last_name="Gray", school=school)
 
-    api_request.session["tournament_debater_mapping"] = {"303": linked.id}
     handler._debater_id_map["303"] = linked.id
 
     result = handler._find_debater_from_ref({"apda_id": -1, "tournament_id": 303})

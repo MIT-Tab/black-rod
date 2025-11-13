@@ -60,7 +60,7 @@ from core.resources import (
 @admin.register(School)
 class SchoolAdmin(ImportExportModelAdmin):
     resource_class = SchoolResource
-    list_display = ["name", "short_name"]
+    list_display = ["id", "name", "short_name"]
     list_filter = ["name"]
     search_fields = ["name", "short_name"]
     ordering = ["name"]

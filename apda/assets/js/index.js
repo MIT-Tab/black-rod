@@ -12,6 +12,8 @@ import "jquery-ui/ui/widget";
 
 import "./sortable-formset";
 import "./school_admin_management";
+import "./data-entry";
+import "./data-entry";
 
 function getCookie(name) {
   let cookieValue = null;

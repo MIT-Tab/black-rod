@@ -1,0 +1,35 @@
+<div class="tab-pane fade {% if is_active %}show active{% endif %}" id="{{ tab_id }}-pane" role="tabpanel">
+    {{ formset.management_form }}
+    <div class="formset-controls mb-3">
+        <button type="button" class="btn btn-success btn-sm add-form-btn" data-tab="{{ tab_id }}">
+            <i class="fas fa-plus"></i> Add {{ item_name }}
+        </button>
+        <small class="text-muted ml-3">
+            <i class="fas fa-grip-vertical"></i> Drag rows to reorder
+        </small>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-bordered table-hover formset-table" 
+               id="{{ tab_id }}-table"
+               data-tab="{{ tab_id }}"
+               data-form-type="{{ form_type }}"
+               data-has-ghost-points="{% if has_ghost_points %}1{% else %}0{% endif %}"
+               data-item-name="{{ item_name }}"
+               data-prefix="{{ tab_id }}"
+               data-ajax-url="{% url 'core:get_new_team_form' %}">
+            <thead class="table-light">
+                <tr>
+                    <th width="60">Place</th>
+                    <th width="40"><i class="fas fa-grip-vertical"></i></th>
+                    <th>{{ item_name }} Details</th>
+                    <th width="80">Actions</th>
+                </tr>
+            </thead>
+            <tbody class="sortable-formset">
+                {% for form in formset.forms %}
+                    {% include "tournaments/includes/formset_row_new.html" with form=form form_index=forloop.counter0 place_number=forloop.counter form_type=form_type has_ghost_points=has_ghost_points item_name=item_name prefix=tab_id %}
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>

@@ -170,10 +170,6 @@ def test_tournament_create_view_handles_api_failure(monkeypatch, school):
         def __init__(self, request):
             self.request = request
 
-        @staticmethod
-        def clear_tournament_session_data(request=None):  # pylint: disable=unused-argument
-            called["cleared"] = True
-
         def set_api_url(self, url):  # pylint: disable=unused-argument
             return None
 
@@ -231,9 +227,6 @@ def test_tournament_create_view_redirects_on_success(monkeypatch, school):
         def __init__(self, request):
             self.request = request
 
-        @staticmethod
-        def clear_tournament_session_data(request=None):
-            return None
 
         def set_api_url(self, url):  # pylint: disable=unused-argument
             return None
@@ -263,8 +256,10 @@ def test_tournament_create_view_redirects_on_success(monkeypatch, school):
     response = view.form_valid(form)
 
     assert response.status_code == 302
-    assert response["Location"] == f"{reverse('core:tournament_dataentry')}?tournament={tournament.id}"
-    assert request.session["tid"] == tournament.id
+    # Check that both tournament and api_url are in the redirect URL
+    assert f"tournament={tournament.id}" in response["Location"]
+    assert "api_url=https%3A%2F%2Fapi.example" in response["Location"]
+    assert response["Location"].startswith(reverse('core:tournament_dataentry'))
 
 
 def test_all_tournament_autocomplete_filters_query(school):

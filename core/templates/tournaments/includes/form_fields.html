@@ -1,15 +1,26 @@
 {% load crispy_forms_tags %}
-{# Always include management fields #}
 {% if form.ORDER %}{{ form.ORDER }}{% endif %}
 {% if form.DELETE %}{{ form.DELETE }}{% endif %}
 
 {# Handle hidden fields #}
-{% if form_type == "debater" and form.tournament_id %}
+{% if form_type == "debater" %}
+    {% if form.tournament_id %}{{ form.tournament_id }}{% endif %}
+    {% if form.school_name %}{{ form.school_name }}{% endif %}
+{% endif %}
+{% if form_type == "school" and form.server_name %}
+    {{ form.server_name }}
+{% endif %}
+{% if form_type == "team" %}
+    {% if form.debater_one_tournament_id %}{{ form.debater_one_tournament_id }}{% endif %}
+    {% if form.debater_two_tournament_id %}{{ form.debater_two_tournament_id }}{% endif %}
+{% endif %}
+{% if form_type == "speaker" and form.tournament_id %}
     {{ form.tournament_id }}
 {% endif %}
 
 {# Render fields based on form type #}
 {% if form_type == "school" %}
+    {{ form.included_in_oty }}
     <div class="row">
         <div class="col-md-5">
             {{ form.name|as_crispy_field }}
@@ -17,25 +28,20 @@
         <div class="col-md-4">
             {{ form.existing_school|as_crispy_field }}
         </div>
-        <div class="col-md-3">
-            {{ form.included_in_oty|as_crispy_field }}
-        </div>
     </div>
 
 {% elif form_type == "debater" %}
     <div class="row">
-        <div class="col-md-4">
+        <div class="col-md-3">
             {{ form.first_name|as_crispy_field }}
         </div>
-        <div class="col-md-4">
+        <div class="col-md-3">
             {{ form.last_name|as_crispy_field }}
         </div>
-        <div class="col-md-4">
+        <div class="col-md-3">
             {{ form.school|as_crispy_field }}
         </div>
-    </div>
-    <div class="row">
-        <div class="col-md-12">
+        <div class="col-md-3">
             {{ form.existing_debater|as_crispy_field }}
         </div>
     </div>
@@ -62,7 +68,6 @@
     {{ form.tie|as_crispy_field }}
     
 {% else %}
-    {# Fallback for any other form types - render all visible fields #}
     {% for field in form.visible_fields %}
         {{ field|as_crispy_field }}
     {% endfor %}
