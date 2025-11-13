@@ -7,6 +7,7 @@ from .debater import Debater
 
 class Team(models.Model):
     name = models.CharField(max_length=128, blank=False)
+    short_name = models.CharField(max_length=128, blank=False, default="")
 
     debaters = models.ManyToManyField(Debater, related_name="teams")
 

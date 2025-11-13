@@ -4,6 +4,7 @@ from django.shortcuts import reverse
 
 class School(models.Model):
     name = models.CharField(max_length=64, blank=False, unique=True)
+    short_name = models.CharField(max_length=64, blank=False, default="")
 
     included_in_oty = models.BooleanField(default=True, verbose_name="Included in OTY")
 
