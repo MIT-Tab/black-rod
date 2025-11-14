@@ -112,7 +112,7 @@ class SchoolDetailView(CustomDetailView):
 class SchoolUpdateView(CustomUpdateView):
     model = School
 
-    fields = ["name", "included_in_oty"]
+    fields = ["name", "short_name", "included_in_oty"]
     template_name = "schools/update.html"
 
     def get_context_data(self, *args, **kwargs):
@@ -128,7 +128,7 @@ class SchoolUpdateView(CustomUpdateView):
 class SchoolCreateView(CustomCreateView):
     model = School
 
-    fields = ["name", "included_in_oty"]
+    fields = ["name", "short_name", "included_in_oty"]
     template_name = "schools/create.html"
 
 

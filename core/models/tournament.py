@@ -1,6 +1,7 @@
 from django.conf import settings
 from django.db import models
 from django.shortcuts import reverse
+import re
 
 from core.models.school import School
 from core.utils.points import (
@@ -13,6 +14,7 @@ from core.utils.points import (
 
 class Tournament(models.Model):
     name = models.CharField(max_length=128, blank=False)
+    short_name = models.CharField(max_length=128, blank=False, default="")
 
     manual_name = models.CharField(
         max_length=128,
@@ -325,6 +327,13 @@ class Tournament(models.Model):
 
         if not self.manual_name == "":
             self.name = self.manual_name
+
+        # Auto-populate short_name: use host's short_name and remove parenthetical sections
+        short_name_base = self.host.short_name if self.host and self.host.short_name else (self.host.name if self.host else "")
+        self.short_name = short_name_base + suffix
+        # Remove parenthetical sections from short_name and clean up extra spaces
+        self.short_name = re.sub(r'\s*\([^)]*\)', '', self.short_name).strip()
+        self.short_name = re.sub(r'\s+', ' ', self.short_name)  # Replace multiple spaces with single space
 
         if self.qual_type in self.TOURNAMENT_TYPES:
             for key, value in self.TOURNAMENT_TYPES[self.qual_type].items():

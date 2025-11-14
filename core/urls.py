@@ -264,6 +264,11 @@ urlpatterns = [
         name="debater_alias_suggestions",
     ),
     path(
+        "core/admin/school-short-names/",
+        admin_views.SchoolShortNameAuditView.as_view(),
+        name="school_short_name_audit",
+    ),
+    path(
         "core/admin/merge-suggestions/",
         admin_views.MergeSuggestionsView.as_view(),
         name="merge_suggestions",

@@ -336,6 +336,11 @@ NAV_MENU_LEFT = [
                 "url": "core:manage_school_admins",
             },
             {
+                "name": "School Short Names",
+                "url": "core:school_short_name_audit",
+                "validators": ["menu_generator.validators.is_superuser"],
+            },
+            {
                 "name": "Potential Debater Links",
                 "url": "core:debater_alias_suggestions",
                 "validators": ["menu_generator.validators.is_superuser"],

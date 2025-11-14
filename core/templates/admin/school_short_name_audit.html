@@ -1,0 +1,82 @@
+{% extends "base/base.html" %}
+
+{% block content %}
+<div class="container my-4">
+    <div class="card shadow-sm">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap">
+                <div>
+                    <h3 class="mb-1">Missing School Short Names</h3>
+                    <p class="mb-0 text-muted">
+                        Prioritized by cumulative appearances across TOTY, SOTY, NOTY, COTY, and Online Qualifier standings.
+                    </p>
+                </div>
+                <button type="submit" form="short-name-form" class="btn btn-primary">
+                    Save Changes
+                </button>
+            </div>
+            <form method="post" id="short-name-form">
+                {% csrf_token %}
+                {{ formset.management_form }}
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle">
+                        <thead class="thead-light">
+                            <tr>
+                                <th scope="col">School</th>
+                                <th scope="col">Short Name</th>
+                                <th scope="col" class="text-center">TOTY</th>
+                                <th scope="col" class="text-center">SOTY</th>
+                                <th scope="col" class="text-center">NOTY</th>
+                                <th scope="col" class="text-center">Online Quals</th>
+                                <th scope="col" class="text-center">COTY</th>
+                                <th scope="col" class="text-center">Total</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% if has_results %}
+                                {% for form in formset %}
+                                    {% with school=form.instance %}
+                                        <tr>
+                                            <td>
+                                                <strong>{{ school.name }}</strong>
+                                            </td>
+                                            <td style="min-width: 220px;">
+                                                {{ form.id }}
+                                                {{ form.short_name }}
+                                                {% if form.short_name.errors %}
+                                                    {% for error in form.short_name.errors %}
+                                                        <div class="invalid-feedback d-block">{{ error }}</div>
+                                                    {% endfor %}
+                                                {% endif %}
+                                            </td>
+                                            <td class="text-center">{{ school.toty_count }}</td>
+                                            <td class="text-center">{{ school.soty_count }}</td>
+                                            <td class="text-center">{{ school.noty_count }}</td>
+                                            <td class="text-center">{{ school.online_qual_count }}</td>
+                                            <td class="text-center">{{ school.coty_count }}</td>
+                                            <td class="text-center font-weight-bold">{{ school.appearance_total }}</td>
+                                        </tr>
+                                    {% endwith %}
+                                {% endfor %}
+                            {% else %}
+                                <tr>
+                                    <td colspan="8" class="text-center text-muted py-4">
+                                        All schools already have unique short names.
+                                    </td>
+                                </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+                {% if has_results %}
+                    <div class="d-flex justify-content-end">
+                        <button type="submit" class="btn btn-primary">
+                            Save Changes
+                        </button>
+                    </div>
+                {% endif %}
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
