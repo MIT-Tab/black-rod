@@ -5,18 +5,28 @@ from difflib import SequenceMatcher
 
 import requests
 from bs4 import BeautifulSoup
+from django import forms
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.mixins import UserPassesTestMixin
 from django.core.cache import cache
 from django.db import transaction
-from django.db.models import Count, Q, Min
+from django.db.models import Count, F, Q, Min
 from django.db.models.functions import Lower
+from django.forms import modelformset_factory
 from django.http import JsonResponse
 from django.shortcuts import redirect
 from django.views.generic import TemplateView
 
-from core.models import DebaterAliasGroup, SOTY, TOTY, Debater, Team, MergeDebaterRequest
+from core.models import (
+    DebaterAliasGroup,
+    MergeDebaterRequest,
+    School,
+    SOTY,
+    TOTY,
+    Debater,
+    Team,
+)
 from core.utils.rankings import redo_rankings, update_noty, update_soty, update_toty
 
 
@@ -25,6 +35,91 @@ class AdminToolsView(UserPassesTestMixin, TemplateView):
 
     def test_func(self):
         return self.request.user.is_superuser
+
+
+SchoolShortNameFormSet = modelformset_factory(
+    School,
+    fields=("short_name",),
+    extra=0,
+    widgets={
+        "short_name": forms.TextInput(
+            attrs={
+                "class": "form-control form-control-sm",
+                "placeholder": "Short name",
+            }
+        )
+    },
+)
+
+
+class SchoolShortNameAuditView(UserPassesTestMixin, TemplateView):
+    template_name = "admin/school_short_name_audit.html"
+    form_prefix = "schools"
+
+    def test_func(self):
+        return self.request.user.is_superuser
+
+    def get_queryset(self):
+        missing_short_name = (
+            Q(short_name__isnull=True)
+            | Q(short_name__exact="")
+            | Q(short_name__iexact=F("name"))
+        )
+
+        queryset = (
+            School.objects.filter(missing_short_name)
+            .annotate(
+                toty_count=Count("debaters__teams__toty", distinct=True),
+                soty_count=Count("debaters__soty", distinct=True),
+                noty_count=Count("debaters__noty", distinct=True),
+                online_qual_count=Count("debaters__online_qual", distinct=True),
+                coty_count=Count("coty", distinct=True),
+            )
+            .annotate(
+                appearance_total=(
+                    F("toty_count")
+                    + F("soty_count")
+                    + F("noty_count")
+                    + F("online_qual_count")
+                    + F("coty_count")
+                )
+            )
+            .order_by("-appearance_total", "name")
+        )
+        return queryset
+
+    def get_formset(self, data=None):
+        return SchoolShortNameFormSet(
+            data=data,
+            queryset=self.get_queryset(),
+            prefix=self.form_prefix,
+        )
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        formset = kwargs.get("formset") or self.get_formset()
+        context.update(
+            {
+                "formset": formset,
+                "has_results": formset.total_form_count() > 0,
+            }
+        )
+        return context
+
+    def post(self, request, *args, **kwargs):
+        formset = self.get_formset(data=request.POST)
+        if formset.is_valid():
+            changed_forms = [form for form in formset.forms if form.has_changed()]
+            formset.save()
+            if changed_forms:
+                messages.success(
+                    request, f"Saved {len(changed_forms)} short name(s)."
+                )
+            else:
+                messages.info(request, "No updates were needed.")
+            return redirect(request.path)
+        messages.error(request, "Please fix the errors below.")
+        return self.render_to_response(self.get_context_data(formset=formset))
 
 
 class DebaterAliasSuggestionView(UserPassesTestMixin, TemplateView):
