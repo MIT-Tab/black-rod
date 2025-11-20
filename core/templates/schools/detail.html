@@ -1,5 +1,9 @@
 {% extends "base/detail.html" %}
 {% load tags %}
+{% block extra_head %}
+    {{ block.super }}
+    <meta name="llm:api:school" content="{% url 'api:school_detail' object.id %}?season={{ current_season }}">
+{% endblock extra_head %}
 {% block title %}
     {{ object }}
 {% endblock title %}

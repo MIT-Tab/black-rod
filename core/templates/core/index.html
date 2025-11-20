@@ -1,5 +1,9 @@
 {% extends "base/base.html" %}
 {% load tags cache %}
+{% block extra_head %}
+    {{ block.super }}
+    <meta name="llm:api:standings" content="{% url 'api:season_standings' %}?season={{ current_season }}">
+{% endblock extra_head %}
 {% block content %}
     <div class="shadow-lg card m-lg-5 mt-2 m-1 rounded-l8">
         <div class="card-body">
