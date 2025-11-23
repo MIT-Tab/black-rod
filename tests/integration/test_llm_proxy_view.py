@@ -230,7 +230,7 @@ class LLMProxyViewTest(TestCase):
         self.assertIn('public API exposes standings', content)
         self.assertIn('/.well-known/openapi.json', content)
         self.assertIn('/.well-known/ai-plugin.json', content)
-        self.assertIn('/api/schedule/', content)
+        self.assertIn('/llm?endpoint=/api/schedule/', content)
 
     def test_robots_txt_permissive(self):
         """robots.txt should allow all crawlers."""

@@ -221,6 +221,11 @@ def _absolute_round_url(round_obj, request):
     return request.build_absolute_uri(round_obj.get_absolute_url())
 
 
+def _llm_proxy_url(request, endpoint_path):
+    proxy_path = reverse("llm_proxy")
+    return request.build_absolute_uri(f"{proxy_path}?endpoint={endpoint_path}")
+
+
 def _serialize_tab_card(team, tournament, request):
     tab_card_rows = get_tab_card_data(team, tournament)
     serialized = []
@@ -644,11 +649,8 @@ class SeasonStandingsAPIView(View):
             ]
 
         links = {
-            "self": request.build_absolute_uri(
-                f"{reverse('api:season_standings')}?season={season}"
-            ),
-            "html": request.build_absolute_uri(
-                f"{reverse('core:index')}?season={season}"
+            "self": _llm_proxy_url(
+                request, f"{reverse('api:season_standings')}?season={season}"
             ),
         }
 
@@ -694,15 +696,12 @@ class ScheduleAPIView(View):
             "season_display": _format_season_display(season),
             "notes": [
                 "COTY points and qual points describe the same scoring buckets.",
-                "Most schools abstain from competing at tournaments they host, but this rarely effects yearlong awards.",
+                "Most schools abstain from competing at tournaments they host, but this rarely affects yearlong awards.",
             ],
             "months": months,
             "links": {
-                "self": request.build_absolute_uri(
-                    f"{reverse('api:schedule')}?season={season}"
-                ),
-                "html": request.build_absolute_uri(
-                    f"{reverse('core:schedule_view')}?season={season}"
+                "self": _llm_proxy_url(
+                    request, f"{reverse('api:schedule')}?season={season}"
                 ),
             },
         }
@@ -924,10 +923,9 @@ class TeamDetailAPIView(View):
             "toty_history": toty_history,
             "tournaments": tournaments,
             "links": {
-                "self": request.build_absolute_uri(
-                    reverse("api:team_detail", args=[team.id])
+                "self": _llm_proxy_url(
+                    request, reverse("api:team_detail", args=[team.id])
                 ),
-                "html": request.build_absolute_uri(team.get_absolute_url()),
             },
         }
 
@@ -1020,10 +1018,9 @@ class TournamentDetailAPIView(View):
             "team_tab_cards": teams_for_tab_cards if request.user.is_authenticated else [],
             "videos": _visible_videos(videos, request),
             "links": {
-                "self": request.build_absolute_uri(
-                    reverse("api:tournament_detail", args=[tournament.id])
+                "self": _llm_proxy_url(
+                    request, reverse("api:tournament_detail", args=[tournament.id])
                 ),
-                "html": request.build_absolute_uri(tournament.get_absolute_url()),
             },
         }
 
@@ -1071,11 +1068,9 @@ class SchoolDetailAPIView(View):
             "hosted_tournaments": tournaments,
             "season_summary": season_summary,
             "links": {
-                "self": request.build_absolute_uri(
-                    f"{reverse('api:school_detail', args=[school.id])}?season={season}"
-                ),
-                "html": request.build_absolute_uri(
-                    f"{school.get_absolute_url()}?season={season}"
+                "self": _llm_proxy_url(
+                    request,
+                    f"{reverse('api:school_detail', args=[school.id])}?season={season}",
                 ),
             },
         }
@@ -1212,10 +1207,9 @@ class DebaterDetailAPIView(View):
             "season_summaries": season_results,
             "videos": _visible_videos(videos_queryset, request),
             "links": {
-                "self": request.build_absolute_uri(
-                    reverse("api:debater_detail", args=[debater.id])
+                "self": _llm_proxy_url(
+                    request, reverse("api:debater_detail", args=[debater.id])
                 ),
-                "html": request.build_absolute_uri(debater.get_absolute_url()),
             },
         }
 
@@ -1401,7 +1395,7 @@ Endpoints:
 2. /llms.txt
    - This document. Lists machine-friendly interfaces for LLM access.
 
-3. /api/schedule/
+3. /llm?endpoint=/api/schedule/
    - Machine-readable version of the public tournament schedule grouped the same way as the HTML page.
 
 4. /llm/oty-guide/
