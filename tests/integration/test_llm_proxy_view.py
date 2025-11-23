@@ -60,7 +60,7 @@ class LLMProxyViewTest(TestCase):
         response = self.client.get('/llm/?endpoint=/core/schools/')
         
         self.assertEqual(response.status_code, 400)
-        self.assertIn(b'Only /api/ endpoints are allowed', response.content)
+        self.assertIn(b'Only /api/ and whitelisted /.well-known/ endpoints are allowed', response.content)
     
     def test_path_traversal_rejected(self):
         """Test that path traversal patterns are rejected"""
@@ -228,6 +228,9 @@ class LLMProxyViewTest(TestCase):
         self.assertIn('/llms.txt', content)
         self.assertIn('Usage', content)
         self.assertIn('public API exposes standings', content)
+        self.assertIn('/.well-known/openapi.json', content)
+        self.assertIn('/.well-known/ai-plugin.json', content)
+        self.assertIn('/api/schedule/', content)
 
     def test_robots_txt_permissive(self):
         """robots.txt should allow all crawlers."""
@@ -249,3 +252,19 @@ class LLMProxyViewTest(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
+
+    def test_llm_proxy_allows_well_known_endpoints(self):
+        """Proxy should permit OpenAPI and manifest paths."""
+        response = self.client.get('/llm/?endpoint=/.well-known/openapi.json')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('text/html', response['Content-Type'])
+
+    def test_llm_oty_explainer(self):
+        """LLM OTY guide should explain scoring rules."""
+        response = self.client.get('/llm/oty-guide/')
+        self.assertEqual(response.status_code, 200)
+
+        content = response.content.decode('utf-8')
+        self.assertIn('60', content)
+        self.assertIn('autoqual', content.lower())
+        self.assertIn('https://apda.online/2025/09/02/bylaws/', content)

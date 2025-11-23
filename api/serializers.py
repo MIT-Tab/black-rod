@@ -38,6 +38,8 @@ def serialize_debater(debater, request=None):
         "last_name": debater.last_name,
         "status": debater.get_status_display(),
         "status_code": debater.status,
+        "school_id": debater.school_id,
+        "school_name": debater.school.name if debater.school else None,
         "school": school_payload,
     }
     if request:

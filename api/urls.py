@@ -9,6 +9,7 @@ app_name = 'api'
 
 urlpatterns = [
     path('standings/', views.SeasonStandingsAPIView.as_view(), name='season_standings'),
+    path('schedule/', views.ScheduleAPIView.as_view(), name='schedule'),
     path('schools/', views.ActiveSchoolListAPIView.as_view(), name='active_schools'),
     path('schools/all/', views.AllSchoolListAPIView.as_view(), name='all_schools'),
     path('schools/<int:pk>/detail/', views.SchoolDetailAPIView.as_view(), name='school_detail'),

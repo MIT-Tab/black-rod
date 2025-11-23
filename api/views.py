@@ -1,5 +1,5 @@
 from collections import defaultdict
-from datetime import date as date_class
+from datetime import date as date_class, timedelta
 import html
 import json
 import logging
@@ -27,7 +27,7 @@ from core.models.team import Team
 from core.models.tournament import Tournament
 from core.models.video import Video
 from core.utils.perms import has_perm
-from core.utils.rankings import get_qualled_debaters
+from core.utils.rankings import get_qualled_debaters, place_as_round
 from core.utils.rounds import get_record, get_tab_card_data
 from core.utils.schools import get_debaters_for_season
 from .serializers import (
@@ -152,6 +152,8 @@ class SchoolDebatersAPIView(View):
 # ----------------------------------------------------------------------
 
 MARKER_LABELS = ["one", "two", "three", "four", "five", "six"]
+LLM_PROXY_ALLOWED_PREFIXES = ("/api/", "/.well-known/")
+LLM_PROXY_ALLOWED_PATHS = {"/ai-plugin.json", "/openapi.json"}
 LOGGER = logging.getLogger(__name__)
 
 
@@ -249,6 +251,172 @@ def _serialize_tab_card(team, tournament, request):
     return serialized
 
 
+def _lite_school(school, request):
+    if not school:
+        return None
+    data = {
+        "id": school.id,
+        "name": school.name,
+    }
+    if request:
+        data["url"] = request.build_absolute_uri(school.get_absolute_url())
+    return data
+
+
+def _lite_debater(debater, request):
+    if not debater:
+        return None
+    data = {
+        "id": debater.id,
+        "name": debater.name,
+        "school_id": debater.school_id,
+        "school_name": debater.school.name if debater.school else None,
+    }
+    if request:
+        data["url"] = request.build_absolute_uri(debater.get_absolute_url())
+    return data
+
+
+def _lite_team(team, request):
+    if not team:
+        return None
+    data = {
+        "id": team.id,
+        "name": team.name,
+        "debaters": [_lite_debater(debater, request) for debater in team.debaters.all()],
+    }
+    if request:
+        data["url"] = request.build_absolute_uri(team.get_absolute_url())
+    return data
+
+
+def _lite_tournament(tournament, request):
+    if not tournament:
+        return None
+    data = {
+        "id": tournament.id,
+        "name": tournament.name,
+        "date": tournament.date.isoformat() if tournament.date else None,
+    }
+    if request:
+        data["url"] = request.build_absolute_uri(tournament.get_absolute_url())
+    return data
+
+
+def _tournament_special_notes(tournament):
+    name = (tournament.name or "").lower()
+    notes = []
+
+    if tournament.qual_type == Tournament.EXPANSION or "bp" in name:
+        notes.append(
+            "British Parliamentary weekends award autoqual slots, but no TOTY/SOTY/COTY points."
+        )
+    if tournament.qual_type == Tournament.NATIONALS or "nationals" in name:
+        notes.append(
+            "Nationals is championship-only: it does not award season points, only a title and autoqual bids."
+        )
+    if tournament.qual_type == Tournament.GENDER_MINORITY or "gender minority" in name or "gm" in name.split():
+        notes.append(
+            "Gender Minority events award COTY/qual points only and are invitationals."
+        )
+    if "bipoc" in name:
+        notes.append(
+            "BIPOC invitational weekends award COTY (qual) points only."
+        )
+    return notes
+
+
+def _tournament_oty_payload(tournament):
+    name = (tournament.name or "").lower()
+    toty_points = bool(tournament.toty)
+    soty_points = bool(tournament.soty)
+    coty_points = bool(tournament.qual)
+
+    if tournament.qual_type in {Tournament.EXPANSION, Tournament.NATIONALS} or "nationals" in name or "bp" in name:
+        toty_points = False
+        soty_points = False
+        coty_points = False
+
+    if (
+        tournament.qual_type == Tournament.GENDER_MINORITY
+        or "gender minority" in name
+        or "gm" in name.split()
+        or "bipoc" in name
+    ):
+        toty_points = False
+        soty_points = False
+        coty_points = True
+
+    return {
+        "toty_points": toty_points,
+        "soty_points": soty_points,
+        "coty_points": coty_points,
+        "qual_type": tournament.get_qual_type_display(),
+        "autoqual_bar": tournament.autoqual_bar,
+        "notes": _tournament_special_notes(tournament),
+    }
+
+
+def _schedule_tournament_sort_key(tournament):
+    priority = 1 if tournament.qual_type in {Tournament.BRANDEIS, Tournament.YALE} else 0
+    return (priority, tournament.qual_type or 0, tournament.name)
+
+
+def _finalize_week_block(week, request):
+    tournaments = week.pop("entries", [])
+    tournaments.sort(key=_schedule_tournament_sort_key)
+    week["tournaments"] = [
+        {
+            "tournament": serialize_tournament(tournament, request),
+            "otys": _tournament_oty_payload(tournament),
+        }
+        for tournament in tournaments
+    ]
+    return week
+
+
+def _schedule_month_blocks(tournaments, request):
+    months = defaultdict(list)
+    for tournament in tournaments:
+        if not tournament.date:
+            continue
+        key = (tournament.date.year, tournament.date.month)
+        months[key].append(tournament)
+
+    month_blocks = []
+    for (year, month), month_tournaments in sorted(months.items()):
+        month_tournaments.sort(key=lambda t: t.date.day)
+        weeks = []
+        current_week = None
+        for tournament in month_tournaments:
+            day = tournament.date.day
+            if not current_week or day != current_week["date"]:
+                if current_week:
+                    weeks.append(_finalize_week_block(current_week, request))
+                current_week = {
+                    "date": day,
+                    "one_more": (tournament.date + timedelta(days=1)).day,
+                    "entries": [],
+                }
+            current_week["entries"].append(tournament)
+
+        if current_week:
+            weeks.append(_finalize_week_block(current_week, request))
+
+        weeks.sort(key=lambda week: week["date"])
+
+        month_blocks.append(
+            {
+                "month": month,
+                "display": month_tournaments[0].date.strftime("%B"),
+                "year": year,
+                "weeks": weeks,
+            }
+        )
+    month_blocks.sort(key=lambda block: (block["year"], block["month"]))
+    return month_blocks
+
+
 def _serialize_markers(obj, marker_count, request):
     markers = []
     for position, label in enumerate(MARKER_LABELS[:marker_count], start=1):
@@ -259,7 +427,7 @@ def _serialize_markers(obj, marker_count, request):
                 {
                     "slot": position,
                     "points": points,
-                    "tournament": serialize_tournament(tournament, request),
+                    "tournament": _lite_tournament(tournament, request),
                 }
             )
     return markers
@@ -317,27 +485,28 @@ def _visible_videos(videos, request):
     ]
 
 
-def _standing_payload(entry, entity_attr, marker_count, request, extra=None):
+def _standing_payload(entry, entity_attr, marker_count, request, extra=None, lite=False):
     payload = {
-        "id": entry.id,
         "season": entry.season,
         "season_display": _format_season_display(entry.season),
-        "place": entry.place,
-        "tied": entry.tied,
+        "place_display": place_as_round(entry.place) if entry.place else "",
         "points": entry.points,
         "markers": _serialize_markers(entry, marker_count, request),
     }
 
+    if not lite:
+        payload["id"] = entry.id
+        payload["place"] = entry.place
+        payload["tied"] = entry.tied
+
     entity = getattr(entry, entity_attr, None)
     if entity_attr == "team" and entity:
-        payload["team"] = serialize_team(entity, request)
+        payload["team"] = _lite_team(entity, request)
     elif entity_attr == "debater" and entity:
-        payload["debater"] = serialize_debater(entity, request)
-        payload["school"] = (
-            serialize_school(entity.school, request) if entity.school else None
-        )
+        payload["debater"] = _lite_debater(entity, request)
+        payload["school"] = _lite_school(entity.school, request)
     elif entity_attr == "school" and entity:
-        payload["school"] = serialize_school(entity, request)
+        payload["school"] = _lite_school(entity, request)
 
     if extra:
         payload.update(extra)
@@ -435,16 +604,16 @@ class SeasonStandingsAPIView(View):
 
         standings = {
             "toty": [
-                _standing_payload(entry, "team", 5, request)
+                _standing_payload(entry, "team", 5, request, lite=True)
                 for entry in toty_qs
             ],
             "soty": [
-                _standing_payload(entry, "debater", 6, request)
+                _standing_payload(entry, "debater", 6, request, lite=True)
                 for entry in soty_qs
             ],
             "coty": [
                 {
-                    **_standing_payload(entry, "school", 0, request),
+                    **_standing_payload(entry, "school", 0, request, lite=True),
                     "breakdown": _coty_breakdown_for_school(
                         entry.school, season, request
                     ),
@@ -455,7 +624,7 @@ class SeasonStandingsAPIView(View):
 
         if render_noty:
             standings["noty"] = [
-                _standing_payload(entry, "debater", 5, request)
+                _standing_payload(entry, "debater", 5, request, lite=True)
                 for entry in noty_qs
             ]
 
@@ -469,6 +638,7 @@ class SeasonStandingsAPIView(View):
                     extra={
                         "qualified": entry.points >= settings.ONLINE_QUAL_BAR,
                     },
+                    lite=True,
                 )
                 for entry in online_qs
             ]
@@ -493,6 +663,48 @@ class SeasonStandingsAPIView(View):
             "online_qual_bar": settings.ONLINE_QUAL_BAR,
             "standings": standings,
             "links": links,
+        }
+
+        cache.set(cache_key, payload, self.cache_timeout)
+        return JsonResponse(payload)
+
+
+class ScheduleAPIView(View):
+    """Expose the APDA tournament schedule grouped by month/week."""
+
+    cache_timeout = 300
+
+    def get(self, request):
+        season = _resolve_season(request)
+        cache_key = f"api:schedule:{season}"
+        cached = cache.get(cache_key)
+        if cached:
+            return JsonResponse(cached)
+
+        tournaments = (
+            Tournament.objects.filter(season=season)
+            .select_related("host")
+            .order_by("date")
+        )
+
+        months = _schedule_month_blocks(tournaments, request)
+
+        payload = {
+            "season": season,
+            "season_display": _format_season_display(season),
+            "notes": [
+                "COTY points and qual points describe the same scoring buckets.",
+                "Most schools abstain from competing at tournaments they host, but this rarely effects yearlong awards.",
+            ],
+            "months": months,
+            "links": {
+                "self": request.build_absolute_uri(
+                    f"{reverse('api:schedule')}?season={season}"
+                ),
+                "html": request.build_absolute_uri(
+                    f"{reverse('core:schedule_view')}?season={season}"
+                ),
+            },
         }
 
         cache.set(cache_key, payload, self.cache_timeout)
@@ -1049,13 +1261,15 @@ class LLMProxyView(View):
                 status=400
             )
         
-        # Additional security: Only allow /api/ paths
-        if not endpoint.startswith('/api/'):
+        # Additional security: Only allow whitelisted paths (/api/ and /.well-known/)
+        allowed_prefix = any(endpoint.startswith(prefix) for prefix in LLM_PROXY_ALLOWED_PREFIXES)
+        allowed_path = endpoint in LLM_PROXY_ALLOWED_PATHS
+        if not allowed_prefix and not allowed_path:
             return HttpResponse(
                 '<!DOCTYPE html><html><head><title>Error</title></head><body>'
                 '<h1>Error: Invalid endpoint</h1>'
-                '<p>Only /api/ endpoints are allowed</p>'
-                '<p>Example: /llm?endpoint=/api/standings</p>'
+                '<p>Only /api/ and whitelisted /.well-known/ endpoints are allowed</p>'
+                '<p>Example: /llm?endpoint=/api/standings or /llm?endpoint=/.well-known/openapi.json</p>'
                 '</body></html>',
                 content_type='text/html',
                 status=400
@@ -1182,10 +1396,20 @@ Endpoints:
 1. /llm
    - Wrap any /api/ JSON response in HTML for browser-based LLM tools.
    - Usage: /llm?endpoint=/api/<path> (example: /llm?endpoint=/api/standings/?season=2024)
-   - Only relative /api/ paths are accepted; query parameters are forwarded.
+   - Only relative /api/ paths plus /.well-known/* OpenAPI/manifest endpoints are accepted; query parameters are forwarded.
 
 2. /llms.txt
    - This document. Lists machine-friendly interfaces for LLM access.
+
+3. /api/schedule/
+   - Machine-readable version of the public tournament schedule grouped the same way as the HTML page.
+
+4. /llm/oty-guide/
+   - Plain-text explainer covering how TOTY, SOTY, and COTY point races work (including scoring formulas).
+
+OpenAPI schema:
+- /.well-known/openapi.json (OpenAPI 3.0 schema describing every public endpoint)
+- /.well-known/ai-plugin.json (ChatGPT plugin manifest that references the schema)
 
 Guidelines:
 - Respect caching headers from API responses.
@@ -1204,3 +1428,35 @@ class RobotsTxtView(View):
 
     def get(self, request):
         return HttpResponse(self.content, content_type="text/plain; charset=utf-8")
+
+
+class LLMOTYExplanationView(View):
+    """Explain OTY scoring rules for LLM tools."""
+
+    body = """APDA OTY Scoring Guide
+
+Tournament points (base value)
+- Every varsity tournament has a "point" value which grows as more teams attend the tournament. The value is equivalent to the TOTY points received by the tournament winning team of two, and SOTY points earned by the tournamen's top speaker. All tournaments must have at least 8 teams to be worth points. From 8–15 teams, the tournament is worth 8 points. From 16–80 teams the base becomes 12 + floor((teams-16)/8), which continues until 80 teams, when the tournament reaches the maximum 20 points. All other placements and speaker awards are defined relative to that base.
+
+Team of the Year (TOTY)
+- Champion = 100% of the base, finalist = base - 4, semifinalists = roughly base - 9 (specifically 3 + 0.75*floor((teams-16)/8) for the 16–71 band), and quarterfinalists get one quarter of the base. At the largest bands (72–79 and 80+) the explicit tables are 19/15/8.25/3.5/0.75 and 20/16/9/4/1.5 respectively. Teams keep only their five best tournament markers and teams are ranked by the sum of those 5 markers. Hybrid partnerships (debaters from different schools) can win events, but their points only flow into SOTY/COTY—not TOTY.
+
+Speaker of the Year (SOTY)
+- The same base value applies to speakers. First speaker receives the base; every subsequent speaker drops by 2.5 points (2nd = base-2.5, 3rd = base-5, etc.) until the number would hit zero. We track each debater’s six best SOTY-eligible speaker finishes.
+
+Club of the Year (COTY) / Qual points
+- COTY reuses the team-points table, but the credit is recorded on individual debaters. Every qualifying partnership that clears feeds its points into each debater’s personal total. A debater’s annual contribution to their school is capped at 60, and every autoqual (placing at or above the autoqual bar at select BP and exansion tournaments) adds a 6-point bonus on top of the capped value, leading to a 66 point maximum contribution. School totals are the sum of those capped contributions, so “qual points” and “COTY points” refer to the same concept, although "qual points" typically refers to the uncapped quantity (can go above 60) without the 6 point bonus.
+
+Tournaments that do *not* hand out season points
+- Nationals and British Parliamentary (BP) weekends award autoqual bids but no season points.
+- Gender Minority, BIPOC, and similar invitationals award COTY (qual) credit only.
+
+General notes
+- Tournament size drives the base, so hosting a larger varsity field increases the reward for deep runs. Hosting schools usually abstain from competing at their own tournaments, but that rarely swings season-long races.
+- Hybrid teams still grant SOTY/COTY credit to their members even though the partnership itself cannot bank TOTY markers.
+
+For bylaw-level detail, see https://apda.online/2025/09/02/bylaws/
+"""
+
+    def get(self, request):
+        return HttpResponse(self.body, content_type="text/plain; charset=utf-8")
