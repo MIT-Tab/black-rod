@@ -8,6 +8,9 @@
                 crossorigin="anonymous"></script>
         {% load static %}
         <link rel="shortcut icon" href="{% static 'favicon.ico' %}" type="image/x-icon">
+        <link rel="manifest" href="{% url 'core:ai_plugin_manifest' %}">
+        <meta name="llm:manifest" content="{% url 'core:ai_plugin_manifest' %}">
+        <meta name="llm:openapi" content="{% url 'core:openapi_schema' %}">
         {% block extra_head %}{% endblock extra_head %}
         <title>
             {% block title %}

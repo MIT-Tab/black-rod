@@ -19,11 +19,14 @@ from core.views import (
     video_views,
     resource_views,
     views,
+    plugin_views,
 )
 
 app_name = "core"
 
 urlpatterns = [
+    path(".well-known/ai-plugin.json", plugin_views.ai_plugin_manifest, name="ai_plugin_manifest"),
+    path(".well-known/openapi.json", plugin_views.openapi_schema, name="openapi_schema"),
     path("", views.index, name="index"),
     path("stats/", views.stats, name="stats"),
     path("core/schools/", school_views.SchoolListView.as_view(), name="school_list"),
