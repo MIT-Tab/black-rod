@@ -5,7 +5,7 @@ Integration tests for the LLM proxy view.
 
 import html
 import json
-from django.test import TestCase, Client
+from django.test import TestCase, Client, override_settings
 from django.conf import settings
 from core.models.school import School
 from core.models.debater import Debater
@@ -148,7 +148,8 @@ class LLMProxyViewTest(TestCase):
         # Should return error (404 or 500)
         self.assertNotEqual(response.status_code, 200)
         content = response.content.decode('utf-8')
-        self.assertIn('Error', content)
+        self.assertIn('Unable to fetch endpoint', content)
+        self.assertNotIn('Traceback', content)
     
     def test_school_debaters_endpoint(self):
         """Test accessing school debaters endpoint through proxy"""
@@ -214,3 +215,37 @@ class LLMProxyViewTest(TestCase):
         content = response.content.decode('utf-8')
         self.assertIn('<!DOCTYPE html>', content)
         self.assertIn('<pre>', content)
+
+    def test_llms_documentation_endpoint(self):
+        """Ensure /llms.txt documents usage for LLM tools."""
+        response = self.client.get('/llms.txt')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('text/plain', response['Content-Type'])
+
+        content = response.content.decode('utf-8')
+        self.assertIn('/llm', content)
+        self.assertIn('/llms.txt', content)
+        self.assertIn('Usage', content)
+        self.assertIn('public API exposes standings', content)
+
+    def test_robots_txt_permissive(self):
+        """robots.txt should allow all crawlers."""
+        response = self.client.get('/robots.txt')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('text/plain', response['Content-Type'])
+
+        content = response.content.decode('utf-8')
+        self.assertIn('User-agent: *', content)
+        self.assertIn('Allow: /', content)
+
+    @override_settings(ALLOWED_HOSTS=['example.com'])
+    def test_llm_proxy_respects_allowed_hosts(self):
+        """Internal proxy requests should use the original host."""
+        response = self.client.get(
+            '/llm/?endpoint=/api/schools/',
+            HTTP_HOST='example.com',
+        )
+
+        self.assertEqual(response.status_code, 200)

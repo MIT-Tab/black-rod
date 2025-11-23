@@ -2,6 +2,7 @@ from collections import defaultdict
 from datetime import date as date_class
 import html
 import json
+import logging
 from urllib.parse import unquote_plus
 
 from django.conf import settings
@@ -9,7 +10,7 @@ from django.core.cache import cache
 from django.db.models import Count, Prefetch, Q
 from django.http import Http404, HttpResponse, JsonResponse
 from django.test import RequestFactory
-from django.urls import reverse
+from django.urls import resolve, reverse, Resolver404
 from django.views import View
 
 from core.models.debater import Debater
@@ -151,6 +152,7 @@ class SchoolDebatersAPIView(View):
 # ----------------------------------------------------------------------
 
 MARKER_LABELS = ["one", "two", "three", "four", "five", "six"]
+LOGGER = logging.getLogger(__name__)
 
 
 def _available_season_values():
@@ -1072,6 +1074,9 @@ class LLMProxyView(View):
         
         # Make an internal request to the endpoint
         factory = RequestFactory()
+        secure = request.is_secure()
+        host = request.get_host()
+        factory_kwargs = {"HTTP_HOST": host}
         
         # Preserve query parameters from the original endpoint if any
         if '?' in endpoint:
@@ -1086,30 +1091,32 @@ class LLMProxyView(View):
                 else:
                     # Handle parameters without values (e.g., ?flag)
                     query_params[unquote_plus(item)] = ''
-            internal_request = factory.get(path, data=query_params)
+            internal_request = factory.get(path, data=query_params, secure=secure, **factory_kwargs)
         else:
-            internal_request = factory.get(endpoint)
+            internal_request = factory.get(endpoint, secure=secure, **factory_kwargs)
         
         # Copy user and session from the original request
         internal_request.user = request.user
         internal_request.session = request.session
         
         try:
-            # Import the root URL configuration
-            from django.urls import resolve
-            
             # Resolve the URL and call the view
             resolved = resolve(endpoint.split('?')[0])
             response = resolved.func(internal_request, *resolved.args, **resolved.kwargs)
             
             # Check if response is successful
             if response.status_code != 200:
-                # Escape response content to prevent XSS
-                escaped_content = html.escape(response.content.decode("utf-8", errors="replace"))
+                LOGGER.warning(
+                    "LLM proxy received status %s for endpoint %s",
+                    response.status_code,
+                    endpoint,
+                )
+                escaped_endpoint = html.escape(endpoint)
                 return HttpResponse(
-                    f'<!DOCTYPE html><html><head><title>Error</title></head><body>'
-                    f'<h1>Error: API returned status {response.status_code}</h1>'
-                    f'<pre>{escaped_content}</pre>'
+                    f'<!DOCTYPE html><html><head><title>Unable to fetch endpoint</title></head><body>'
+                    f'<h1>Unable to fetch endpoint</h1>'
+                    f'<p>The API returned status {response.status_code} while requesting {escaped_endpoint}. '
+                    f'Please verify the path or try again later.</p>'
                     f'</body></html>',
                     content_type='text/html',
                     status=response.status_code
@@ -1139,16 +1146,61 @@ class LLMProxyView(View):
             
             return HttpResponse(html_content, content_type='text/html')
             
-        except Exception as e:
-            # Return error in HTML format (escape to prevent XSS)
+        except Resolver404:
             escaped_endpoint = html.escape(endpoint)
-            escaped_error = html.escape(str(e))
             return HttpResponse(
-                f'<!DOCTYPE html><html><head><title>Error</title></head><body>'
-                f'<h1>Error fetching endpoint</h1>'
-                f'<p>Endpoint: {escaped_endpoint}</p>'
-                f'<p>Error: {escaped_error}</p>'
+                f'<!DOCTYPE html><html><head><title>Unable to fetch endpoint</title></head><body>'
+                f'<h1>Unable to fetch endpoint</h1>'
+                f'<p>The path {escaped_endpoint} could not be found.</p>'
+                f'</body></html>',
+                content_type='text/html',
+                status=404
+            )
+        except Exception:
+            LOGGER.exception("LLM proxy encountered an unexpected error for %s", endpoint)
+            escaped_endpoint = html.escape(endpoint)
+            return HttpResponse(
+                f'<!DOCTYPE html><html><head><title>Unable to fetch endpoint</title></head><body>'
+                f'<h1>Unable to fetch endpoint</h1>'
+                f'<p>An unexpected error occurred while fetching {escaped_endpoint}. '
+                f'Please try again later.</p>'
                 f'</body></html>',
                 content_type='text/html',
                 status=500
             )
+
+
+class LLMDocumentationView(View):
+    """Provide plain-text documentation for LLM-friendly endpoints."""
+
+    documentation = """LLM Documentation for black-rod
+
+This public API exposes standings, school rosters, debater profiles, tournaments,
+and other APDA Online resources in JSON for third-party tools.
+
+Endpoints:
+1. /llm
+   - Wrap any /api/ JSON response in HTML for browser-based LLM tools.
+   - Usage: /llm?endpoint=/api/<path> (example: /llm?endpoint=/api/standings/?season=2024)
+   - Only relative /api/ paths are accepted; query parameters are forwarded.
+
+2. /llms.txt
+   - This document. Lists machine-friendly interfaces for LLM access.
+
+Guidelines:
+- Respect caching headers from API responses.
+- Avoid crawling authenticated or non-/api/ paths through /llm.
+- Report issues to info@apda.online.
+"""
+
+    def get(self, request):
+        return HttpResponse(self.documentation, content_type="text/plain; charset=utf-8")
+
+
+class RobotsTxtView(View):
+    """Serve a permissive robots.txt that allows all crawlers."""
+
+    content = "User-agent: *\nAllow: /"
+
+    def get(self, request):
+        return HttpResponse(self.content, content_type="text/plain; charset=utf-8")
