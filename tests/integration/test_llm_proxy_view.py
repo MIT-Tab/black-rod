@@ -3,6 +3,7 @@
 Integration tests for the LLM proxy view.
 """
 
+import html
 import json
 from django.test import TestCase, Client
 from django.conf import settings
@@ -31,7 +32,7 @@ class LLMProxyViewTest(TestCase):
         response = self.client.get('/llm/')
         
         self.assertEqual(response.status_code, 400)
-        self.assertEqual(response['Content-Type'], 'text/html')
+        self.assertIn('text/html', response['Content-Type'])
         self.assertIn(b'Missing endpoint parameter', response.content)
         self.assertIn(b'Usage: /llm?endpoint=/api/standings', response.content)
     
@@ -78,7 +79,7 @@ class LLMProxyViewTest(TestCase):
         response = self.client.get('/llm/?endpoint=/api/schools/')
         
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response['Content-Type'], 'text/html')
+        self.assertIn('text/html', response['Content-Type'])
         
         # Check for HTML structure
         content = response.content.decode('utf-8')
@@ -101,8 +102,11 @@ class LLMProxyViewTest(TestCase):
         pre_end = content.find('</pre>')
         json_content = content[pre_start:pre_end]
         
+        # Unescape HTML entities before parsing JSON
+        unescaped_json = html.unescape(json_content)
+        
         # Verify it's valid JSON
-        parsed_json = json.loads(json_content)
+        parsed_json = json.loads(unescaped_json)
         self.assertIn('schools', parsed_json)
         
         # Verify it has indentation (pretty-printed)
@@ -123,8 +127,11 @@ class LLMProxyViewTest(TestCase):
         pre_end = content.find('</pre>')
         json_content = content[pre_start:pre_end]
         
+        # Unescape HTML entities before parsing JSON
+        unescaped_json = html.unescape(json_content)
+        
         # Verify it's valid JSON
-        parsed_json = json.loads(json_content)
+        parsed_json = json.loads(unescaped_json)
         self.assertIn('season', parsed_json)
     
     def test_html_title_includes_endpoint(self):
@@ -155,7 +162,10 @@ class LLMProxyViewTest(TestCase):
         pre_end = content.find('</pre>')
         json_content = content[pre_start:pre_end]
         
-        parsed_json = json.loads(json_content)
+        # Unescape HTML entities before parsing JSON
+        unescaped_json = html.unescape(json_content)
+        
+        parsed_json = json.loads(unescaped_json)
         self.assertIn('school', parsed_json)
         self.assertIn('debaters', parsed_json)
         self.assertEqual(parsed_json['school']['name'], "Test University")
