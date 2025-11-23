@@ -1,10 +1,12 @@
 from collections import defaultdict
 from datetime import date as date_class
+import json
 
 from django.conf import settings
 from django.core.cache import cache
 from django.db.models import Count, Prefetch, Q
-from django.http import Http404, JsonResponse
+from django.http import Http404, HttpResponse, JsonResponse
+from django.test import RequestFactory
 from django.urls import reverse
 from django.views import View
 
@@ -1002,3 +1004,131 @@ class DebaterDetailAPIView(View):
         }
 
         return JsonResponse(payload)
+
+
+class LLMProxyView(View):
+    """
+    Quick and dirty proxy view to help LLM browsing tools read JSON API responses.
+    
+    GET /llm?endpoint=/api/standings
+    
+    Takes an API endpoint path and returns the JSON response wrapped in HTML
+    with a <pre> tag for better readability by LLM tools like ChatGPT's browser.
+    
+    Security: Only allows internal API paths (starting with /) to prevent SSRF attacks.
+    """
+    
+    def get(self, request):
+        # Get the endpoint parameter
+        endpoint = request.GET.get('endpoint', '')
+        
+        # Security: Validate that endpoint is provided and starts with /
+        if not endpoint:
+            return HttpResponse(
+                '<!DOCTYPE html><html><head><title>Error</title></head><body>'
+                '<h1>Error: Missing endpoint parameter</h1>'
+                '<p>Usage: /llm?endpoint=/api/standings</p>'
+                '</body></html>',
+                content_type='text/html',
+                status=400
+            )
+        
+        # Security: Only allow relative paths starting with / to prevent SSRF
+        if not endpoint.startswith('/'):
+            return HttpResponse(
+                '<!DOCTYPE html><html><head><title>Error</title></head><body>'
+                '<h1>Error: Invalid endpoint</h1>'
+                '<p>Endpoint must start with / (relative path only)</p>'
+                '<p>Example: /llm?endpoint=/api/standings</p>'
+                '</body></html>',
+                content_type='text/html',
+                status=400
+            )
+        
+        # Additional security: Only allow /api/ paths
+        if not endpoint.startswith('/api/'):
+            return HttpResponse(
+                '<!DOCTYPE html><html><head><title>Error</title></head><body>'
+                '<h1>Error: Invalid endpoint</h1>'
+                '<p>Only /api/ endpoints are allowed</p>'
+                '<p>Example: /llm?endpoint=/api/standings</p>'
+                '</body></html>',
+                content_type='text/html',
+                status=400
+            )
+        
+        # Security: Prevent path traversal attacks
+        if '..' in endpoint or '//' in endpoint:
+            return HttpResponse(
+                '<!DOCTYPE html><html><head><title>Error</title></head><body>'
+                '<h1>Error: Invalid endpoint</h1>'
+                '<p>Path traversal patterns are not allowed</p>'
+                '</body></html>',
+                content_type='text/html',
+                status=400
+            )
+        
+        # Make an internal request to the endpoint
+        factory = RequestFactory()
+        
+        # Preserve query parameters from the original endpoint if any
+        if '?' in endpoint:
+            path, query = endpoint.split('?', 1)
+            internal_request = factory.get(path, data=dict(item.split('=') for item in query.split('&') if '=' in item))
+        else:
+            internal_request = factory.get(endpoint)
+        
+        # Copy user and session from the original request
+        internal_request.user = request.user
+        internal_request.session = request.session
+        
+        try:
+            # Import the root URL configuration
+            from django.urls import resolve
+            
+            # Resolve the URL and call the view
+            resolved = resolve(endpoint.split('?')[0])
+            response = resolved.func(internal_request, *resolved.args, **resolved.kwargs)
+            
+            # Check if response is successful
+            if response.status_code != 200:
+                return HttpResponse(
+                    f'<!DOCTYPE html><html><head><title>Error</title></head><body>'
+                    f'<h1>Error: API returned status {response.status_code}</h1>'
+                    f'<pre>{response.content.decode("utf-8", errors="replace")}</pre>'
+                    f'</body></html>',
+                    content_type='text/html',
+                    status=response.status_code
+                )
+            
+            # Parse the JSON response
+            json_data = json.loads(response.content)
+            
+            # Pretty-print the JSON with indent=2
+            pretty_json = json.dumps(json_data, indent=2, ensure_ascii=False)
+            
+            # Return HTML with JSON in a <pre> tag
+            html = f'''<!DOCTYPE html>
+<html>
+<head>
+    <title>API Response: {endpoint}</title>
+    <meta charset="utf-8">
+</head>
+<body>
+<pre>{pretty_json}</pre>
+</body>
+</html>'''
+            
+            return HttpResponse(html, content_type='text/html')
+            
+        except Exception as e:
+            # Return error in HTML format
+            return HttpResponse(
+                f'<!DOCTYPE html><html><head><title>Error</title></head><body>'
+                f'<h1>Error fetching endpoint</h1>'
+                f'<p>Endpoint: {endpoint}</p>'
+                f'<p>Error: {str(e)}</p>'
+                f'</body></html>',
+                content_type='text/html',
+                status=500
+            )
