@@ -1079,8 +1079,8 @@ class LLMProxyView(View):
             query_params = {}
             for item in query.split('&'):
                 if '=' in item:
-                    parts = item.split('=', 1)
-                    query_params[parts[0]] = parts[1] if len(parts) > 1 else ''
+                    key, value = item.split('=', 1)
+                    query_params[key] = value
             internal_request = factory.get(path, data=query_params)
         else:
             internal_request = factory.get(endpoint)
@@ -1133,12 +1133,14 @@ class LLMProxyView(View):
             return HttpResponse(html_content, content_type='text/html')
             
         except Exception as e:
-            # Return error in HTML format
+            # Return error in HTML format (escape to prevent XSS)
+            escaped_endpoint = html.escape(endpoint)
+            escaped_error = html.escape(str(e))
             return HttpResponse(
                 f'<!DOCTYPE html><html><head><title>Error</title></head><body>'
                 f'<h1>Error fetching endpoint</h1>'
-                f'<p>Endpoint: {endpoint}</p>'
-                f'<p>Error: {str(e)}</p>'
+                f'<p>Endpoint: {escaped_endpoint}</p>'
+                f'<p>Error: {escaped_error}</p>'
                 f'</body></html>',
                 content_type='text/html',
                 status=500
