@@ -2,6 +2,7 @@ from collections import defaultdict
 from datetime import date as date_class
 import html
 import json
+from urllib.parse import unquote_plus
 
 from django.conf import settings
 from django.core.cache import cache
@@ -1075,12 +1076,16 @@ class LLMProxyView(View):
         # Preserve query parameters from the original endpoint if any
         if '?' in endpoint:
             path, query = endpoint.split('?', 1)
-            # Parse query parameters safely
+            # Parse query parameters safely with URL decoding
             query_params = {}
             for item in query.split('&'):
                 if '=' in item:
                     key, value = item.split('=', 1)
-                    query_params[key] = value
+                    # Decode URL-encoded parameters
+                    query_params[unquote_plus(key)] = unquote_plus(value)
+                else:
+                    # Handle parameters without values (e.g., ?flag)
+                    query_params[unquote_plus(item)] = ''
             internal_request = factory.get(path, data=query_params)
         else:
             internal_request = factory.get(endpoint)
@@ -1099,10 +1104,12 @@ class LLMProxyView(View):
             
             # Check if response is successful
             if response.status_code != 200:
+                # Escape response content to prevent XSS
+                escaped_content = html.escape(response.content.decode("utf-8", errors="replace"))
                 return HttpResponse(
                     f'<!DOCTYPE html><html><head><title>Error</title></head><body>'
                     f'<h1>Error: API returned status {response.status_code}</h1>'
-                    f'<pre>{response.content.decode("utf-8", errors="replace")}</pre>'
+                    f'<pre>{escaped_content}</pre>'
                     f'</body></html>',
                     content_type='text/html',
                     status=response.status_code

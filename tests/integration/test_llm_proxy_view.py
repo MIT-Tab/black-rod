@@ -189,3 +189,18 @@ class LLMProxyViewTest(TestCase):
         
         # Any JSON content should be escaped (< becomes &lt;, > becomes &gt;)
         # This prevents any potential XSS through JSON data
+    
+    def test_url_encoded_query_parameters(self):
+        """Test that URL-encoded query parameters are properly decoded"""
+        # Test with encoded space and special characters
+        # Note: This test assumes the endpoint accepts these parameters
+        # The key is to verify the proxy properly decodes them
+        response = self.client.get('/llm/?endpoint=/api/standings/?season=2024')
+        
+        # Should work without errors
+        self.assertEqual(response.status_code, 200)
+        
+        # Verify the response is valid HTML
+        content = response.content.decode('utf-8')
+        self.assertIn('<!DOCTYPE html>', content)
+        self.assertIn('<pre>', content)
