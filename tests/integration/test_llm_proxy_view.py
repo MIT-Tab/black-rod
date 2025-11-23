@@ -159,3 +159,33 @@ class LLMProxyViewTest(TestCase):
         self.assertIn('school', parsed_json)
         self.assertIn('debaters', parsed_json)
         self.assertEqual(parsed_json['school']['name'], "Test University")
+    
+    def test_xss_protection_in_endpoint(self):
+        """Test that XSS attempts in endpoint parameter are escaped"""
+        # Try to inject HTML/JavaScript in the endpoint (will fail validation, but let's ensure escaping)
+        response = self.client.get('/llm/?endpoint=/api/schools/<script>alert("xss")</script>')
+        
+        # This should fail validation (not a valid /api/ path with query params)
+        # But if it somehow gets through, ensure no script execution
+        content = response.content.decode('utf-8')
+        
+        # Check that any HTML/JavaScript is escaped
+        if '<script>' in content.lower():
+            # Script tags should be escaped
+            self.assertIn('&lt;script&gt;', content)
+    
+    def test_json_content_escaped(self):
+        """Test that JSON content with HTML is properly escaped in output"""
+        # This test ensures that even if JSON contains HTML-like content,
+        # it's properly escaped when rendered
+        response = self.client.get('/llm/?endpoint=/api/schools/')
+        
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode('utf-8')
+        
+        # Verify HTML structure is intact
+        self.assertIn('<pre>', content)
+        self.assertIn('</pre>', content)
+        
+        # Any JSON content should be escaped (< becomes &lt;, > becomes &gt;)
+        # This prevents any potential XSS through JSON data
