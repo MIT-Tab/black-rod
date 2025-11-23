@@ -1,5 +1,6 @@
 from collections import defaultdict
 from datetime import date as date_class
+import html
 import json
 
 from django.conf import settings
@@ -1074,7 +1075,13 @@ class LLMProxyView(View):
         # Preserve query parameters from the original endpoint if any
         if '?' in endpoint:
             path, query = endpoint.split('?', 1)
-            internal_request = factory.get(path, data=dict(item.split('=') for item in query.split('&') if '=' in item))
+            # Parse query parameters safely
+            query_params = {}
+            for item in query.split('&'):
+                if '=' in item:
+                    parts = item.split('=', 1)
+                    query_params[parts[0]] = parts[1] if len(parts) > 1 else ''
+            internal_request = factory.get(path, data=query_params)
         else:
             internal_request = factory.get(endpoint)
         
@@ -1107,19 +1114,23 @@ class LLMProxyView(View):
             # Pretty-print the JSON with indent=2
             pretty_json = json.dumps(json_data, indent=2, ensure_ascii=False)
             
+            # Escape HTML to prevent XSS
+            escaped_endpoint = html.escape(endpoint)
+            escaped_json = html.escape(pretty_json)
+            
             # Return HTML with JSON in a <pre> tag
-            html = f'''<!DOCTYPE html>
+            html_content = f'''<!DOCTYPE html>
 <html>
 <head>
-    <title>API Response: {endpoint}</title>
+    <title>API Response: {escaped_endpoint}</title>
     <meta charset="utf-8">
 </head>
 <body>
-<pre>{pretty_json}</pre>
+<pre>{escaped_json}</pre>
 </body>
 </html>'''
             
-            return HttpResponse(html, content_type='text/html')
+            return HttpResponse(html_content, content_type='text/html')
             
         except Exception as e:
             # Return error in HTML format
