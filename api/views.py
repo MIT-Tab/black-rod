@@ -301,6 +301,7 @@ def _lite_tournament(tournament, request):
     data = {
         "id": tournament.id,
         "name": tournament.name,
+        "display": tournament.display,
         "date": tournament.date.isoformat() if tournament.date else None,
     }
     if request:

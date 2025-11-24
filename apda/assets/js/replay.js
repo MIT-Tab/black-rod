@@ -144,7 +144,9 @@ const buildMarkerCellContent = (marker) => {
     return "";
   }
   const tournament = marker.tournament;
-  const tournamentName = tournament ? escapeHtml(tournament.name) : "";
+  const tournamentName = tournament
+    ? escapeHtml(tournament.display || tournament.name || "")
+    : "";
   const tournamentLink =
     tournament && tournament.url
       ? `<a href="${tournament.url}">${tournamentName}</a>`
