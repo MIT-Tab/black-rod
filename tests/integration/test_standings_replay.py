@@ -125,7 +125,6 @@ class StandingsReplayAPITests(TestCase):
                 self.tournament_two.date.isoformat(),
             },
         )
-
         soty_entries = payload["standings"]["soty"]
         self.assertEqual(len(soty_entries), 1)
         soty_markers = soty_entries[0]["all_markers"]
@@ -137,3 +136,58 @@ class StandingsReplayAPITests(TestCase):
                 self.tournament_two.date.isoformat(),
             },
         )
+
+    def test_standings_snapshot_through_date_limits_markers(self):
+        """The partial standings endpoint should only count markers earned on/before the target date."""
+        url = reverse("api:standings_through_date")
+        target_date = self.tournament_one.date.isoformat()
+        response = self.client.get(
+            f"{url}?season={self.season}&through={target_date}"
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+
+        self.assertEqual(payload["through"], target_date)
+        toty_rows = payload["standings"]["toty"]
+        self.assertEqual(len(toty_rows), 1)
+        first_marker_points = self.tournament_one.get_toty_points(1)
+        self.assertAlmostEqual(toty_rows[0]["points"], first_marker_points, places=2)
+        self.assertEqual(len(toty_rows[0]["markers"]), 1)
+        self.assertEqual(
+            toty_rows[0]["markers"][0]["earned_on"], target_date
+        )
+
+        soty_rows = payload["standings"]["soty"]
+        self.assertEqual(len(soty_rows), 1)
+        first_soty_points = self.tournament_one.get_soty_points(1)
+        self.assertAlmostEqual(soty_rows[0]["points"], first_soty_points, places=2)
+        self.assertEqual(len(soty_rows[0]["markers"]), 1)
+
+    def test_standings_snapshot_requires_valid_date(self):
+        """API returns 400 when through parameter missing or malformed."""
+        url = reverse("api:standings_through_date")
+        missing_response = self.client.get(f"{url}?season={self.season}")
+        self.assertEqual(missing_response.status_code, 400)
+
+        bad_response = self.client.get(
+            f"{url}?season={self.season}&through=not-a-date"
+        )
+        self.assertEqual(bad_response.status_code, 400)
+
+    def test_replay_api_board_limit_filters(self):
+        url = reverse("api:season_standings_replay")
+        response = self.client.get(
+            f"{url}?season={self.season}&board=toty&limit=1"
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(list(payload["standings"].keys()), ["toty"])
+        self.assertEqual(len(payload["standings"]["toty"]), 1)
+
+    def test_team_detail_limit_parameter(self):
+        url = reverse("api:team_detail", args=[self.team.id])
+        response = self.client.get(f"{url}?limit=1")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(len(payload["tournaments"]), 1)
+        self.assertEqual(len(payload["toty_history"]), 1)

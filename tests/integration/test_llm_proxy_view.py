@@ -7,6 +7,7 @@ import html
 import json
 from django.test import TestCase, Client, override_settings
 from django.conf import settings
+from django.urls import reverse
 from core.models.school import School
 from core.models.debater import Debater
 
@@ -268,3 +269,23 @@ class LLMProxyViewTest(TestCase):
         self.assertIn('60', content)
         self.assertIn('autoqual', content.lower())
         self.assertIn('https://apda.online/2025/09/02/bylaws/', content)
+
+    def test_api_oty_guide_endpoint(self):
+        """API consumers should be able to fetch the Markdown guide."""
+        url = reverse("api:oty_guide")
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["format"], "markdown")
+        self.assertTrue(payload["body"].startswith("# APDA OTY"))
+        self.assertIn("plain_text", payload["links"])
+
+    def test_openapi_schema_includes_new_paths(self):
+        """OpenAPI schema should be auto-generated and include the documented routes."""
+        url = reverse("core:openapi_schema")
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["servers"][0]["url"], "https://testserver")
+        self.assertIn("/api/standings/through-date/", payload["paths"])
+        self.assertIn("/api/oty-guide/", payload["paths"])

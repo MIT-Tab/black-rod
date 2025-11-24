@@ -60,6 +60,8 @@ INSTALLED_APPS = [
     "haystack",
     "taggit",
     "django_summernote",
+    "rest_framework",
+    "drf_spectacular",
     "core.apps.CoreConfig",
     "django_extensions",
     "apdaonline",
@@ -411,3 +413,16 @@ ONLINE_SEASONS = (
 QUAL_BAR = 11.5
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+REST_FRAMEWORK = {
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+}
+
+SPECTACULAR_SETTINGS = {
+    "TITLE": "APDA Standings API",
+    "DESCRIPTION": "Machine-friendly endpoints for APDA standings, replay visualizations, school rosters, debater profiles, teams, tournaments, and the OTY scoring guide.",
+    "VERSION": "1.1.0",
+    "SERVERS": [],
+    "SECURITY": [],
+    "SERVE_INCLUDE_SCHEMA": False,
+}

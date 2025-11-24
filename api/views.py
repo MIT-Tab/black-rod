@@ -1,17 +1,27 @@
 from collections import defaultdict
 from datetime import date as date_class, timedelta
+from functools import lru_cache
 import html
 import json
 import logging
+from pathlib import Path
 from urllib.parse import unquote_plus
 
 from django.conf import settings
 from django.core.cache import cache
 from django.db.models import Count, Prefetch, Q
-from django.http import Http404, HttpResponse, JsonResponse
+from django.http import Http404, HttpResponse
 from django.test import RequestFactory
 from django.urls import resolve, reverse, Resolver404
 from django.views import View
+from drf_spectacular.utils import (
+    OpenApiParameter,
+    OpenApiTypes,
+    extend_schema,
+    extend_schema_view,
+)
+from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from core.models.debater import Debater, Reaff
 from core.models.results.speaker import SpeakerResult
@@ -39,9 +49,111 @@ from .serializers import (
     serialize_tournament,
     serialize_video,
 )
+from .schema_serializers import (
+    DebaterDetailResponseSerializer,
+    ErrorResponseSerializer,
+    OTYGuideResponseSerializer,
+    ScheduleResponseSerializer,
+    SchoolDebatersResponseSerializer,
+    SchoolDetailResponseSerializer,
+    SchoolListResponseSerializer,
+    SeasonStandingsReplayResponseSerializer,
+    SeasonStandingsResponseSerializer,
+    StandingsThroughDateResponseSerializer,
+    TeamDetailResponseSerializer,
+    TournamentDetailResponseSerializer,
+)
 
 
-class ActiveSchoolListAPIView(View):
+# ----------------------------------------------------------------------
+# Helper constants shared by multiple AI-friendly endpoints
+# ----------------------------------------------------------------------
+
+MARKER_LABELS = ["one", "two", "three", "four", "five", "six"]
+REPLAY_MARKER_LIMITS = {"toty": 5, "soty": 6}
+LLM_PROXY_ALLOWED_PREFIXES = ("/api/", "/.well-known/")
+LLM_PROXY_ALLOWED_PATHS = {"/ai-plugin.json", "/openapi.json"}
+LOGGER = logging.getLogger(__name__)
+OTY_GUIDE_PATH = Path(__file__).resolve().parent / "content" / "oty_guide.md"
+SEASON_QUERY_PARAM = OpenApiParameter(
+    name="season",
+    type=OpenApiTypes.STR,
+    location=OpenApiParameter.QUERY,
+    description="APDA season (e.g., '2024'). Defaults to the current season.",
+)
+THROUGH_DATE_PARAM = OpenApiParameter(
+    name="through",
+    type=OpenApiTypes.DATE,
+    location=OpenApiParameter.QUERY,
+    description="ISO-8601 date (YYYY-MM-DD). Only markers earned on/before this date are counted.",
+    required=True,
+)
+SCHOOL_ID_PARAM = OpenApiParameter(
+    name="school_id",
+    type=OpenApiTypes.INT,
+    location=OpenApiParameter.PATH,
+    description="Primary key of the school.",
+    required=True,
+)
+DEBATER_ID_PARAM = OpenApiParameter(
+    name="pk",
+    type=OpenApiTypes.INT,
+    location=OpenApiParameter.PATH,
+    description="Primary key referenced in the URL.",
+    required=True,
+)
+TEAM_ID_PARAM = OpenApiParameter(
+    name="pk",
+    type=OpenApiTypes.INT,
+    location=OpenApiParameter.PATH,
+    description="Primary key of the team.",
+    required=True,
+)
+TOURNAMENT_ID_PARAM = OpenApiParameter(
+    name="pk",
+    type=OpenApiTypes.INT,
+    location=OpenApiParameter.PATH,
+    description="Primary key of the tournament.",
+    required=True,
+)
+SCHOOL_PK_PARAM = OpenApiParameter(
+    name="pk",
+    type=OpenApiTypes.INT,
+    location=OpenApiParameter.PATH,
+    description="Primary key of the school.",
+    required=True,
+)
+BOARD_PARAM = OpenApiParameter(
+    name="board",
+    type=OpenApiTypes.STR,
+    location=OpenApiParameter.QUERY,
+    description="Repeat or comma-separate to limit standings boards (toty, soty, coty, noty, online_quals).",
+    required=False,
+)
+LIMIT_PARAM = OpenApiParameter(
+    name="limit",
+    type=OpenApiTypes.INT,
+    location=OpenApiParameter.QUERY,
+    description="Maximum number of entries to return per board (defaults to all).",
+    required=False,
+)
+ENTRY_LIMIT_PARAM = OpenApiParameter(
+    name="limit",
+    type=OpenApiTypes.INT,
+    location=OpenApiParameter.QUERY,
+    description="Maximum number of repeated entries to return (defaults to all).",
+    required=False,
+)
+
+
+@extend_schema_view(
+    get=extend_schema(
+        summary="List active schools",
+        description="Return the 25 schools with the most active debaters in the past two seasons.",
+        responses=SchoolListResponseSerializer,
+    )
+)
+class ActiveSchoolListAPIView(APIView):
     """
     API endpoint to list schools with recent activity.
 
@@ -55,7 +167,7 @@ class ActiveSchoolListAPIView(View):
         cached_data = cache.get(cache_key)
 
         if cached_data is not None:
-            return JsonResponse(cached_data)
+            return Response(cached_data)
 
         current_year = int(settings.CURRENT_SEASON)
         cutoff_season = str(current_year - 2)
@@ -76,10 +188,17 @@ class ActiveSchoolListAPIView(View):
 
         cache.set(cache_key, data, 300)
 
-        return JsonResponse(data)
+        return Response(data)
 
 
-class AllSchoolListAPIView(View):
+@extend_schema_view(
+    get=extend_schema(
+        summary="List all schools",
+        description="Return an alphabetical list of every school in the database.",
+        responses=SchoolListResponseSerializer,
+    )
+)
+class AllSchoolListAPIView(APIView):
     """
     API endpoint to list all schools.
 
@@ -93,7 +212,7 @@ class AllSchoolListAPIView(View):
         cached_data = cache.get(cache_key)
 
         if cached_data is not None:
-            return JsonResponse(cached_data)
+            return Response(cached_data)
 
         schools = School.objects.all().order_by('name')
 
@@ -103,10 +222,18 @@ class AllSchoolListAPIView(View):
         }
         cache.set(cache_key, data, 300)
 
-        return JsonResponse(data)
+        return Response(data)
 
 
-class SchoolDebatersAPIView(View):
+@extend_schema_view(
+    get=extend_schema(
+        summary="List debaters for a school",
+        parameters=[SCHOOL_ID_PARAM],
+        description="Return debaters from the specified school who have competed within the last five seasons.",
+        responses={200: SchoolDebatersResponseSerializer, 404: ErrorResponseSerializer},
+    )
+)
+class SchoolDebatersAPIView(APIView):
     """
     API endpoint to list debaters from a specific school.
 
@@ -120,7 +247,7 @@ class SchoolDebatersAPIView(View):
         cached_data = cache.get(cache_key)
 
         if cached_data is not None:
-            return JsonResponse(cached_data)
+            return Response(cached_data)
 
         try:
             school = School.objects.get(id=school_id)
@@ -144,21 +271,86 @@ class SchoolDebatersAPIView(View):
 
         cache.set(cache_key, data, 300)
 
-        return JsonResponse(data)
+        return Response(data)
 
 
 # ----------------------------------------------------------------------
 # Helper functions shared by multiple AI-friendly endpoints
 # ----------------------------------------------------------------------
 
-MARKER_LABELS = ["one", "two", "three", "four", "five", "six"]
-LLM_PROXY_ALLOWED_PREFIXES = ("/api/", "/.well-known/")
-LLM_PROXY_ALLOWED_PATHS = {"/ai-plugin.json", "/openapi.json"}
-LOGGER = logging.getLogger(__name__)
+def _parse_multi_value_param(raw_values):
+    values = []
+    seen = set()
+    for raw in raw_values:
+        for part in raw.split(","):
+            normalized = part.strip().lower()
+            if not normalized or normalized in seen:
+                continue
+            seen.add(normalized)
+            values.append(normalized)
+    return values
+
+
+def _selected_boards(request, allowed_boards):
+    selections = _parse_multi_value_param(request.GET.getlist("board"))
+    selected = [board for board in selections if board in allowed_boards]
+    return selected or allowed_boards
+
+
+def _parse_limit_param(request, param_name="limit", default=None, max_limit=200):
+    raw = request.GET.get(param_name)
+    if not raw:
+        return default
+    try:
+        value = int(raw)
+        if value <= 0:
+            return default
+        return min(value, max_limit)
+    except ValueError:
+        return default
+
+
+def _trim_entries(entries, limit):
+    if limit is None:
+        return entries
+    return entries[:limit]
+
+
+def _filter_standings_payload(standings, selected_boards, limit):
+    filtered = {}
+    for board in selected_boards:
+        if board not in standings:
+            continue
+        filtered[board] = _trim_entries(standings[board], limit)
+    return filtered
+
+
+def _current_endpoint_path(request):
+    full_path = request.get_full_path()
+    if not full_path.startswith("/"):
+        return f"/{full_path}"
+    return full_path
 
 
 def _available_season_values():
     return [season[0] for season in settings.SEASONS]
+
+
+@lru_cache(maxsize=1)
+def _load_oty_guide_text():
+    try:
+        return OTY_GUIDE_PATH.read_text(encoding="utf-8").strip()
+    except FileNotFoundError:
+        LOGGER.warning("OTY guide file missing at %s", OTY_GUIDE_PATH)
+        return ""
+
+
+def _oty_guide_last_modified():
+    try:
+        timestamp = OTY_GUIDE_PATH.stat().st_mtime
+    except OSError:
+        return None
+    return date_class.fromtimestamp(timestamp).isoformat()
 
 
 def _format_season_display(season):
@@ -586,6 +778,241 @@ def _speaker_replay_markers(entry, season, request):
     return _sort_markers(markers)
 
 
+def _collect_replay_standings(season, request):
+    team_results_prefetch = Prefetch(
+        "team__team_results",
+        queryset=TeamResult.objects.filter(
+            tournament__season=season,
+            tournament__toty=True,
+            type_of_place=Debater.VARSITY,
+        ).select_related("tournament"),
+        to_attr="season_replay_results",
+    )
+
+    toty_reaff_prefetch = Prefetch(
+        "team__toty_reaff_new",
+        queryset=TOTYReaff.objects.filter(season=season)
+        .select_related("old_team")
+        .prefetch_related(
+            Prefetch(
+                "old_team__team_results",
+                queryset=TeamResult.objects.filter(
+                    tournament__season=season,
+                    tournament__toty=True,
+                    type_of_place=Debater.VARSITY,
+                ).select_related("tournament"),
+                to_attr="season_replay_results",
+            )
+        ),
+        to_attr="season_reaffs",
+    )
+
+    speaker_results_prefetch = Prefetch(
+        "debater__speaker_results",
+        queryset=SpeakerResult.objects.filter(
+            tournament__season=season,
+            tournament__soty=True,
+            type_of_place=Debater.VARSITY,
+        ).select_related("tournament"),
+        to_attr="season_replay_results",
+    )
+
+    reaff_prefetch = Prefetch(
+        "debater__reaff_new",
+        queryset=Reaff.objects.filter(season=season)
+        .select_related("old_debater")
+        .prefetch_related(
+            Prefetch(
+                "old_debater__speaker_results",
+                queryset=SpeakerResult.objects.filter(
+                    tournament__season=season,
+                    tournament__soty=True,
+                    type_of_place=Debater.VARSITY,
+                ).select_related("tournament"),
+                to_attr="season_replay_results",
+            )
+        ),
+        to_attr="season_reaffs",
+    )
+
+    toty_qs = (
+        TOTY.objects.filter(season=season)
+        .select_related(
+            "team",
+            "tournament_one",
+            "tournament_two",
+            "tournament_three",
+            "tournament_four",
+            "tournament_five",
+            "tournament_six",
+        )
+        .prefetch_related(
+            Prefetch(
+                "team__debaters",
+                queryset=Debater.objects.select_related("school"),
+            ),
+            team_results_prefetch,
+            toty_reaff_prefetch,
+        )
+        .order_by("-points", "place")
+    )
+
+    soty_qs = (
+        SOTY.objects.filter(season=season)
+        .select_related(
+            "debater__school",
+            "tournament_one",
+            "tournament_two",
+            "tournament_three",
+            "tournament_four",
+            "tournament_five",
+            "tournament_six",
+        )
+        .prefetch_related(speaker_results_prefetch, reaff_prefetch)
+        .order_by("-points", "place")
+    )
+
+    standings = {"toty": [], "soty": []}
+    timeline_dates = set()
+
+    for entry in toty_qs:
+        payload = _standing_payload(entry, "team", REPLAY_MARKER_LIMITS["toty"], request)
+        markers = _team_replay_markers(entry, season, request)
+        payload["all_markers"] = markers
+        standings["toty"].append(payload)
+        for marker in markers:
+            earned_on = marker.get("earned_on")
+            if earned_on:
+                timeline_dates.add(earned_on)
+
+    for entry in soty_qs:
+        payload = _standing_payload(entry, "debater", REPLAY_MARKER_LIMITS["soty"], request)
+        markers = _speaker_replay_markers(entry, season, request)
+        payload["all_markers"] = markers
+        standings["soty"].append(payload)
+        for marker in markers:
+            earned_on = marker.get("earned_on")
+            if earned_on:
+                timeline_dates.add(earned_on)
+
+    return standings, sorted(timeline_dates)
+
+
+def _marker_counts_for_date(marker, through_iso):
+    if not marker or not through_iso:
+        return False
+    earned_on = marker.get("earned_on")
+    if not earned_on:
+        return True
+    return earned_on <= through_iso
+
+
+def _marker_points(marker):
+    value = marker.get("points")
+    if value is None:
+        return 0.0
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _normalize_marker(marker):
+    normalized = dict(marker)
+    normalized["points"] = round(_marker_points(marker), 4)
+    return normalized
+
+
+def _sort_markers_for_partial(markers):
+    return sorted(
+        markers,
+        key=lambda marker: (
+            -_marker_points(marker),
+            marker.get("earned_on") or "",
+            marker.get("result_id") or 0,
+        ),
+    )
+
+
+def _entity_name(entry, entity_attr):
+    if entity_attr == "team":
+        team = entry.get("team") or {}
+        return team.get("name") or ""
+    if entity_attr == "debater":
+        debater = entry.get("debater") or {}
+        return debater.get("name") or ""
+    if entity_attr == "school":
+        school = entry.get("school") or {}
+        return school.get("name") or ""
+    return ""
+
+
+def _assign_places(rows):
+    current_place = 1
+    last_points = None
+    for index, row in enumerate(rows):
+        points = row["points"]
+        if last_points is not None and abs(points - last_points) < 0.001:
+            row["place"] = current_place
+            row["tied"] = True
+            if index > 0:
+                rows[index - 1]["tied"] = True
+                rows[index - 1]["place"] = current_place
+        else:
+            current_place = index + 1
+            row["place"] = current_place
+            row["tied"] = False
+        last_points = points
+
+
+def _build_partial_rows(entries, through_iso, marker_limit, entity_attr):
+    rows = []
+    for entry in entries:
+        available_markers = [
+            marker
+            for marker in entry.get("all_markers", [])
+            if _marker_counts_for_date(marker, through_iso)
+        ]
+        if not available_markers:
+            continue
+
+        ranked_markers = _sort_markers_for_partial(available_markers)[:marker_limit]
+        cleaned_markers = [_normalize_marker(marker) for marker in ranked_markers]
+        total_points = round(sum(marker["points"] for marker in cleaned_markers), 4)
+
+        row_payload = {
+            "id": entry.get("id"),
+            "season": entry.get("season"),
+            "season_display": entry.get("season_display"),
+            "markers": cleaned_markers,
+            "points": total_points,
+            "type": entity_attr,
+            "original_place": entry.get("place") or 0,
+            "_sort_name": _entity_name(entry, entity_attr).lower(),
+        }
+
+        if entry.get("team"):
+            row_payload["team"] = entry["team"]
+        if entry.get("debater"):
+            row_payload["debater"] = entry["debater"]
+        if entry.get("school"):
+            row_payload["school"] = entry["school"]
+
+        rows.append(row_payload)
+
+    rows.sort(
+        key=lambda row: (-row["points"], row["original_place"], row["_sort_name"])
+    )
+    _assign_places(rows)
+
+    for row in rows:
+        row["place_display"] = row["place"]
+        row.pop("original_place", None)
+        row.pop("_sort_name", None)
+
+    return rows
+
+
 def _qual_display(debater, season):
     quals = debater.quals.filter(season=season, qual_type__gt=0)
     return ", ".join(sorted({qual.get_qual_type_display() for qual in quals}))
@@ -667,7 +1094,15 @@ def _standing_payload(entry, entity_attr, marker_count, request, extra=None, lit
     return payload
 
 
-class SeasonStandingsAPIView(View):
+@extend_schema_view(
+    get=extend_schema(
+        summary="Season standings",
+        description="Fetch TOTY, COTY, SOTY, NOTY, and online qualifier standings for the requested season.",
+        parameters=[SEASON_QUERY_PARAM, BOARD_PARAM, LIMIT_PARAM],
+        responses=SeasonStandingsResponseSerializer,
+    )
+)
+class SeasonStandingsAPIView(APIView):
     """
     Return TOTY/COTY/SOTY/NOTY/Online standings in a machine-friendly format.
     Requires a season query parameter (defaults to CURRENT_SEASON).
@@ -678,71 +1113,30 @@ class SeasonStandingsAPIView(View):
     def get(self, request):
         season = _resolve_season(request)
         cache_key = f"api:standings:{season}"
-        cached = cache.get(cache_key)
-        if cached:
-            return JsonResponse(cached)
-
-        toty_qs = (
-            TOTY.objects.filter(season=season)
-            .select_related(
-                "team",
-                "tournament_one",
-                "tournament_two",
-                "tournament_three",
-                "tournament_four",
-                "tournament_five",
-                "tournament_six",
-            )
-            .prefetch_related(
-                Prefetch(
-                    "team__debaters",
-                    queryset=Debater.objects.select_related("school"),
-                )
-            )
-            .order_by("-points", "place")
-        )
-
-        soty_qs = (
-            SOTY.objects.filter(season=season)
-            .select_related(
-                "debater__school",
-                "tournament_one",
-                "tournament_two",
-                "tournament_three",
-                "tournament_four",
-                "tournament_five",
-                "tournament_six",
-            )
-            .order_by("-points", "place")
-        )
-
-        coty_qs = (
-            COTY.objects.filter(season=season)
-            .select_related("school")
-            .order_by("-points", "place")
-        )
-
-        render_noty = int(season) <= settings.LAST_NOTY_SEASON
-        noty_qs = NOTY.objects.none()
-        if render_noty:
-            noty_qs = (
-                NOTY.objects.filter(season=season)
+        base_payload = cache.get(cache_key)
+        if not base_payload:
+            toty_qs = (
+                TOTY.objects.filter(season=season)
                 .select_related(
-                    "debater__school",
+                    "team",
                     "tournament_one",
                     "tournament_two",
                     "tournament_three",
                     "tournament_four",
                     "tournament_five",
+                    "tournament_six",
+                )
+                .prefetch_related(
+                    Prefetch(
+                        "team__debaters",
+                        queryset=Debater.objects.select_related("school"),
+                    )
                 )
                 .order_by("-points", "place")
             )
 
-        online_qs = OnlineQUAL.objects.none()
-        using_online_quals = season in settings.ONLINE_SEASONS
-        if using_online_quals:
-            online_qs = (
-                OnlineQUAL.objects.filter(season=season)
+            soty_qs = (
+                SOTY.objects.filter(season=season)
                 .select_related(
                     "debater__school",
                     "tournament_one",
@@ -755,71 +1149,128 @@ class SeasonStandingsAPIView(View):
                 .order_by("-points", "place")
             )
 
-        standings = {
-            "toty": [
-                _standing_payload(entry, "team", 5, request, lite=True)
-                for entry in toty_qs
-            ],
-            "soty": [
-                _standing_payload(entry, "debater", 6, request, lite=True)
-                for entry in soty_qs
-            ],
-            "coty": [
-                {
-                    **_standing_payload(entry, "school", 0, request, lite=True),
-                    "breakdown": _coty_breakdown_for_school(
-                        entry.school, season, request
-                    ),
-                }
-                for entry in coty_qs
-            ],
-        }
+            coty_qs = (
+                COTY.objects.filter(season=season)
+                .select_related("school")
+                .order_by("-points", "place")
+            )
 
-        if render_noty:
-            standings["noty"] = [
-                _standing_payload(entry, "debater", 5, request, lite=True)
-                for entry in noty_qs
-            ]
-
-        if using_online_quals:
-            standings["online_quals"] = [
-                _standing_payload(
-                    entry,
-                    "debater",
-                    6,
-                    request,
-                    extra={
-                        "qualified": entry.points >= settings.ONLINE_QUAL_BAR,
-                    },
-                    lite=True,
+            render_noty = int(season) <= settings.LAST_NOTY_SEASON
+            noty_qs = NOTY.objects.none()
+            if render_noty:
+                noty_qs = (
+                    NOTY.objects.filter(season=season)
+                    .select_related(
+                        "debater__school",
+                        "tournament_one",
+                        "tournament_two",
+                        "tournament_three",
+                        "tournament_four",
+                        "tournament_five",
+                    )
+                    .order_by("-points", "place")
                 )
-                for entry in online_qs
-            ]
 
-        links = {
-            "self": _llm_proxy_url(
-                request, f"{reverse('api:season_standings')}?season={season}"
-            ),
-        }
+            online_qs = OnlineQUAL.objects.none()
+            using_online_quals = season in settings.ONLINE_SEASONS
+            if using_online_quals:
+                online_qs = (
+                    OnlineQUAL.objects.filter(season=season)
+                    .select_related(
+                        "debater__school",
+                        "tournament_one",
+                        "tournament_two",
+                        "tournament_three",
+                        "tournament_four",
+                        "tournament_five",
+                        "tournament_six",
+                    )
+                    .order_by("-points", "place")
+                )
 
-        payload = {
-            "season": season,
-            "season_display": _format_season_display(season),
-            "available_seasons": [
-                {"value": value, "label": label} for value, label in settings.SEASONS
-            ],
-            "render_noty": render_noty,
-            "using_online_quals": using_online_quals,
-            "online_qual_bar": settings.ONLINE_QUAL_BAR,
-            "standings": standings,
-            "links": links,
-        }
+            standings = {
+                "toty": [
+                    _standing_payload(entry, "team", 5, request, lite=True)
+                    for entry in toty_qs
+                ],
+                "soty": [
+                    _standing_payload(entry, "debater", 6, request, lite=True)
+                    for entry in soty_qs
+                ],
+                "coty": [
+                    {
+                        **_standing_payload(entry, "school", 0, request, lite=True),
+                        "breakdown": _coty_breakdown_for_school(
+                            entry.school, season, request
+                        ),
+                    }
+                    for entry in coty_qs
+                ],
+            }
 
-        cache.set(cache_key, payload, self.cache_timeout)
-        return JsonResponse(payload)
+            if render_noty:
+                standings["noty"] = [
+                    _standing_payload(entry, "debater", 5, request, lite=True)
+                    for entry in noty_qs
+                ]
+
+            if using_online_quals:
+                standings["online_quals"] = [
+                    _standing_payload(
+                        entry,
+                        "debater",
+                        6,
+                        request,
+                        extra={
+                            "qualified": entry.points >= settings.ONLINE_QUAL_BAR,
+                        },
+                        lite=True,
+                    )
+                    for entry in online_qs
+                ]
+
+            base_payload = {
+                "season": season,
+                "season_display": _format_season_display(season),
+                "available_seasons": [
+                    {"value": value, "label": label} for value, label in settings.SEASONS
+                ],
+                "render_noty": render_noty,
+                "using_online_quals": using_online_quals,
+                "online_qual_bar": settings.ONLINE_QUAL_BAR,
+                "standings": standings,
+                "links": {
+                    "self": _llm_proxy_url(
+                        request, f"{reverse('api:season_standings')}?season={season}"
+                    ),
+                },
+            }
+            cache.set(cache_key, base_payload, self.cache_timeout)
+
+        selected_boards = _selected_boards(request, list(base_payload["standings"].keys()))
+        limit = _parse_limit_param(request)
+        filtered_standings = _filter_standings_payload(
+            base_payload["standings"], selected_boards, limit
+        )
+
+        payload = dict(base_payload)
+        payload["standings"] = filtered_standings
+        payload["links"] = dict(base_payload.get("links", {}))
+        payload["links"]["self"] = _llm_proxy_url(
+            request, _current_endpoint_path(request)
+        )
+        return Response(payload)
 
 
-class SeasonStandingsReplayAPIView(View):
+@extend_schema_view(
+    get=extend_schema(
+        summary="Standings replay dataset",
+        description="Return TOTY/SOTY standings plus every tournament marker for replay visualizations.",
+        parameters=[SEASON_QUERY_PARAM, BOARD_PARAM, LIMIT_PARAM],
+        responses=SeasonStandingsReplayResponseSerializer,
+    )
+)
+class SeasonStandingsReplayAPIView(APIView):
     """
     Return TOTY/SOTY standings along with all season markers for replay visualizations.
     """
@@ -829,152 +1280,184 @@ class SeasonStandingsReplayAPIView(View):
     def get(self, request):
         season = _resolve_season(request)
         cache_key = f"api:standings_replay:{season}"
-        cached = cache.get(cache_key)
-        if cached:
-            return JsonResponse(cached)
+        base_payload = cache.get(cache_key)
+        if not base_payload:
+            standings, timeline_dates = _collect_replay_standings(season, request)
+            payload = {
+                "season": season,
+                "season_display": _format_season_display(season),
+                "available_seasons": [
+                    {"value": value, "label": label} for value, label in settings.SEASONS
+                ],
+                "standings": standings,
+                "timeline_dates": timeline_dates,
+                "marker_limits": REPLAY_MARKER_LIMITS,
+                "links": {
+                    "self": request.build_absolute_uri(
+                        f"{reverse('api:season_standings_replay')}?season={season}"
+                    ),
+                    "html": request.build_absolute_uri(
+                        f"{reverse('core:standings_replay')}?season={season}"
+                    ),
+                },
+            }
+            cache.set(cache_key, payload, self.cache_timeout)
+            base_payload = payload
 
-        team_results_prefetch = Prefetch(
-            "team__team_results",
-            queryset=TeamResult.objects.filter(
-                tournament__season=season,
-                tournament__toty=True,
-                type_of_place=Debater.VARSITY,
-            ).select_related("tournament"),
-            to_attr="season_replay_results",
+        selected_boards = _selected_boards(request, list(base_payload["standings"].keys()))
+        limit = _parse_limit_param(request)
+        filtered_standings = _filter_standings_payload(
+            base_payload["standings"], selected_boards, limit
         )
 
-        toty_reaff_prefetch = Prefetch(
-            "team__toty_reaff_new",
-            queryset=TOTYReaff.objects.filter(season=season)
-            .select_related("old_team")
-            .prefetch_related(
-                Prefetch(
-                    "old_team__team_results",
-                    queryset=TeamResult.objects.filter(
-                        tournament__season=season,
-                        tournament__toty=True,
-                        type_of_place=Debater.VARSITY,
-                    ).select_related("tournament"),
-                    to_attr="season_replay_results",
+        payload = dict(base_payload)
+        payload["standings"] = filtered_standings
+        payload["links"] = dict(base_payload.get("links", {}))
+        payload["links"]["self"] = request.build_absolute_uri(_current_endpoint_path(request))
+        return Response(payload)
+
+
+@extend_schema_view(
+    get=extend_schema(
+        summary="Standings snapshot through a date",
+        description="Compute standings as of the supplied ISO date by reusing replay markers.",
+        parameters=[SEASON_QUERY_PARAM, THROUGH_DATE_PARAM, BOARD_PARAM, LIMIT_PARAM],
+        responses={200: StandingsThroughDateResponseSerializer, 400: ErrorResponseSerializer},
+    )
+)
+class StandingsThroughDateAPIView(APIView):
+    """Return standings snapshots through a supplied ISO date."""
+
+    cache_timeout = 300
+
+    def get(self, request):
+        season = _resolve_season(request)
+        through_param = request.GET.get("through") or request.GET.get("date")
+        if not through_param:
+            return Response(
+                {"detail": "Provide a through=YYYY-MM-DD query parameter."},
+                status=400,
+            )
+
+        try:
+            through_date = date_class.fromisoformat(through_param)
+        except ValueError:
+            return Response(
+                {"detail": "Invalid through date; use YYYY-MM-DD."}, status=400
+            )
+
+        through_iso = through_date.isoformat()
+        cache_key = f"api:standings_through_date:{season}:{through_iso}"
+        base_payload = cache.get(cache_key)
+        if not base_payload:
+            standings, _ = _collect_replay_standings(season, request)
+            partial = {
+                "toty": _build_partial_rows(
+                    standings.get("toty", []),
+                    through_iso,
+                    REPLAY_MARKER_LIMITS["toty"],
+                    "team",
+                ),
+                "soty": _build_partial_rows(
+                    standings.get("soty", []),
+                    through_iso,
+                    REPLAY_MARKER_LIMITS["soty"],
+                    "debater",
+                ),
+            }
+
+            base_payload = {
+                "season": season,
+                "season_display": _format_season_display(season),
+                "through": through_iso,
+                "marker_limits": REPLAY_MARKER_LIMITS,
+                "standings": partial,
+                "links": {
+                    "self": request.build_absolute_uri(
+                        f"{reverse('api:standings_through_date')}?season={season}&through={through_iso}"
+                    ),
+                    "replay_api": request.build_absolute_uri(
+                        f"{reverse('api:season_standings_replay')}?season={season}"
+                    ),
+                    "replay_html": request.build_absolute_uri(
+                        f"{reverse('core:standings_replay')}?season={season}"
+                    ),
+                    "full_standings": request.build_absolute_uri(
+                        f"{reverse('api:season_standings')}?season={season}"
+                    ),
+                },
+            }
+            cache.set(cache_key, base_payload, self.cache_timeout)
+
+        selected_boards = _selected_boards(request, list(base_payload["standings"].keys()))
+        limit = _parse_limit_param(request)
+        filtered = _filter_standings_payload(
+            base_payload["standings"], selected_boards, limit
+        )
+
+        payload = dict(base_payload)
+        payload["standings"] = filtered
+        payload["links"] = dict(base_payload.get("links", {}))
+        payload["links"]["self"] = request.build_absolute_uri(_current_endpoint_path(request))
+        return Response(payload)
+
+
+@extend_schema_view(
+    get=extend_schema(
+        summary="OTY scoring guide",
+        description="Return the Markdown guide describing TOTY/SOTY/COTY scoring rules.",
+        responses={200: OTYGuideResponseSerializer, 503: ErrorResponseSerializer},
+    )
+)
+class OTYGuideAPIView(APIView):
+    """Expose the OTY scoring explainer in a machine-readable format."""
+
+    cache_timeout = 300
+
+    def get(self, request):
+        cache_key = "api:oty_guide"
+        base_payload = cache.get(cache_key)
+        if not base_payload:
+            body = _load_oty_guide_text()
+            if not body:
+                return Response(
+                    {"detail": "OTY guide is temporarily unavailable."}, status=503
                 )
-            ),
-            to_attr="season_reaffs",
-        )
 
-        speaker_results_prefetch = Prefetch(
-            "debater__speaker_results",
-            queryset=SpeakerResult.objects.filter(
-                tournament__season=season,
-                tournament__soty=True,
-                type_of_place=Debater.VARSITY,
-            ).select_related("tournament"),
-            to_attr="season_replay_results",
-        )
+            base_payload = {
+                "title": "APDA OTY Scoring Guide",
+                "season": settings.CURRENT_SEASON,
+                "season_display": _format_season_display(settings.CURRENT_SEASON),
+                "format": "markdown",
+                "body": body,
+                "last_modified": _oty_guide_last_modified(),
+                "links": {
+                    "plain_text": request.build_absolute_uri(
+                        reverse("llm_oty_explainer")
+                    ),
+                    "llm_proxy": _llm_proxy_url(
+                        request, reverse("api:oty_guide")
+                    ),
+                },
+            }
 
-        reaff_prefetch = Prefetch(
-            "debater__reaff_new",
-            queryset=Reaff.objects.filter(season=season)
-            .select_related("old_debater")
-            .prefetch_related(
-                Prefetch(
-                    "old_debater__speaker_results",
-                    queryset=SpeakerResult.objects.filter(
-                        tournament__season=season,
-                        tournament__soty=True,
-                        type_of_place=Debater.VARSITY,
-                    ).select_related("tournament"),
-                    to_attr="season_replay_results",
-                )
-            ),
-            to_attr="season_reaffs",
-        )
+            cache.set(cache_key, base_payload, self.cache_timeout)
 
-        toty_qs = (
-            TOTY.objects.filter(season=season)
-            .select_related(
-                "team",
-                "tournament_one",
-                "tournament_two",
-                "tournament_three",
-                "tournament_four",
-                "tournament_five",
-                "tournament_six",
-            )
-            .prefetch_related(
-                Prefetch(
-                    "team__debaters",
-                    queryset=Debater.objects.select_related("school"),
-                ),
-                team_results_prefetch,
-                toty_reaff_prefetch,
-            )
-            .order_by("-points", "place")
-        )
-
-        soty_qs = (
-            SOTY.objects.filter(season=season)
-            .select_related(
-                "debater__school",
-                "tournament_one",
-                "tournament_two",
-                "tournament_three",
-                "tournament_four",
-                "tournament_five",
-                "tournament_six",
-            )
-            .prefetch_related(speaker_results_prefetch, reaff_prefetch)
-            .order_by("-points", "place")
-        )
-
-        standings = {"toty": [], "soty": []}
-        timeline_dates = set()
-
-        for entry in toty_qs:
-            payload = _standing_payload(entry, "team", 5, request)
-            markers = _team_replay_markers(entry, season, request)
-            payload["all_markers"] = markers
-            standings["toty"].append(payload)
-            for marker in markers:
-                earned_on = marker.get("earned_on")
-                if earned_on:
-                    timeline_dates.add(earned_on)
-
-        for entry in soty_qs:
-            payload = _standing_payload(entry, "debater", 6, request)
-            markers = _speaker_replay_markers(entry, season, request)
-            payload["all_markers"] = markers
-            standings["soty"].append(payload)
-            for marker in markers:
-                earned_on = marker.get("earned_on")
-                if earned_on:
-                    timeline_dates.add(earned_on)
-
-        sorted_timeline = sorted(timeline_dates)
-
-        payload = {
-            "season": season,
-            "season_display": _format_season_display(season),
-            "available_seasons": [
-                {"value": value, "label": label} for value, label in settings.SEASONS
-            ],
-            "standings": standings,
-            "timeline_dates": sorted_timeline,
-            "marker_limits": {"toty": 5, "soty": 6},
-            "links": {
-                "self": request.build_absolute_uri(
-                    f"{reverse('api:season_standings_replay')}?season={season}"
-                ),
-                "html": request.build_absolute_uri(
-                    f"{reverse('core:standings_replay')}?season={season}"
-                ),
-            },
-        }
-
-        cache.set(cache_key, payload, self.cache_timeout)
-        return JsonResponse(payload)
+        payload = dict(base_payload)
+        payload["links"] = dict(base_payload.get("links", {}))
+        payload["links"]["self"] = _llm_proxy_url(request, _current_endpoint_path(request))
+        return Response(payload)
 
 
-class ScheduleAPIView(View):
+@extend_schema_view(
+    get=extend_schema(
+        summary="Tournament schedule",
+        description="Return the public tournament schedule grouped by month/week with OTY notes.",
+        parameters=[SEASON_QUERY_PARAM],
+        responses=ScheduleResponseSerializer,
+    )
+)
+class ScheduleAPIView(APIView):
     """Expose the APDA tournament schedule grouped by month/week."""
 
     cache_timeout = 300
@@ -984,7 +1467,7 @@ class ScheduleAPIView(View):
         cache_key = f"api:schedule:{season}"
         cached = cache.get(cache_key)
         if cached:
-            return JsonResponse(cached)
+            return Response(cached)
 
         tournaments = (
             Tournament.objects.filter(season=season)
@@ -1003,14 +1486,12 @@ class ScheduleAPIView(View):
             ],
             "months": months,
             "links": {
-                "self": _llm_proxy_url(
-                    request, f"{reverse('api:schedule')}?season={season}"
-                ),
+                "self": _llm_proxy_url(request, _current_endpoint_path(request)),
             },
         }
 
         cache.set(cache_key, payload, self.cache_timeout)
-        return JsonResponse(payload)
+        return Response(payload)
 
 
 def _determine_team_for_debater_tournament(debater, bucket):
@@ -1191,7 +1672,14 @@ def _adjust_speaker_results(queryset, request, varsity=True):
     return payload
 
 
-class TeamDetailAPIView(View):
+@extend_schema_view(
+    get=extend_schema(
+        summary="Team detail",
+        parameters=[TEAM_ID_PARAM, ENTRY_LIMIT_PARAM],
+        responses={200: TeamDetailResponseSerializer, 404: ErrorResponseSerializer},
+    )
+)
+class TeamDetailAPIView(APIView):
     """
     Expose a team's roster, TOTY history, and tournament performances.
     """
@@ -1221,21 +1709,31 @@ class TeamDetailAPIView(View):
             ).order_by("-points", "season")
         ]
 
+        entry_limit = _parse_limit_param(request)
+        if entry_limit:
+            tournaments = _trim_entries(tournaments, entry_limit)
+            toty_history = _trim_entries(toty_history, entry_limit)
+
         payload = {
             "team": serialize_team(team, request),
             "toty_history": toty_history,
             "tournaments": tournaments,
             "links": {
-                "self": _llm_proxy_url(
-                    request, reverse("api:team_detail", args=[team.id])
-                ),
+                "self": _llm_proxy_url(request, _current_endpoint_path(request)),
             },
         }
 
-        return JsonResponse(payload)
+        return Response(payload)
 
 
-class TournamentDetailAPIView(View):
+@extend_schema_view(
+    get=extend_schema(
+        summary="Tournament detail",
+        parameters=[TOURNAMENT_ID_PARAM],
+        responses={200: TournamentDetailResponseSerializer, 404: ErrorResponseSerializer},
+    )
+)
+class TournamentDetailAPIView(APIView):
     """
     Provide tournament metadata, awards, speaker results, tab cards, and videos.
     """
@@ -1321,16 +1819,21 @@ class TournamentDetailAPIView(View):
             "team_tab_cards": teams_for_tab_cards if request.user.is_authenticated else [],
             "videos": _visible_videos(videos, request),
             "links": {
-                "self": _llm_proxy_url(
-                    request, reverse("api:tournament_detail", args=[tournament.id])
-                ),
+                "self": _llm_proxy_url(request, _current_endpoint_path(request)),
             },
         }
 
-        return JsonResponse(payload)
+        return Response(payload)
 
 
-class SchoolDetailAPIView(View):
+@extend_schema_view(
+    get=extend_schema(
+        summary="School detail",
+        parameters=[SCHOOL_PK_PARAM, SEASON_QUERY_PARAM, ENTRY_LIMIT_PARAM],
+        responses={200: SchoolDetailResponseSerializer, 404: ErrorResponseSerializer},
+    )
+)
+class SchoolDetailAPIView(APIView):
     """
     Season-aware school profile with COTY history, hosted tournaments, and roster info.
     """
@@ -1360,6 +1863,11 @@ class SchoolDetailAPIView(View):
             "coty_breakdown": _coty_breakdown_for_school(school, season, request),
         }
 
+        entry_limit = _parse_limit_param(request)
+        if entry_limit:
+            coty_history = _trim_entries(coty_history, entry_limit)
+            tournaments = _trim_entries(tournaments, entry_limit)
+
         payload = {
             "school": serialize_school(school, request),
             "season": season,
@@ -1371,17 +1879,21 @@ class SchoolDetailAPIView(View):
             "hosted_tournaments": tournaments,
             "season_summary": season_summary,
             "links": {
-                "self": _llm_proxy_url(
-                    request,
-                    f"{reverse('api:school_detail', args=[school.id])}?season={season}",
-                ),
+                "self": _llm_proxy_url(request, _current_endpoint_path(request)),
             },
         }
 
-        return JsonResponse(payload)
+        return Response(payload)
 
 
-class DebaterDetailAPIView(View):
+@extend_schema_view(
+    get=extend_schema(
+        summary="Debater detail",
+        parameters=[DEBATER_ID_PARAM, ENTRY_LIMIT_PARAM],
+        responses={200: DebaterDetailResponseSerializer, 404: ErrorResponseSerializer},
+    )
+)
+class DebaterDetailAPIView(APIView):
     """
     Return a debater's public profile, standings history, and tournament results.
     """
@@ -1490,6 +2002,14 @@ class DebaterDetailAPIView(View):
             and getattr(request.user, "can_view_private_videos", False)
         )
 
+        entry_limit = _parse_limit_param(request)
+        if entry_limit:
+            season_results = _trim_entries(season_results, entry_limit)
+            teams_payload = _trim_entries(teams_payload, entry_limit)
+            toty_history = _trim_entries(toty_history, entry_limit)
+            soty_history = _trim_entries(soty_history, entry_limit)
+            noty_history = _trim_entries(noty_history, entry_limit)
+
         payload = {
             "debater": serialize_debater(debater, request),
             "first_season": debater.first_season,
@@ -1510,13 +2030,11 @@ class DebaterDetailAPIView(View):
             "season_summaries": season_results,
             "videos": _visible_videos(videos_queryset, request),
             "links": {
-                "self": _llm_proxy_url(
-                    request, reverse("api:debater_detail", args=[debater.id])
-                ),
+                "self": _llm_proxy_url(request, _current_endpoint_path(request)),
             },
         }
 
-        return JsonResponse(payload)
+        return Response(payload)
 
 
 class LLMProxyView(View):
@@ -1701,11 +2219,18 @@ Endpoints:
 3. /llm?endpoint=/api/schedule/
    - Machine-readable version of the public tournament schedule grouped the same way as the HTML page.
 
-4. /llm/oty-guide/
+4. /llm?endpoint=/api/oty-guide/
+   - Markdown version of the TOTY/SOTY/COTY scoring guide.
+
+5. /llm/oty-guide/
    - Plain-text explainer covering how TOTY, SOTY, and COTY point races work (including scoring formulas).
 
+Filtering:
+- /api/standings/, /api/standings/replay/, and /api/standings/through-date/ accept ?board=<name>&limit=<n> to restrict the boards returned and cap their lengths.
+- Detail endpoints such as /api/teams/<id>/detail/, /api/debaters/<id>/detail/, and /api/schools/<id>/detail/ accept ?limit=<n> to truncate repeated lists.
+
 OpenAPI schema:
-- /.well-known/openapi.json (OpenAPI 3.0 schema describing every public endpoint)
+- /.well-known/openapi.json (OpenAPI 3.1 schema describing every public endpoint)
 - /.well-known/ai-plugin.json (ChatGPT plugin manifest that references the schema)
 
 Guidelines:
@@ -1730,30 +2255,12 @@ class RobotsTxtView(View):
 class LLMOTYExplanationView(View):
     """Explain OTY scoring rules for LLM tools."""
 
-    body = """APDA OTY Scoring Guide
-
-Tournament points (base value)
-- Every varsity tournament has a "point" value which grows as more teams attend the tournament. The value is equivalent to the TOTY points received by the tournament winning team of two, and SOTY points earned by the tournamen's top speaker. All tournaments must have at least 8 teams to be worth points. From 8–15 teams, the tournament is worth 8 points. From 16–80 teams the base becomes 12 + floor((teams-16)/8), which continues until 80 teams, when the tournament reaches the maximum 20 points. All other placements and speaker awards are defined relative to that base.
-
-Team of the Year (TOTY)
-- Champion = 100% of the base, finalist = base - 4, semifinalists = roughly base - 9 (specifically 3 + 0.75*floor((teams-16)/8) for the 16–71 band), and quarterfinalists get one quarter of the base. At the largest bands (72–79 and 80+) the explicit tables are 19/15/8.25/3.5/0.75 and 20/16/9/4/1.5 respectively. Teams keep only their five best tournament markers and teams are ranked by the sum of those 5 markers. Hybrid partnerships (debaters from different schools) can win events, but their points only flow into SOTY/COTY—not TOTY.
-
-Speaker of the Year (SOTY)
-- The same base value applies to speakers. First speaker receives the base; every subsequent speaker drops by 2.5 points (2nd = base-2.5, 3rd = base-5, etc.) until the number would hit zero. We track each debater’s six best SOTY-eligible speaker finishes.
-
-Club of the Year (COTY) / Qual points
-- COTY reuses the team-points table, but the credit is recorded on individual debaters. Every qualifying partnership that clears feeds its points into each debater’s personal total. A debater’s annual contribution to their school is capped at 60, and every autoqual (placing at or above the autoqual bar at select BP and exansion tournaments) adds a 6-point bonus on top of the capped value, leading to a 66 point maximum contribution. School totals are the sum of those capped contributions, so “qual points” and “COTY points” refer to the same concept, although "qual points" typically refers to the uncapped quantity (can go above 60) without the 6 point bonus.
-
-Tournaments that do *not* hand out season points
-- Nationals and British Parliamentary (BP) weekends award autoqual bids but no season points.
-- Gender Minority, BIPOC, and similar invitationals award COTY (qual) credit only.
-
-General notes
-- Tournament size drives the base, so hosting a larger varsity field increases the reward for deep runs. Hosting schools usually abstain from competing at their own tournaments, but that rarely swings season-long races.
-- Hybrid teams still grant SOTY/COTY credit to their members even though the partnership itself cannot bank TOTY markers.
-
-For bylaw-level detail, see https://apda.online/2025/09/02/bylaws/
-"""
-
     def get(self, request):
-        return HttpResponse(self.body, content_type="text/plain; charset=utf-8")
+        body = _load_oty_guide_text()
+        if not body:
+            return HttpResponse(
+                "OTY guide is temporarily unavailable.",
+                content_type="text/plain; charset=utf-8",
+                status=503,
+            )
+        return HttpResponse(body, content_type="text/plain; charset=utf-8")
