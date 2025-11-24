@@ -13,7 +13,7 @@ from django.test import RequestFactory
 from django.urls import resolve, reverse, Resolver404
 from django.views import View
 
-from core.models.debater import Debater
+from core.models.debater import Debater, Reaff
 from core.models.results.speaker import SpeakerResult
 from core.models.results.team import TeamResult
 from core.models.round import Round
@@ -22,7 +22,7 @@ from core.models.standings.coty import COTY
 from core.models.standings.noty import NOTY
 from core.models.standings.online_qual import OnlineQUAL
 from core.models.standings.soty import SOTY
-from core.models.standings.toty import TOTY
+from core.models.standings.toty import TOTY, TOTYReaff
 from core.models.team import Team
 from core.models.tournament import Tournament
 from core.models.video import Video
@@ -438,6 +438,153 @@ def _serialize_markers(obj, marker_count, request):
     return markers
 
 
+def _sort_markers(markers):
+    def sort_key(marker):
+        earned_on = marker.get("earned_on") or ""
+        # Sort by date, then by descending points to keep deterministic ordering.
+        return (earned_on, -marker.get("points", 0), marker.get("result_id", 0))
+
+    return sorted(markers, key=sort_key)
+
+
+def _get_team_results_for_replay(team, season):
+    if hasattr(team, "season_replay_results"):
+        return list(team.season_replay_results)
+    return list(
+        team.team_results.filter(
+            tournament__season=season,
+            tournament__toty=True,
+            type_of_place=Debater.VARSITY,
+        ).select_related("tournament")
+    )
+
+
+def _serialize_team_results_for_replay(results, season, request, source_team_id, from_reaff=False):
+    serialized = []
+    for result in results:
+        tournament = result.tournament
+        if not tournament:
+            continue
+        points = tournament.get_toty_points(
+            result.place, ghost_points=result.ghost_points
+        )
+        if points <= 0:
+            continue
+        serialized.append(
+            {
+                "points": points,
+                "place": result.place,
+                "ghost_points": result.ghost_points,
+                "type": result.get_type_of_place_display(),
+                "earned_on": tournament.date.isoformat() if tournament.date else None,
+                "tournament": _lite_tournament(tournament, request),
+                "result_id": result.id,
+                "source_team_id": source_team_id,
+                "from_reaff": from_reaff,
+            }
+        )
+    return serialized
+
+
+def _team_replay_markers(entry, season, request):
+    team = entry.team
+    if not team:
+        return []
+
+    markers = _serialize_team_results_for_replay(
+        _get_team_results_for_replay(team, season),
+        season,
+        request,
+        team.id,
+        from_reaff=False,
+    )
+
+    for reaff in getattr(team, "season_reaffs", []):
+        old_team = getattr(reaff, "old_team", None)
+        if not old_team:
+            continue
+        old_results = _get_team_results_for_replay(old_team, season)
+        markers.extend(
+            _serialize_team_results_for_replay(
+                old_results,
+                season,
+                request,
+                old_team.id,
+                from_reaff=True,
+            )
+        )
+
+    return _sort_markers(markers)
+
+
+def _get_speaker_results_for_replay(debater, season):
+    if hasattr(debater, "season_replay_results"):
+        return list(debater.season_replay_results)
+    return list(
+        debater.speaker_results.filter(
+            tournament__season=season,
+            tournament__soty=True,
+            type_of_place=Debater.VARSITY,
+        ).select_related("tournament")
+    )
+
+
+def _serialize_speaker_results_for_replay(results, season, request, source_debater_id, from_reaff=False):
+    serialized = []
+    for result in results:
+        tournament = result.tournament
+        if not tournament:
+            continue
+        place_adjustment = result.place - (1 if result.tie else 0)
+        points = tournament.get_soty_points(place_adjustment)
+        if points <= 0:
+            continue
+        serialized.append(
+            {
+                "points": points,
+                "place": result.place,
+                "tie": result.tie,
+                "type": result.get_type_of_place_display(),
+                "earned_on": tournament.date.isoformat() if tournament.date else None,
+                "tournament": _lite_tournament(tournament, request),
+                "result_id": result.id,
+                "source_debater_id": source_debater_id,
+                "from_reaff": from_reaff,
+            }
+        )
+    return serialized
+
+
+def _speaker_replay_markers(entry, season, request):
+    debater = entry.debater
+    if not debater:
+        return []
+
+    markers = _serialize_speaker_results_for_replay(
+        _get_speaker_results_for_replay(debater, season),
+        season,
+        request,
+        debater.id,
+    )
+
+    for reaff in getattr(debater, "season_reaffs", []):
+        old_debater = getattr(reaff, "old_debater", None)
+        if not old_debater:
+            continue
+        old_results = _get_speaker_results_for_replay(old_debater, season)
+        markers.extend(
+            _serialize_speaker_results_for_replay(
+                old_results,
+                season,
+                request,
+                old_debater.id,
+                from_reaff=True,
+            )
+        )
+
+    return _sort_markers(markers)
+
+
 def _qual_display(debater, season):
     quals = debater.quals.filter(season=season, qual_type__gt=0)
     return ", ".join(sorted({qual.get_qual_type_display() for qual in quals}))
@@ -665,6 +812,161 @@ class SeasonStandingsAPIView(View):
             "online_qual_bar": settings.ONLINE_QUAL_BAR,
             "standings": standings,
             "links": links,
+        }
+
+        cache.set(cache_key, payload, self.cache_timeout)
+        return JsonResponse(payload)
+
+
+class SeasonStandingsReplayAPIView(View):
+    """
+    Return TOTY/SOTY standings along with all season markers for replay visualizations.
+    """
+
+    cache_timeout = 300
+
+    def get(self, request):
+        season = _resolve_season(request)
+        cache_key = f"api:standings_replay:{season}"
+        cached = cache.get(cache_key)
+        if cached:
+            return JsonResponse(cached)
+
+        team_results_prefetch = Prefetch(
+            "team__team_results",
+            queryset=TeamResult.objects.filter(
+                tournament__season=season,
+                tournament__toty=True,
+                type_of_place=Debater.VARSITY,
+            ).select_related("tournament"),
+            to_attr="season_replay_results",
+        )
+
+        toty_reaff_prefetch = Prefetch(
+            "team__toty_reaff_new",
+            queryset=TOTYReaff.objects.filter(season=season)
+            .select_related("old_team")
+            .prefetch_related(
+                Prefetch(
+                    "old_team__team_results",
+                    queryset=TeamResult.objects.filter(
+                        tournament__season=season,
+                        tournament__toty=True,
+                        type_of_place=Debater.VARSITY,
+                    ).select_related("tournament"),
+                    to_attr="season_replay_results",
+                )
+            ),
+            to_attr="season_reaffs",
+        )
+
+        speaker_results_prefetch = Prefetch(
+            "debater__speaker_results",
+            queryset=SpeakerResult.objects.filter(
+                tournament__season=season,
+                tournament__soty=True,
+                type_of_place=Debater.VARSITY,
+            ).select_related("tournament"),
+            to_attr="season_replay_results",
+        )
+
+        reaff_prefetch = Prefetch(
+            "debater__reaff_new",
+            queryset=Reaff.objects.filter(season=season)
+            .select_related("old_debater")
+            .prefetch_related(
+                Prefetch(
+                    "old_debater__speaker_results",
+                    queryset=SpeakerResult.objects.filter(
+                        tournament__season=season,
+                        tournament__soty=True,
+                        type_of_place=Debater.VARSITY,
+                    ).select_related("tournament"),
+                    to_attr="season_replay_results",
+                )
+            ),
+            to_attr="season_reaffs",
+        )
+
+        toty_qs = (
+            TOTY.objects.filter(season=season)
+            .select_related(
+                "team",
+                "tournament_one",
+                "tournament_two",
+                "tournament_three",
+                "tournament_four",
+                "tournament_five",
+                "tournament_six",
+            )
+            .prefetch_related(
+                Prefetch(
+                    "team__debaters",
+                    queryset=Debater.objects.select_related("school"),
+                ),
+                team_results_prefetch,
+                toty_reaff_prefetch,
+            )
+            .order_by("-points", "place")
+        )
+
+        soty_qs = (
+            SOTY.objects.filter(season=season)
+            .select_related(
+                "debater__school",
+                "tournament_one",
+                "tournament_two",
+                "tournament_three",
+                "tournament_four",
+                "tournament_five",
+                "tournament_six",
+            )
+            .prefetch_related(speaker_results_prefetch, reaff_prefetch)
+            .order_by("-points", "place")
+        )
+
+        standings = {"toty": [], "soty": []}
+        timeline_dates = set()
+
+        for entry in toty_qs:
+            payload = _standing_payload(entry, "team", 5, request)
+            markers = _team_replay_markers(entry, season, request)
+            payload["all_markers"] = markers
+            standings["toty"].append(payload)
+            for marker in markers:
+                earned_on = marker.get("earned_on")
+                if earned_on:
+                    timeline_dates.add(earned_on)
+
+        for entry in soty_qs:
+            payload = _standing_payload(entry, "debater", 6, request)
+            markers = _speaker_replay_markers(entry, season, request)
+            payload["all_markers"] = markers
+            standings["soty"].append(payload)
+            for marker in markers:
+                earned_on = marker.get("earned_on")
+                if earned_on:
+                    timeline_dates.add(earned_on)
+
+        sorted_timeline = sorted(timeline_dates)
+
+        payload = {
+            "season": season,
+            "season_display": _format_season_display(season),
+            "available_seasons": [
+                {"value": value, "label": label} for value, label in settings.SEASONS
+            ],
+            "standings": standings,
+            "timeline_dates": sorted_timeline,
+            "marker_limits": {"toty": 5, "soty": 6},
+            "links": {
+                "self": request.build_absolute_uri(
+                    f"{reverse('api:season_standings_replay')}?season={season}"
+                ),
+                "html": request.build_absolute_uri(
+                    f"{reverse('core:standings_replay')}?season={season}"
+                ),
+            },
         }
 
         cache.set(cache_key, payload, self.cache_timeout)

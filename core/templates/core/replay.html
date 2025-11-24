@@ -1,0 +1,189 @@
+{% extends "base/base.html" %}
+{% load static %}
+{% block extra_head %}
+    {{ block.super }}
+    <meta name="llm:api:standings-replay" content="{{ replay_api_url }}">
+{% endblock extra_head %}
+{% block content %}
+    <div class="shadow-lg card m-lg-5 mt-2 m-1 rounded-l8">
+        <div class="card-body"
+             id="standings-replay-root"
+             data-api-url="{{ replay_api_url }}"
+             data-season="{{ current_season }}">
+            <div class="d-flex justify-content-between align-items-center flex-wrap mb-3">
+                <h5 class="card-title text-white mb-0">
+                    <ul class="nav nav-pills nav-fill" role="tablist">
+                        <li class="nav-item pr-2">
+                            <a class="nav-link {% if default == 'toty' %}active{% endif %}"
+                               data-toggle="tab"
+                               href="#replay-toty"
+                               role="tab">
+                                Team of the Year
+                            </a>
+                        </li>
+                        <li class="nav-item pr-2">
+                            <a class="nav-link {% if default == 'soty' %}active{% endif %}"
+                               data-toggle="tab"
+                               href="#replay-soty"
+                               role="tab">
+                                Speaker of the Year
+                            </a>
+                        </li>
+                    </ul>
+                </h5>
+                <a class="btn btn-outline-light btn-sm"
+                   href="{% url 'core:index' %}?season={{ current_season }}">
+                    Back to standings
+                </a>
+            </div>
+            <div class="replay-controls mb-4">
+                <div class="replay-controls-left d-flex align-items-center">
+                    <button class="btn btn-light btn-lg replay-play-button"
+                            id="replay-play"
+                            type="button"
+                            disabled>
+                        <i class="fas fa-play"></i>
+                    </button>
+                    <input type="range"
+                           id="replay-slider"
+                           class="replay-slider"
+                           min="0"
+                           max="0"
+                           value="0"
+                           step="1"
+                           disabled>
+                </div>
+                <div class="replay-date-label text-white ml-3"
+                     id="replay-date-label">
+                    Loading timeline...
+                </div>
+            </div>
+            <div id="replay-error" class="alert alert-danger d-none" role="alert"></div>
+            <div class="tab-content" id="replay-results">
+                <div class="tab-pane fade table-responsive {% if default == 'toty' %}active show{% endif %}"
+                     id="replay-toty"
+                     role="tabpanel">
+                    <h5>
+                        <div class="replay-season-controls">
+                            <div class="replay-speed-control text-white text-right">
+                                <label for="replay-speed-toty" class="text-uppercase small mb-1 d-block">
+                                    Speed
+                                </label>
+                                <select id="replay-speed-toty"
+                                        class="custom-select custom-select-sm replay-speed-select"
+                                        disabled>
+                                    <option value="slow">Slow</option>
+                                    <option value="medium">Normal</option>
+                                    <option value="fast" selected>Fast</option>
+                                    <option value="turbo">Turbo</option>
+                                </select>
+                            </div>
+                            <ul class="nav nav-pills replay-season-dropdown" role="tablist">
+                                <li class="nav-item dropdown">
+                                    <a class="nav-link dropdown-toggle active"
+                                       data-toggle="dropdown"
+                                       href="#"
+                                       role="button"
+                                   aria-haspopup="true"
+                                   aria-expanded="false">
+                                    {{ season_display }}
+                                </a>
+                                <div class="dropdown-menu dropdown-menu-right">
+                                    {% for season in seasons %}
+                                        <a class="dropdown-item {% if season.0 == current_season %}active{% endif %}"
+                                           href="{% url 'core:standings_replay' %}?season={{ season.0 }}&default=toty">{{ season.1 }}</a>
+                                    {% endfor %}
+                                </div>
+                            </li>
+                        </ul>
+                        </div>
+                    </h5>
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th scope="col" width="5%">#</th>
+                                <th scope="col">School</th>
+                                <th scope="col">Debaters</th>
+                                <th scope="col">Points</th>
+                                <th scope="col"><center>1</center></th>
+                                <th scope="col"><center>2</center></th>
+                                <th scope="col"><center>3</center></th>
+                                <th scope="col"><center>4</center></th>
+                                <th scope="col"><center>5</center></th>
+                            </tr>
+                        </thead>
+                        <tbody id="replay-toty-body">
+                            <tr>
+                                <td colspan="9" class="shaded text-center py-4">
+                                    Loading standings...
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="tab-pane fade table-responsive {% if default == 'soty' %}active show{% endif %}"
+                     id="replay-soty"
+                     role="tabpanel">
+                    <h5>
+                        <div class="replay-season-controls">
+                            <div class="replay-speed-control text-white text-right">
+                                <label for="replay-speed-soty" class="text-uppercase small mb-1 d-block">
+                                    Speed
+                                </label>
+                                <select id="replay-speed-soty"
+                                        class="custom-select custom-select-sm replay-speed-select"
+                                        disabled>
+                                    <option value="slow">Slow</option>
+                                    <option value="medium">Normal</option>
+                                    <option value="fast" selected>Fast</option>
+                                    <option value="turbo">Turbo</option>
+                                </select>
+                            </div>
+                            <ul class="nav nav-pills replay-season-dropdown" role="tablist">
+                                <li class="nav-item dropdown">
+                                    <a class="nav-link dropdown-toggle active"
+                                       data-toggle="dropdown"
+                                       href="#"
+                                       role="button"
+                                   aria-haspopup="true"
+                                   aria-expanded="false">
+                                    {{ season_display }}
+                                </a>
+                                <div class="dropdown-menu dropdown-menu-right">
+                                    {% for season in seasons %}
+                                        <a class="dropdown-item {% if season.0 == current_season %}active{% endif %}"
+                                           href="{% url 'core:standings_replay' %}?season={{ season.0 }}&default=soty">{{ season.1 }}</a>
+                                    {% endfor %}
+                                </div>
+                            </li>
+                        </ul>
+                        </div>
+                    </h5>
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th scope="col">#</th>
+                                <th scope="col">Debater</th>
+                                <th scope="col">School</th>
+                                <th scope="col">Points</th>
+                                <th scope="col"><center>1</center></th>
+                                <th scope="col"><center>2</center></th>
+                                <th scope="col"><center>3</center></th>
+                                <th scope="col"><center>4</center></th>
+                                <th scope="col"><center>5</center></th>
+                                <th scope="col"><center>6</center></th>
+                            </tr>
+                        </thead>
+                        <tbody id="replay-soty-body">
+                            <tr>
+                                <td colspan="10" class="shaded text-center py-4">
+                                    Loading standings...
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock content %}

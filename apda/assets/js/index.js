@@ -14,6 +14,7 @@ import "./sortable-formset";
 import "./school_admin_management";
 import "./data-entry";
 import "./data-entry";
+import "./replay";
 
 function getCookie(name) {
   let cookieValue = null;

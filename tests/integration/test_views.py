@@ -196,3 +196,12 @@ class IndexViewTests(TestCase):
         self.assertEqual(context["default"], "toty")
         self.assertFalse(context["using_online_quals"])
         self.assertFalse(context["render_noty"])
+
+    def test_standings_replay_view_loads(self):
+        response = self.client.get(
+            reverse("core:standings_replay"), {"season": "2024", "default": "soty"}
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("replay_api_url", response.context)
+        self.assertEqual(response.context["default"], "soty")

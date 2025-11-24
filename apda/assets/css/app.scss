@@ -55,6 +55,124 @@ nav {
     background-color: rgba(0, 0, 0, 0.05);
 }
 
+.replay-controls {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+    flex-wrap: wrap;
+}
+
+.replay-controls-left {
+    flex: 1;
+    min-width: 320px;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.replay-slider {
+    flex: 1;
+    width: 100%;
+    accent-color: #045fb0;
+}
+
+.replay-play-button {
+    min-width: 56px;
+}
+
+.replay-date-label {
+    font-weight: 600;
+    min-width: 220px;
+    flex: 0 0 220px;
+}
+
+.replay-speed-control {
+    min-width: 150px;
+}
+
+.replay-speed-control label {
+    letter-spacing: 0.05em;
+}
+
+.replay-season-controls {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.35rem;
+}
+
+.replay-season-dropdown {
+    padding-bottom: 0 !important;
+    margin-bottom: 0;
+}
+
+.replay-home-controls {
+    display: flex;
+    justify-content: flex-end;
+    align-items: stretch;
+    flex-wrap: wrap;
+}
+
+.watch-replay-btn {
+    border-color: #045fb0;
+    color: #045fb0 !important;
+    background-color: rgba(4, 95, 176, 0.08);
+    font-weight: 600;
+    min-height: 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    padding: 0 1.05rem;
+    border-radius: 0.5rem;
+    box-shadow: inset 0 0 0 1px rgba(4,95,176,0.25);
+}
+
+.watch-replay-btn:hover {
+    background-color: #045fb0;
+    color: #fff !important;
+    box-shadow: inset 0 0 0 1px rgba(4,95,176,0.5);
+}
+
+.replay-marker-highlight {
+    background-color: rgba(4, 95, 176, 0.3);
+    box-shadow: inset 0 0 0 2px rgba(4, 95, 176, 0.4);
+    animation: replayMarkerPulse 1.6s ease-out forwards;
+}
+
+@keyframes replayMarkerPulse {
+    0% {
+        background-color: rgba(4, 95, 176, 0.45);
+        box-shadow: inset 0 0 0 2px rgba(4, 95, 176, 0.5);
+    }
+    60% {
+        background-color: rgba(4, 95, 176, 0.15);
+        box-shadow: inset 0 0 0 2px rgba(4, 95, 176, 0.2);
+    }
+    100% {
+        background-color: transparent;
+        box-shadow: none;
+    }
+}
+
+.replay-row-enter {
+    animation: replayRowEnter 1.6s ease-out;
+    animation-fill-mode: forwards;
+}
+
+@keyframes replayRowEnter {
+    0% {
+        background-color: rgba(4, 95, 176, 0.2);
+        transform: translateX(-6px);
+    }
+    50% {
+        background-color: rgba(4, 95, 176, 0.1);
+    }
+    100% {
+        background-color: transparent;
+        transform: translateX(0);
+    }
+}
+
 .short-row {
     padding-top: 4px !important;
     padding-bottom: 4px !important;

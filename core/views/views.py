@@ -5,6 +5,7 @@ from django.conf import settings
 from django.core.cache import cache
 from django.db.models import Count, Avg, Q, Sum, F, Prefetch
 from django.shortcuts import render
+from django.urls import reverse
 from core.models import (
     COTY, NOTY, SOTY, TOTY, OnlineQUAL,
     Tournament, Debater, School, Team, TeamResult, SpeakerResult
@@ -60,6 +61,36 @@ def index(request):
             "online_quals": online_quals,
             "online_seasons": online_seasons,
             "online_qual_bar": online_qual_bar,
+        },
+    )
+
+
+def standings_replay(request):
+    seasons = settings.SEASONS
+    current_season = request.GET.get("season", settings.CURRENT_SEASON)
+    if current_season not in [s[0] for s in seasons]:
+        current_season = settings.CURRENT_SEASON
+
+    default = request.GET.get("default", "toty")
+    if default not in ["toty", "soty"]:
+        default = "toty"
+
+    season_display = next(
+        (label for value, label in seasons if value == current_season),
+        current_season,
+    )
+
+    replay_api_url = f"{reverse('api:season_standings_replay')}?season={current_season}"
+
+    return render(
+        request,
+        "core/replay.html",
+        {
+            "seasons": seasons,
+            "current_season": current_season,
+            "default": default,
+            "season_display": season_display,
+            "replay_api_url": replay_api_url,
         },
     )
 
