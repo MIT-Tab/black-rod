@@ -41,7 +41,7 @@ class SchoolForm(forms.ModelForm):
 
     class Meta:
         model = School
-        fields = ("name", "included_in_oty")
+        fields = ("name", "short_name", "included_in_oty")
 
 
 class DebaterForm(forms.ModelForm):
@@ -235,6 +235,7 @@ class TournamentForm(forms.ModelForm):
             "qual_type",
             "name_suffix",
             "manual_name",
+            "short_name",
         )
 
 
@@ -255,7 +256,7 @@ class TeamForm(forms.ModelForm):
 
     class Meta:
         model = Team
-        fields = ("debaters",)
+        fields = ("debaters", "short_name")
 
     def clean(self):
         cleaned_data = super().clean()

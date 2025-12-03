@@ -51,26 +51,32 @@
                      role="tabpanel">
                     {% cache None toty current_season %}
                     <h5>
-                        <ul class="nav nav-pills float-right pb-3" id="oty_pills" roll="tablist">
-                            <li class="nav-item dropdown">
-                                <a class="nav-link dropdown-toggle active"
-                                   data-toggle="dropdown"
-                                   href="#"
-                                   role="button"
-                                   aria-haspopup="true"
-                                   aria-expanded="false">
-                                    {% for season in seasons %}
-                                        {% if season.0 == current_season %}{{ season.1 }}{% endif %}
-                                    {% endfor %}
-                                </a>
-                                <div class="dropdown-menu dropdown-menu-right">
-                                    {% for season in seasons %}
-                                        <a class="dropdown-item {% if season.0 == current_season %}active{% endif %}"
-                                           href="{{ request.path }}?season={{ season.0 }}&default=toty">{{ season.1 }}</a>
-                                    {% endfor %}
-                                </div>
-                            </li>
-                        </ul>
+                        <div class="replay-home-controls mb-2">
+                            <a class="btn btn-outline-primary watch-replay-btn mr-3"
+                               href="{% url 'core:standings_replay' %}?season={{ current_season }}">
+                                Watch the season replay
+                            </a>
+                            <ul class="nav nav-pills pb-3 replay-season-picker" id="oty_pills" roll="tablist">
+                                <li class="nav-item dropdown">
+                                    <a class="nav-link dropdown-toggle active"
+                                       data-toggle="dropdown"
+                                       href="#"
+                                       role="button"
+                                       aria-haspopup="true"
+                                       aria-expanded="false">
+                                        {% for season in seasons %}
+                                            {% if season.0 == current_season %}{{ season.1 }}{% endif %}
+                                        {% endfor %}
+                                    </a>
+                                    <div class="dropdown-menu dropdown-menu-right">
+                                        {% for season in seasons %}
+                                            <a class="dropdown-item {% if season.0 == current_season %}active{% endif %}"
+                                               href="{{ request.path }}?season={{ season.0 }}&default=toty">{{ season.1 }}</a>
+                                        {% endfor %}
+                                    </div>
+                                </li>
+                            </ul>
+                        </div>
                     </h5>
                     <table class="table table-hover">
                         <thead>

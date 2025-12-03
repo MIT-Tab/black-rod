@@ -4,11 +4,13 @@ Integration tests for API views.
 """
 
 import json
+from datetime import date
 from django.test import TestCase, Client
 from django.conf import settings
 from django.core.cache import cache
 from core.models.school import School
 from core.models.debater import Debater
+from core.models.tournament import Tournament
 
 
 class APIActiveSchoolListViewTest(TestCase):
@@ -365,3 +367,121 @@ class APISchoolDebatersViewTest(TestCase):
         # Should only have Harvard debaters
         for debater in data['debaters']:
             self.assertEqual(debater['school_id'], self.school.id)
+
+
+class APIScheduleViewTest(TestCase):
+    """Test the public schedule API endpoint."""
+
+    def setUp(self):
+        self.client = Client()
+        cache.clear()
+        self.season = settings.CURRENT_SEASON
+        year = int(self.season)
+
+        self.school_host = School.objects.create(name="Alpha College")
+        self.school_other = School.objects.create(name="Beta University")
+
+        Tournament.objects.create(
+            name="Alpha Invitational",
+            manual_name="Alpha Invitational",
+            host=self.school_host,
+            date=date(year, 9, 6),
+            season=self.season,
+            toty=True,
+            soty=True,
+            qual=True,
+            qual_type=Tournament.POINTS,
+            autoqual_bar=4,
+        )
+        Tournament.objects.create(
+            name="Expansion BP",
+            manual_name="Expansion BP",
+            host=self.school_host,
+            date=date(year, 10, 5),
+            season=self.season,
+            toty=False,
+            soty=False,
+            qual=False,
+            qual_type=Tournament.EXPANSION,
+            autoqual_bar=2,
+        )
+        Tournament.objects.create(
+            name="Nationals",
+            manual_name="Nationals",
+            host=self.school_other,
+            date=date(year, 4, 1),
+            season=self.season,
+            toty=False,
+            soty=False,
+            qual=False,
+            qual_type=Tournament.NATIONALS,
+        )
+        Tournament.objects.create(
+            name="GM & BIPOC Invitational",
+            manual_name="GM & BIPOC Invitational",
+            host=self.school_other,
+            date=date(year, 11, 15),
+            season=self.season,
+            toty=False,
+            soty=False,
+            qual=True,
+            qual_type=Tournament.GENDER_MINORITY,
+        )
+
+    def test_schedule_structure_matches_html(self):
+        response = self.client.get('/api/schedule/')
+        self.assertEqual(response.status_code, 200)
+        data = json.loads(response.content)
+
+        self.assertEqual(data['season'], self.season)
+        self.assertIn('months', data)
+        month_names = [block['display'] for block in data['months']]
+        self.assertIn('September', month_names)
+
+        september = next(block for block in data['months'] if block['display'] == 'September')
+        week_block = next(week for week in september['weeks'] if week['date'] == 6)
+        alpha_entry = next(item for item in week_block['tournaments'] if item['tournament']['name'] == "Alpha Invitational")
+        self.assertTrue(alpha_entry['otys']['toty_points'])
+        self.assertTrue(alpha_entry['otys']['soty_points'])
+        self.assertTrue(alpha_entry['otys']['coty_points'])
+
+        october = next(block for block in data['months'] if block['display'] == 'October')
+        bp_entry = next(
+            item for week in october['weeks']
+            for item in week['tournaments']
+            if item['tournament']['name'] == "Expansion BP"
+        )
+        self.assertFalse(bp_entry['otys']['toty_points'])
+        self.assertIn('autoqual', ' '.join(bp_entry['otys']['notes']).lower())
+
+        november = next(block for block in data['months'] if block['display'] == 'November')
+        gm_entry = next(
+            item for week in november['weeks']
+            for item in week['tournaments']
+            if "GM" in item['tournament']['name']
+        )
+        self.assertIn('gender minority', ' '.join(note.lower() for note in gm_entry['otys']['notes']))
+
+    def test_custom_season(self):
+        other_season = str(int(self.season) - 1)
+        Tournament.objects.create(
+            name="Old Season Event",
+            manual_name="Old Season Event",
+            host=self.school_host,
+            date=date(int(other_season), 9, 1),
+            season=other_season,
+            toty=True,
+            soty=True,
+            qual=True,
+        )
+
+        response = self.client.get(f'/api/schedule/?season={other_season}')
+        self.assertEqual(response.status_code, 200)
+        data = json.loads(response.content)
+
+        self.assertEqual(data['season'], other_season)
+        month_names = [block['display'] for block in data['months']]
+        self.assertEqual(month_names, ['September'])
+        week = data['months'][0]['weeks'][0]
+        names = [item['tournament']['name'] for item in week['tournaments']]
+        self.assertIn("Old Season Event", names)

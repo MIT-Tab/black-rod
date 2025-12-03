@@ -60,10 +60,11 @@ from core.resources import (
 @admin.register(School)
 class SchoolAdmin(ImportExportModelAdmin):
     resource_class = SchoolResource
-    list_display = ["id", "name"]
+    list_display = ["id", "name", "short_name"]
     list_filter = ["name"]
-    search_fields = ["name"]
+    search_fields = ["name", "short_name"]
     ordering = ["name"]
+    fields = ["name", "short_name", "included_in_oty"]
 
 
 @admin.register(Debater)
@@ -99,9 +100,9 @@ class ReaffAdmin(ImportExportModelAdmin):
 @admin.register(Tournament)
 class TournamentAdmin(ImportExportModelAdmin):
     resource_class = TournamentResource
-    list_display = ["name", "host_name", "id", "season"]
+    list_display = ["name", "short_name", "host_name", "id", "season"]
     list_filter = ["name", "host__name", "id", "season"]
-    search_fields = ["name", "host__name", "id", "season"]
+    search_fields = ["name", "short_name", "host__name", "id", "season"]
 
     @admin.display(
         description="Host Name",
@@ -126,7 +127,8 @@ class CustomUserAdmin(UserAdmin):
 
 @admin.register(Team)
 class TeamAdmin(ImportExportModelAdmin):
-    search_fields = ["name", "debaters__name", "debaters__school__name"]
+    list_display = ["name", "short_name", "id"]
+    search_fields = ["name", "short_name", "debaters__name", "debaters__school__name"]
 
     def get_queryset(self, request):
         return (

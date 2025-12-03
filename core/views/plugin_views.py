@@ -1,6 +1,7 @@
 from django.http import JsonResponse
 from django.templatetags.static import static
 from django.urls import reverse
+from drf_spectacular.views import OpenApiJsonRenderer, SpectacularAPIView
 
 
 def _absolute(request, path):
@@ -36,125 +37,25 @@ def ai_plugin_manifest(request):
     return JsonResponse(manifest)
 
 
-def openapi_schema(request):
-    server_url = request.build_absolute_uri("/").rstrip("/")
-    schema = {
-        "openapi": "3.0.1",
-        "info": {
-            "title": "APDA Standings API",
-            "version": "1.0.0",
-            "description": "Machine-friendly endpoints for APDA standings and entity details.",
-        },
-        "servers": [{"url": server_url}],
-        "paths": {
-            "/api/standings/": {
-                "get": {
-                    "summary": "Season standings",
-                    "description": "Fetch TOTY, COTY, SOTY, NOTY, and online qualifier standings for a season.",
-                    "parameters": [
-                        {
-                            "name": "season",
-                            "in": "query",
-                            "required": False,
-                            "schema": {"type": "string"},
-                            "description": "APDA season (e.g., '2024'). Defaults to the current season.",
-                        }
-                    ],
-                    "responses": {
-                        "200": {
-                            "description": "Standings payload organized by board.",
-                            "content": {"application/json": {"schema": {"type": "object"}}},
-                        }
-                    },
-                }
-            },
-            "/api/debaters/{debater_id}/detail/": {
-                "get": {
-                    "summary": "Debater profile",
-                    "parameters": [
-                        {
-                            "name": "debater_id",
-                            "in": "path",
-                            "required": True,
-                            "schema": {"type": "integer"},
-                            "description": "Primary key of the debater.",
-                        }
-                    ],
-                    "responses": {
-                        "200": {
-                            "description": "Full profile including standings, partners, seasons, and videos.",
-                            "content": {"application/json": {"schema": {"type": "object"}}},
-                        }
-                    },
-                }
-            },
-            "/api/teams/{team_id}/detail/": {
-                "get": {
-                    "summary": "Team profile",
-                    "parameters": [
-                        {
-                            "name": "team_id",
-                            "in": "path",
-                            "required": True,
-                            "schema": {"type": "integer"},
-                            "description": "Primary key of the team.",
-                        }
-                    ],
-                    "responses": {
-                        "200": {
-                            "description": "Team roster, TOTY placements, and tournament performances.",
-                            "content": {"application/json": {"schema": {"type": "object"}}},
-                        }
-                    },
-                }
-            },
-            "/api/tournaments/{tournament_id}/detail/": {
-                "get": {
-                    "summary": "Tournament detail",
-                    "parameters": [
-                        {
-                            "name": "tournament_id",
-                            "in": "path",
-                            "required": True,
-                            "schema": {"type": "integer"},
-                            "description": "Primary key of the tournament.",
-                        }
-                    ],
-                    "responses": {
-                        "200": {
-                            "description": "Tournament metadata, team awards, speaker awards, and tab cards.",
-                            "content": {"application/json": {"schema": {"type": "object"}}},
-                        }
-                    },
-                }
-            },
-            "/api/schools/{school_id}/detail/": {
-                "get": {
-                    "summary": "School profile by season",
-                    "parameters": [
-                        {
-                            "name": "school_id",
-                            "in": "path",
-                            "required": True,
-                            "schema": {"type": "integer"},
-                            "description": "Primary key of the school.",
-                        },
-                        {
-                            "name": "season",
-                            "in": "query",
-                            "required": False,
-                            "schema": {"type": "string"},
-                            "description": "Season to summarize (defaults to current).",
-                        },
-                    ],
-                    "responses": {
-                        "200": {
-                            "description": "Seasonal roster, COTY breakdown, and hosted tournament list.",
-                            "content": {"application/json": {"schema": {"type": "object"}}},
-                        }
-                    },
-                }
-            },
-        },
-    }
-    return JsonResponse(schema)
+def _build_schema_servers(request):
+    host = request.get_host().split(":")[0]
+    primary = f"https://{host}"
+    return [{"url": primary}]
+
+
+class PluginSchemaView(SpectacularAPIView):
+    """Return the OpenAPI schema in JSON with stable server metadata."""
+
+    renderer_classes = [OpenApiJsonRenderer]
+    schema = None
+
+    def get(self, request, *args, **kwargs):
+        response = super().get(request, *args, **kwargs)
+        schema = response.data or {}
+        schema["openapi"] = "3.1.0"
+        schema["servers"] = _build_schema_servers(request)
+        schema["security"] = []
+        components = schema.setdefault("components", {})
+        components["securitySchemes"] = {}
+        response.data = schema
+        return response
