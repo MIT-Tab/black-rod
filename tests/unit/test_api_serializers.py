@@ -73,3 +73,24 @@ class APIDebaterSerializerTest(TestCase):
         serialized = serialize_debater(debater)
         
         self.assertEqual(serialized["status"], "Novice")
+
+    def test_region_fields_included_only_when_visible(self):
+        """Region metadata is surfaced only for opt-in debaters."""
+        debater = Debater.objects.create(
+            first_name="Taylor",
+            last_name="Signal",
+            school=self.school,
+            dino_to_contact_opt_in=True,
+            region=["west"],
+        )
+
+        serialized = serialize_debater(debater)
+        self.assertEqual(serialized["regions"], ["west"])
+        self.assertEqual(serialized["region_display"], "West")
+
+        debater.dino_to_contact_opt_in = False
+        debater.save()
+        serialized = serialize_debater(debater)
+
+        self.assertNotIn("region", serialized)
+        self.assertNotIn("region_display", serialized)

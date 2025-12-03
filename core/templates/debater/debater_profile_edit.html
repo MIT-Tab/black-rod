@@ -1,5 +1,12 @@
 {% extends "base/base.html" %}
 
+{% block extra_head %}
+    {{ block.super }}
+    <link rel="stylesheet"
+          href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css"
+          crossorigin="anonymous">
+{% endblock extra_head %}
+
 {% block title %}Edit Profile - {{ object.name }}{% endblock title %}
 
 {% block content %}
@@ -99,6 +106,15 @@
                         {% endfor %}
                     </div>
 
+                    <div id="outreach-region-section" class="form-group {% if not form.show_region_field %}d-none{% endif %}">
+                        {{ form.region.label_tag }}
+                        {{ form.region }}
+                        <small class="form-text text-muted">{{ form.region.help_text }}</small>
+                        {% for error in form.region.errors %}
+                            <div class="invalid-feedback d-block">{{ error }}</div>
+                        {% endfor %}
+                    </div>
+
                     <div class="alert alert-info mt-3">
                         <strong>Tip:</strong> Make sure your Google Doc is shared with "Anyone with the link can view" 
                         so that others can access your paradigm.
@@ -144,11 +160,17 @@
         box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
     }
 </style>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"
+        crossorigin="anonymous"></script>
 <script>
     document.addEventListener('DOMContentLoaded', function () {
         const statusSelect = document.getElementById('{{ form.status.id_for_label }}');
         const judgeSection = document.getElementById('dino-judge-section');
-        const judgeCheckbox = judgeSection ? judgeSection.querySelector('input[type="checkbox"]') : null;
+        const judgeCheckbox = document.getElementById('{{ form.dino_judge_contact_opt_in.id_for_label }}');
+        const toCheckbox = document.getElementById('{{ form.dino_to_contact_opt_in.id_for_label }}');
+        const regionSection = document.getElementById('outreach-region-section');
+        const regionSelect = document.getElementById('{{ form.region.id_for_label }}');
+        const $regionSelect = window.jQuery && regionSelect ? window.jQuery(regionSelect) : null;
         const fallbackDinoValue = '{{ form.instance.DINO|default:"2" }}';
         const dinoValue = statusSelect ? (statusSelect.dataset.dinoValue || fallbackDinoValue) : fallbackDinoValue;
 
@@ -176,12 +198,52 @@
                     judgeCheckbox.checked = false;
                 }
             }
+
+            updateRegionControl();
+        }
+
+        function updateRegionControl() {
+            if (!regionSection) {
+                return;
+            }
+            const shouldShowRegion = !!(
+                (toCheckbox && toCheckbox.checked) ||
+                (judgeCheckbox && judgeCheckbox.checked)
+            );
+            toggleElement(regionSection, shouldShowRegion);
+            if (!shouldShowRegion) {
+                if ($regionSelect && $regionSelect.length) {
+                    $regionSelect.val(null).trigger('change');
+                } else if (regionSelect) {
+                    Array.from(regionSelect.options || []).forEach(option => {
+                        option.selected = false;
+                    });
+                }
+            }
         }
 
         if (statusSelect) {
             statusSelect.addEventListener('change', updateJudgeControl);
             updateJudgeControl();
         }
+
+        if (toCheckbox) {
+            toCheckbox.addEventListener('change', updateRegionControl);
+        }
+        if (judgeCheckbox) {
+            judgeCheckbox.addEventListener('change', updateRegionControl);
+        }
+
+        if ($regionSelect && $regionSelect.length && $regionSelect.select2) {
+            $regionSelect.select2({
+                placeholder: regionSelect ? (regionSelect.dataset.placeholder || 'Select regions') : 'Select regions',
+                allowClear: true,
+                width: '100%',
+                closeOnSelect: false
+            });
+        }
+
+        updateRegionControl();
     });
 </script>
 {% endblock content %}

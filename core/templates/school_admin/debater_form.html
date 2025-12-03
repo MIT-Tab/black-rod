@@ -1,6 +1,13 @@
 {% extends "base/base.html" %}
 {% load crispy_forms_tags %}
 
+{% block extra_head %}
+    {{ block.super }}
+    <link rel="stylesheet"
+          href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css"
+          crossorigin="anonymous">
+{% endblock extra_head %}
+
 {% block content %}
     <div class="row mt-lg-5 ml-lg-2 mr-lg-2 mb-lg-5 m-1">
         <div class="col-lg-12">
@@ -40,6 +47,61 @@
                             Cancel
                         </a>
                     </form>
+                    {% if not form.show_region_field %}
+                        <style>
+                            #div_id_region {
+                                display: none;
+                            }
+                        </style>
+                    {% endif %}
+                    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"
+                            crossorigin="anonymous"></script>
+                    <script>
+                        document.addEventListener('DOMContentLoaded', function () {
+                            const toCheckbox = document.getElementById('id_dino_to_contact_opt_in');
+                            const judgeCheckbox = document.getElementById('id_dino_judge_contact_opt_in');
+                            const regionWrapper = document.getElementById('div_id_region');
+                            const regionSelect = document.getElementById('id_region');
+                            const $regionSelect = window.jQuery && regionSelect ? window.jQuery(regionSelect) : null;
+
+                            function updateRegionVisibility() {
+                                if (!regionWrapper) {
+                                    return;
+                                }
+                                const shouldShow = !!(
+                                    (toCheckbox && toCheckbox.checked) ||
+                                    (judgeCheckbox && judgeCheckbox.checked)
+                                );
+                                regionWrapper.style.display = shouldShow ? '' : 'none';
+                                if (!shouldShow) {
+                                    if ($regionSelect && $regionSelect.length) {
+                                        $regionSelect.val(null).trigger('change');
+                                    } else if (regionSelect) {
+                                        Array.from(regionSelect.options || []).forEach(function (option) {
+                                            option.selected = false;
+                                        });
+                                    }
+                                }
+                            }
+
+                            [toCheckbox, judgeCheckbox].forEach(function (checkbox) {
+                                if (checkbox) {
+                                    checkbox.addEventListener('change', updateRegionVisibility);
+                                }
+                            });
+
+                            if ($regionSelect && $regionSelect.length && $regionSelect.select2) {
+                                $regionSelect.select2({
+                                    placeholder: regionSelect ? (regionSelect.dataset.placeholder || 'Select regions') : 'Select regions',
+                                    allowClear: true,
+                                    width: '100%',
+                                    closeOnSelect: false
+                                });
+                            }
+
+                            updateRegionVisibility();
+                        });
+                    </script>
                 </div>
             </div>
         </div>

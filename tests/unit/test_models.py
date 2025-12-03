@@ -6,6 +6,7 @@ from django.db.utils import IntegrityError
 
 from core.models.school import School, SchoolLookup
 from core.models.debater import Debater
+from core.views.debater_views import DebaterOutreachFilter
 from core.models.tournament import Tournament
 
 
@@ -118,6 +119,61 @@ class DebaterModelTest(TestCase):
         )
         self.assertEqual(varsity_debater.status, Debater.VARSITY)
         self.assertEqual(novice_debater.status, Debater.NOVICE)
+
+    def test_region_is_cleared_when_outreach_disabled(self):
+        """Region should only persist when an outreach opt-in is enabled."""
+        debater = Debater.objects.create(
+            first_name="Riley",
+            last_name="West",
+            school=self.school,
+            dino_to_contact_opt_in=True,
+            region=["west"],
+        )
+        self.assertTrue(debater.show_region)
+
+        debater.dino_to_contact_opt_in = False
+        debater.save()
+
+        debater.refresh_from_db()
+        self.assertEqual(debater.region, [])
+        self.assertFalse(debater.show_region)
+
+    def test_region_not_saved_without_opt_in(self):
+        """Saving a region without an opt-in should immediately clear it."""
+        debater = Debater.objects.create(
+            first_name="Avery",
+            last_name="East",
+            school=self.school,
+            region=["northeast"],
+        )
+        self.assertEqual(debater.region, [])
+        self.assertFalse(debater.show_region)
+
+
+class DebaterOutreachFilterTest(TestCase):
+    def setUp(self):
+        self.school = School.objects.create(name="Filter U")
+        self.region_code = "west"
+        self.match = Debater.objects.create(
+            first_name="Casey",
+            last_name="Match",
+            school=self.school,
+            dino_to_contact_opt_in=True,
+            region=[self.region_code],
+        )
+        self.non_match = Debater.objects.create(
+            first_name="Jamie",
+            last_name="Skip",
+            school=self.school,
+            dino_to_contact_opt_in=True,
+            region=["midwest"],
+        )
+
+    def test_filter_by_region(self):
+        queryset = Debater.objects.filter(dino_to_contact_opt_in=True)
+        filterset = DebaterOutreachFilter(data={'region': self.region_code}, queryset=queryset)
+        results = list(filterset.qs)
+        self.assertEqual(results, [self.match])
 
     def test_debater_without_school(self):
         """Test creating debater without school (should be allowed)"""

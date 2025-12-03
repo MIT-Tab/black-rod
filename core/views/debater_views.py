@@ -2,9 +2,10 @@ from dal import autocomplete
 from django import forms
 from django.conf import settings
 from django.http import HttpResponse
+from django.db import connection
 from django.db.models import Q
 from django.urls import reverse_lazy
-from django_filters import FilterSet, CharFilter
+from django_filters import FilterSet, CharFilter, ChoiceFilter
 from django_tables2 import Column
 from haystack.query import SearchQuerySet
 
@@ -105,6 +106,34 @@ class DebaterFilter(FilterSet):
             "school__name": ["icontains"],
             "status": ["exact"],
         }
+
+
+class DebaterOutreachFilter(DebaterFilter):
+    region = ChoiceFilter(
+        label="Region",
+        choices=Debater.REGION_CHOICES,
+        empty_label="All regions",
+        method="filter_region",
+    )
+
+    class Meta(DebaterFilter.Meta):
+        fields = {**DebaterFilter.Meta.fields, "region": ["exact"]}
+
+    def filter_region(self, queryset, name, value):
+        if not value:
+            return queryset
+        if connection.features.supports_json_field_contains:
+            return queryset.filter(region__contains=[value])
+        evaluation_qs = queryset._chain()
+        ids = [
+            debater.pk
+            for debater in evaluation_qs
+            if value in getattr(debater, "region_list", [])
+        ]
+        filtered_qs = queryset._chain()
+        if not ids:
+            return filtered_qs.none()
+        return filtered_qs.filter(pk__in=ids)
 
 
 class DebaterTable(CustomTable):
@@ -427,6 +456,12 @@ class DinoAggregatedDebater:
             self.status = self.debater.get_status_display()
             self.latest_season = self.debater.latest_season
             self.latest_season_year = self._parse_season_year(self.debater.latest_season)
+            if self.debater.show_region:
+                self.region_value = self.debater.region_list
+                self.region_display = self.debater.get_region_display()
+            else:
+                self.region_value = []
+                self.region_display = ""
             return
         
         # Has alias group - need to aggregate
@@ -483,6 +518,12 @@ class DinoAggregatedDebater:
         # Use the latest affiliated season, or fall back to link_debater's season
         self.latest_season = latest_season_affiliated if latest_season_affiliated is not None else link_debater.latest_season
         self.latest_season_year = latest_season_affiliated_year if latest_season_affiliated_year is not None else self._parse_season_year(link_debater.latest_season)
+        if getattr(link_debater, "show_region", False):
+            self.region_value = link_debater.region_list
+            self.region_display = link_debater.get_region_display()
+        else:
+            self.region_value = []
+            self.region_display = ""
     
     def _parse_season_year(self, season):
         """Parse season string to integer year, return None if invalid"""
@@ -511,11 +552,12 @@ class DinoTable(CustomTable):
     first_name = Column(verbose_name="First Name")
     last_name = Column(verbose_name="Last Name")
     school_name = Column(verbose_name="School", orderable=False)
+    region = Column(verbose_name="Region", accessor="region_display", orderable=False)
     latest_year = Column(verbose_name="Last Year Debated", order_by="latest_year")
-    
+
     class Meta:
         # Don't specify model since we're using custom objects
-        fields = ("id", "first_name", "last_name", "school_name", "latest_year")
+        fields = ("id", "first_name", "last_name", "school_name", "region", "latest_year")
         attrs = {"class": "table table-striped"}
         order_by = "latest_year"
     
@@ -566,7 +608,7 @@ class DinoJudgeListView(CustomListView):
     model = Debater
     table_class = DinoTable
     template_name = "debaters/judge_list.html"
-    filterset_class = DebaterFilter
+    filterset_class = DebaterOutreachFilter
 
     def get_queryset(self):
         # Get all dinos with judge opt-in, apply filters first
@@ -617,7 +659,7 @@ class DinoTOListView(CustomListView):
     model = Debater
     table_class = DinoTable
     template_name = "debaters/to_list.html"
-    filterset_class = DebaterFilter
+    filterset_class = DebaterOutreachFilter
 
     def get_queryset(self):
         # Get all debaters (any status) with TO opt-in, apply filters first

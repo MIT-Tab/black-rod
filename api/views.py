@@ -2010,16 +2010,27 @@ class DebaterDetailAPIView(APIView):
             soty_history = _trim_entries(soty_history, entry_limit)
             noty_history = _trim_entries(noty_history, entry_limit)
 
+        contact_preferences = {
+            "paradigm_url": debater.paradigm if can_view_paradigm else None,
+            "to_outreach": debater.dino_to_contact_opt_in,
+            "judge_outreach": debater.dino_judge_contact_opt_in and debater.is_dino,
+        }
+        if debater.show_region:
+            label_lookup = dict(Debater.REGION_CHOICES)
+            contact_preferences["regions"] = [
+                {
+                    "value": code,
+                    "label": label_lookup.get(code, code),
+                }
+                for code in debater.region_list
+            ]
+
         payload = {
             "debater": serialize_debater(debater, request),
             "first_season": debater.first_season,
             "latest_season": debater.latest_season,
             "is_dino": debater.is_dino,
-            "contact_preferences": {
-                "paradigm_url": debater.paradigm if can_view_paradigm else None,
-                "to_outreach": debater.dino_to_contact_opt_in,
-                "judge_outreach": debater.dino_judge_contact_opt_in and debater.is_dino,
-            },
+            "contact_preferences": contact_preferences,
             "also_debated_under": alias_history,
             "teams": teams_payload,
             "standings": {

@@ -42,6 +42,10 @@ def serialize_debater(debater, request=None):
         "school_name": debater.school.name if debater.school else None,
         "school": school_payload,
     }
+    regions = debater.region_list if getattr(debater, "show_region", False) else []
+    if regions:
+        data["regions"] = regions
+        data["region_display"] = debater.get_region_display()
     if request:
         data["url"] = _absolute_url(request, debater.get_absolute_url())
         data["api_url"] = _absolute_url(

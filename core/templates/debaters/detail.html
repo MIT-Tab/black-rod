@@ -74,6 +74,12 @@
                 </td>
             </tr>
             {% endif %}
+            {% if object.show_region %}
+            <tr>
+                <td>Region</td>
+                <td>{{ object.get_region_display }}</td>
+            </tr>
+            {% endif %}
         </tbody>
     </table>
     {% if also_debated_under %}
