@@ -1,3 +1,5 @@
+import json
+
 from django.conf import settings
 from django.db import models
 from django.shortcuts import reverse
@@ -51,6 +53,15 @@ class Debater(models.Model):
     VARSITY = 1
     DINO = 2
     STATUS = ((VARSITY, "Varsity"), (NOVICE, "Novice"), (DINO, "Dino"))
+    REGION_CHOICES = (
+        ("north", "North"),
+        ("south", "South"),
+        ("central", "Central"),
+        ("midwest", "Midwest"),
+        ("west", "West"),
+        ("online", "Online"),
+        ("other", "Other"),
+    )
     status = models.IntegerField(choices=STATUS, default=VARSITY)
     dino_to_contact_opt_in = models.BooleanField(
         default=False,
@@ -59,6 +70,11 @@ class Debater(models.Model):
     dino_judge_contact_opt_in = models.BooleanField(
         default=False,
         help_text="If enabled, tournaments know this DINO is open to judging outreach.",
+    )
+    region = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Optional location tags we only show alongside outreach opt-ins.",
     )
 
     def save(self, *args, **kwargs):
@@ -71,6 +87,12 @@ class Debater(models.Model):
         # Only clear judge opt-in for non-dinos; TO opt-in is available for all statuses
         if self.status != self.DINO:
             self.dino_judge_contact_opt_in = False
+
+        if isinstance(self.region, str):
+            self.region = [self.region] if self.region else []
+
+        if not self.is_open_to_outreach:
+            self.region = []
 
         super().save(*args, **kwargs)
 
@@ -86,6 +108,33 @@ class Debater(models.Model):
     @property
     def is_dino(self):
         return self.status == self.DINO
+
+    @property
+    def is_open_to_outreach(self):
+        return bool(self.dino_to_contact_opt_in or self.dino_judge_contact_opt_in)
+
+    @property
+    def show_region(self):
+        return bool(self.region_list and self.is_open_to_outreach)
+
+    @property
+    def region_list(self):
+        if isinstance(self.region, list):
+            return self.region
+        if isinstance(self.region, str):
+            try:
+                parsed = json.loads(self.region)
+                if isinstance(parsed, list):
+                    return parsed
+            except json.JSONDecodeError:
+                pass
+            return [self.region] if self.region else []
+        return list(self.region or [])
+
+    def get_region_display(self):
+        mapping = dict(self.REGION_CHOICES)
+        labels = [mapping.get(code, code) for code in self.region_list]
+        return ", ".join(labels)
 
     def get_absolute_url(self):
         return reverse("core:debater_detail", kwargs={"pk": self.id})

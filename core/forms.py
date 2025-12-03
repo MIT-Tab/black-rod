@@ -816,6 +816,13 @@ class DebaterProfileEditForm(forms.ModelForm):
         label="I'm open to judging outreach",
         help_text="Check this if you'd like tournaments to reach out when they need judges. (Dinos only)",
     )
+    region = forms.MultipleChoiceField(
+        required=False,
+        label="Where are you located?",
+        choices=list(Debater.REGION_CHOICES),
+        help_text="Let tournaments know your general region for outreach planning.",
+        widget=forms.SelectMultiple(attrs={'class': 'form-control select2-multi'}),
+    )
     paradigm = forms.URLField(
         required=False,
         label="Paradigm (Google Doc Link)",
@@ -834,6 +841,7 @@ class DebaterProfileEditForm(forms.ModelForm):
             'paradigm',
             'dino_to_contact_opt_in',
             'dino_judge_contact_opt_in',
+            'region',
         ]
         labels = {
             'first_name': 'First Name',
@@ -844,6 +852,7 @@ class DebaterProfileEditForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.show_to_contact_opt_in = True  # Always show TO opt-in
         self.show_judge_contact_opt_in = self._should_show_judge_contact_field()
+        self.show_region_field = self._should_show_region_field()
 
         # Status select setup
         self.fields['status'].label = "Status"
@@ -879,11 +888,18 @@ class DebaterProfileEditForm(forms.ModelForm):
 
         # TO opt-in always gets form-check-input
         self.fields['dino_to_contact_opt_in'].widget.attrs['class'] = 'form-check-input'
-        
+
         # Judge opt-in gets form-check-input and dino-only data attribute
         judge_field = self.fields['dino_judge_contact_opt_in']
         judge_field.widget.attrs['class'] = 'form-check-input'
         judge_field.widget.attrs['data-dino-only'] = 'true'
+
+        region_field = self.fields['region']
+        region_field.widget.attrs.setdefault('class', 'form-control')
+        region_field.widget.attrs['class'] += ' select2-multi'
+        region_field.widget.attrs.setdefault('data-placeholder', 'Select regions')
+        region_field.choices = list(Debater.REGION_CHOICES)
+        region_field.initial = self.instance.region_list
 
     def _season_choices(self, start_year, min_year, include_value=None):
         def format_label(year_value):
@@ -919,6 +935,23 @@ class DebaterProfileEditForm(forms.ModelForm):
         except (TypeError, ValueError):
             return status_source == Debater.DINO
 
+    def _get_boolean_value(self, field_name):
+        if self.is_bound:
+            value = self.data.get(self.add_prefix(field_name))
+        elif field_name in self.initial:
+            value = self.initial[field_name]
+        elif hasattr(self.instance, field_name):
+            value = getattr(self.instance, field_name)
+        else:
+            value = False
+
+        if isinstance(value, str):
+            return value.lower() in {'true', '1', 'on', 'yes'}
+        return bool(value)
+
+    def _should_show_region_field(self):
+        return self._get_boolean_value('dino_to_contact_opt_in') or self._get_boolean_value('dino_judge_contact_opt_in')
+
     def clean_paradigm(self):
         paradigm = self.cleaned_data.get('paradigm')
 
@@ -952,5 +985,12 @@ class DebaterProfileEditForm(forms.ModelForm):
             cleaned_data['dino_judge_contact_opt_in'] = False
 
         cleaned_data['status'] = status_value
+
+        cleaned_data['region'] = cleaned_data.get('region') or []
+
+        to_outreach = cleaned_data.get('dino_to_contact_opt_in')
+        judge_outreach = cleaned_data.get('dino_judge_contact_opt_in')
+        if not (to_outreach or judge_outreach):
+            cleaned_data['region'] = []
 
         return cleaned_data

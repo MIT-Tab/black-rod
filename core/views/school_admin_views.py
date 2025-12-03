@@ -154,6 +154,11 @@ class SchoolAdminDebaterForm(forms.ModelForm):
         required=False,
         help_text="Link this debater to an existing alias group if applicable.",
     )
+    region = forms.MultipleChoiceField(
+        required=False,
+        choices=list(Debater.REGION_CHOICES),
+        widget=forms.SelectMultiple(attrs={'class': 'form-control select2-multi'}),
+    )
 
     DINO_CONTACT_FIELDS = {
         'dino_to_contact_opt_in': {
@@ -181,6 +186,7 @@ class SchoolAdminDebaterForm(forms.ModelForm):
             'alias_group',
             'dino_to_contact_opt_in',
             'dino_judge_contact_opt_in',
+            'region',
         )
 
     def __init__(self, *args, school=None, user=None, **kwargs):
@@ -188,6 +194,7 @@ class SchoolAdminDebaterForm(forms.ModelForm):
         self.school = school
         self.user = user
         self.show_dino_contact_fields = self._should_show_dino_contact_fields()
+        self.show_region_field = self._should_show_region_field()
 
         current_year = int(settings.CURRENT_SEASON)
         six_years_ago = current_year - 6
@@ -214,6 +221,16 @@ class SchoolAdminDebaterForm(forms.ModelForm):
             if not self.show_dino_contact_fields:
                 field.widget = forms.HiddenInput()
 
+        region_field = self.fields['region']
+        region_field.required = False
+        region_field.label = "Outreach Region"
+        region_field.help_text = "Let tournaments filter outreach lists by location."
+        region_field.widget.attrs.setdefault('class', 'form-control')
+        region_field.widget.attrs['class'] += ' select2-multi'
+        region_field.widget.attrs.setdefault('data-placeholder', 'Select regions')
+        region_field.choices = list(Debater.REGION_CHOICES)
+        region_field.initial = self.instance.region_list
+
     def _should_show_dino_contact_fields(self):
         if getattr(self.instance, "status", None) == Debater.DINO:
             return True
@@ -234,6 +251,19 @@ class SchoolAdminDebaterForm(forms.ModelForm):
             return int(initial_status) == Debater.DINO
         except (TypeError, ValueError):
             return initial_status == Debater.DINO
+
+    def _get_outreach_value(self, field_name):
+        if self.is_bound:
+            value = self.data.get(field_name)
+        else:
+            value = getattr(self.instance, field_name, False)
+
+        if isinstance(value, str):
+            return value.lower() in {'true', '1', 'on', 'yes'}
+        return bool(value)
+
+    def _should_show_region_field(self):
+        return self._get_outreach_value('dino_to_contact_opt_in') or self._get_outreach_value('dino_judge_contact_opt_in')
 
     def clean(self):
         cleaned_data = super().clean()
@@ -256,6 +286,11 @@ class SchoolAdminDebaterForm(forms.ModelForm):
         if status != Debater.DINO:
             for field_name in self.DINO_CONTACT_FIELDS:
                 cleaned_data[field_name] = False
+
+        cleaned_data['region'] = cleaned_data.get('region') or []
+
+        if not (cleaned_data.get('dino_to_contact_opt_in') or cleaned_data.get('dino_judge_contact_opt_in')):
+            cleaned_data['region'] = []
 
         return cleaned_data
 
