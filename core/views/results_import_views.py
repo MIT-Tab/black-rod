@@ -63,13 +63,15 @@ class TournamentDataEntryView(PermissionRequiredMixin, View):
         "novice_speakers": "Novice Speakers",
         "unplaced_teams": "Non-placing Teams",
     }
-
     def __init__(self, *args, **kwargs):
         if "_api_handler" in kwargs:
             self._api_handler = kwargs.pop("_api_handler")
         if "_tournament" in kwargs:
             self._tournament = kwargs.pop("_tournament")
         super().__init__(*args, **kwargs)
+
+    def _debug_log(self, *args, **kwargs):  # No-op placeholder to avoid attribute errors
+        return None
 
     def get_api_handler(self):
         if self._api_handler is None:
@@ -266,10 +268,17 @@ class TournamentDataEntryView(PermissionRequiredMixin, View):
     def post(self, request, *args, **kwargs):
         tournament = self._get_tournament()
         has_api = self.has_api_data()
+        self._debug_log("POST start", {
+            "has_api": has_api,
+            "tournament": getattr(tournament, "id", None),
+            "temp_tid_keys": [k for k in request.POST.keys() if "temp_tid_" in request.POST.get(k, "")],
+            "temp_school_keys": [k for k in request.POST.keys() if "temp_school_" in request.POST.get(k, "")],
+        })
         try:
             with transaction.atomic():
                 return self._handle_post_request(request, tournament, has_api)
         except FormsetValidationError as exc:
+            self._debug_log("FormsetValidationError", {"error_tab": exc.context.get("error_tab")})
             return render(request, self.template_name, exc.context)
 
     def _handle_post_request(self, request, tournament, has_api):
@@ -282,18 +291,82 @@ class TournamentDataEntryView(PermissionRequiredMixin, View):
         modified_post = request.POST
         
         if has_api:
-            schools_formset = SchoolCreationFormset(request.POST, prefix='schools')
+            compacted_post = self._compact_schools_post(request.POST)
+            schools_post = compacted_post if compacted_post is not None else request.POST
+            schools_formset = SchoolCreationFormset(schools_post, prefix='schools')
             if not schools_formset.is_valid():
-                sanitized_post = self._replace_temp_ids_in_post(request.POST, {})
-                sanitized_post = self._replace_temp_debater_ids_in_post(sanitized_post, {})
-                formsets = {'schools': schools_formset}
-                for tab_key, (formset_class, prefix) in self.formset_config.items():
-                    if tab_key != 'schools':
-                        formsets[tab_key] = formset_class(sanitized_post, prefix=prefix)
-                
-                context = self._build_context(tournament, formsets, has_api)
-                self._annotate_error_context(context, "schools")
-                raise FormsetValidationError(context)
+                if self._schools_form_blank(request.POST):
+                    # User didn't touch schools; treat as no-op and continue
+                    self._debug_log("schools_form_blank_skip", {
+                        "total_forms": schools_formset.total_form_count(),
+                        "non_form_errors": schools_formset.non_form_errors(),
+                    })
+                    schools_formset = SchoolCreationFormset(initial=[], prefix='schools')
+                    formsets = {'schools': schools_formset}
+                    modified_post = request.POST
+                else:
+                    rebuilt_from_initial = self._rebuild_schools_with_initial_overrides(request.POST, tournament)
+                    if rebuilt_from_initial is not None:
+                        retry_from_initial = SchoolCreationFormset(rebuilt_from_initial, prefix='schools')
+                        if retry_from_initial.is_valid():
+                            self._debug_log("schools_form_rebuilt_overrides_ok", {
+                                "count": retry_from_initial.total_form_count()
+                            })
+                            schools_formset = retry_from_initial
+                            modified_post = rebuilt_from_initial
+                        else:
+                            self._debug_log("schools_form_rebuilt_overrides_failed", {"errors": retry_from_initial.errors})
+                    patched_post = self._fill_missing_school_fields(request.POST, tournament)
+                    if patched_post is not None:
+                        retry_formset = SchoolCreationFormset(patched_post, prefix='schools')
+                        if retry_formset.is_valid():
+                            self._debug_log("schools_form_patched_with_initial", {
+                                "count": retry_formset.total_form_count()
+                            })
+                            schools_formset = retry_formset
+                            modified_post = patched_post
+                        else:
+                            self._debug_log("schools_form_patch_failed", {"errors": retry_formset.errors})
+                    rebuilt_post = self._rebuild_schools_post_with_initial(request.POST)
+                    if rebuilt_post:
+                        schools_formset = SchoolCreationFormset(rebuilt_post, prefix='schools')
+                        if schools_formset.is_valid():
+                            self._debug_log("schools_form_rebuilt_with_initial", {
+                                "count": schools_formset.total_form_count()
+                            })
+                        else:
+                            self._debug_log("schools_form_rebuild_failed", {"errors": schools_formset.errors})
+                if not schools_formset.is_valid():
+                    shrunk_post = self._shrink_schools_to_named_rows(request.POST)
+                    if shrunk_post is not None:
+                        shrink_formset = SchoolCreationFormset(shrunk_post, prefix='schools')
+                        if shrink_formset.is_valid():
+                            self._debug_log("schools_form_shrunk_named_rows", {"count": shrink_formset.total_form_count()})
+                            schools_formset = shrink_formset
+                            modified_post = shrunk_post
+                            schools_valid = True
+                    sanitized_post = self._replace_temp_ids_in_post(request.POST, {})
+                    sanitized_post = self._replace_temp_debater_ids_in_post(sanitized_post, {})
+                    formsets = {'schools': schools_formset}
+                    for tab_key, (formset_class, prefix) in self.formset_config.items():
+                        if tab_key != 'schools':
+                            formsets[tab_key] = formset_class(sanitized_post, prefix=prefix)
+                    
+                    context = self._build_context(tournament, formsets, has_api)
+                    self._annotate_error_context(context, "schools")
+                    self._debug_log("schools_form_invalid", {
+                        "errors": schools_formset.errors,
+                        "raw_post_keys": [k for k in request.POST.keys() if k.startswith('schools-')],
+                        "management": {
+                            "TOTAL_FORMS": request.POST.get("schools-TOTAL_FORMS"),
+                            "INITIAL_FORMS": request.POST.get("schools-INITIAL_FORMS"),
+                        },
+                        "names": {k: v for k, v in request.POST.items() if k.startswith("schools-") and "-name" in k},
+                        "initial_len": len(self._get_initial_data("schools", tournament) or []),
+                    })
+                    raise FormsetValidationError(context)
+                else:
+                    schools_valid = True
             
             created_schools = self._process_schools(schools_formset)
             temp_school_id_map = self._build_temp_school_id_map(created_schools)
@@ -301,20 +374,50 @@ class TournamentDataEntryView(PermissionRequiredMixin, View):
             modified_post = self._replace_temp_ids_in_post(request.POST, temp_school_id_map)
             
             formsets = {'schools': schools_formset}
-            debaters_formset = DebaterCreationFormset(modified_post, prefix='debaters')
+            debaters_compacted_post = self._compact_debaters_post(modified_post)
+            debaters_post = debaters_compacted_post if debaters_compacted_post is not None else modified_post
+            debaters_formset = DebaterCreationFormset(debaters_post, prefix='debaters')
             
             is_valid = debaters_formset.is_valid()
             
             if not is_valid:
-                for tab_key, (formset_class, prefix) in self.formset_config.items():
-                    if tab_key not in ['schools', 'debaters']:
-                        initial_data = self._get_initial_data(tab_key, tournament)
-                        formsets[tab_key] = formset_class(initial=initial_data, prefix=prefix)
-                formsets['debaters'] = debaters_formset
-                
-                context = self._build_context(tournament, formsets, has_api)
-                self._annotate_error_context(context, "debaters")
-                raise FormsetValidationError(context)
+                if self._debaters_form_blank(modified_post):
+                    self._debug_log("debaters_form_blank_skip", {
+                        "total_forms": debaters_formset.total_form_count(),
+                    })
+                    debaters_formset = DebaterCreationFormset(initial=[], prefix='debaters')
+                    formsets['debaters'] = debaters_formset
+                else:
+                    shrunk_debaters_post = self._shrink_debaters_to_named_rows(modified_post)
+                    if shrunk_debaters_post is not None:
+                        shrunk_formset = DebaterCreationFormset(shrunk_debaters_post, prefix='debaters')
+                        if shrunk_formset.is_valid():
+                            self._debug_log("debaters_form_shrunk_named_rows", {
+                                "count": shrunk_formset.total_form_count()
+                            })
+                            debaters_formset = shrunk_formset
+                            modified_post = shrunk_debaters_post
+                            is_valid = True
+                        else:
+                            self._debug_log("debaters_form_shrink_failed", {"errors": shrunk_formset.errors})
+                if not is_valid:
+                    for tab_key, (formset_class, prefix) in self.formset_config.items():
+                        if tab_key not in ['schools', 'debaters']:
+                            initial_data = self._get_initial_data(tab_key, tournament)
+                            formsets[tab_key] = formset_class(initial=initial_data, prefix=prefix)
+                    formsets['debaters'] = debaters_formset
+                    
+                    context = self._build_context(tournament, formsets, has_api)
+                    self._annotate_error_context(context, "debaters")
+                    self._debug_log("debaters_form_invalid", {
+                        "errors": debaters_formset.errors,
+                        "management": {
+                            "TOTAL_FORMS": modified_post.get("debaters-TOTAL_FORMS") if hasattr(modified_post, "get") else None,
+                            "INITIAL_FORMS": modified_post.get("debaters-INITIAL_FORMS") if hasattr(modified_post, "get") else None,
+                        },
+                        "names": {k: v for k, v in modified_post.items() if isinstance(k, str) and k.startswith("debaters-") and ("first_name" in k or "last_name" in k)},
+                    })
+                    raise FormsetValidationError(context)
             
             formsets['debaters'] = debaters_formset
             
@@ -323,6 +426,11 @@ class TournamentDataEntryView(PermissionRequiredMixin, View):
             temp_debater_id_map = self._build_temp_debater_id_map(created_debaters)
             
             modified_post = self._replace_temp_debater_ids_in_post(modified_post, temp_debater_id_map)
+            if temp_debater_id_map:
+                self._debug_log("temp_debater_map", {
+                    "map_size": len(temp_debater_id_map),
+                    "keys": list(temp_debater_id_map.keys())[:5],
+                })
         
         all_valid = True
         invalid_tabs = []
@@ -337,6 +445,9 @@ class TournamentDataEntryView(PermissionRequiredMixin, View):
                     invalid_tabs.append(tab_key)
         
         if not all_valid:
+            self._debug_log("formset_invalid", {
+                "invalid_tabs": invalid_tabs,
+            })
             context = self._build_context(tournament, formsets, has_api)
             if invalid_tabs:
                 self._annotate_error_context(context, invalid_tabs[0])
@@ -890,6 +1001,347 @@ class TournamentDataEntryView(PermissionRequiredMixin, View):
         context["error_tab"] = tab_key
         context["error_tab_name"] = label
         context["error_message"] = f"Please fix the errors in the {label} tab before continuing."
+
+    def _schools_form_blank(self, post_data):
+        """
+        Detect whether the schools formset was effectively untouched (no names or existing selections).
+        """
+        for key, value in post_data.items():
+            if not key.startswith("schools-"):
+                continue
+            if any(field in key for field in ["name", "existing_school", "short_name"]):
+                if str(value).strip():
+                    return False
+        return True
+
+    def _rebuild_schools_post_with_initial(self, post_data):
+        """
+        When API initial data exists but only management fields were posted,
+        rebuild a POST-like dict that includes initial school names so validation passes.
+        """
+        initial_schools = self._get_initial_data("schools", self._get_tournament())
+        if not initial_schools:
+            return None
+
+        # If the posted data already has multiple school names, skip rebuild.
+        names_present = any(
+            key.startswith("schools-") and key.endswith("-name") and str(val).strip()
+            for key, val in post_data.items()
+        )
+        if names_present:
+            return None
+
+        from django.http import QueryDict
+
+        rebuilt = QueryDict(mutable=True)
+        # Copy all posted keys first
+        for key, val in post_data.items():
+            rebuilt[key] = val
+
+        total_forms = len(initial_schools)
+        rebuilt["schools-TOTAL_FORMS"] = str(total_forms)
+        rebuilt["schools-INITIAL_FORMS"] = str(total_forms)
+        rebuilt["schools-MIN_NUM_FORMS"] = "0"
+        rebuilt["schools-MAX_NUM_FORMS"] = "500"
+
+        for idx, school_data in enumerate(initial_schools):
+            name = school_data.get("name", "")
+            server_name = school_data.get("server_name", name)
+            rebuilt[f"schools-{idx}-name"] = name
+            rebuilt[f"schools-{idx}-server_name"] = server_name
+            rebuilt[f"schools-{idx}-included_in_oty"] = "on"
+            rebuilt.setdefault(f"schools-{idx}-short_name", "")
+            rebuilt.setdefault(f"schools-{idx}-existing_school", "")
+
+        return rebuilt
+
+    def _fill_missing_school_fields(self, post_data, tournament):
+        """
+        Fill missing school fields from initial API data when some rows are blank.
+        """
+        initial_schools = self._get_initial_data("schools", tournament)
+        if not initial_schools:
+            return None
+
+        from django.http import QueryDict
+        patched = QueryDict(mutable=True)
+        for key, val in post_data.items():
+            patched[key] = val
+
+        total_forms = int(post_data.get("schools-TOTAL_FORMS", len(initial_schools)))
+        # Ensure totals match available initial data length if missing
+        patched["schools-TOTAL_FORMS"] = str(total_forms)
+        patched["schools-INITIAL_FORMS"] = post_data.get("schools-INITIAL_FORMS", str(total_forms))
+
+        for idx in range(total_forms):
+            if idx >= len(initial_schools):
+                continue
+            name_key = f"schools-{idx}-name"
+            server_key = f"schools-{idx}-server_name"
+            include_key = f"schools-{idx}-included_in_oty"
+            existing_key = f"schools-{idx}-existing_school"
+            short_key = f"schools-{idx}-short_name"
+
+            if not patched.get(name_key, "").strip():
+                patched[name_key] = initial_schools[idx].get("name", "")
+            if not patched.get(server_key, "").strip():
+                patched[server_key] = initial_schools[idx].get("server_name", initial_schools[idx].get("name", ""))
+            if include_key not in patched:
+                patched[include_key] = "on"
+            patched.setdefault(existing_key, "")
+            patched.setdefault(short_key, "")
+
+        return patched
+
+    def _compact_schools_post(self, post_data):
+        """
+        Remove empty schools rows and renumber posted data to match only non-empty entries.
+        Returns a new QueryDict or None if no changes needed.
+        """
+        from django.http import QueryDict
+        rows = {}
+        for key, val in post_data.items():
+            if not key.startswith("schools-"):
+                continue
+            parts = key.split("-")
+            if len(parts) < 3:
+                continue
+            try:
+                idx = int(parts[1])
+            except (TypeError, ValueError):
+                continue
+            field = "-".join(parts[2:])
+            rows.setdefault(idx, {})[field] = val
+
+        if not rows:
+            return None
+
+        keep = []
+        for idx, fields in sorted(rows.items()):
+            if any(str(fields.get(f, "")).strip() for f in ["name", "existing_school", "short_name", "server_name"]):
+                keep.append((idx, fields))
+
+        if not keep:
+            return None
+
+        if len(keep) == len(rows):
+            return None
+
+        compacted = QueryDict(mutable=True)
+        # Copy non-school fields verbatim
+        for key, val in post_data.items():
+            if not key.startswith("schools-"):
+                compacted[key] = val
+
+        # Rebuild management counts
+        total = len(keep)
+        compacted["schools-TOTAL_FORMS"] = str(total)
+        compacted["schools-INITIAL_FORMS"] = str(total)
+        compacted["schools-MIN_NUM_FORMS"] = post_data.get("schools-MIN_NUM_FORMS", "0")
+        compacted["schools-MAX_NUM_FORMS"] = post_data.get("schools-MAX_NUM_FORMS", "500")
+
+        for new_idx, (_, fields) in enumerate(keep):
+            for field, val in fields.items():
+                compacted[f"schools-{new_idx}-{field}"] = val
+
+        self._debug_log("schools_post_compacted", {
+            "original_total": post_data.get("schools-TOTAL_FORMS"),
+            "compacted_total": total,
+            "kept_rows": len(keep),
+        })
+        return compacted
+
+    def _rebuild_schools_with_initial_overrides(self, post_data, tournament):
+        """
+        Build a fresh POST for schools using initial API data, but apply any posted overrides
+        (e.g., linking to existing school on the first row).
+        """
+        initial_schools = self._get_initial_data("schools", tournament)
+        if not initial_schools:
+            return None
+
+        from django.http import QueryDict
+        rebuilt = QueryDict(mutable=True)
+
+        # Copy non-school keys
+        for key, val in post_data.items():
+            if not key.startswith("schools-"):
+                rebuilt[key] = val
+
+        total_forms = len(initial_schools)
+        rebuilt["schools-TOTAL_FORMS"] = str(total_forms)
+        rebuilt["schools-INITIAL_FORMS"] = str(total_forms)
+        rebuilt["schools-MIN_NUM_FORMS"] = post_data.get("schools-MIN_NUM_FORMS", "0")
+        rebuilt["schools-MAX_NUM_FORMS"] = post_data.get("schools-MAX_NUM_FORMS", "500")
+
+        for idx, school_data in enumerate(initial_schools):
+            name = post_data.get(f"schools-{idx}-name", school_data.get("name", ""))
+            server_name = post_data.get(f"schools-{idx}-server_name", school_data.get("server_name", name))
+            existing = post_data.get(f"schools-{idx}-existing_school", "")
+            short_name = post_data.get(f"schools-{idx}-short_name", "")
+            included = post_data.get(f"schools-{idx}-included_in_oty", "on")
+
+            rebuilt[f"schools-{idx}-name"] = name
+            rebuilt[f"schools-{idx}-server_name"] = server_name
+            rebuilt[f"schools-{idx}-existing_school"] = existing
+            rebuilt[f"schools-{idx}-short_name"] = short_name
+            rebuilt[f"schools-{idx}-included_in_oty"] = included
+
+        return rebuilt
+
+    def _shrink_schools_to_named_rows(self, post_data):
+        """
+        If multiple management rows exist but only some have names, shrink to the named rows.
+        """
+        from django.http import QueryDict
+        named_rows = []
+        for key, val in post_data.items():
+            if key.startswith("schools-") and key.endswith("-name"):
+                try:
+                    idx = int(key.split("-")[1])
+                except (TypeError, ValueError):
+                    continue
+                if str(val).strip():
+                    named_rows.append((idx, val))
+
+        if not named_rows:
+            return None
+
+        named_rows.sort(key=lambda x: x[0])
+        compacted = QueryDict(mutable=True)
+
+        # Copy non-school fields
+        for key, val in post_data.items():
+            if not key.startswith("schools-"):
+                compacted[key] = val
+
+        total = len(named_rows)
+        compacted["schools-TOTAL_FORMS"] = str(total)
+        compacted["schools-INITIAL_FORMS"] = str(total)
+        compacted["schools-MIN_NUM_FORMS"] = post_data.get("schools-MIN_NUM_FORMS", "0")
+        compacted["schools-MAX_NUM_FORMS"] = post_data.get("schools-MAX_NUM_FORMS", "500")
+
+        for new_idx, (old_idx, name) in enumerate(named_rows):
+            compacted[f"schools-{new_idx}-name"] = name
+            compacted[f"schools-{new_idx}-server_name"] = post_data.get(f"schools-{old_idx}-server_name", name)
+            compacted[f"schools-{new_idx}-existing_school"] = post_data.get(f"schools-{old_idx}-existing_school", "")
+            compacted[f"schools-{new_idx}-short_name"] = post_data.get(f"schools-{old_idx}-short_name", "")
+            compacted[f"schools-{new_idx}-included_in_oty"] = post_data.get(f"schools-{old_idx}-included_in_oty", "on")
+
+        return compacted
+
+    def _compact_debaters_post(self, post_data):
+        """
+        Remove empty debater rows and renumber posted data to match only non-empty entries.
+        """
+        from django.http import QueryDict
+        rows = {}
+        for key, val in post_data.items():
+            if not str(key).startswith("debaters-"):
+                continue
+            parts = str(key).split("-")
+            if len(parts) < 3:
+                continue
+            try:
+                idx = int(parts[1])
+            except (TypeError, ValueError):
+                continue
+            field = "-".join(parts[2:])
+            rows.setdefault(idx, {})[field] = val
+
+        if not rows:
+            return None
+
+        keep = []
+        for idx, fields in sorted(rows.items()):
+            if any(str(fields.get(f, "")).strip() for f in ["first_name", "last_name", "school", "existing_debater"]):
+                keep.append((idx, fields))
+
+        if not keep or len(keep) == len(rows):
+            return None
+
+        compacted = QueryDict(mutable=True)
+        for key, val in post_data.items():
+            if not str(key).startswith("debaters-"):
+                compacted[key] = val
+
+        total = len(keep)
+        compacted["debaters-TOTAL_FORMS"] = str(total)
+        compacted["debaters-INITIAL_FORMS"] = str(total)
+        compacted["debaters-MIN_NUM_FORMS"] = post_data.get("debaters-MIN_NUM_FORMS", "0")
+        compacted["debaters-MAX_NUM_FORMS"] = post_data.get("debaters-MAX_NUM_FORMS", "500")
+
+        for new_idx, (_, fields) in enumerate(keep):
+            for field, val in fields.items():
+                compacted[f"debaters-{new_idx}-{field}"] = val
+
+        self._debug_log("debaters_post_compacted", {
+            "original_total": post_data.get("debaters-TOTAL_FORMS") if hasattr(post_data, "get") else None,
+            "compacted_total": total,
+            "kept_rows": len(keep),
+        })
+        return compacted
+
+    def _shrink_debaters_to_named_rows(self, post_data):
+        """
+        If multiple management rows exist but only some have names or existing links, shrink to those rows.
+        """
+        from django.http import QueryDict
+        named_rows = []
+        for key, val in post_data.items():
+            if not str(key).startswith("debaters-") or not str(key).endswith("-first_name"):
+                continue
+            try:
+                idx = int(str(key).split("-")[1])
+            except (TypeError, ValueError):
+                continue
+            if str(val).strip():
+                named_rows.append(idx)
+
+        # Also include rows with existing_debater even if names blank
+        for key, val in post_data.items():
+            if not str(key).startswith("debaters-") or not str(key).endswith("-existing_debater"):
+                continue
+            try:
+                idx = int(str(key).split("-")[1])
+            except (TypeError, ValueError):
+                continue
+            if str(val).strip():
+                if idx not in named_rows:
+                    named_rows.append(idx)
+
+        if not named_rows:
+            return None
+
+        named_rows.sort()
+        compacted = QueryDict(mutable=True)
+        for key, val in post_data.items():
+            if not str(key).startswith("debaters-"):
+                compacted[key] = val
+
+        total = len(named_rows)
+        compacted["debaters-TOTAL_FORMS"] = str(total)
+        compacted["debaters-INITIAL_FORMS"] = str(total)
+        compacted["debaters-MIN_NUM_FORMS"] = post_data.get("debaters-MIN_NUM_FORMS", "0")
+        compacted["debaters-MAX_NUM_FORMS"] = post_data.get("debaters-MAX_NUM_FORMS", "500")
+
+        for new_idx, old_idx in enumerate(named_rows):
+            for field in ["first_name", "last_name", "school", "existing_debater", "tournament_id", "school_name", "alias_group"]:
+                compacted[f"debaters-{new_idx}-{field}"] = post_data.get(f"debaters-{old_idx}-{field}", "")
+
+        return compacted
+
+    def _debaters_form_blank(self, post_data):
+        """
+        Detect whether the debaters formset was effectively untouched.
+        """
+        for key, value in post_data.items():
+            if not str(key).startswith("debaters-"):
+                continue
+            if any(field in str(key) for field in ["first_name", "last_name", "school", "existing_debater"]):
+                if str(value).strip():
+                    return False
+        return True
 
 
 def get_new_team_form(request):

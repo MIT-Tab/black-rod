@@ -43,6 +43,27 @@ class SchoolForm(forms.ModelForm):
         model = School
         fields = ("name", "short_name", "included_in_oty")
 
+    def clean(self):
+        cleaned = super().clean()
+        existing = cleaned.get("existing_school")
+        name = cleaned.get("name") or ""
+        short_name = cleaned.get("short_name")
+        server_name = cleaned.get("server_name")
+
+        # If name is missing (e.g., tab untouched), fall back to server_name to avoid bogus "required" errors.
+        if not name and server_name:
+            cleaned["name"] = server_name
+            name = server_name
+
+        # If the user is linking or creating without providing a short name, fall back gracefully.
+        if not short_name:
+            if existing and getattr(existing, "short_name", None):
+                cleaned["short_name"] = existing.short_name
+            else:
+                cleaned["short_name"] = name
+
+        return cleaned
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         # Allow short_name to be optional during API imports/linking
