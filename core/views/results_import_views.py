@@ -284,10 +284,12 @@ class TournamentDataEntryView(PermissionRequiredMixin, View):
         if has_api:
             schools_formset = SchoolCreationFormset(request.POST, prefix='schools')
             if not schools_formset.is_valid():
+                sanitized_post = self._replace_temp_ids_in_post(request.POST, {})
+                sanitized_post = self._replace_temp_debater_ids_in_post(sanitized_post, {})
                 formsets = {'schools': schools_formset}
                 for tab_key, (formset_class, prefix) in self.formset_config.items():
                     if tab_key != 'schools':
-                        formsets[tab_key] = formset_class(request.POST, prefix=prefix)
+                        formsets[tab_key] = formset_class(sanitized_post, prefix=prefix)
                 
                 context = self._build_context(tournament, formsets, has_api)
                 self._annotate_error_context(context, "schools")
@@ -320,8 +322,7 @@ class TournamentDataEntryView(PermissionRequiredMixin, View):
             
             temp_debater_id_map = self._build_temp_debater_id_map(created_debaters)
             
-            if temp_debater_id_map:
-                modified_post = self._replace_temp_debater_ids_in_post(modified_post, temp_debater_id_map)
+            modified_post = self._replace_temp_debater_ids_in_post(modified_post, temp_debater_id_map)
         
         all_valid = True
         invalid_tabs = []
@@ -473,15 +474,17 @@ class TournamentDataEntryView(PermissionRequiredMixin, View):
         school_data_for_api = []
         
         for form_data in formset.cleaned_data:
-            if not form_data or not form_data.get('name'):
+            if not form_data or form_data.get('DELETE'):
                 continue
             
-            school_name = form_data['name']
-            server_name = form_data.get('server_name', school_name)
+            school_name = form_data.get('name')
+            if not school_name:
+                continue
             
-            if form_data.get('existing_school'):
-                existing_school = form_data['existing_school']
-                
+            server_name = form_data.get('server_name', school_name)
+            existing_school = form_data.get('existing_school') or form_data.get('_existing_match')
+            
+            if existing_school:
                 if self.has_api_data():
                     SchoolLookup.objects.update_or_create(
                         server_name=server_name,
@@ -491,20 +494,24 @@ class TournamentDataEntryView(PermissionRequiredMixin, View):
                 
                 created_schools[school_name] = existing_school
                 created_schools[server_name] = existing_school
+                continue
+
+            if form_data.get('_skip_creation'):
+                continue
+
+            if self.has_api_data():
+                school_data_for_api.append({
+                    'name': school_name,
+                    'server_name': server_name,
+                    'included_in_oty': form_data.get('included_in_oty', True)
+                })
             else:
-                if self.has_api_data():
-                    school_data_for_api.append({
-                        'name': school_name,
-                        'server_name': server_name,
-                        'included_in_oty': form_data.get('included_in_oty', True)
-                    })
-                else:
-                    school, created = School.objects.get_or_create(
-                        name=school_name,
-                        defaults={'included_in_oty': form_data.get('included_in_oty', True)}
-                    )
-                    created_schools[school_name] = school
-                    created_schools[server_name] = school
+                school, created = School.objects.get_or_create(
+                    name=school_name,
+                    defaults={'included_in_oty': form_data.get('included_in_oty', True)}
+                )
+                created_schools[school_name] = school
+                created_schools[server_name] = school
         
         if school_data_for_api and self.has_api_data():
             api_created_qs = self.get_api_handler().create_schools_from_data(school_data_for_api)
@@ -545,18 +552,12 @@ class TournamentDataEntryView(PermissionRequiredMixin, View):
     def _replace_temp_ids_in_post(self, post_data, temp_school_id_map):
         from core.models.school import School
         
-        if not temp_school_id_map:
-            modified = post_data.copy()
-            if hasattr(modified, '_mutable'):
-                modified._mutable = True
-            return modified
-        
         modified_post = post_data.copy()
         
         if hasattr(modified_post, '_mutable'):
             if not modified_post._mutable:
                 modified_post._mutable = True
-        
+
         for key in list(modified_post.keys()):
             if key.endswith('-school') and not key.endswith('-school_name'):
                 value = modified_post.get(key)
@@ -564,21 +565,24 @@ class TournamentDataEntryView(PermissionRequiredMixin, View):
                     continue
                     
                 prefix = 'temp_school_'
-                if value.startswith(prefix):
-                    if value in temp_school_id_map:
-                        modified_post[key] = temp_school_id_map[value]
-                    else:
-                        school_name = value[len(prefix):].replace('_', ' ')
-                        
-                        school = School.objects.filter(name__iexact=school_name).first()
-                        if not school:
-                            school_name_no_space = value[len(prefix):]
-                            school = School.objects.filter(name__iexact=school_name_no_space).first()
-                        
-                        if school:
-                            modified_post[key] = str(school.id)
-                        else:
-                            modified_post[key] = ''
+                if not value.startswith(prefix):
+                    continue
+
+                if value in temp_school_id_map:
+                    modified_post[key] = temp_school_id_map[value]
+                    continue
+
+                school_name = value[len(prefix):].replace('_', ' ')
+                
+                school = School.objects.filter(name__iexact=school_name).first()
+                if not school:
+                    school_name_no_space = value[len(prefix):]
+                    school = School.objects.filter(name__iexact=school_name_no_space).first()
+                
+                if school:
+                    modified_post[key] = str(school.id)
+                else:
+                    modified_post[key] = ''
         
         if hasattr(modified_post, '_mutable'):
             modified_post._mutable = True
@@ -600,13 +604,6 @@ class TournamentDataEntryView(PermissionRequiredMixin, View):
         return temp_id_map
 
     def _replace_temp_debater_ids_in_post(self, post_data, temp_debater_id_map):
-        if not temp_debater_id_map:
-            if not hasattr(post_data, '_mutable') or not post_data._mutable:
-                post_data = post_data.copy()
-                if hasattr(post_data, '_mutable'):
-                    post_data._mutable = True
-            return post_data
-        
         if not hasattr(post_data, '_mutable') or not post_data._mutable:
             modified_post = post_data.copy()
             if hasattr(modified_post, '_mutable'):
@@ -616,6 +613,12 @@ class TournamentDataEntryView(PermissionRequiredMixin, View):
         
         replacements_made = 0
         replacements_failed = 0
+        handler_map = {}
+        if self.has_api_data():
+            try:
+                handler_map = self.get_api_handler()._debater_id_map  # noqa: SLF001
+            except Exception:
+                handler_map = {}
         
         for key in list(modified_post.keys()):
             if key.endswith('-speaker') or key.endswith('-debater_one') or key.endswith('-debater_two'):
@@ -624,9 +627,13 @@ class TournamentDataEntryView(PermissionRequiredMixin, View):
                     continue
                     
                 if value.startswith('temp_tid_'):
+                    tid = value[len('temp_tid_'):]
                     if value in temp_debater_id_map:
                         new_value = temp_debater_id_map[value]
                         modified_post[key] = new_value
+                        replacements_made += 1
+                    elif tid and tid in handler_map:
+                        modified_post[key] = str(handler_map[tid])
                         replacements_made += 1
                     else:
                         modified_post[key] = ''
@@ -645,11 +652,11 @@ class TournamentDataEntryView(PermissionRequiredMixin, View):
         debater_data_for_api = []
         
         for form_data in formset.cleaned_data:
-            if not form_data:
+            if not form_data or form_data.get('DELETE'):
                 continue
             
-            existing_debater = form_data.get('existing_debater')
             tournament_id = form_data.get('tournament_id')
+            existing_debater = form_data.get('existing_debater') or form_data.get('_existing_match')
             
             if existing_debater:
                 if self.has_api_data() and tournament_id:
@@ -659,6 +666,9 @@ class TournamentDataEntryView(PermissionRequiredMixin, View):
                 created_debaters[debater_key] = existing_debater
                 if tournament_id:
                     created_debaters[f"tid_{tournament_id}"] = existing_debater
+                continue
+
+            if form_data.get('_skip_creation'):
                 continue
             
             first_name = form_data.get('first_name')

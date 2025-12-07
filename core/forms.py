@@ -43,6 +43,11 @@ class SchoolForm(forms.ModelForm):
         model = School
         fields = ("name", "short_name", "included_in_oty")
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Allow short_name to be optional during API imports/linking
+        self.fields["short_name"].required = False
+
 
 class DebaterForm(forms.ModelForm):
     school = forms.ModelChoiceField(
@@ -328,7 +333,8 @@ class DebaterCreationFormsetBase(forms.BaseFormSet):
 
             existing_debater = form.cleaned_data.get('existing_debater')
             if existing_debater:
-                form.cleaned_data['DELETE'] = True
+                form.cleaned_data['_existing_match'] = existing_debater
+                form.cleaned_data['_skip_creation'] = True
                 continue
 
             first_name = form.cleaned_data.get('first_name', '').strip()
@@ -340,16 +346,18 @@ class DebaterCreationFormsetBase(forms.BaseFormSet):
 
             signature = (first_name.lower(), last_name.lower(), getattr(school, 'pk', None))
             if signature in seen_signatures:
-                form.cleaned_data['DELETE'] = True
+                form.cleaned_data['_skip_creation'] = True
                 continue
             seen_signatures.add(signature)
 
-            if Debater.objects.filter(
+            existing_match = Debater.objects.filter(
                 first_name__iexact=first_name,
                 last_name__iexact=last_name,
                 school=school,
-            ).exists():
-                form.cleaned_data['DELETE'] = True
+            ).first()
+            if existing_match:
+                form.cleaned_data['_existing_match'] = existing_match
+                form.cleaned_data['_skip_creation'] = True
 
 
 class SchoolCreationFormsetBase(forms.BaseFormSet):
@@ -362,30 +370,34 @@ class SchoolCreationFormsetBase(forms.BaseFormSet):
 
         school_names = []
         for form in self.forms:
-            # Skip forms that don't have cleaned_data or are already marked for deletion
+            if not form.cleaned_data or form.cleaned_data.get('DELETE'):
+                continue
+            name = form.cleaned_data.get('name', '').strip()
+            if name:
+                school_names.append(name)
+
+        existing_schools_by_name = {
+            s.name: s for s in School.objects.filter(name__in=school_names)
+        } if school_names else {}
+
+        for form in self.forms:
             if not form.cleaned_data or form.cleaned_data.get('DELETE'):
                 continue
 
             name = form.cleaned_data.get('name', '').strip()
             existing_school = form.cleaned_data.get('existing_school')
 
-            # If linking to existing school, skip creating new one
+            # If linking to existing school, skip creating new one but keep data
             if existing_school:
-                form.cleaned_data['DELETE'] = True
-                continue
+                form.cleaned_data['_existing_match'] = existing_school
+                form.cleaned_data['_skip_creation'] = True
+            elif name and name in existing_schools_by_name:
+                form.cleaned_data['_existing_match'] = existing_schools_by_name[name]
+                form.cleaned_data['_skip_creation'] = True
 
-            if name:
-                school_names.append(name)
-
-        if school_names:
-            existing_schools = set(School.objects.filter(name__in=school_names).values_list('name', flat=True))
-            for form in self.forms:
-                if not form.cleaned_data or form.cleaned_data.get('DELETE'):
-                    continue
-
-                name = form.cleaned_data.get('name', '').strip()
-                if name in existing_schools:
-                    form.cleaned_data['DELETE'] = True
+            if form.cleaned_data.get('_skip_creation') and hasattr(form, '_errors'):
+                # Allow linking or deduped rows to bypass unique-name validation
+                form._errors.pop('name', None)
 
 IMPORT_FORMSET_PARAMS = {
     'extra': 0,
