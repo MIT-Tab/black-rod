@@ -8,7 +8,8 @@ from django.shortcuts import render
 from django.urls import reverse
 from core.models import (
     COTY, NOTY, SOTY, TOTY, OnlineQUAL,
-    Tournament, Debater, School, Team, TeamResult, SpeakerResult
+    Tournament, Debater, School, Team, TeamResult, SpeakerResult,
+    Round, RoundStats,
 )
 
 def index(request):
@@ -183,9 +184,94 @@ def stats(request):
             'median_novices': median(novice_counts) if novice_counts else 0
         })
 
-    debaters_by_tournament_count = Debater.objects.annotate(
-        tournament_count=Count('speaker_results__tournament', distinct=True)
-    ).filter(tournament_count__gt=0).select_related('school').order_by('-tournament_count')[:10]
+    attendance_sample_size = 200
+    approx_tournament_count = (
+        Count('round_stats__round__tournament', distinct=True)
+        + Count('speaker_results__tournament', distinct=True)
+        + Count('teams__team_results__tournament', distinct=True)
+        + Count('teams__govs__tournament', distinct=True)
+        + Count('teams__opps__tournament', distinct=True)
+    )
+
+    candidate_ids = list(
+        Debater.objects.annotate(
+            approx_tournament_count=approx_tournament_count
+        )
+        .filter(approx_tournament_count__gt=0)
+        .order_by('-approx_tournament_count', 'last_name', 'first_name')
+        .values_list('id', flat=True)[:attendance_sample_size]
+    )
+
+    debaters_by_tournament_count = []
+    if candidate_ids:
+        round_stats_prefetch = Prefetch(
+            'round_stats',
+            queryset=RoundStats.objects.select_related('round__tournament'),
+        )
+        speaker_results_prefetch = Prefetch(
+            'speaker_results',
+            queryset=SpeakerResult.objects.select_related('tournament'),
+        )
+        team_results_prefetch = Prefetch(
+            'team_results',
+            queryset=TeamResult.objects.select_related('tournament'),
+        )
+        gov_rounds_prefetch = Prefetch(
+            'govs', queryset=Round.objects.select_related('tournament')
+        )
+        opp_rounds_prefetch = Prefetch(
+            'opps', queryset=Round.objects.select_related('tournament')
+        )
+        debater_team_prefetch = Prefetch(
+            'teams',
+            queryset=Team.objects.prefetch_related(
+                team_results_prefetch,
+                gov_rounds_prefetch,
+                opp_rounds_prefetch,
+            ),
+        )
+
+        debater_queryset = (
+            Debater.objects.filter(id__in=candidate_ids)
+            .select_related('school')
+            .prefetch_related(
+                debater_team_prefetch,
+                round_stats_prefetch,
+                speaker_results_prefetch,
+            )
+        )
+
+        for debater in debater_queryset:
+            tournaments = set()
+
+            for stat in debater.round_stats.all():
+                if stat.round and stat.round.tournament_id:
+                    tournaments.add(stat.round.tournament_id)
+
+            for speaker_result in debater.speaker_results.all():
+                if speaker_result.tournament_id:
+                    tournaments.add(speaker_result.tournament_id)
+
+            for team in debater.teams.all():
+                for team_result in team.team_results.all():
+                    if team_result.tournament_id:
+                        tournaments.add(team_result.tournament_id)
+                for round_obj in team.govs.all():
+                    if round_obj.tournament_id:
+                        tournaments.add(round_obj.tournament_id)
+                for round_obj in team.opps.all():
+                    if round_obj.tournament_id:
+                        tournaments.add(round_obj.tournament_id)
+
+            tournament_count = len(tournaments)
+            if tournament_count:
+                debater.tournament_count = tournament_count
+                debaters_by_tournament_count.append(debater)
+
+        debaters_by_tournament_count.sort(
+            key=lambda d: (-d.tournament_count, d.last_name, d.first_name)
+        )
+        debaters_by_tournament_count = debaters_by_tournament_count[:10]
 
     teams_by_tournament_count = Team.objects.annotate(
         tournament_count=Count('team_results__tournament', distinct=True)
