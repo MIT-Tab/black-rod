@@ -25,6 +25,8 @@ class QUAL(AbstractStanding):
     PROAMS = 7
     NATIONALS = 8
     NOVICE = 9
+    GENDER_MINORITY = Tournament.GENDER_MINORITY
+    BIPOC = Tournament.BIPOC
 
     QUAL_TYPES = (
         (POINTS, "Points"),
@@ -37,6 +39,8 @@ class QUAL(AbstractStanding):
         (PROAMS, "ProAms"),
         (NATIONALS, "Nationals"),
         (NOVICE, "Novice"),
+        (GENDER_MINORITY, "Gender Minority"),
+        (BIPOC, "BIPOC"),
     )
 
     qual_type = models.IntegerField(choices=QUAL_TYPES, default=POINTS)

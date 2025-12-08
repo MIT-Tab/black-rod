@@ -11,6 +11,7 @@ from core.models.debater import QualPoints
 from core.models.results.team import TeamResult
 from core.models.results.speaker import SpeakerResult
 from core.models.standings.coty import COTY
+from core.models.standings.soty import SOTY
 from core.models.standings.qual import QUAL
 from core.models.standings.toty import TOTY, TOTYReaff
 from core.models.standings.online_qual import OnlineQUAL
@@ -130,6 +131,20 @@ class RankingsUtilsTest(TestCase):
         toty = rankings.update_toty(self.team, "2024")
         # Should return None since no results
         self.assertIsNone(toty)
+
+    def test_update_soty_skips_debaters_without_school(self):
+        """update_soty should not crash when a debater lacks a school."""
+        debater = Debater.objects.create(first_name="No", last_name="School")
+        SpeakerResult.objects.create(
+            tournament=self.tournament,
+            debater=debater,
+            type_of_place=Debater.VARSITY,
+            place=1,
+        )
+
+        rankings.update_soty(debater, "2024")
+
+        self.assertEqual(SOTY.objects.count(), 0)
 
     def test_update_toty_hybrid_team(self):
         """Test update_toty with hybrid team"""

@@ -504,6 +504,17 @@ def _lite_tournament(tournament, request):
 def _tournament_special_notes(tournament):
     name = (tournament.name or "").lower()
     notes = []
+    is_gm_event = (
+        tournament.qual_type == Tournament.GENDER_MINORITY
+        or "gender minority" in name
+        or "gm" in name.split()
+    )
+    is_bipoc_event = tournament.qual_type == Tournament.BIPOC or "bipoc" in name
+    gm_bipoc_autoqual_active = (
+        tournament.gm_bipoc_autoqual_enabled()
+        if hasattr(tournament, "gm_bipoc_autoqual_enabled")
+        else True
+    )
 
     if tournament.qual_type == Tournament.EXPANSION or "bp" in name:
         notes.append(
@@ -513,14 +524,16 @@ def _tournament_special_notes(tournament):
         notes.append(
             "Nationals is championship-only: it does not award season points, only a title and autoqual bids."
         )
-    if tournament.qual_type == Tournament.GENDER_MINORITY or "gender minority" in name or "gm" in name.split():
-        notes.append(
-            "Gender Minority events award COTY/qual points only and are invitationals."
-        )
-    if "bipoc" in name:
-        notes.append(
-            "BIPOC invitational weekends award COTY (qual) points only."
-        )
+    if is_gm_event:
+        gm_note = "Gender Minority invitationals award COTY/qual points only"
+        if gm_bipoc_autoqual_active:
+            gm_note += " and autoqual finalists."
+        notes.append(gm_note)
+    if is_bipoc_event:
+        bipoc_note = "BIPOC invitationals award COTY/qual points only"
+        if gm_bipoc_autoqual_active:
+            bipoc_note += " and autoqual finalists."
+        notes.append(bipoc_note)
     return notes
 
 
@@ -537,6 +550,7 @@ def _tournament_oty_payload(tournament):
 
     if (
         tournament.qual_type == Tournament.GENDER_MINORITY
+        or tournament.qual_type == Tournament.BIPOC
         or "gender minority" in name
         or "gm" in name.split()
         or "bipoc" in name

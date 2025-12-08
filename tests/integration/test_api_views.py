@@ -425,7 +425,7 @@ class APIScheduleViewTest(TestCase):
             toty=False,
             soty=False,
             qual=True,
-            qual_type=Tournament.GENDER_MINORITY,
+            qual_type=Tournament.BIPOC,
         )
 
     def test_schedule_structure_matches_html(self):
@@ -460,7 +460,35 @@ class APIScheduleViewTest(TestCase):
             for item in week['tournaments']
             if "GM" in item['tournament']['name']
         )
-        self.assertIn('gender minority', ' '.join(note.lower() for note in gm_entry['otys']['notes']))
+        notes_text = ' '.join(note.lower() for note in gm_entry['otys']['notes'])
+        self.assertIn('bipoc', notes_text)
+        self.assertIn('autoqual', notes_text)
+
+    def test_old_season_bipoc_no_autoqual_note(self):
+        Tournament.objects.create(
+            name="Legacy BIPOC Invitational",
+            manual_name="Legacy BIPOC Invitational",
+            host=self.school_other,
+            date=date(2024, 11, 15),
+            season="2024",
+            toty=False,
+            soty=False,
+            qual=True,
+            qual_type=Tournament.BIPOC,
+        )
+
+        response = self.client.get('/api/schedule/?season=2024')
+        self.assertEqual(response.status_code, 200)
+        data = json.loads(response.content)
+        november = next(block for block in data['months'] if block['display'] == 'November')
+        legacy_entry = next(
+            item for week in november['weeks']
+            for item in week['tournaments']
+            if "Legacy BIPOC Invitational" in item['tournament']['name']
+        )
+        notes_text = ' '.join(note.lower() for note in legacy_entry['otys']['notes'])
+        self.assertIn('bipoc', notes_text)
+        self.assertNotIn('autoqual', notes_text)
 
     def test_custom_season(self):
         other_season = str(int(self.season) - 1)

@@ -1,5 +1,5 @@
 # pylint: disable=import-outside-toplevel
-from datetime import date
+from datetime import date, timedelta
 import pytest
 from django.test import TestCase
 from django.db.utils import IntegrityError
@@ -264,8 +264,6 @@ class TournamentModelTest(TestCase):
         self.assertEqual(tournament1.name, "Harvard University")
 
         # Create second tournament from same host - should get suffix
-        from datetime import timedelta
-
         tournament2 = Tournament.objects.create(
             name="Harvard Tournament 2",
             host=self.school,
@@ -274,6 +272,52 @@ class TournamentModelTest(TestCase):
             qual_type=Tournament.POINTS,
         )
         self.assertEqual(tournament2.name, "Harvard University II")
+
+    def test_gm_and_bipoc_defaults(self):
+        """Gender Minority and BIPOC invitationals behave like GM with autoqual finals."""
+        gm = Tournament.objects.create(
+            name="GM Invitational",
+            host=self.school,
+            date=date(2025, 1, 1),
+            season="2025",
+            qual_type=Tournament.GENDER_MINORITY,
+        )
+        self.assertFalse(gm.toty)
+        self.assertFalse(gm.soty)
+        self.assertTrue(gm.qual)
+        self.assertEqual(gm.autoqual_bar, 2)
+
+        bipoc = Tournament.objects.create(
+            name="BIPOC Invitational",
+            host=self.school,
+            date=date(2025, 1, 2),
+            season="2025",
+            qual_type=Tournament.BIPOC,
+        )
+        self.assertFalse(bipoc.toty)
+        self.assertFalse(bipoc.soty)
+        self.assertTrue(bipoc.qual)
+        self.assertEqual(bipoc.autoqual_bar, 2)
+
+    def test_gm_bipoc_autoqual_cutoff(self):
+        """GM/BIPOC finals autoquals do not apply before the 2025-2026 season."""
+        gm_old = Tournament.objects.create(
+            name="GM Invitational",
+            host=self.school,
+            date=date(2024, 1, 1),
+            season="2024",
+            qual_type=Tournament.GENDER_MINORITY,
+        )
+        self.assertEqual(gm_old.autoqual_bar, 0)
+
+        bipoc_old = Tournament.objects.create(
+            name="BIPOC Invitational",
+            host=self.school,
+            date=date(2024, 1, 2),
+            season="2024",
+            qual_type=Tournament.BIPOC,
+        )
+        self.assertEqual(bipoc_old.autoqual_bar, 0)
 
 
 @pytest.mark.django_db

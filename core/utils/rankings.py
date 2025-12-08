@@ -14,6 +14,12 @@ from core.models.standings.soty import SOTY
 from core.models.standings.toty import TOTY, TOTYReaff
 
 
+def _school_included_in_oty(debater):
+    """Return True if the debater has a school and it is eligible for OTY."""
+    school = getattr(debater, "school", None)
+    return bool(school and getattr(school, "included_in_oty", False))
+
+
 def get_qualled_debaters(school, season):
     qualled_debaters = [
         q.debater for q in QUAL.objects.filter(debater__school=school, season=season)
@@ -61,9 +67,10 @@ def update_toty(team, season=settings.CURRENT_SEASON):
         TOTY.objects.filter(season=season).filter(team=team).delete()
         return
 
-    if team.debaters.first() and not team.debaters.first().school.included_in_oty:
+    first_debater = team.debaters.first()
+    if first_debater and not _school_included_in_oty(first_debater):
         TOTY.objects.filter(
-            season=season, team__debaters__school=team.debaters.first().school
+            season=season, team__debaters__school=first_debater.school
         ).delete()
         return
 
@@ -144,8 +151,8 @@ def update_soty(debater, season=settings.CURRENT_SEASON):
         SOTY.objects.filter(season=season).filter(debater=debater).delete()
         return
 
-    if not debater.school.included_in_oty:
-        SOTY.objects.filter(season=season, debater__school=debater.school).delete()
+    if not _school_included_in_oty(debater):
+        SOTY.objects.filter(season=season, debater=debater).delete()
         return
 
     results = (
@@ -221,8 +228,8 @@ def update_noty(debater, season=settings.CURRENT_SEASON):
         debater.delete()
         return
 
-    if not debater.school.included_in_oty:
-        NOTY.objects.filter(season=season, debater__school=debater.school).delete()
+    if not _school_included_in_oty(debater):
+        NOTY.objects.filter(season=season, debater=debater).delete()
 
         return
 
@@ -283,7 +290,7 @@ def update_qual_points(team, season=settings.CURRENT_SEASON):
             .filter(team__debaters=debater)
         )
 
-        if not debater.school.included_in_oty:
+        if not _school_included_in_oty(debater):
             if season == settings.CURRENT_SEASON:
                 QUAL.objects.filter(season=season, debater__school=debater.school).delete()
                 QualPoints.objects.filter(
@@ -363,7 +370,7 @@ def update_qual_points(team, season=settings.CURRENT_SEASON):
                 )
 
     for debater in team.debaters.all():
-        if not debater.school.included_in_oty:
+        if not _school_included_in_oty(debater):
             continue
 
         coty = COTY.objects.filter(season=season).filter(school=debater.school).first()
@@ -455,7 +462,7 @@ def update_online_quals(team, season=settings.CURRENT_SEASON):
 
         online_qual = OnlineQUAL.objects.filter(season=season, debater=debater).first()
 
-        if len(markers) == 0 or not debater.school.included_in_oty:
+        if len(markers) == 0 or not _school_included_in_oty(debater):
             if online_qual:
                 online_qual.delete()
             continue
@@ -499,7 +506,7 @@ def update_online_quals(team, season=settings.CURRENT_SEASON):
                 )
 
     for debater in team.debaters.all():
-        if not debater.school.included_in_oty:
+        if not _school_included_in_oty(debater):
             continue
 
         coty = COTY.objects.filter(season=season).filter(school=debater.school).first()

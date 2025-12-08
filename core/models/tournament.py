@@ -106,6 +106,7 @@ class Tournament(models.Model):
     ONLINE_POINTS = 12
     ONLINE_PROAMS_POINTS = 13
     ONLINE_GM_POINTS = 14
+    BIPOC = 15
 
     QUAL_TYPES = (
         (POINTS, "Regular (Points)"),
@@ -119,6 +120,7 @@ class Tournament(models.Model):
         (NATIONALS, "Nationals"),
         (NOVICE, "Novice"),
         (GENDER_MINORITY, "Gender Minority"),
+        (BIPOC, "BIPOC"),
         (ONLINE, "Online No Points"),
         (ONLINE_POINTS, "Online Points"),
         (ONLINE_PROAMS_POINTS, "Online Proams Points"),
@@ -206,7 +208,16 @@ class Tournament(models.Model):
             "soty": False,
             "noty": False,
             "qual": True,
+            "autoqual_bar": 2,
             "suffix": " (Gender Minority)",
+        },
+        BIPOC: {
+            "toty": False,
+            "soty": False,
+            "noty": False,
+            "qual": True,
+            "autoqual_bar": 2,
+            "suffix": " (BIPOC)",
         },
         ONLINE: {
             "toty": False,
@@ -346,7 +357,30 @@ class Tournament(models.Model):
                 else:
                     setattr(self, key, value)
 
+        # GM/BIPOC finals autoquals only apply for seasons at or after AUTOQUAL_START_SEASON
+        start_season = getattr(settings, "GM_BIPOC_AUTOQUAL_START_SEASON", 2025)
+        try:
+            season_int = int(self.season)
+        except (TypeError, ValueError):
+            season_int = None
+
+        if self.qual_type in (self.GENDER_MINORITY, self.BIPOC):
+            if season_int is not None and season_int < start_season:
+                self.autoqual_bar = 0
+            else:
+                # Preserve configured autoqual bar for current/future seasons
+                self.autoqual_bar = self.TOURNAMENT_TYPES[self.qual_type].get(
+                    "autoqual_bar", self.autoqual_bar
+                )
+
         super().save(*args, **kwargs)
 
     class Meta:
         ordering = ("date",)
+
+    def gm_bipoc_autoqual_enabled(self):
+        """Return True if GM/BIPOC finals autoquals should apply for this season."""
+        try:
+            return int(self.season) >= getattr(settings, "GM_BIPOC_AUTOQUAL_START_SEASON", 2025)
+        except (TypeError, ValueError):
+            return True
