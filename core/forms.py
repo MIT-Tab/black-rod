@@ -250,6 +250,12 @@ class TournamentForm(forms.ModelForm):
 
     season = forms.ChoiceField(choices=settings.SEASONS, widget=forms.Select())
 
+    short_name = forms.CharField(
+        required=False,
+        max_length=128,
+        help_text="Leave blank to auto-generate from host short name",
+    )
+
     class Meta:
         model = Tournament
         fields = (
