@@ -8,6 +8,11 @@ from .debater_alias_group import DebaterAliasGroup
 from .school import School
 
 
+class ActiveDebaterManager(models.Manager):
+    def get_queryset(self):
+        return super().get_queryset().filter(temporary=False)
+
+
 class Debater(models.Model):
     first_name = models.CharField(max_length=32, blank=False)
 
@@ -76,6 +81,10 @@ class Debater(models.Model):
         blank=True,
         help_text="Optional location tags we only show alongside outreach opt-ins.",
     )
+    temporary = models.BooleanField(default=False, db_index=True)
+
+    objects = ActiveDebaterManager()
+    all_objects = models.Manager()
 
     def save(self, *args, **kwargs):
         if not self.pk:
@@ -104,6 +113,11 @@ class Debater(models.Model):
     def name(self):
         name = f"{self.first_name} {self.last_name}"
         return name.strip()
+
+    @property
+    def display_name(self):
+        base = self.name
+        return f"{base} (New)" if self.temporary else base
 
     @property
     def is_dino(self):
@@ -140,7 +154,7 @@ class Debater(models.Model):
         return reverse("core:debater_detail", kwargs={"pk": self.id})
 
     def __str__(self):
-        return self.name
+        return self.display_name
 
 
 class QualPoints(models.Model):

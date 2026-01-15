@@ -1,5 +1,12 @@
 <div class="tab-pane fade {% if is_active %}show active{% endif %}" id="{{ tab_id }}-pane" role="tabpanel">
     {{ formset.management_form }}
+    {% if formset.non_form_errors %}
+        <div class="alert alert-danger">
+            {% for error in formset.non_form_errors %}
+                <div>{{ error }}</div>
+            {% endfor %}
+        </div>
+    {% endif %}
     <div class="formset-controls mb-3">
         <button type="button" class="btn btn-success btn-sm add-form-btn" data-tab="{{ tab_id }}">
             <i class="fas fa-plus"></i> Add {{ item_name }}

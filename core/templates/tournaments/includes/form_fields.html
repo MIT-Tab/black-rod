@@ -1,4 +1,6 @@
 {% load crispy_forms_tags %}
+{# Hidden management fields #}
+{% if form.id %}{{ form.id }}{% endif %}
 {% if form.ORDER %}{{ form.ORDER }}{% endif %}
 {% if form.DELETE %}{{ form.DELETE }}{% endif %}
 

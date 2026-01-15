@@ -33,18 +33,6 @@ export function initializeDataEntryForm() {
       // Let the form submit normally
     });
     
-    // Initialize dropdown population for API data AFTER select2 initializes
-    if (window.hasApiData) {
-      // Wait for select2 to initialize, then inject our new entity options
-      setTimeout(() => {
-        injectNewEntityOptions();
-        
-        // Verify the options are visible after a short delay
-        setTimeout(() => {
-          verifyNewEntityOptions();
-        }, 500);
-      }, 500);
-    }
   });
 }
 
@@ -68,100 +56,6 @@ function initializeSortableFormsets() {
         updateDisplayOrder($tbody);
       }
     });
-  });
-}
-
-/**
- * Inject new entity options into select dropdowns
- * Runs after select2 initialization to add newly created entities from API
- */
-function injectNewEntityOptions() {
-  // For each team/speaker dropdown, check if it has data-new-entity attrs
-  const debaterSelects = $('select[name*="debater_one"], select[name*="debater_two"], select[name*="speaker"]');
-  
-  debaterSelects.each(function processDebaterSelect() {
-    const $select = $(this);
-    const newEntityName = $select.attr('data-new-entity-name');
-    const newEntityId = $select.attr('data-new-entity-id');
-
-    if (newEntityName && newEntityId) {
-      const optionText = `${newEntityName} (New)`;
-      
-      // Check if select2 is initialized
-      if ($select.hasClass('select2-hidden-accessible')) {
-        // Add the option if it doesn't exist
-        if ($select.find(`option[value="${newEntityId}"]`).length === 0) {
-          const newOption = new Option(optionText, newEntityId, true, true);
-          $select.append(newOption);
-        } else {
-          // Option exists, just select it
-          $select.val(newEntityId);
-        }
-        // Trigger change to update select2 display
-        $select.trigger('change.select2');
-      }
-    }
-  });
-  
-  // Similar logic for school dropdowns in debater tab
-  const schoolSelects = $('#debaters-table select[name*="school"]');
-  
-  schoolSelects.each(function processSchoolSelect() {
-    const $select = $(this);
-    const newEntityName = $select.attr('data-new-entity-name');
-    const newEntityId = $select.attr('data-new-entity-id');
-    
-    if (newEntityName && newEntityId) {
-      const optionText = `${newEntityName} (New)`;
-      
-      if ($select.hasClass('select2-hidden-accessible')) {
-        if ($select.find(`option[value="${newEntityId}"]`).length === 0) {
-          const newOption = new Option(optionText, newEntityId, true, true);
-          $select.append(newOption);
-        } else {
-          $select.val(newEntityId);
-        }
-        $select.trigger('change.select2');
-      }
-    }
-  });
-}
-
-/**
- * Verify that new entity options are properly selected
- * Runs after injection to ensure dropdowns reflect newly created entities
- */
-function verifyNewEntityOptions() {
-  const newDebaters = window.NEW_ENTITIES?.debaters || {};
-  
-  $('select[name*="debater_one"], select[name*="debater_two"], select[name*="speaker"]').each(function verify() {
-    const $select = $(this);
-    const $row = $select.closest('tr');
-    const selectName = $select.attr('name');
-    
-    let tournamentIdField;
-    if (selectName.includes('debater_one')) {
-      tournamentIdField = $row.find('input[name*="debater_one_tournament_id"]');
-    } else if (selectName.includes('debater_two')) {
-      tournamentIdField = $row.find('input[name*="debater_two_tournament_id"]');
-    } else if (selectName.includes('speaker')) {
-      tournamentIdField = $row.find('input[name*="tournament_id"]');
-    }
-    
-    if (tournamentIdField && tournamentIdField.length > 0) {
-      const tournamentId = tournamentIdField.val();
-      
-      if (tournamentId && newDebaters[tournamentId]) {
-        const tempId = `temp_tid_${tournamentId}`;
-        const currentVal = $select.val();
-        
-        if (currentVal !== tempId) {
-          if ($select.find(`option[value="${tempId}"]`).length > 0) {
-            $select.val(tempId).trigger('change.select2');
-          }
-        }
-      }
-    }
   });
 }
 

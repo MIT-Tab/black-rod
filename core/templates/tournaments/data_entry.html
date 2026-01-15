@@ -4,24 +4,6 @@
 {% load render_bundle from webpack_loader %}
 
 {% block extra_head %}
-<script>
-// Tab configuration accessible to JavaScript
-window.TAB_CONFIG = {
-    'schools': {name: 'Schools', type: 'school', hasGhostPoints: false, prefix: 'schools'},
-    'debaters': {name: 'Debaters', type: 'debater', hasGhostPoints: false, prefix: 'debaters'},
-    'varsity_teams': {name: 'Team', type: 'team', hasGhostPoints: true, prefix: 'varsity_teams'},
-    'varsity_speakers': {name: 'Speaker', type: 'speaker', hasGhostPoints: false, prefix: 'varsity_speakers'},
-    'novice_teams': {name: 'Team', type: 'team', hasGhostPoints: false, prefix: 'novice_teams'},
-    'novice_speakers': {name: 'Speaker', type: 'speaker', hasGhostPoints: false, prefix: 'novice_speakers'},
-    'unplaced_teams': {name: 'Unplaced Team', type: 'team', hasGhostPoints: false, prefix: 'unplaced_teams'}
-};
-
-// New entities from API that need to be tracked
-window.NEW_ENTITIES = {{ new_entities_json|safe }};
-
-// Check has_api_data template variable
-window.hasApiData = {{ has_api_data|yesno:"true,false" }};
-</script>
 {% endblock extra_head %}
 
 

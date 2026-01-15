@@ -384,18 +384,17 @@ class DebaterDeleteView(CustomDeleteView):
 class DebaterAutocomplete(autocomplete.Select2QuerySetView):
     def get_result_label(self, record):
         school_name = record.school.name if record.school else "Unaffiliated"
-        return f"<{record.id}> {record.name} ({school_name})"
+        return f"<{record.id}> {record.display_name} ({school_name})"
 
     def get_queryset(self):
-        qs = None
+        base_manager = (
+            Debater.all_objects if self.request.user.has_perm("core.change_tournament") else Debater.objects
+        )
         if not self.q:
-            qs = Debater.objects
-        if self.q:
-            qs = SearchQuerySet().models(Debater).filter(content=self.q)
-
-            qs = [q.pk for q in qs.all()]
-
-            qs = Debater.objects.filter(id__in=qs)
+            qs = base_manager.all()
+        else:
+            search_ids = [q.pk for q in SearchQuerySet().models(Debater).filter(content=self.q).all()]
+            qs = base_manager.filter(id__in=search_ids)
 
         qs = qs.order_by("-pk")
 
