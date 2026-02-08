@@ -190,6 +190,7 @@ class RecentResultsWidgetView(TemplateView):
                     "school": res.debater.school.name if res.debater.school else "",
                     "place": res.place,
                     "tie": res.tie,
+                    "url": res.debater.get_absolute_url(),
                 }
                 for res in tournament.widget_speakers[:3]
             ]
@@ -268,6 +269,7 @@ class RecentResultsWidgetView(TemplateView):
                                     "school": res.debater.school.name if res.debater.school else "",
                                     "place": res.place,
                                     "tie": res.tie,
+                                    "url": res.debater.get_absolute_url(),
                                 }
                                 for res in tournament.widget_speakers[:3]
                             ],

@@ -134,6 +134,12 @@
             text-decoration: none;
             color: inherit;
         }
+        .speaker-link {
+            display: block;
+            text-decoration: none;
+            color: inherit;
+            width: 100%;
+        }
         .speaker-list {
             list-style: none;
             margin: 0;
@@ -242,10 +248,12 @@
                                     {% for speaker in tournament.speakers %}
                                         <li class="speaker">
                                             <span class="place">#{{ speaker.place }}{% if speaker.tie %}T{% endif %}</span>
-                                            <span>
-                                                <div class="speaker-name">{{ speaker.name }}</div>
-                                                {% if speaker.school %}<div class="speaker-school">{{ speaker.school }}</div>{% endif %}
-                                            </span>
+                                            <a class="speaker-link" href="{{ speaker.url }}" target="_blank" rel="noopener">
+                                                <span>
+                                                    <div class="speaker-name">{{ speaker.name }}</div>
+                                                    {% if speaker.school %}<div class="speaker-school">{{ speaker.school }}</div>{% endif %}
+                                                </span>
+                                            </a>
                                         </li>
                                     {% empty %}
                                         <li class="speaker"><span class="speaker-name">No speaker results yet.</span></li>
