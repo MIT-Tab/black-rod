@@ -233,6 +233,11 @@ urlpatterns = [
         name="all_tournament_autocomplete",
     ),
     path(
+        "core/widgets/recent-results/",
+        tournament_views.RecentResultsWidgetView.as_view(),
+        name="recent_results_widget",
+    ),
+    path(
         "core/tournaments/data_entry",
         results_import_views.TournamentDataEntryView.as_view(),
         name="tournament_dataentry",
