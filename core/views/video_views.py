@@ -1,7 +1,9 @@
 import urllib.parse as urlparse
 from urllib.parse import parse_qs
+import random
 
 from dal import autocomplete
+from django.contrib import messages
 from django.conf import settings
 from django.shortcuts import redirect, reverse
 from django.urls import reverse_lazy
@@ -87,6 +89,40 @@ class VideoListView(CustomListView):
             "class": "btn-success",
         }
     ]
+
+
+class VideoRandomView(View):
+    def get_visible_queryset(self, queryset):
+        user = self.request.user
+
+        if user.is_superuser or user.has_perm("core.view_video"):
+            return queryset
+
+        if user.is_authenticated and user.can_view_private_videos:
+            return queryset.exclude(permissions=Video.DEBATERS_IN_ROUND)
+
+        return queryset.filter(permissions=Video.ALL)
+
+    def get(self, request, *args, **kwargs):
+        filtered_videos = (
+            VideoFilter(request.GET, queryset=Video.objects.all()).qs.distinct()
+        )
+        visible_videos = self.get_visible_queryset(filtered_videos)
+
+        count = visible_videos.count()
+        if count == 0:
+            messages.warning(
+                request,
+                "No results found, or you don't have access to any matching videos.",
+            )
+            video_list_url = reverse("core:video_list")
+            if request.GET:
+                return redirect(f"{video_list_url}?{request.GET.urlencode()}")
+            return redirect(video_list_url)
+
+        random_index = random.randrange(count)
+        video_id = visible_videos.values_list("id", flat=True)[random_index]
+        return redirect("core:video_detail", pk=video_id)
 
 
 class VideoCreateView(CustomCreateView):

@@ -119,6 +119,7 @@ urlpatterns = [
         name="team_autocomplete",
     ),
     path("core/videos/", video_views.VideoListView.as_view(), name="video_list"),
+    path("core/videos/random", video_views.VideoRandomView.as_view(), name="video_random"),
     path(
         "core/videos/<int:pk>",
         video_views.VideoDetailView.as_view(),

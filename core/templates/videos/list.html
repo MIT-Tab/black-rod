@@ -2,3 +2,17 @@
 {% block table_title %}
     Videos
 {% endblock table_title %}
+{% block left_alert %}
+    {% if messages %}
+        {% for message in messages %}
+            <div class="alert alert-warning m-2" role="alert">{{ message }}</div>
+        {% endfor %}
+    {% endif %}
+{% endblock left_alert %}
+{% block search_actions %}
+    <button type="submit"
+            class="btn btn-secondary ml-2"
+            formaction="{% url 'core:video_random' %}">
+        Random
+    </button>
+{% endblock search_actions %}
