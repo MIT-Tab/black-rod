@@ -199,10 +199,9 @@ class RecentResultsWidgetView(TemplateView):
                     "name": tournament.display,
                     "host": tournament.host.name if tournament.host else "",
                     "date": tournament.date,
-                    "winner": self._team_label(winner.team),
-                    "winner_url": winner.team.get_absolute_url(),
-                    "finalist": self._team_label(finalist.team),
-                    "finalist_url": finalist.team.get_absolute_url(),
+                    "num_teams": tournament.num_teams,
+                    "winner": self._team_display(winner.team),
+                    "finalist": self._team_display(finalist.team),
                     "speakers": speakers,
                     "url": tournament.get_absolute_url(),
                 }
@@ -260,10 +259,9 @@ class RecentResultsWidgetView(TemplateView):
                             "name": tournament.display,
                             "host": tournament.host.name if tournament.host else "",
                             "date": tournament.date,
-                            "winner": self._team_label(winner.team),
-                            "winner_url": winner.team.get_absolute_url(),
-                            "finalist": self._team_label(finalist.team),
-                            "finalist_url": finalist.team.get_absolute_url(),
+                            "num_teams": tournament.num_teams,
+                            "winner": self._team_display(winner.team),
+                            "finalist": self._team_display(finalist.team),
                             "speakers": [
                                 {
                                     "name": res.debater.name,
@@ -284,10 +282,14 @@ class RecentResultsWidgetView(TemplateView):
         context["scope_day"] = scope_day
         return context
 
-    def _team_label(self, team):
+    def _team_display(self, team):
         debaters = list(team.debaters.select_related("school").all())
         if not debaters:
-            return team.name
+            return {
+                "debaters": team.name,
+                "school": "",
+                "url": team.get_absolute_url(),
+            }
 
         if len(debaters) == 2:
             if debaters[0].school == debaters[1].school:
@@ -297,10 +299,10 @@ class RecentResultsWidgetView(TemplateView):
                 right = debaters[1].school.name if debaters[1].school else "Unknown School"
                 school_name = f"{left} / {right}"
             names = f"{debaters[0].name} and {debaters[1].name}"
-            return f"{school_name} - {names}"
+            return {"debaters": names, "school": school_name, "url": team.get_absolute_url()}
 
         school_name = debaters[0].school.name if debaters[0].school else "Unknown School"
-        return f"{school_name} - {debaters[0].name}"
+        return {"debaters": debaters[0].name, "school": school_name, "url": team.get_absolute_url()}
 
 
 class TournamentListView(CustomListView):

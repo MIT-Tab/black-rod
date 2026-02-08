@@ -14,18 +14,23 @@
             --border: #dbe4ef;
         }
         * { box-sizing: border-box; }
+        html {
+            margin: 0;
+            padding: 0;
+            background: transparent !important;
+        }
         body {
             margin: 0;
-            padding: 16px;
-            background: var(--white);
+            padding: 0;
+            background: transparent !important;
             color: var(--text);
             font-family: "Segoe UI", Tahoma, Arial, sans-serif;
         }
         .widget {
-            max-width: 760px;
+            width: 100%;
             margin: 0 auto;
-            border: 1px solid var(--border);
-            border-radius: 12px;
+            border: 0;
+            border-radius: 0;
             padding: 16px;
             background: var(--white);
         }
@@ -84,6 +89,12 @@
             font-size: 1rem;
             color: var(--blue);
         }
+        .meta {
+            margin-top: 3px;
+            font-size: 0.84rem;
+            color: var(--muted);
+            font-weight: 600;
+        }
         .host {
             margin-top: 4px;
             color: var(--muted);
@@ -117,6 +128,11 @@
         }
         .value a:hover {
             color: var(--blue);
+        }
+        .award-link {
+            display: block;
+            text-decoration: none;
+            color: inherit;
         }
         .speaker-list {
             list-style: none;
@@ -176,7 +192,7 @@
     <div class="widget">
         <div class="header">
             <div>
-                <div class="title">APDA Recent Results</div>
+                <div class="title">Recent Results</div>
             </div>
             <a class="link-pill" href="/" target="_blank" rel="noopener">See all standings</a>
         </div>
@@ -188,17 +204,36 @@
                         <div>
                             <div class="date">{{ tournament.date|date:"M j" }}</div>
                             <div class="name">{{ tournament.name }}</div>
+                            <div class="meta">{{ tournament.num_teams }} teams</div>
                         </div>
                         <a class="link-pill" href="{{ tournament.url }}" target="_blank" rel="noopener">Full tab</a>
                     </div>
                     <div class="rows">
                         <div class="row">
                             <div class="label">Winner</div>
-                            <div class="value"><a href="{{ tournament.winner_url }}" target="_blank" rel="noopener">{{ tournament.winner }}</a></div>
+                            <div class="value">
+                                <a class="award-link" href="{{ tournament.winner.url }}" target="_blank" rel="noopener">
+                                    <div class="speaker">
+                                        <span>
+                                            <div class="speaker-name">{{ tournament.winner.debaters }}</div>
+                                            {% if tournament.winner.school %}<div class="speaker-school">{{ tournament.winner.school }}</div>{% endif %}
+                                        </span>
+                                    </div>
+                                </a>
+                            </div>
                         </div>
                         <div class="row">
                             <div class="label">Finalist</div>
-                            <div class="value"><a href="{{ tournament.finalist_url }}" target="_blank" rel="noopener">{{ tournament.finalist }}</a></div>
+                            <div class="value">
+                                <a class="award-link" href="{{ tournament.finalist.url }}" target="_blank" rel="noopener">
+                                    <div class="speaker">
+                                        <span>
+                                            <div class="speaker-name">{{ tournament.finalist.debaters }}</div>
+                                            {% if tournament.finalist.school %}<div class="speaker-school">{{ tournament.finalist.school }}</div>{% endif %}
+                                        </span>
+                                    </div>
+                                </a>
+                            </div>
                         </div>
                         <div class="row">
                             <div class="label">Top Speakers</div>
