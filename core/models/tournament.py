@@ -339,12 +339,13 @@ class Tournament(models.Model):
         if not self.manual_name == "":
             self.name = self.manual_name
 
-        # Auto-populate short_name: use host's short_name and remove parenthetical sections
-        short_name_base = self.host.short_name if self.host and self.host.short_name else (self.host.name if self.host else "")
-        self.short_name = short_name_base + suffix
-        # Remove parenthetical sections from short_name and clean up extra spaces
-        self.short_name = re.sub(r'\s*\([^)]*\)', '', self.short_name).strip()
-        self.short_name = re.sub(r'\s+', ' ', self.short_name)  # Replace multiple spaces with single space
+        # Auto-populate short_name only if it's blank: use host's short_name and remove parenthetical sections
+        if not self.short_name:
+            short_name_base = self.host.short_name if self.host and self.host.short_name else (self.host.name if self.host else "")
+            self.short_name = short_name_base + suffix
+            # Remove parenthetical sections from short_name and clean up extra spaces
+            self.short_name = re.sub(r'\s*\([^)]*\)', '', self.short_name).strip()
+            self.short_name = re.sub(r'\s+', ' ', self.short_name)  # Replace multiple spaces with single space
 
         if self.qual_type in self.TOURNAMENT_TYPES:
             for key, value in self.TOURNAMENT_TYPES[self.qual_type].items():

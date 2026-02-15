@@ -11,7 +11,7 @@
     {% if object.user == request.user or request.user.is_superuser %}
         <div class="mb-3">
             <a href="{% url 'core:debater_profile_edit' object.pk %}" class="btn btn-primary btn-sm">
-                <i class="fas fa-edit"></i> Edit Profile
+                ✎ Edit Profile
             </a>
         </div>
     {% endif %}
@@ -53,7 +53,7 @@
                 <td>Paradigm</td>
                 <td>
                     <a href="{{ object.paradigm }}" target="_blank" rel="noopener noreferrer">
-                        <i class="fas fa-external-link-alt"></i> View Paradigm
+                        View Paradigm ↗
                     </a>
                 </td>
             </tr>

@@ -2,6 +2,7 @@
 from datetime import date
 from django.test import TestCase, Client
 from django.urls import reverse
+from django.contrib.auth import get_user_model
 
 from core.models import School, Tournament, Debater, Video
 
@@ -183,3 +184,111 @@ class VideoViewsTest(TestCase):  # pylint: disable=too-many-instance-attributes
 
         response = self.client.get(reverse("core:video_list"))
         self.assertEqual(response.status_code, 200)
+
+    def test_video_random_redirect_respects_filters(self):
+        """Random redirect should honor applied filters."""
+        target_video = Video.objects.create(
+            pm=self.debater1,
+            lo=self.debater2,
+            mg=self.debater3,
+            mo=self.debater4,
+            tournament=self.tournament,
+            link="https://example.com/filtered_video",
+            round=Video.ROUND_TWO,
+            permissions=Video.ALL,
+        )
+        Video.objects.create(
+            pm=self.debater1,
+            lo=self.debater2,
+            mg=self.debater3,
+            mo=self.debater4,
+            tournament=self.tournament,
+            link="https://example.com/non_filtered_video",
+            round=Video.ROUND_THREE,
+            permissions=Video.ALL,
+        )
+
+        response = self.client.get(
+            reverse("core:video_random"),
+            {"round": Video.ROUND_TWO},
+        )
+
+        self.assertRedirects(
+            response,
+            reverse("core:video_detail", kwargs={"pk": target_video.pk}),
+            fetch_redirect_response=False,
+        )
+
+    def test_video_random_redirect_respects_account_level(self):
+        """Anonymous users should not be redirected to restricted videos."""
+        private_video = Video.objects.create(
+            pm=self.debater1,
+            lo=self.debater2,
+            mg=self.debater3,
+            mo=self.debater4,
+            tournament=self.tournament,
+            link="https://example.com/private_video",
+            round=Video.ROUND_TWO,
+            permissions=Video.ACCOUNTS_ONLY,
+        )
+        public_video = Video.objects.create(
+            pm=self.debater1,
+            lo=self.debater2,
+            mg=self.debater3,
+            mo=self.debater4,
+            tournament=self.tournament,
+            link="https://example.com/public_video",
+            round=Video.ROUND_THREE,
+            permissions=Video.ALL,
+        )
+
+        response = self.client.get(reverse("core:video_random"))
+        self.assertRedirects(
+            response,
+            reverse("core:video_detail", kwargs={"pk": public_video.pk}),
+            fetch_redirect_response=False,
+        )
+
+        user_model = get_user_model()
+        private_user = user_model.objects.create_user(
+            username="private_user",
+            password="test-password",
+            can_view_private_videos=True,
+        )
+        self.client.force_login(private_user)
+        response = self.client.get(
+            reverse("core:video_random"),
+            {"round": Video.ROUND_TWO},
+        )
+
+        self.assertRedirects(
+            response,
+            reverse("core:video_detail", kwargs={"pk": private_video.pk}),
+            fetch_redirect_response=False,
+        )
+
+    def test_video_random_redirect_falls_back_to_filtered_list_when_empty(self):
+        """No matching videos should redirect back to the list with filters intact."""
+        response = self.client.get(
+            reverse("core:video_random"),
+            {"tournament__name__icontains": "NoSuchTournamentName"},
+        )
+
+        self.assertRedirects(
+            response,
+            f"{reverse('core:video_list')}?tournament__name__icontains=NoSuchTournamentName",
+            fetch_redirect_response=False,
+        )
+
+    def test_video_random_no_results_shows_warning_message(self):
+        """No-result random requests should surface a warning message."""
+        response = self.client.get(
+            reverse("core:video_random"),
+            {"tournament__name__icontains": "NoSuchTournamentName"},
+            follow=True,
+        )
+
+        self.assertContains(
+            response,
+            "No results found, or you don't have access to any matching videos.",
+        )

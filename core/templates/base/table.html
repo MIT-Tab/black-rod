@@ -15,9 +15,9 @@
                                                     {{ column.header }}
                                                     {% if column.is_ordered %}
                                                         {% if column.order_by_alias.is_descending %}
-                                                            <i class="fas fa-chevron-down" aria-label="Sorted descending"></i>
+                                                            <span aria-label="Sorted descending">▾</span>
                                                         {% else %}
-                                                            <i class="fas fa-chevron-up" aria-label="Sorted ascending"></i>
+                                                            <span aria-label="Sorted ascending">▴</span>
                                                         {% endif %}
                                                     {% endif %}
                                                 </a>

@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>APDA Weekly Results</title>
+    <style>
+        :root {
+            --white: #ffffff;
+            --blue: #045fb0;
+            --blue-soft: #eaf3fc;
+            --text: #1f2937;
+            --muted: #6b7280;
+            --border: #dbe4ef;
+        }
+        * { box-sizing: border-box; }
+        html {
+            margin: 0;
+            padding: 0;
+            background: transparent !important;
+        }
+        body {
+            margin: 0;
+            padding: 0;
+            background: transparent !important;
+            color: var(--text);
+            font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+        }
+        .widget {
+            width: 100%;
+            margin: 0 auto;
+            border: 0;
+            border-radius: 0;
+            padding: 16px;
+            background: var(--white);
+        }
+        .header {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid var(--border);
+        }
+        .title {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: var(--blue);
+        }
+        .subtitle {
+            margin-top: 4px;
+            font-size: 0.9rem;
+            color: var(--muted);
+        }
+        .link-pill {
+            display: inline-flex;
+            align-items: center;
+            text-decoration: none;
+            border: 1px solid var(--blue);
+            border-radius: 999px;
+            color: var(--blue);
+            font-weight: 600;
+            padding: 6px 10px;
+            font-size: 0.88rem;
+            white-space: nowrap;
+        }
+        .card {
+            margin-top: 12px;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 12px;
+            background: var(--white);
+        }
+        .card-top {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 10px;
+        }
+        .date {
+            font-size: 0.8rem;
+            color: var(--muted);
+            margin-bottom: 3px;
+        }
+        .name {
+            font-weight: 700;
+            font-size: 1rem;
+            color: var(--blue);
+        }
+        .meta {
+            margin-top: 3px;
+            font-size: 0.84rem;
+            color: var(--muted);
+            font-weight: 600;
+        }
+        .host {
+            margin-top: 4px;
+            color: var(--muted);
+            font-size: 0.9rem;
+        }
+        .rows {
+            margin-top: 10px;
+            border-top: 1px solid var(--border);
+            padding-top: 8px;
+        }
+        .row {
+            display: grid;
+            grid-template-columns: 95px 1fr;
+            gap: 8px;
+            padding: 6px 0;
+        }
+        .row + .row {
+            border-top: 1px dashed var(--border);
+        }
+        .label {
+            font-size: 0.78rem;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: var(--muted);
+            font-weight: 700;
+        }
+        .value a {
+            color: var(--text);
+            text-decoration: none;
+            font-weight: 600;
+        }
+        .value a:hover {
+            color: var(--blue);
+        }
+        .award-link {
+            display: block;
+            text-decoration: none;
+            color: inherit;
+        }
+        .speaker-link {
+            display: block;
+            text-decoration: none;
+            color: inherit;
+            width: 100%;
+        }
+        .speaker-list {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+            display: grid;
+            gap: 6px;
+        }
+        .speaker {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 6px 8px;
+            background: var(--white);
+        }
+        .place {
+            min-width: 38px;
+            text-align: center;
+            font-weight: 700;
+            color: var(--blue);
+            background: var(--blue-soft);
+            border-radius: 999px;
+            padding: 4px 8px;
+        }
+        .speaker-name {
+            font-weight: 600;
+            color: var(--text);
+        }
+        .speaker-school {
+            font-size: 0.88rem;
+            color: var(--muted);
+        }
+        .empty {
+            margin-top: 12px;
+            border: 1px dashed var(--border);
+            border-radius: 8px;
+            padding: 14px;
+            color: var(--muted);
+            font-weight: 600;
+        }
+        .footer-note {
+            margin-top: 10px;
+            font-size: 0.84rem;
+            color: var(--muted);
+            text-align: right;
+        }
+        @media (max-width: 620px) {
+            .row {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="widget">
+        <div class="header">
+            <div>
+                <div class="title">Recent Results</div>
+            </div>
+            <a class="link-pill" href="/" target="_blank" rel="noopener">See all standings</a>
+        </div>
+
+        {% if has_results %}
+            {% for tournament in tournaments %}
+                <article class="card">
+                    <div class="card-top">
+                        <div>
+                            <div class="date">{{ tournament.date|date:"M j" }}</div>
+                            <div class="name">{{ tournament.name }}</div>
+                            <div class="meta">{{ tournament.num_teams }} teams</div>
+                        </div>
+                        <a class="link-pill" href="{{ tournament.url }}" target="_blank" rel="noopener">Full tab</a>
+                    </div>
+                    <div class="rows">
+                        <div class="row">
+                            <div class="label">Winner</div>
+                            <div class="value">
+                                <a class="award-link" href="{{ tournament.winner.url }}" target="_blank" rel="noopener">
+                                    <div class="speaker">
+                                        <span>
+                                            <div class="speaker-name">{{ tournament.winner.debaters }}</div>
+                                            {% if tournament.winner.school %}<div class="speaker-school">{{ tournament.winner.school }}</div>{% endif %}
+                                        </span>
+                                    </div>
+                                </a>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="label">Finalist</div>
+                            <div class="value">
+                                <a class="award-link" href="{{ tournament.finalist.url }}" target="_blank" rel="noopener">
+                                    <div class="speaker">
+                                        <span>
+                                            <div class="speaker-name">{{ tournament.finalist.debaters }}</div>
+                                            {% if tournament.finalist.school %}<div class="speaker-school">{{ tournament.finalist.school }}</div>{% endif %}
+                                        </span>
+                                    </div>
+                                </a>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="label">Top Speakers</div>
+                            <div class="value">
+                                <ul class="speaker-list">
+                                    {% for speaker in tournament.speakers %}
+                                        <li class="speaker">
+                                            <span class="place">#{{ speaker.place }}{% if speaker.tie %}T{% endif %}</span>
+                                            <a class="speaker-link" href="{{ speaker.url }}" target="_blank" rel="noopener">
+                                                <span>
+                                                    <div class="speaker-name">{{ speaker.name }}</div>
+                                                    {% if speaker.school %}<div class="speaker-school">{{ speaker.school }}</div>{% endif %}
+                                                </span>
+                                            </a>
+                                        </li>
+                                    {% empty %}
+                                        <li class="speaker"><span class="speaker-name">No speaker results yet.</span></li>
+                                    {% endfor %}
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </article>
+            {% endfor %}
+        {% else %}
+            <div class="empty">No tournaments with posted results in the last 7 days.</div>
+        {% endif %}
+
+    </div>
+</body>
+</html>

@@ -12,7 +12,11 @@
                     <form action="" method="GET">
                         {{ filter.form.media }}
                         {{ filter.form|crispy }}
-                        <input type="submit" class="btn btn-info" value="Search">
+                        <div class="d-flex align-items-center">
+                            <input type="submit" class="btn btn-info" value="Search">
+                            {% block search_actions %}
+                            {% endblock search_actions %}
+                        </div>
                     </form>
                 </div>
             </div>
