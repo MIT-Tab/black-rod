@@ -6,6 +6,7 @@ from django.conf import settings
 from django.core.validators import URLValidator
 from django.db.models import Q
 from django.forms import formset_factory
+from django.forms.models import BaseModelFormSet
 from django_summernote.widgets import SummernoteInplaceWidget
 
 from core.models import Team, TOTYReaff
@@ -65,9 +66,12 @@ class SchoolForm(forms.ModelForm):
         return cleaned
 
     def __init__(self, *args, **kwargs):
+        allow_blank_name = kwargs.pop("allow_blank_name", False)
         super().__init__(*args, **kwargs)
         # Allow short_name to be optional during API imports/linking
         self.fields["short_name"].required = False
+        if allow_blank_name:
+            self.fields["name"].required = False
 
 
 class DebaterForm(forms.ModelForm):
@@ -95,6 +99,14 @@ class DebaterForm(forms.ModelForm):
     class Meta:
         model = Debater
         fields = ("first_name", "last_name", "school", "alias_group")
+
+    def __init__(self, *args, **kwargs):
+        include_temporary_schools = kwargs.pop("include_temporary_schools", False)
+        super().__init__(*args, **kwargs)
+        self.fields["school"].queryset = (
+            School.all_objects.all() if include_temporary_schools else School.objects.all()
+        )
+        self.fields["existing_debater"].queryset = Debater.objects.all()
 
 
 class VideoForm(forms.ModelForm):
@@ -272,12 +284,7 @@ class TournamentForm(forms.ModelForm):
 
 
 class TournamentCreateForm(TournamentForm):
-    api_url = forms.URLField(
-        required=False,
-        label="API URL (Optional)",
-        help_text="If provided, results will be automatically imported from this URL",
-        widget=forms.URLInput(attrs={'placeholder': 'https://nu-tab.com/tournament/123'})
-    )
+    pass
 
 
 class TeamForm(forms.ModelForm):
@@ -310,6 +317,56 @@ class TournamentImportForm(forms.Form):
         validators=[URLValidator()],
     )
 
+
+class TournamentResultsImportOptionsForm(forms.Form):
+    api_url = forms.URLField(
+        required=False,
+        label="Mit-Tab Tournament Import URL (Optional)",
+        help_text="If provided, selected categories below are imported from this Mit-Tab tournament.",
+        widget=forms.URLInput(attrs={"placeholder": "https://nu-tab.com/tournament/123"}),
+    )
+    import_varsity_teams = forms.BooleanField(required=False, initial=False)
+    import_varsity_speakers = forms.BooleanField(required=False, initial=False)
+    import_novice_teams = forms.BooleanField(required=False, initial=False)
+    import_novice_speakers = forms.BooleanField(required=False, initial=False)
+    import_unplaced_teams = forms.BooleanField(required=False, initial=False)
+    import_counts = forms.BooleanField(
+        required=False,
+        initial=False,
+        label="Import team and novice counts",
+    )
+
+    CATEGORY_FIELDS = {
+        "varsity_teams": "import_varsity_teams",
+        "varsity_speakers": "import_varsity_speakers",
+        "novice_teams": "import_novice_teams",
+        "novice_speakers": "import_novice_speakers",
+        "unplaced_teams": "import_unplaced_teams",
+    }
+
+    def selected_result_tabs(self):
+        if not hasattr(self, "cleaned_data"):
+            return []
+        return [
+            tab_key
+            for tab_key, field_name in self.CATEGORY_FIELDS.items()
+            if self.cleaned_data.get(field_name)
+        ]
+
+    def clean(self):
+        cleaned_data = super().clean()
+        api_url = (cleaned_data.get("api_url") or "").strip()
+        selected_categories = any(
+            cleaned_data.get(field_name) for field_name in self.CATEGORY_FIELDS.values()
+        ) or cleaned_data.get("import_counts")
+
+        if selected_categories and not api_url:
+            raise forms.ValidationError(
+                "Provide a Mit-Tab tournament URL to import selected categories, or clear all import selections."
+            )
+
+        return cleaned_data
+
 class TeamResultForm(forms.Form):
     debater_one = forms.ModelChoiceField(
         label="Debater One",
@@ -331,6 +388,13 @@ class TeamResultForm(forms.Form):
     debater_one_tournament_id = forms.CharField(widget=forms.HiddenInput(), required=False)
     debater_two_tournament_id = forms.CharField(widget=forms.HiddenInput(), required=False)
 
+    def __init__(self, *args, **kwargs):
+        include_temporary_debaters = kwargs.pop("include_temporary_debaters", False)
+        super().__init__(*args, **kwargs)
+        queryset = Debater.all_objects.all() if include_temporary_debaters else Debater.objects.all()
+        self.fields["debater_one"].queryset = queryset
+        self.fields["debater_two"].queryset = queryset
+
 
 class SpeakerResultForm(forms.Form):
     speaker = forms.ModelChoiceField(
@@ -344,6 +408,12 @@ class SpeakerResultForm(forms.Form):
     
     # Hidden field for tracking new speakers by tournament ID
     tournament_id = forms.CharField(widget=forms.HiddenInput(), required=False)
+
+    def __init__(self, *args, **kwargs):
+        include_temporary_debaters = kwargs.pop("include_temporary_debaters", False)
+        super().__init__(*args, **kwargs)
+        queryset = Debater.all_objects.all() if include_temporary_debaters else Debater.objects.all()
+        self.fields["speaker"].queryset = queryset
 
 
 class DebaterCreationFormsetBase(forms.BaseFormSet):
@@ -449,6 +519,50 @@ NoviceSpeakerResultFormset = formset_factory(SpeakerResultForm, **IMPORT_FORMSET
 
 DebaterCreationFormset = formset_factory(DebaterForm, formset=DebaterCreationFormsetBase, **CREATION_FORMSET_PARAMS)
 SchoolCreationFormset = formset_factory(SchoolForm, formset=SchoolCreationFormsetBase, **CREATION_FORMSET_PARAMS)
+
+
+class DebaterImportFormsetBase(BaseModelFormSet):
+    def _construct_form(self, i, **kwargs):
+        form = super()._construct_form(i, **kwargs)
+        pk_name = self.model._meta.pk.name
+        if pk_name in form.fields:
+            form.fields[pk_name].required = False
+            # Keep the primary key around even if it wasn't posted back
+            if (
+                form.instance
+                and form.instance.pk
+                and not form.data.get(f"{form.prefix}-{pk_name}", "").strip()
+            ):
+                form.initial[pk_name] = form.instance.pk
+        return form
+
+    def add_fields(self, form, index):
+        super().add_fields(form, index)
+        # Allow arbitrary id values without queryset validation; we resolve ids ourselves.
+        form.fields["id"] = forms.IntegerField(
+            required=False, widget=forms.HiddenInput(), initial=form.instance.pk
+        )
+
+
+class SchoolImportFormsetBase(BaseModelFormSet):
+    def _construct_form(self, i, **kwargs):
+        form = super()._construct_form(i, **kwargs)
+        pk_name = self.model._meta.pk.name
+        if pk_name in form.fields:
+            form.fields[pk_name].required = False
+            if (
+                form.instance
+                and form.instance.pk
+                and not form.data.get(f"{form.prefix}-{pk_name}", "").strip()
+            ):
+                form.initial[pk_name] = form.instance.pk
+        return form
+
+    def add_fields(self, form, index):
+        super().add_fields(form, index)
+        form.fields["id"] = forms.IntegerField(
+            required=False, widget=forms.HiddenInput(), initial=form.instance.pk
+        )
 
 
 class TeamChoiceField(forms.ModelChoiceField):

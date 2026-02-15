@@ -141,10 +141,13 @@ class SchoolDeleteView(CustomDeleteView):
 
 class SchoolAutocomplete(autocomplete.Select2QuerySetView):
     def get_result_label(self, record):
-        return f"<{record.id}> {record.name}"
+        return f"<{record.id}> {record.display_name}"
 
     def get_queryset(self):
-        qs = School.objects.all()
+        base_manager = (
+            School.all_objects if self.request.user.has_perm("core.change_tournament") else School.objects
+        )
+        qs = base_manager.all()
 
         if self.q:
             qs = qs.filter(name__icontains=self.q)

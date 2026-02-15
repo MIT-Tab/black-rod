@@ -5,7 +5,6 @@ import pytest
 from django.conf import settings
 from django.http import HttpResponse
 from django.test import RequestFactory
-from django.urls import reverse
 
 from core.models import School, Tournament, Debater, Team
 from core.models.results.speaker import SpeakerResult
@@ -163,84 +162,11 @@ def test_tournament_detail_view_builds_context(monkeypatch, school):
     assert all(label.startswith("tab-") for _, label in context["teams"])
 
 
-def test_tournament_create_view_handles_api_failure(monkeypatch, school):
-    called = {"cleared": False, "errors": []}
-
-    class FakeHandler:
-        def __init__(self, request):
-            self.request = request
-
-        def set_api_url(self, url):  # pylint: disable=unused-argument
-            return None
-
-        def validate_api_connection(self):
-            return False, "boom"
-
-        def set_tournament_id(self, tournament_id):  # pylint: disable=unused-argument
-            called["set_tid"] = True
-
-    monkeypatch.setattr(tv, "APIDataHandler", FakeHandler)
-
-    def fake_error(request, message):  # pylint: disable=unused-argument
-        called["errors"].append(message)
-
-    monkeypatch.setattr(tv.messages, "error", fake_error)
-
-    invalid_called = {"count": 0}
-
-    def fake_form_invalid(self, form):  # pylint: disable=unused-argument
-        invalid_called["count"] += 1
-        return HttpResponse("invalid")
-
-    monkeypatch.setattr(tv.CustomCreateView, "form_invalid", fake_form_invalid)
-
-    view = tv.TournamentCreateView()
-    request = RequestFactory().post("/create/")
-    request.user = SimpleNamespace(is_authenticated=True, has_perms=lambda perms: True)
-    request.session = {}
-    view.setup(request)
-
-    form = SimpleNamespace(
-        cleaned_data={"api_url": "https://api.example"},
-        add_error=lambda field, error: called.setdefault("form_errors", []).append((field, error)),
-    )
-
-    response = view.form_valid(form)
-
-    assert response.status_code == 200
-    assert called["cleared"] is True
-    assert called["errors"] == ["API Error: boom"]
-    assert ("api_url", "API Error: boom") in called["form_errors"]
-    assert invalid_called["count"] == 1
-
-
-def test_tournament_create_view_redirects_on_success(monkeypatch, school):
-    tournament = Tournament.objects.create(
-        name="Fresh",
-        manual_name="Fresh",
-        host=school,
-        date=date(2024, 5, 1),
-        season=settings.CURRENT_SEASON,
-    )
-
-    class FakeHandler:
-        def __init__(self, request):
-            self.request = request
-
-
-        def set_api_url(self, url):  # pylint: disable=unused-argument
-            return None
-
-        def validate_api_connection(self):
-            return True, None
-
-        def set_tournament_id(self, tournament_id):
-            self.request.session["tid"] = tournament_id
-
-    monkeypatch.setattr(tv, "APIDataHandler", FakeHandler)
+def test_tournament_create_view_uses_default_form_valid(monkeypatch):
+    called = {"count": 0}
 
     def fake_form_valid(self, form):  # pylint: disable=unused-argument
-        self.object = tournament
+        called["count"] += 1
         return HttpResponse("ok")
 
     monkeypatch.setattr(tv.CustomCreateView, "form_valid", fake_form_valid)
@@ -248,18 +174,13 @@ def test_tournament_create_view_redirects_on_success(monkeypatch, school):
     view = tv.TournamentCreateView()
     request = RequestFactory().post("/create/")
     request.user = SimpleNamespace(is_authenticated=True, has_perms=lambda perms: True)
-    request.session = {}
     view.setup(request)
 
-    form = SimpleNamespace(cleaned_data={"api_url": "https://api.example"})
+    response = view.form_valid(SimpleNamespace(cleaned_data={}))
 
-    response = view.form_valid(form)
-
-    assert response.status_code == 302
-    # Check that both tournament and api_url are in the redirect URL
-    assert f"tournament={tournament.id}" in response["Location"]
-    assert "api_url=https%3A%2F%2Fapi.example" in response["Location"]
-    assert response["Location"].startswith(reverse('core:tournament_dataentry'))
+    assert response.status_code == 200
+    assert response.content == b"ok"
+    assert called["count"] == 1
 
 
 def test_all_tournament_autocomplete_filters_query(school):

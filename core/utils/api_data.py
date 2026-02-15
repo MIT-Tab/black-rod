@@ -82,10 +82,10 @@ class APIDataHandler:
         if not data:
             return []
         new_school_names = data.get('new_schools', [])
-        existing_school_names = set(School.objects.filter(name__in=new_school_names).values_list('name', flat=True))
+        existing_school_names = set(School.all_objects.filter(name__in=new_school_names).values_list('name', flat=True))
         
         # Store mappings for exact matches so debaters can reference them
-        existing_schools = School.objects.filter(name__in=existing_school_names)
+        existing_schools = School.all_objects.filter(name__in=existing_school_names)
         for school in existing_schools:
             self._school_name_map[school.name] = school.id
         
@@ -100,8 +100,8 @@ class APIDataHandler:
         
         school_ids = {d.get('school_id') for d in new_debater_data if d.get('school_id') != -1}
         school_names = {d.get('school_name') for d in new_debater_data if d.get('school_id') == -1 and d.get('school_name')}
-        schools_by_id = {s.id: s for s in School.objects.filter(id__in=school_ids)}
-        schools_by_name = {s.name: s for s in School.objects.filter(name__in=school_names)}
+        schools_by_id = {s.id: s for s in School.all_objects.filter(id__in=school_ids)}
+        schools_by_name = {s.name: s for s in School.all_objects.filter(name__in=school_names)}
 
         # Also check SchoolLookup for mapped names
         school_lookups = SchoolLookup.objects.filter(server_name__in=school_names).select_related('school')
@@ -131,7 +131,7 @@ class APIDataHandler:
                 elif school_name in self._school_name_map:
                     school_id_from_map = self._school_name_map[school_name]
                     try:
-                        school = School.objects.get(id=school_id_from_map)
+                        school = School.all_objects.get(id=school_id_from_map)
                     except School.DoesNotExist:
                         pass
 
@@ -156,10 +156,18 @@ class APIDataHandler:
     @transaction.atomic
     def create_schools_from_data(self, school_data):
         if not school_data:
-            return School.objects.none()
-        schools_to_create = [School(name=data['name'], included_in_oty=data['included_in_oty']) for data in school_data]
-        School.objects.bulk_create(schools_to_create)
-        return School.objects.filter(name__in=[data['name'] for data in school_data])
+            return School.all_objects.none()
+        schools_to_create = [
+            School(
+                name=data['name'],
+                included_in_oty=data['included_in_oty'],
+                short_name=data.get('short_name') or data['name'],
+                temporary=True,
+            )
+            for data in school_data
+        ]
+        School.all_objects.bulk_create(schools_to_create, ignore_conflicts=True)
+        return School.all_objects.filter(name__in=[data['name'] for data in school_data])
 
     @transaction.atomic
     def create_debaters_from_data(self, debater_data):
@@ -175,14 +183,15 @@ class APIDataHandler:
                     school=data['school'],
                     first_season=settings.CURRENT_SEASON,
                     latest_season=settings.CURRENT_SEASON,
-                    status=Debater.NOVICE
+                    status=Debater.NOVICE,
+                    temporary=True,
                 ))
                 debater_mapping_info.append(tournament_id)
 
         if not debaters_to_create:
             return 0
 
-        created_debaters = Debater.objects.bulk_create(debaters_to_create, ignore_conflicts=False)
+        created_debaters = Debater.all_objects.bulk_create(debaters_to_create, ignore_conflicts=False)
         if not created_debaters or not created_debaters[0].id:
             created_debaters = self._find_created_debaters(debaters_to_create)
 
@@ -226,7 +235,7 @@ class APIDataHandler:
         created_debaters = []
         for debater in debaters_to_create:
             try:
-                found_debater = Debater.objects.get(
+                found_debater = Debater.all_objects.get(
                     first_name=debater.first_name,
                     last_name=debater.last_name,
                     school=debater.school
@@ -235,7 +244,7 @@ class APIDataHandler:
             except Debater.DoesNotExist:
                 created_debaters.append(None)
             except Debater.MultipleObjectsReturned:
-                found_debater = Debater.objects.filter(
+                found_debater = Debater.all_objects.filter(
                     first_name=debater.first_name,
                     last_name=debater.last_name,
                     school=debater.school
@@ -286,6 +295,15 @@ class APIDataHandler:
                     })
         return speakers
 
+    def get_debater_counts_from_api(self):
+        data = self._make_api_request("debater-counts")
+        if not data:
+            return {}
+        counts = data.get("debater_counts")
+        if not isinstance(counts, dict):
+            return {}
+        return counts
+
     def _find_debater_from_ref(self, debater_ref):
         """
         Find a debater from API reference data.
@@ -297,7 +315,7 @@ class APIDataHandler:
         apda_id = debater_ref.get('apda_id', -1)
         if apda_id not in (None, -1):
             try:
-                return Debater.objects.select_related('school').get(id=apda_id)
+                return Debater.all_objects.select_related('school').get(id=apda_id)
             except Debater.DoesNotExist:
                 pass
 
@@ -306,7 +324,7 @@ class APIDataHandler:
             debater_id = self._debater_id_map.get(str(tournament_id))
             if debater_id:
                 try:
-                    return Debater.objects.select_related('school').get(id=debater_id)
+                    return Debater.all_objects.select_related('school').get(id=debater_id)
                 except Debater.DoesNotExist:
                     pass
 
@@ -333,7 +351,7 @@ class APIDataHandler:
     def _find_existing_recent_debater(self, first_name, last_name, school):
         if not (first_name and last_name and school):
             return None
-        qs = Debater.objects.filter(
+        qs = Debater.all_objects.filter(
             first_name__iexact=first_name.strip(),
             last_name__iexact=last_name.strip(),
             school=school,

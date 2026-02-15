@@ -1,12 +1,9 @@
 from datetime import timedelta
-from urllib.parse import urlencode
 from dal import autocomplete
 from django.conf import settings
-from django.contrib import messages
 from django.db.models import Q, Prefetch
 from django.core.cache import cache
 from django.http import HttpResponse, QueryDict
-from django.shortcuts import redirect
 from django.urls import reverse_lazy
 from django.utils import timezone
 from django.utils.decorators import method_decorator
@@ -18,7 +15,6 @@ from core.forms import (
     TournamentCreateForm,
     TournamentForm,
 )
-from core.utils.api_data import APIDataHandler
 from core.models.debater import Debater
 from core.models.round import Round
 from core.models.team import Team
@@ -35,7 +31,6 @@ from core.utils.generics import (
     SeasonColumn,
 )
 from core.utils.rounds import get_tab_card_data
-from core.views.results_import_views import TournamentDataEntryView
 
 
 class TournamentFilter(FilterSet):
@@ -444,27 +439,6 @@ class TournamentCreateView(CustomCreateView):
     form_class = TournamentCreateForm
     template_name = "tournaments/create.html"
 
-    def form_valid(self, form):
-        api_url = form.cleaned_data.get('api_url')
-
-        if api_url:
-
-            api_handler = APIDataHandler(self.request)
-            api_handler.set_api_url(api_url)
-
-            is_valid, error_message = api_handler.validate_api_connection()
-            if not is_valid:
-                form.add_error('api_url', f"API Error: {error_message}")
-                return self.form_invalid(form)
-
-            super_response = super().form_valid(form)
-            tournament = self.object
-
-            # Redirect to the data entry view with tournament and API URL as query parameters
-            params = urlencode({'tournament': tournament.id, 'api_url': api_url})
-            return redirect(f"{reverse_lazy('core:tournament_dataentry')}?{params}")
-
-        return super().form_valid(form)
 
 class TournamentDeleteView(CustomDeleteView):
     model = Tournament

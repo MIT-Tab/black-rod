@@ -239,6 +239,11 @@ urlpatterns = [
         name="recent_results_widget",
     ),
     path(
+        "core/tournaments/data_entry/setup",
+        results_import_views.TournamentDataEntrySetupView.as_view(),
+        name="tournament_dataentry_setup",
+    ),
+    path(
         "core/tournaments/data_entry",
         results_import_views.TournamentDataEntryView.as_view(),
         name="tournament_dataentry",

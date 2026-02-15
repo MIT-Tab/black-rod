@@ -1,7 +1,7 @@
 <ul class="nav nav-tabs" id="dataEntryTabs" role="tablist">
-    {% if has_api_data %}
+    {% if show_school_tab %}
     <li class="nav-item">
-        <a class="nav-link active" 
+        <a class="nav-link {% if active_tab == 'schools' %}active{% endif %}"
            id="schools-tab" 
            data-toggle="tab" 
            href="#schools-pane" 
@@ -9,8 +9,10 @@
             Schools
         </a>
     </li>
+    {% endif %}
+    {% if show_debater_tab %}
     <li class="nav-item">
-        <a class="nav-link" 
+        <a class="nav-link {% if active_tab == 'debaters' %}active{% endif %}"
            id="debaters-tab" 
            data-toggle="tab" 
            href="#debaters-pane" 
@@ -20,7 +22,7 @@
     </li>
     {% endif %}
     <li class="nav-item">
-        <a class="nav-link {% if not has_api_data %}active{% endif %}" 
+        <a class="nav-link {% if active_tab == 'varsity_teams' %}active{% endif %}"
            id="varsity_teams-tab" 
            data-toggle="tab" 
            href="#varsity_teams-pane" 
@@ -29,7 +31,7 @@
         </a>
     </li>
     <li class="nav-item">
-        <a class="nav-link" 
+        <a class="nav-link {% if active_tab == 'varsity_speakers' %}active{% endif %}"
            id="varsity_speakers-tab" 
            data-toggle="tab" 
            href="#varsity_speakers-pane" 
@@ -38,7 +40,7 @@
         </a>
     </li>
     <li class="nav-item">
-        <a class="nav-link" 
+        <a class="nav-link {% if active_tab == 'novice_teams' %}active{% endif %}"
            id="novice_teams-tab" 
            data-toggle="tab" 
            href="#novice_teams-pane" 
@@ -47,7 +49,7 @@
         </a>
     </li>
     <li class="nav-item">
-        <a class="nav-link" 
+        <a class="nav-link {% if active_tab == 'novice_speakers' %}active{% endif %}"
            id="novice_speakers-tab" 
            data-toggle="tab" 
            href="#novice_speakers-pane" 
@@ -56,7 +58,7 @@
         </a>
     </li>
     <li class="nav-item">
-        <a class="nav-link" 
+        <a class="nav-link {% if active_tab == 'unplaced_teams' %}active{% endif %}"
            id="unplaced_teams-tab" 
            data-toggle="tab" 
            href="#unplaced_teams-pane" 
