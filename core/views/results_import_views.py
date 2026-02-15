@@ -986,13 +986,19 @@ class TournamentDataEntryView(PermissionRequiredMixin, View):
 
         try:
             if team_count is not None:
-                updates["num_teams"] = int(team_count)
+                parsed_team_count = int(team_count)
+                if parsed_team_count < 0:
+                    raise ValueError("teams count cannot be negative")
+                updates["num_teams"] = parsed_team_count
         except (TypeError, ValueError):
             logger.warning("Invalid teams count from API: %s", team_count)
 
         try:
             if novice_count is not None:
-                updates["num_novice_debaters"] = int(novice_count)
+                parsed_novice_count = int(novice_count)
+                if parsed_novice_count < 0:
+                    raise ValueError("novice count cannot be negative")
+                updates["num_novice_debaters"] = parsed_novice_count
         except (TypeError, ValueError):
             logger.warning("Invalid novice count from API: %s", novice_count)
 

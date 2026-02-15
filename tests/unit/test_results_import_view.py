@@ -255,6 +255,37 @@ def test_update_tournament_counts_from_api_updates_expected_fields():
 
 
 @pytest.mark.django_db
+def test_update_tournament_counts_from_api_ignores_negative_values():
+    school = School.objects.create(name="Negative Count School", included_in_oty=True)
+    tournament = Tournament.objects.create(
+        name="Negative Count Tournament",
+        host=school,
+        date=date(2024, 1, 1),
+        season=settings.CURRENT_SEASON,
+        num_teams=10,
+        num_novice_debaters=5,
+    )
+
+    request = RequestFactory().get(
+        "/core/tournaments/data_entry",
+        data={"tournament": tournament.id, "api_url": "https://api.example", "import_counts": "1"},
+    )
+    request.user = SimpleNamespace(is_authenticated=True, has_perms=lambda perms: True)
+
+    view = TournamentDataEntryView()
+    view.setup(request)
+    view._api_handler = SimpleNamespace(
+        get_debater_counts_from_api=lambda: {"teams": -24, "novice": -26}
+    )
+
+    view.update_tournament_counts_from_api(tournament)
+
+    tournament.refresh_from_db()
+    assert tournament.num_teams == 10
+    assert tournament.num_novice_debaters == 5
+
+
+@pytest.mark.django_db
 def test_forms_valid_rejects_api_mode_post_without_school_debater_management_forms():
     school = School.objects.create(name="Guard School", included_in_oty=True)
     tournament = Tournament.objects.create(
