@@ -225,6 +225,16 @@ def test_get_speakers_from_api_detects_debater_id(handler):
     assert speakers[0]["tournament_id"] == 501
 
 
+def test_get_debater_counts_from_api(handler):
+    handler._make_api_request = lambda endpoint: {
+        "debater_counts": {"varsity": 22, "novice": 26, "teams": 24}
+    }
+
+    counts = handler.get_debater_counts_from_api()
+
+    assert counts == {"varsity": 22, "novice": 26, "teams": 24}
+
+
 def test_create_schools_from_data_returns_queryset(handler):
     schools = handler.create_schools_from_data(
         [{"name": "Gamma", "included_in_oty": False}]

@@ -2,7 +2,13 @@
 
 import pytest
 
-from core.forms import TeamChoiceField, TeamForm, TournamentCreateForm, TournamentImportForm
+from core.forms import (
+    TeamChoiceField,
+    TeamForm,
+    TournamentCreateForm,
+    TournamentImportForm,
+    TournamentResultsImportOptionsForm,
+)
 from core.models import Debater, School, Team, Tournament
 
 
@@ -52,7 +58,7 @@ def test_tournament_import_form_validates_url():
 
 
 @pytest.mark.django_db
-def test_tournament_create_form_accepts_optional_api_url():
+def test_tournament_create_form_has_no_api_url_field():
     school = School.objects.create(name="Host School", included_in_oty=True)
     form = TournamentCreateForm(
         data={
@@ -64,25 +70,30 @@ def test_tournament_create_form_accepts_optional_api_url():
             "qual_type": str(Tournament.POINTS),
             "name_suffix": str(Tournament.NONE),
             "manual_name": "",
+        }
+    )
+
+    assert form.is_valid()
+    assert "api_url" not in form.fields
+
+
+def test_results_import_options_require_url_when_categories_selected():
+    form = TournamentResultsImportOptionsForm(
+        data={
+            "api_url": "",
+            "import_varsity_teams": "on",
+        }
+    )
+
+    assert not form.is_valid()
+    assert "__all__" in form.errors
+
+
+def test_results_import_options_allow_all_db_mode():
+    form = TournamentResultsImportOptionsForm(
+        data={
             "api_url": "",
         }
     )
 
     assert form.is_valid()
-
-    populated = TournamentCreateForm(
-        data={
-            "host": str(school.pk),
-            "season": "2024",
-            "date": "2024-01-01",
-            "num_teams": "16",
-            "num_novice_debaters": "0",
-            "qual_type": str(Tournament.POINTS),
-            "name_suffix": str(Tournament.NONE),
-            "manual_name": "",
-            "api_url": "https://nu-tab.com/tournament/123",
-        }
-    )
-
-    assert populated.is_valid()
-    assert populated.cleaned_data["api_url"] == "https://nu-tab.com/tournament/123"

@@ -1,0 +1,46 @@
+{% extends "base/base.html" %}
+{% load crispy_forms_tags %}
+
+{% block content %}
+<div class="row mt-lg-5 mb-lg-5 mr-lg-2 ml-lg-2 m-1">
+    <div class="col-lg-8 offset-lg-2">
+        <div class="card">
+            <div class="card-body">
+                <h4 class="card-title mb-3">Enter Results: {{ tournament.name }}</h4>
+
+                <form method="post" novalidate>
+                    {% csrf_token %}
+                    <input type="hidden" name="tournament" value="{{ tournament.id }}">
+
+                    {% if form.non_field_errors %}
+                        <div class="alert alert-danger">
+                            {% for error in form.non_field_errors %}
+                                <div>{{ error }}</div>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+
+                    {{ form.api_url|as_crispy_field }}
+
+                    <h5 class="mt-4">Mit-Tab Tournament Import</h5>
+                    <p class="text-muted mb-3">
+                        Selected categories below are imported from the Mit-Tab tournament source. Unselected categories load from existing database results.
+                    </p>
+
+                    {{ form.import_varsity_teams|as_crispy_field }}
+                    {{ form.import_varsity_speakers|as_crispy_field }}
+                    {{ form.import_novice_teams|as_crispy_field }}
+                    {{ form.import_novice_speakers|as_crispy_field }}
+                    {{ form.import_unplaced_teams|as_crispy_field }}
+                    {{ form.import_counts|as_crispy_field }}
+
+                    <div class="mt-4">
+                        <button type="submit" class="btn btn-primary">Continue</button>
+                        <a href="{% url 'core:tournament_detail' pk=tournament.id %}" class="btn btn-outline-secondary">Cancel</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock content %}

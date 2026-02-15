@@ -295,6 +295,15 @@ class APIDataHandler:
                     })
         return speakers
 
+    def get_debater_counts_from_api(self):
+        data = self._make_api_request("debater-counts")
+        if not data:
+            return {}
+        counts = data.get("debater_counts")
+        if not isinstance(counts, dict):
+            return {}
+        return counts
+
     def _find_debater_from_ref(self, debater_ref):
         """
         Find a debater from API reference data.

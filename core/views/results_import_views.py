@@ -2,6 +2,7 @@ import logging
 import os
 from dataclasses import dataclass, field
 from typing import Dict, List
+from urllib.parse import urlencode
 
 from django.conf import settings
 from django.contrib.auth.mixins import PermissionRequiredMixin
@@ -11,20 +12,22 @@ from django.forms import BaseModelFormSet, modelformset_factory
 from django.http import JsonResponse
 from django.shortcuts import redirect, render
 from django.template.loader import render_to_string
+from django.urls import reverse
 from django.views import View
 from haystack import connections
 from haystack.exceptions import NotHandled
 
 from core.forms import (
     DebaterForm,
+    DebaterImportFormsetBase,
     NoviceSpeakerResultFormset,
     NoviceTeamResultFormset,
     SchoolForm,
+    SchoolImportFormsetBase,
+    TournamentResultsImportOptionsForm,
     UnplacedTeamResultFormset,
     VarsitySpeakerResultFormset,
     VarsityTeamResultFormset,
-    DebaterImportFormsetBase,
-    SchoolImportFormsetBase,
 )
 from core.models.debater import Debater
 from core.models.results.speaker import SpeakerResult
@@ -141,6 +144,25 @@ RESULT_TAB_ORDER = [
     "novice_speakers",
     "unplaced_teams",
 ]
+
+API_IMPORTABLE_TABS = [
+    "varsity_teams",
+    "varsity_speakers",
+    "novice_teams",
+    "novice_speakers",
+    "unplaced_teams",
+]
+API_TAB_TO_ENDPOINT = {
+    "varsity_teams": ("team", "varsity-team-placements"),
+    "novice_teams": ("team", "novice-team-placements"),
+    "unplaced_teams": ("team", "non-placing-teams"),
+    "varsity_speakers": ("speaker", "varsity-speaker-awards"),
+    "novice_speakers": ("speaker", "novice-speaker-awards"),
+}
+
+
+def is_truthy(value) -> bool:
+    return str(value).strip().lower() in {"1", "true", "on", "yes"}
 
 
 def cleanup_temporary_debaters(max_delete: int = MAX_TEMP_DELETIONS) -> int:
@@ -289,16 +311,21 @@ def build_speaker_initial(handler: APIDataHandler, endpoint: str) -> List[dict]:
     return initial
 
 
-def build_api_initial(handler: APIDataHandler) -> Dict[str, List[dict]]:
-    return {
-        "varsity_teams": build_team_initial(handler, "varsity-team-placements"),
-        "novice_teams": build_team_initial(handler, "novice-team-placements"),
-        "unplaced_teams": build_team_initial(handler, "non-placing-teams"),
-        "varsity_speakers": build_speaker_initial(
-            handler, "varsity-speaker-awards"
-        ),
-        "novice_speakers": build_speaker_initial(handler, "novice-speaker-awards"),
-    }
+def build_api_initial(
+    handler: APIDataHandler, selected_tabs: List[str] | set[str]
+) -> Dict[str, List[dict]]:
+    selected = set(selected_tabs)
+    initial: Dict[str, List[dict]] = {}
+
+    for tab_key, (kind, endpoint) in API_TAB_TO_ENDPOINT.items():
+        if tab_key not in selected:
+            continue
+        if kind == "team":
+            initial[tab_key] = build_team_initial(handler, endpoint)
+        else:
+            initial[tab_key] = build_speaker_initial(handler, endpoint)
+
+    return initial
 
 
 def get_db_initial(tab_key: str, tournament: Tournament) -> List[dict]:
@@ -480,6 +507,83 @@ def reindex_debaters(
         debater_index.update_object(debater)
 
 
+class TournamentDataEntrySetupView(PermissionRequiredMixin, View):
+    permission_required = "core.change_tournament"
+    template_name = "tournaments/data_entry_setup.html"
+    form_class = TournamentResultsImportOptionsForm
+
+    def get_tournament(self) -> Tournament:
+        tournament_id = self.request.GET.get("tournament") or self.request.POST.get(
+            "tournament"
+        )
+        if not tournament_id:
+            raise ValueError("Tournament ID must be provided as a URL parameter")
+        return Tournament.objects.get(id=int(tournament_id))
+
+    def get_initial(self) -> dict:
+        params = self.request.GET
+        initial = {"api_url": params.get("api_url", "")}
+        for field_name in self.form_class.CATEGORY_FIELDS.values():
+            if field_name in params:
+                initial[field_name] = is_truthy(params.get(field_name))
+        if "import_counts" in params:
+            initial["import_counts"] = is_truthy(params.get("import_counts"))
+        return initial
+
+    def get(self, request, *args, **kwargs):
+        tournament = self.get_tournament()
+        form = self.form_class(initial=self.get_initial())
+        return render(
+            request,
+            self.template_name,
+            {"form": form, "tournament": tournament},
+        )
+
+    def post(self, request, *args, **kwargs):
+        tournament = self.get_tournament()
+        form = self.form_class(request.POST)
+
+        if not form.is_valid():
+            return render(
+                request,
+                self.template_name,
+                {"form": form, "tournament": tournament},
+            )
+
+        api_url = (form.cleaned_data.get("api_url") or "").strip()
+        if api_url:
+            api_handler = APIDataHandler(request)
+            api_handler.set_api_url(api_url)
+            is_valid, error_message = api_handler.validate_api_connection()
+            if not is_valid:
+                logger.warning(
+                    "Mit-Tab tournament import connection validation failed",
+                    extra={"error_detail": error_message},
+                )
+                form.add_error(
+                    "api_url",
+                    "Could not connect to the Mit-Tab tournament import source. "
+                    "Check the URL and try again.",
+                )
+                return render(
+                    request,
+                    self.template_name,
+                    {"form": form, "tournament": tournament},
+                )
+
+        params = {"tournament": tournament.id}
+        if api_url:
+            params["api_url"] = api_url
+
+        for tab_key in form.selected_result_tabs():
+            params[f"import_{tab_key}"] = "1"
+
+        if form.cleaned_data.get("import_counts"):
+            params["import_counts"] = "1"
+
+        return redirect(f"{reverse('core:tournament_dataentry')}?{urlencode(params)}")
+
+
 class TournamentDataEntryView(PermissionRequiredMixin, View):
     permission_required = "core.change_tournament"
     template_name = "tournaments/data_entry.html"
@@ -496,15 +600,62 @@ class TournamentDataEntryView(PermissionRequiredMixin, View):
         "unplaced_teams": "Non-placing Teams",
     }
 
+    def get_import_config(self) -> dict:
+        if hasattr(self, "_import_config"):
+            return self._import_config
+
+        params = self.request.POST if self.request.method == "POST" else self.request.GET
+        selected_tabs = {
+            tab_key
+            for tab_key in API_IMPORTABLE_TABS
+            if is_truthy(params.get(f"import_{tab_key}"))
+        }
+        import_counts = is_truthy(params.get("import_counts"))
+        api_url = (params.get("api_url") or "").strip()
+
+        if not api_url:
+            selected_tabs = set()
+            import_counts = False
+
+        self._import_config = {
+            "api_url": api_url,
+            "selected_tabs": selected_tabs,
+            "import_counts": import_counts,
+        }
+        return self._import_config
+
     def get_api_handler(self) -> APIDataHandler:
+        if hasattr(self, "_api_handler"):
+            return self._api_handler
+
         handler = APIDataHandler(self.request)
-        api_url = self.request.GET.get("api_url") or self.request.POST.get("api_url")
+        api_url = self.get_import_config().get("api_url")
         if api_url:
             handler.set_api_url(api_url)
-        return handler
+        self._api_handler = handler
+        return self._api_handler
 
-    def use_api_data(self) -> bool:
-        return self.get_api_handler().should_use_api_data()
+    def use_api_results(self) -> bool:
+        selected_tabs = self.get_import_config().get("selected_tabs", set())
+        return bool(selected_tabs) and self.get_api_handler().should_use_api_data()
+
+    def should_import_counts_from_api(self) -> bool:
+        import_counts = self.get_import_config().get("import_counts", False)
+        return bool(import_counts) and self.get_api_handler().should_use_api_data()
+
+    def get_selected_api_tabs(self) -> List[str]:
+        selected_tabs = self.get_import_config().get("selected_tabs", set())
+        return [tab_key for tab_key in API_IMPORTABLE_TABS if tab_key in selected_tabs]
+
+    @staticmethod
+    def _parse_total_forms(data, prefix: str) -> int | None:
+        raw_value = data.get(f"{prefix}-TOTAL_FORMS")
+        if raw_value is None:
+            return None
+        try:
+            return max(int(raw_value), 0)
+        except (TypeError, ValueError):
+            return None
 
     def get_tournament(self) -> Tournament:
         tournament_id = self.request.GET.get("tournament") or self.request.POST.get(
@@ -516,47 +667,60 @@ class TournamentDataEntryView(PermissionRequiredMixin, View):
 
     def get(self, request, *args, **kwargs):
         tournament = self.get_tournament()
-        use_api = self.use_api_data()
-        api_state = self.build_api_state() if use_api else None
-        formsets = self.build_formsets(tournament, api_state, use_api)
+        use_api_results = self.use_api_results()
+        selected_api_tabs = self.get_selected_api_tabs()
+        api_state = (
+            self.build_api_state(selected_api_tabs) if use_api_results else None
+        )
+        formsets = self.build_formsets(tournament, api_state, use_api_results)
         context = self.build_context(
             tournament,
             formsets,
-            use_api,
+            use_api_results,
             error_tab=None,
             current_api_url=self.get_api_handler().get_api_url(),
+            selected_api_tabs=selected_api_tabs,
+            import_counts_from_api=self.should_import_counts_from_api(),
         )
         return render(request, self.template_name, context)
 
     def post(self, request, *args, **kwargs):
         tournament = self.get_tournament()
-        use_api = self.use_api_data()
+        use_api_results = self.use_api_results()
+        selected_api_tabs = self.get_selected_api_tabs()
         formsets = self.build_formsets(
-            tournament, api_state=None, use_api=use_api, data=request.POST
+            tournament, api_state=None, use_api=use_api_results, data=request.POST
         )
 
-        if not self.forms_valid(formsets, use_api):
-            self.log_formset_errors(formsets, request, use_api)
+        if not self.forms_valid(formsets, use_api_results):
+            self.log_formset_errors(formsets, request, use_api_results)
             context = self.build_context(
                 tournament,
                 formsets,
-                use_api,
-                error_tab=self.first_invalid_tab(formsets, use_api),
+                use_api_results,
+                error_tab=self.first_invalid_tab(formsets, use_api_results),
                 current_api_url=self.get_api_handler().get_api_url(),
+                selected_api_tabs=selected_api_tabs,
+                import_counts_from_api=self.should_import_counts_from_api(),
             )
             return render(request, self.template_name, context)
 
-        self.persist_results(tournament, formsets, use_api)
+        self.persist_results(
+            tournament,
+            formsets,
+            use_api_results,
+            import_counts_from_api=self.should_import_counts_from_api(),
+        )
         return redirect("core:tournament_detail", pk=tournament.id)
 
-    def build_api_state(self) -> dict:
+    def build_api_state(self, selected_api_tabs: List[str]) -> dict:
         handler = self.get_api_handler()
         schools_by_server = seed_temporary_schools(handler)
         debaters = seed_temporary_debaters(handler, schools_by_server)
         return {
             "schools": list(schools_by_server.values()),
             "debaters": debaters,
-            "initial": build_api_initial(handler),
+            "initial": build_api_initial(handler, selected_api_tabs),
         }
 
     def build_formsets(
@@ -569,6 +733,8 @@ class TournamentDataEntryView(PermissionRequiredMixin, View):
         formsets: Dict[str, object] = {}
         team_kwargs = {"include_temporary_debaters": use_api}
         speaker_kwargs = {"include_temporary_debaters": use_api}
+        self._show_school_tab = False
+        self._show_debater_tab = False
 
         if use_api:
             school_ids = [s.id for s in api_state["schools"]] if api_state else []
@@ -576,6 +742,14 @@ class TournamentDataEntryView(PermissionRequiredMixin, View):
             if data is not None:
                 school_qs = School.all_objects.all()
                 debater_qs = Debater.all_objects.all()
+                school_total_forms = self._parse_total_forms(data, "schools")
+                debater_total_forms = self._parse_total_forms(data, "debaters")
+                self._show_school_tab = (
+                    school_total_forms is None or school_total_forms > 0
+                )
+                self._show_debater_tab = (
+                    debater_total_forms is None or debater_total_forms > 0
+                )
             else:
                 school_qs = (
                     School.all_objects.filter(id__in=school_ids)
@@ -587,12 +761,20 @@ class TournamentDataEntryView(PermissionRequiredMixin, View):
                     if debater_ids
                     else Debater.all_objects.filter(temporary=True)
                 )
+                school_total_forms = school_qs.count()
+                debater_total_forms = debater_qs.count()
+                self._show_school_tab = school_total_forms > 0
+                self._show_debater_tab = debater_total_forms > 0
             logger.info(
                 "Building formsets",
                 extra={
                     "mode": "POST" if data is not None else "GET",
                     "school_qs": school_qs.count(),
                     "debater_qs": debater_qs.count(),
+                    "school_total_forms": school_total_forms,
+                    "debater_total_forms": debater_total_forms,
+                    "show_school_tab": self._show_school_tab,
+                    "show_debater_tab": self._show_debater_tab,
                     "has_state": api_state is not None,
                     "school_ids": school_ids,
                     "debater_ids": debater_ids,
@@ -613,13 +795,12 @@ class TournamentDataEntryView(PermissionRequiredMixin, View):
 
         initial = {}
         if data is None:
+            initial = {
+                config.key: get_db_initial(config.key, tournament)
+                for config in self.result_formsets
+            }
             if use_api and api_state:
-                initial = api_state.get("initial", {})
-            else:
-                initial = {
-                    config.key: get_db_initial(config.key, tournament)
-                    for config in self.result_formsets
-                }
+                initial.update(api_state.get("initial", {}))
 
         for config in self.result_formsets:
             kwargs = {
@@ -640,7 +821,29 @@ class TournamentDataEntryView(PermissionRequiredMixin, View):
         has_api_data: bool,
         error_tab: str | None,
         current_api_url: str | None,
+        selected_api_tabs: List[str],
+        import_counts_from_api: bool,
     ):
+        show_school_tab = bool(
+            getattr(self, "_show_school_tab", False) and "schools" in formsets
+        )
+        show_debater_tab = bool(
+            getattr(self, "_show_debater_tab", False) and "debaters" in formsets
+        )
+        visible_tabs = []
+        for tab_key in self.tab_order:
+            if tab_key not in formsets:
+                continue
+            if tab_key == "schools" and not show_school_tab:
+                continue
+            if tab_key == "debaters" and not show_debater_tab:
+                continue
+            visible_tabs.append(tab_key)
+
+        active_tab = error_tab if error_tab in visible_tabs else None
+        if not active_tab:
+            active_tab = visible_tabs[0] if visible_tabs else "varsity_teams"
+
         return {
             "tournament": tournament,
             "formsets": formsets,
@@ -653,6 +856,11 @@ class TournamentDataEntryView(PermissionRequiredMixin, View):
             "error_message": f"Please fix the errors in the {self.tab_labels.get(error_tab, '')} tab before continuing."
             if error_tab
             else None,
+            "show_school_tab": show_school_tab,
+            "show_debater_tab": show_debater_tab,
+            "active_tab": active_tab,
+            "selected_api_tabs": selected_api_tabs,
+            "import_counts_from_api": import_counts_from_api,
         }
 
     def log_formset_errors(
@@ -691,10 +899,10 @@ class TournamentDataEntryView(PermissionRequiredMixin, View):
         )
 
     def forms_valid(self, formsets: Dict[str, object], use_api: bool) -> bool:
-        if use_api and (
-            not formsets["schools"].is_valid() or not formsets["debaters"].is_valid()
-        ):
-            return False
+        if use_api:
+            for key in ["schools", "debaters"]:
+                if key in formsets and not formsets[key].is_valid():
+                    return False
         return all(formsets[cfg.key].is_valid() for cfg in self.result_formsets)
 
     def first_invalid_tab(self, formsets: Dict[str, object], use_api: bool) -> str | None:
@@ -706,15 +914,24 @@ class TournamentDataEntryView(PermissionRequiredMixin, View):
         return None
 
     def persist_results(
-        self, tournament: Tournament, formsets: Dict[str, object], use_api: bool
+        self,
+        tournament: Tournament,
+        formsets: Dict[str, object],
+        use_api: bool,
+        import_counts_from_api: bool = False,
     ) -> None:
         with transaction.atomic():
             resolution = ImportResolution()
             if use_api:
-                resolution.schools = self.resolve_schools(formsets["schools"])
-                resolution.debaters = self.resolve_debaters(
-                    formsets["debaters"], resolution.schools
-                )
+                if "schools" in formsets:
+                    resolution.schools = self.resolve_schools(formsets["schools"])
+                if "debaters" in formsets:
+                    resolution.debaters = self.resolve_debaters(
+                        formsets["debaters"], resolution.schools
+                    )
+
+            if import_counts_from_api:
+                self.update_tournament_counts_from_api(tournament)
 
             TeamResult.objects.filter(tournament=tournament).delete()
             SpeakerResult.objects.filter(tournament=tournament).delete()
@@ -759,6 +976,32 @@ class TournamentDataEntryView(PermissionRequiredMixin, View):
             )
             if use_api:
                 cleanup_temporary_entities()
+
+    def update_tournament_counts_from_api(self, tournament: Tournament) -> None:
+        counts = self.get_api_handler().get_debater_counts_from_api() or {}
+        updates = {}
+
+        team_count = counts.get("teams")
+        novice_count = counts.get("novice")
+
+        try:
+            if team_count is not None:
+                updates["num_teams"] = int(team_count)
+        except (TypeError, ValueError):
+            logger.warning("Invalid teams count from API: %s", team_count)
+
+        try:
+            if novice_count is not None:
+                updates["num_novice_debaters"] = int(novice_count)
+        except (TypeError, ValueError):
+            logger.warning("Invalid novice count from API: %s", novice_count)
+
+        if not updates:
+            return
+
+        for field_name, value in updates.items():
+            setattr(tournament, field_name, value)
+        tournament.save(update_fields=list(updates.keys()))
 
     def resolve_schools(self, formset) -> Dict[int, School]:
         resolution: Dict[int, School] = {}

@@ -35,31 +35,68 @@
                         {% csrf_token %}
                         <input type="hidden" name="tournament" value="{{ tournament.id }}">
                         {% if current_api_url %}
-                        <input type="hidden" name="api_url" value="{{ current_api_url }}">
+                            <input type="hidden" name="api_url" value="{{ current_api_url }}">
+                        {% endif %}
+                        {% for tab_key in selected_api_tabs %}
+                            <input type="hidden" name="import_{{ tab_key }}" value="1">
+                        {% endfor %}
+                        {% if import_counts_from_api %}
+                            <input type="hidden" name="import_counts" value="1">
+                        {% endif %}
+                        {% if has_api_data and not show_school_tab %}
+                            {{ formsets.schools.management_form }}
+                        {% endif %}
+                        {% if has_api_data and not show_debater_tab %}
+                            {{ formsets.debaters.management_form }}
                         {% endif %}
                         
                         {% include "tournaments/includes/data_entry_tabs.html" %}
 
                         <div class="tab-content mt-3" id="dataEntryTabContent">
-                            {% if has_api_data %}
-                            {% include "tournaments/includes/formset_tab_pane.html" with tab_id="schools" tab_name="Schools" formset=formsets.schools form_type="school" has_ghost_points=False item_name="School" is_active=True %}
-
-                            {% include "tournaments/includes/formset_tab_pane.html" with tab_id="debaters" tab_name="Debaters" formset=formsets.debaters form_type="debater" has_ghost_points=False item_name="Debater" is_active=False %}
+                            {% if show_school_tab %}
+                                {% if active_tab == "schools" %}
+                                    {% include "tournaments/includes/formset_tab_pane.html" with tab_id="schools" tab_name="Schools" formset=formsets.schools form_type="school" has_ghost_points=False item_name="School" is_active=True %}
+                                {% else %}
+                                    {% include "tournaments/includes/formset_tab_pane.html" with tab_id="schools" tab_name="Schools" formset=formsets.schools form_type="school" has_ghost_points=False item_name="School" is_active=False %}
+                                {% endif %}
+                            {% endif %}
+                            {% if show_debater_tab %}
+                                {% if active_tab == "debaters" %}
+                                    {% include "tournaments/includes/formset_tab_pane.html" with tab_id="debaters" tab_name="Debaters" formset=formsets.debaters form_type="debater" has_ghost_points=False item_name="Debater" is_active=True %}
+                                {% else %}
+                                    {% include "tournaments/includes/formset_tab_pane.html" with tab_id="debaters" tab_name="Debaters" formset=formsets.debaters form_type="debater" has_ghost_points=False item_name="Debater" is_active=False %}
+                                {% endif %}
                             {% endif %}
 
-                            {% if has_api_data %}
-                                {% include "tournaments/includes/formset_tab_pane.html" with tab_id="varsity_teams" tab_name="Varsity Teams" formset=formsets.varsity_teams form_type="team" has_ghost_points=True item_name="Team" is_active=False %}
-                            {% else %}
+                            {% if active_tab == "varsity_teams" %}
                                 {% include "tournaments/includes/formset_tab_pane.html" with tab_id="varsity_teams" tab_name="Varsity Teams" formset=formsets.varsity_teams form_type="team" has_ghost_points=True item_name="Team" is_active=True %}
+                            {% else %}
+                                {% include "tournaments/includes/formset_tab_pane.html" with tab_id="varsity_teams" tab_name="Varsity Teams" formset=formsets.varsity_teams form_type="team" has_ghost_points=True item_name="Team" is_active=False %}
                             {% endif %}
 
-                            {% include "tournaments/includes/formset_tab_pane.html" with tab_id="varsity_speakers" tab_name="Varsity Speakers" formset=formsets.varsity_speakers form_type="speaker" has_ghost_points=False item_name="Speaker" is_active=False %}
+                            {% if active_tab == "varsity_speakers" %}
+                                {% include "tournaments/includes/formset_tab_pane.html" with tab_id="varsity_speakers" tab_name="Varsity Speakers" formset=formsets.varsity_speakers form_type="speaker" has_ghost_points=False item_name="Speaker" is_active=True %}
+                            {% else %}
+                                {% include "tournaments/includes/formset_tab_pane.html" with tab_id="varsity_speakers" tab_name="Varsity Speakers" formset=formsets.varsity_speakers form_type="speaker" has_ghost_points=False item_name="Speaker" is_active=False %}
+                            {% endif %}
 
-                            {% include "tournaments/includes/formset_tab_pane.html" with tab_id="novice_teams" tab_name="Novice Teams" formset=formsets.novice_teams form_type="team" has_ghost_points=False item_name="Team" is_active=False %}
+                            {% if active_tab == "novice_teams" %}
+                                {% include "tournaments/includes/formset_tab_pane.html" with tab_id="novice_teams" tab_name="Novice Teams" formset=formsets.novice_teams form_type="team" has_ghost_points=False item_name="Team" is_active=True %}
+                            {% else %}
+                                {% include "tournaments/includes/formset_tab_pane.html" with tab_id="novice_teams" tab_name="Novice Teams" formset=formsets.novice_teams form_type="team" has_ghost_points=False item_name="Team" is_active=False %}
+                            {% endif %}
 
-                            {% include "tournaments/includes/formset_tab_pane.html" with tab_id="novice_speakers" tab_name="Novice Speakers" formset=formsets.novice_speakers form_type="speaker" has_ghost_points=False item_name="Speaker" is_active=False %}
+                            {% if active_tab == "novice_speakers" %}
+                                {% include "tournaments/includes/formset_tab_pane.html" with tab_id="novice_speakers" tab_name="Novice Speakers" formset=formsets.novice_speakers form_type="speaker" has_ghost_points=False item_name="Speaker" is_active=True %}
+                            {% else %}
+                                {% include "tournaments/includes/formset_tab_pane.html" with tab_id="novice_speakers" tab_name="Novice Speakers" formset=formsets.novice_speakers form_type="speaker" has_ghost_points=False item_name="Speaker" is_active=False %}
+                            {% endif %}
 
-                            {% include "tournaments/includes/formset_tab_pane.html" with tab_id="unplaced_teams" tab_name="Non-placing Teams" formset=formsets.unplaced_teams form_type="team" has_ghost_points=False item_name="Unplaced Team" is_active=False %}
+                            {% if active_tab == "unplaced_teams" %}
+                                {% include "tournaments/includes/formset_tab_pane.html" with tab_id="unplaced_teams" tab_name="Non-placing Teams" formset=formsets.unplaced_teams form_type="team" has_ghost_points=False item_name="Unplaced Team" is_active=True %}
+                            {% else %}
+                                {% include "tournaments/includes/formset_tab_pane.html" with tab_id="unplaced_teams" tab_name="Non-placing Teams" formset=formsets.unplaced_teams form_type="team" has_ghost_points=False item_name="Unplaced Team" is_active=False %}
+                            {% endif %}
                         </div>
 
                         {# Submit Button #}

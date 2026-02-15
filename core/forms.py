@@ -284,12 +284,7 @@ class TournamentForm(forms.ModelForm):
 
 
 class TournamentCreateForm(TournamentForm):
-    api_url = forms.URLField(
-        required=False,
-        label="API URL (Optional)",
-        help_text="If provided, results will be automatically imported from this URL",
-        widget=forms.URLInput(attrs={'placeholder': 'https://nu-tab.com/tournament/123'})
-    )
+    pass
 
 
 class TeamForm(forms.ModelForm):
@@ -321,6 +316,56 @@ class TournamentImportForm(forms.Form):
             slashes but including http://.  For example: "http://mit.nu-tab.com"',
         validators=[URLValidator()],
     )
+
+
+class TournamentResultsImportOptionsForm(forms.Form):
+    api_url = forms.URLField(
+        required=False,
+        label="Mit-Tab Tournament Import URL (Optional)",
+        help_text="If provided, selected categories below are imported from this Mit-Tab tournament.",
+        widget=forms.URLInput(attrs={"placeholder": "https://nu-tab.com/tournament/123"}),
+    )
+    import_varsity_teams = forms.BooleanField(required=False, initial=False)
+    import_varsity_speakers = forms.BooleanField(required=False, initial=False)
+    import_novice_teams = forms.BooleanField(required=False, initial=False)
+    import_novice_speakers = forms.BooleanField(required=False, initial=False)
+    import_unplaced_teams = forms.BooleanField(required=False, initial=False)
+    import_counts = forms.BooleanField(
+        required=False,
+        initial=False,
+        label="Import team and novice counts",
+    )
+
+    CATEGORY_FIELDS = {
+        "varsity_teams": "import_varsity_teams",
+        "varsity_speakers": "import_varsity_speakers",
+        "novice_teams": "import_novice_teams",
+        "novice_speakers": "import_novice_speakers",
+        "unplaced_teams": "import_unplaced_teams",
+    }
+
+    def selected_result_tabs(self):
+        if not hasattr(self, "cleaned_data"):
+            return []
+        return [
+            tab_key
+            for tab_key, field_name in self.CATEGORY_FIELDS.items()
+            if self.cleaned_data.get(field_name)
+        ]
+
+    def clean(self):
+        cleaned_data = super().clean()
+        api_url = (cleaned_data.get("api_url") or "").strip()
+        selected_categories = any(
+            cleaned_data.get(field_name) for field_name in self.CATEGORY_FIELDS.values()
+        ) or cleaned_data.get("import_counts")
+
+        if selected_categories and not api_url:
+            raise forms.ValidationError(
+                "Provide a Mit-Tab tournament URL to import selected categories, or clear all import selections."
+            )
+
+        return cleaned_data
 
 class TeamResultForm(forms.Form):
     debater_one = forms.ModelChoiceField(

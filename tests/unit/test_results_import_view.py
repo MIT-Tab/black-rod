@@ -1,11 +1,17 @@
+from datetime import date
 from types import SimpleNamespace
 
 import pytest
+from django.conf import settings
+from django.test import RequestFactory
 
 from core.models.debater import Debater
 from core.models.school import School, SchoolLookup
 from core.models.team import Team
+from core.models.tournament import Tournament
 from core.views.results_import_views import (
+    TournamentDataEntryView,
+    build_api_initial,
     build_speaker_initial,
     build_team_initial,
     cleanup_temporary_debaters,
@@ -202,3 +208,89 @@ def test_build_speaker_initial_skips_missing_speakers():
     assert len(initial) == 1
     assert initial[0]["speaker"] == "X"
     assert initial[0]["tie"] is True
+
+
+def test_build_api_initial_only_uses_selected_tabs():
+    handler = SimpleNamespace(
+        get_teams_from_api=lambda endpoint: [{"debater_one": endpoint, "debater_two": "B"}],
+        get_speakers_from_api=lambda endpoint: [{"speaker": endpoint, "tie": False}],
+    )
+
+    initial = build_api_initial(handler, ["varsity_teams", "novice_speakers"])
+
+    assert set(initial.keys()) == {"varsity_teams", "novice_speakers"}
+    assert initial["varsity_teams"][0]["debater_one"] == "varsity-team-placements"
+    assert initial["novice_speakers"][0]["speaker"] == "novice-speaker-awards"
+
+
+@pytest.mark.django_db
+def test_update_tournament_counts_from_api_updates_expected_fields():
+    school = School.objects.create(name="Count School", included_in_oty=True)
+    tournament = Tournament.objects.create(
+        name="Count Tournament",
+        host=school,
+        date=date(2024, 1, 1),
+        season=settings.CURRENT_SEASON,
+        num_teams=10,
+        num_novice_debaters=5,
+    )
+
+    request = RequestFactory().get(
+        "/core/tournaments/data_entry",
+        data={"tournament": tournament.id, "api_url": "https://api.example", "import_counts": "1"},
+    )
+    request.user = SimpleNamespace(is_authenticated=True, has_perms=lambda perms: True)
+
+    view = TournamentDataEntryView()
+    view.setup(request)
+    view._api_handler = SimpleNamespace(
+        get_debater_counts_from_api=lambda: {"teams": 24, "novice": 26}
+    )
+
+    view.update_tournament_counts_from_api(tournament)
+
+    tournament.refresh_from_db()
+    assert tournament.num_teams == 24
+    assert tournament.num_novice_debaters == 26
+
+
+@pytest.mark.django_db
+def test_forms_valid_rejects_api_mode_post_without_school_debater_management_forms():
+    school = School.objects.create(name="Guard School", included_in_oty=True)
+    tournament = Tournament.objects.create(
+        name="Guard Tournament",
+        host=school,
+        date=date(2024, 1, 1),
+        season=settings.CURRENT_SEASON,
+    )
+
+    post_data = {
+        "tournament": str(tournament.id),
+        "api_url": "https://api.example",
+        "import_varsity_teams": "1",
+    }
+    for prefix in [
+        "varsity_teams",
+        "varsity_speakers",
+        "novice_teams",
+        "novice_speakers",
+        "unplaced_teams",
+    ]:
+        post_data[f"{prefix}-TOTAL_FORMS"] = "0"
+        post_data[f"{prefix}-INITIAL_FORMS"] = "0"
+
+    request = RequestFactory().post("/core/tournaments/data_entry", data=post_data)
+    request.user = SimpleNamespace(is_authenticated=True, has_perms=lambda perms: True)
+
+    view = TournamentDataEntryView()
+    view.setup(request)
+    formsets = view.build_formsets(
+        tournament=tournament,
+        api_state=None,
+        use_api=True,
+        data=request.POST,
+    )
+
+    assert "schools" in formsets
+    assert "debaters" in formsets
+    assert not view.forms_valid(formsets, use_api=True)
