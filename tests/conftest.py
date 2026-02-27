@@ -90,6 +90,7 @@ def pytest_configure():
         CURRENT_SEASON="2024",
         LAST_NOTY_SEASON=2020,
         QUAL_BAR=11.5,
+        HISTORICAL_QUAL_BARS={},
         ONLINE_QUAL_BAR=10,
         ONLINE_SEASONS=("2020", "2021"),
         ENV="test",

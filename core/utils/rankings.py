@@ -21,31 +21,34 @@ def _school_included_in_oty(debater):
 
 
 def get_qualled_debaters(school, season):
-    qualled_debaters = [
-        q.debater for q in QUAL.objects.filter(debater__school=school, season=season)
-    ]
+    season = str(season)
+    qual_points = list(
+        QualPoints.objects.filter(debater__school=school, season=season).order_by(
+            "-points"
+        )
+    )
 
-    qualled_debaters = list(set(qualled_debaters))
-
-    qual_points = (
-        QualPoints.objects.filter(debater__school=school)
-        .filter(season=season)
-        .order_by("-points")
+    qualled_debater_ids = set(
+        QUAL.objects.filter(debater__school=school, season=season).values_list(
+            "debater_id", flat=True
+        )
     )
 
     to_return = []
-    handled_debaters = []
+    handled_debaters = set()
 
     for qual_point in qual_points:
-        if qual_point.points > 0 or qual_point.debater in qualled_debaters:
+        qualled = qual_point.debater_id in qualled_debater_ids
+        if qual_point.points > 0 or qualled:
             to_return += [qual_point]
-            handled_debaters.append(qual_point.debater)
+            handled_debaters.add(qual_point.debater_id)
 
-    for debater in qualled_debaters:
-        if debater in handled_debaters:
+    for debater_id in qualled_debater_ids:
+        if debater_id in handled_debaters:
             continue
 
-        qual_point = QualPoints.objects.create(debater=debater, points=0, season=season)
+        # Display-only placeholder; do not persist from read paths.
+        qual_point = QualPoints(debater_id=debater_id, points=0, season=season)
 
         to_return += [qual_point]
 

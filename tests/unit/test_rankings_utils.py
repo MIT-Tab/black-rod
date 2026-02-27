@@ -4,6 +4,8 @@ Tests for ranking utilities
 
 
 from datetime import date
+from io import StringIO
+from django.core.management import call_command
 from django.test import TestCase
 
 from core.models import School, Tournament, Debater, Team
@@ -75,15 +77,192 @@ class RankingsUtilsTest(TestCase):
         self.assertIn(self.debater2.id, debater_ids)
         self.assertIn(debater3.id, debater_ids)
 
-        # Check that QualPoints were created for debater3
+        # Display call should not write placeholder QualPoints rows
         qual_points = QualPoints.objects.filter(debater=debater3, season="2024")
-        self.assertEqual(qual_points.count(), 1)
-        self.assertEqual(qual_points.first().points, 0)
+        self.assertEqual(qual_points.count(), 0)
 
     def test_get_qualled_debaters_no_quals(self):
         """Test get_qualled_debaters with no qualified debaters"""
         result = rankings.get_qualled_debaters(self.school, "2024")
         self.assertEqual(len(result), 0)
+
+    def test_get_qualled_debaters_historical_season_is_read_only(self):
+        """Historical render pass should not create point-qual rows."""
+        season = "2023"
+        with self.settings(HISTORICAL_QUAL_BARS={season: 10.0}, CURRENT_SEASON="2024"):
+            QualPoints.objects.create(debater=self.debater1, points=12, season=season)
+            QualPoints.objects.create(debater=self.debater2, points=9.5, season=season)
+
+            result = rankings.get_qualled_debaters(self.school, season)
+
+        by_debater = {qp.debater_id: qp.qualled for qp in result}
+        self.assertFalse(by_debater[self.debater1.id])
+        self.assertFalse(by_debater[self.debater2.id])
+        self.assertFalse(
+            QUAL.objects.filter(
+                season=season, debater=self.debater1, qual_type=QUAL.POINTS
+            ).exists()
+        )
+        self.assertFalse(
+            QUAL.objects.filter(
+                season=season, debater=self.debater2, qual_type=QUAL.POINTS
+            ).exists()
+        )
+
+    def test_reconstruct_historical_point_quals_command_creates_missing_rows(self):
+        season = "2023"
+        with self.settings(
+            HISTORICAL_QUAL_BARS={season: 10.0},
+            CURRENT_SEASON="2024",
+            ONLINE_SEASONS=("2020", "2021"),
+        ):
+            QualPoints.objects.create(debater=self.debater1, points=12, season=season)
+            QualPoints.objects.create(debater=self.debater2, points=8.5, season=season)
+
+            call_command(
+                "reconstruct_historical_point_quals",
+                "--season",
+                season,
+                stdout=StringIO(),
+            )
+
+            self.assertTrue(
+                QUAL.objects.filter(
+                    season=season, debater=self.debater1, qual_type=QUAL.POINTS
+                ).exists()
+            )
+            self.assertFalse(
+                QUAL.objects.filter(
+                    season=season, debater=self.debater2, qual_type=QUAL.POINTS
+                ).exists()
+            )
+
+    def test_reconstruct_historical_point_quals_skips_already_qualified_debaters(self):
+        season = "2023"
+        with self.settings(
+            HISTORICAL_QUAL_BARS={season: 10.0},
+            CURRENT_SEASON="2024",
+            ONLINE_SEASONS=("2020", "2021"),
+        ):
+            QualPoints.objects.create(debater=self.debater1, points=12, season=season)
+            QualPoints.objects.create(debater=self.debater2, points=12, season=season)
+            QUAL.objects.create(
+                season=season,
+                debater=self.debater1,
+                qual_type=QUAL.EXPANSION,
+            )
+
+            call_command(
+                "reconstruct_historical_point_quals",
+                "--season",
+                season,
+                stdout=StringIO(),
+            )
+
+            self.assertTrue(
+                QUAL.objects.filter(
+                    season=season, debater=self.debater1, qual_type=QUAL.EXPANSION
+                ).exists()
+            )
+            self.assertFalse(
+                QUAL.objects.filter(
+                    season=season, debater=self.debater1, qual_type=QUAL.POINTS
+                ).exists()
+            )
+            self.assertTrue(
+                QUAL.objects.filter(
+                    season=season, debater=self.debater2, qual_type=QUAL.POINTS
+                ).exists()
+            )
+
+    def test_reconstruct_historical_point_quals_skips_excluded_schools(self):
+        season = "2023"
+        excluded_school = School.objects.create(
+            name="Excluded School",
+            included_in_oty=False,
+        )
+        excluded_debater = Debater.objects.create(
+            first_name="Excluded",
+            last_name="Debater",
+            school=excluded_school,
+            first_season=season,
+            latest_season=season,
+        )
+
+        with self.settings(
+            HISTORICAL_QUAL_BARS={season: 10.0},
+            CURRENT_SEASON="2024",
+            ONLINE_SEASONS=("2020", "2021"),
+        ):
+            QualPoints.objects.create(debater=self.debater1, points=12, season=season)
+            QualPoints.objects.create(debater=excluded_debater, points=12, season=season)
+
+            call_command(
+                "reconstruct_historical_point_quals",
+                "--season",
+                season,
+                stdout=StringIO(),
+            )
+
+            self.assertTrue(
+                QUAL.objects.filter(
+                    season=season, debater=self.debater1, qual_type=QUAL.POINTS
+                ).exists()
+            )
+            self.assertFalse(
+                QUAL.objects.filter(
+                    season=season, debater=excluded_debater, qual_type=QUAL.POINTS
+                ).exists()
+            )
+
+    def test_reconstruct_historical_point_quals_command_dry_run(self):
+        season = "2023"
+        with self.settings(
+            HISTORICAL_QUAL_BARS={season: 10.0},
+            CURRENT_SEASON="2024",
+            ONLINE_SEASONS=("2020", "2021"),
+        ):
+            QualPoints.objects.create(debater=self.debater1, points=12, season=season)
+
+            call_command(
+                "reconstruct_historical_point_quals",
+                "--season",
+                season,
+                "--dry-run",
+                stdout=StringIO(),
+            )
+
+            self.assertFalse(
+                QUAL.objects.filter(
+                    season=season, debater=self.debater1, qual_type=QUAL.POINTS
+                ).exists()
+            )
+
+    def test_reconstruct_historical_point_quals_command_all_excludes_current(self):
+        with self.settings(
+            HISTORICAL_QUAL_BARS={"2024": 10.0, "2023": 10.0},
+            CURRENT_SEASON="2024",
+            ONLINE_SEASONS=("2020", "2021"),
+        ):
+            QualPoints.objects.create(debater=self.debater1, points=12, season="2024")
+            QualPoints.objects.create(debater=self.debater2, points=12, season="2023")
+
+            call_command(
+                "reconstruct_historical_point_quals",
+                "--all",
+                stdout=StringIO(),
+            )
+
+            self.assertFalse(
+                QUAL.objects.filter(
+                    season="2024", debater=self.debater1, qual_type=QUAL.POINTS
+                ).exists()
+            )
+            self.assertTrue(
+                QUAL.objects.filter(
+                    season="2023", debater=self.debater2, qual_type=QUAL.POINTS
+                ).exists()
+            )
 
     def test_place_as_round(self):
         """Test place_as_round function"""
