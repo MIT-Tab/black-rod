@@ -126,7 +126,11 @@ def test_get_form_initial_uses_database_seed_for_results():
 
     assert varsity_results[0]["debater_one"] == varsity_one
     assert varsity_results[0]["ghost_points"] is True
-    assert varsity_speakers[0] == {"speaker": varsity_one, "tie": True}
+    assert varsity_speakers[0] == {
+        "speaker": varsity_one,
+        "tie": True,
+        "counts_for_points": True,
+    }
     assert novice_results[0]["debater_one"] == novice_one
     assert novice_speakers[0]["speaker"] == novice_one
     assert unplaced_results[0]["debater_one"] == var_primary

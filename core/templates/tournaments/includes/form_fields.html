@@ -57,9 +57,18 @@
             {{ form.debater_two|as_crispy_field }}
         </div>
     </div>
-    {% if has_ghost_points and form.ghost_points %}
-        {{ form.ghost_points|as_crispy_field }}
-    {% endif %}
+    <div class="form-row align-items-end">
+        {% if has_ghost_points and form.ghost_points %}
+            <div class="col-auto">
+                {{ form.ghost_points|as_crispy_field }}
+            </div>
+        {% endif %}
+        {% if form.counts_for_points %}
+            <div class="col-auto">
+                {{ form.counts_for_points|as_crispy_field }}
+            </div>
+        {% endif %}
+    </div>
 
 {% elif form_type == "speaker" %}
     <div class="row">
@@ -67,7 +76,16 @@
             {{ form.speaker|as_crispy_field }}
         </div>
     </div>
-    {{ form.tie|as_crispy_field }}
+    <div class="form-row align-items-end">
+        <div class="col-auto">
+            {{ form.tie|as_crispy_field }}
+        </div>
+        {% if form.counts_for_points %}
+            <div class="col-auto">
+                {{ form.counts_for_points|as_crispy_field }}
+            </div>
+        {% endif %}
+    </div>
     
 {% else %}
     {% for field in form.visible_fields %}

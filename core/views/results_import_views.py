@@ -288,6 +288,7 @@ def build_team_initial(handler: APIDataHandler, endpoint: str) -> List[dict]:
             {
                 "debater_one": debater_one,
                 "debater_two": debater_two,
+                "counts_for_points": True,
                 "ORDER": idx + 1,
             }
         )
@@ -305,6 +306,7 @@ def build_speaker_initial(handler: APIDataHandler, endpoint: str) -> List[dict]:
             {
                 "speaker": speaker,
                 "tie": speaker_data.get("tie", False),
+                "counts_for_points": True,
                 "ORDER": idx + 1,
             }
         )
@@ -349,7 +351,14 @@ def get_db_initial(tab_key: str, tournament: Tournament) -> List[dict]:
             .select_related("debater", "debater__school")
             .order_by("place")
         )
-        return [{"speaker": r.debater, "tie": r.tie} for r in results]
+        return [
+            {
+                "speaker": r.debater,
+                "tie": r.tie,
+                "counts_for_points": r.counts_for_points,
+            }
+            for r in results
+        ]
     results = (
         TeamResult.objects.filter(
             tournament=tournament, type_of_place=type_of_place, **place_filter
@@ -364,6 +373,7 @@ def get_db_initial(tab_key: str, tournament: Tournament) -> List[dict]:
         team_data = {
             "debater_one": debaters[0] if debaters else None,
             "debater_two": debaters[1] if len(debaters) > 1 else None,
+            "counts_for_points": result.counts_for_points,
         }
         if type_of_place == Debater.VARSITY and result.place > 0:
             team_data["ghost_points"] = result.ghost_points
@@ -408,6 +418,7 @@ def create_team_results(
             "team": team,
             "type_of_place": type_of_place,
             "place": final_place,
+            "counts_for_points": team_data.get("counts_for_points", True),
         }
         if has_ghost_points:
             result_data["ghost_points"] = team_data.get("ghost_points", False)
@@ -440,6 +451,7 @@ def create_speaker_results(
                 type_of_place=type_of_place,
                 place=speaker_data.get("ORDER", index + 1),
                 tie=speaker_data.get("tie", False),
+                counts_for_points=speaker_data.get("counts_for_points", True),
             )
         )
         speakers_to_update.append(speaker)

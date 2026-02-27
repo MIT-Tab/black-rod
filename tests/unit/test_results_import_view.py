@@ -192,6 +192,7 @@ def test_build_team_initial_skips_incomplete_entries():
 
     assert len(initial) == 1
     assert initial[0]["debater_one"] == "A"
+    assert initial[0]["counts_for_points"] is True
     assert initial[0]["ORDER"] == 1
 
 
@@ -208,6 +209,7 @@ def test_build_speaker_initial_skips_missing_speakers():
     assert len(initial) == 1
     assert initial[0]["speaker"] == "X"
     assert initial[0]["tie"] is True
+    assert initial[0]["counts_for_points"] is True
 
 
 def test_build_api_initial_only_uses_selected_tabs():

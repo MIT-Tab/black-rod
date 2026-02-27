@@ -240,9 +240,15 @@ def _merge_speaker_results(primary, secondary):
                 place=result.place,
             ).first()
             if conflict:
+                fields_to_update = []
                 if result.tie and not conflict.tie:
                     conflict.tie = True
-                    conflict.save(update_fields=["tie"])
+                    fields_to_update.append("tie")
+                if result.counts_for_points and not conflict.counts_for_points:
+                    conflict.counts_for_points = True
+                    fields_to_update.append("counts_for_points")
+                if fields_to_update:
+                    conflict.save(update_fields=fields_to_update)
             result.delete()
 
 
@@ -407,6 +413,7 @@ def _recompute_toty(team, season):
         team.team_results.filter(tournament__season=season)
         .filter(tournament__toty=True)
         .filter(type_of_place=Debater.VARSITY)
+        .filter(counts_for_points=True)
     )
     reaff = TOTYReaff.objects.filter(new_team=team, season=season).first()
     if reaff:
@@ -414,6 +421,7 @@ def _recompute_toty(team, season):
             reaff.old_team.team_results.filter(tournament__season=season)
             .filter(tournament__toty=True)
             .filter(type_of_place=Debater.VARSITY)
+            .filter(counts_for_points=True)
         )
 
     markers = [
@@ -468,6 +476,7 @@ def _recompute_soty(debater, season):
         debater.speaker_results.filter(tournament__season=season)
         .filter(tournament__soty=True)
         .filter(type_of_place=Debater.VARSITY)
+        .filter(counts_for_points=True)
     )
     reaff = Reaff.objects.filter(new_debater=debater, season=season).first()
     if reaff:
@@ -475,6 +484,7 @@ def _recompute_soty(debater, season):
             reaff.old_debater.speaker_results.filter(tournament__season=season)
             .filter(tournament__soty=True)
             .filter(type_of_place=Debater.VARSITY)
+            .filter(counts_for_points=True)
         )
 
     markers = [
@@ -582,6 +592,7 @@ def _recompute_online_qual(debater, season):
         TeamResult.objects.filter(tournament__season=season)
         .filter(type_of_place=Debater.VARSITY)
         .filter(team__debaters=debater)
+        .filter(counts_for_points=True)
     )
     markers = [
         (result.tournament.get_online_qual_points(result.place), result)
@@ -628,15 +639,16 @@ def _recompute_online_qual(debater, season):
 
 def _recompute_qual_points_and_quals(debater, season):
     season = str(season)
-    results = (
+    all_results = (
         TeamResult.objects.filter(tournament__season=season)
         .filter(type_of_place=Debater.VARSITY)
         .filter(team__debaters=debater)
     )
-    if not results.exists() or not _school_included_in_oty(debater):
+    if not all_results.exists() or not _school_included_in_oty(debater):
         return
+    scoring_results = all_results.filter(counts_for_points=True)
 
-    for result in results:
+    for result in scoring_results:
         if result.place == -1 or result.place > result.tournament.autoqual_bar:
             continue
 
@@ -654,7 +666,7 @@ def _recompute_qual_points_and_quals(debater, season):
         result.tournament.get_qual_points(
             result.place, ghost_points=result.ghost_points
         )
-        for result in results.filter(tournament__qual=True)
+        for result in scoring_results.filter(tournament__qual=True)
     )
 
     qual_points = QualPoints.objects.filter(season=season, debater=debater).first()

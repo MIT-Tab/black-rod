@@ -383,6 +383,9 @@ class TeamResultForm(forms.Form):
     )
 
     ghost_points = forms.BooleanField(label="Ghost Points", required=False)
+    counts_for_points = forms.BooleanField(
+        label="Counts for points", required=False, initial=True
+    )
     
     # Hidden fields for tracking new debaters by tournament ID
     debater_one_tournament_id = forms.CharField(widget=forms.HiddenInput(), required=False)
@@ -405,6 +408,9 @@ class SpeakerResultForm(forms.Form):
     )
 
     tie = forms.BooleanField(label="Tie", required=False)
+    counts_for_points = forms.BooleanField(
+        label="Counts for points", required=False, initial=True
+    )
     
     # Hidden field for tracking new speakers by tournament ID
     tournament_id = forms.CharField(widget=forms.HiddenInput(), required=False)

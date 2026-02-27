@@ -81,13 +81,16 @@ def update_toty(team, season=settings.CURRENT_SEASON):
         team.team_results.filter(tournament__season=season)
         .filter(tournament__toty=True)
         .filter(type_of_place=Debater.VARSITY)
+        .filter(counts_for_points=True)
     )
 
     reaff = TOTYReaff.objects.filter(new_team=team).filter(season=season).all()
     if len(reaff) > 0:
         results = results | reaff[0].old_team.team_results.filter(
             tournament__season=season
-        ).filter(tournament__toty=True).filter(type_of_place=Debater.VARSITY)
+        ).filter(tournament__toty=True).filter(type_of_place=Debater.VARSITY).filter(
+            counts_for_points=True
+        )
 
     markers = [
         (
@@ -162,13 +165,16 @@ def update_soty(debater, season=settings.CURRENT_SEASON):
         debater.speaker_results.filter(tournament__season=season)
         .filter(tournament__soty=True)
         .filter(type_of_place=Debater.VARSITY)
+        .filter(counts_for_points=True)
     )
 
     reaff = Reaff.objects.filter(new_debater=debater).filter(season=season).all()
     if len(reaff) > 0:
         results = results | reaff[0].old_debater.speaker_results.filter(
             tournament__season=season
-        ).filter(tournament__soty=True).filter(type_of_place=Debater.VARSITY)
+        ).filter(tournament__soty=True).filter(type_of_place=Debater.VARSITY).filter(
+            counts_for_points=True
+        )
 
     markers = [
         (
@@ -287,11 +293,12 @@ def update_qual_points(team, season=settings.CURRENT_SEASON):
         return
 
     for debater in team.debaters.all():
-        results = (
+        all_results = (
             TeamResult.objects.filter(tournament__season=season)
             .filter(type_of_place=Debater.VARSITY)
             .filter(team__debaters=debater)
         )
+        scoring_results = all_results.filter(counts_for_points=True)
 
         if not _school_included_in_oty(debater):
             if season == settings.CURRENT_SEASON:
@@ -306,14 +313,14 @@ def update_qual_points(team, season=settings.CURRENT_SEASON):
             QUAL.objects.filter(season=season, debater=debater).delete()
 
         qual = None
-        if results.exists():
+        if all_results.exists():
             latest_season = debater.latest_season
             current_season = int(settings.CURRENT_SEASON)
             if latest_season is None or int(latest_season) < current_season:
                 debater.latest_season = settings.CURRENT_SEASON
                 debater.save()
 
-        for result in results:
+        for result in scoring_results:
             if result.place != -1 and result.place <= result.tournament.autoqual_bar:
                 qual, created = QUAL.objects.get_or_create(
                     season=season,
@@ -325,7 +332,7 @@ def update_qual_points(team, season=settings.CURRENT_SEASON):
                     qual.tournament = result.tournament
                     qual.save(update_fields=["tournament"])
 
-        results = results.filter(tournament__qual=True)
+        results = scoring_results.filter(tournament__qual=True)
 
         markers = [
             (
@@ -454,6 +461,7 @@ def update_online_quals(team, season=settings.CURRENT_SEASON):
             TeamResult.objects.filter(tournament__season=season)
             .filter(type_of_place=Debater.VARSITY)
             .filter(team__debaters=debater)
+            .filter(counts_for_points=True)
         )
 
         markers = [

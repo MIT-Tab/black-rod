@@ -305,6 +305,19 @@ class RankingsUtilsTest(TestCase):
         self.assertGreater(toty.points, 0)
         self.assertGreater(toty.marker_one, 0)
 
+    def test_update_toty_ignores_results_excluded_from_points(self):
+        TeamResult.objects.create(
+            team=self.team,
+            tournament=self.tournament,
+            type_of_place=Debater.VARSITY,
+            place=1,
+            counts_for_points=False,
+        )
+
+        toty = rankings.update_toty(self.team, "2024")
+        self.assertIsNone(toty)
+        self.assertFalse(TOTY.objects.filter(team=self.team, season="2024").exists())
+
     def test_update_toty_no_results(self):
         """Test update_toty with no results"""
         toty = rankings.update_toty(self.team, "2024")
@@ -408,6 +421,33 @@ class RankingsUtilsTest(TestCase):
             coty.points, expected_points * 2 + len(self.team.debaters.all()) * 6
         )
 
+    def test_update_qual_points_ignores_results_excluded_from_points(self):
+        self.tournament.autoqual_bar = 4
+        self.tournament.save()
+
+        TeamResult.objects.create(
+            team=self.team,
+            tournament=self.tournament,
+            type_of_place=Debater.VARSITY,
+            place=3,
+            counts_for_points=False,
+        )
+
+        rankings.update_qual_points(self.team, "2024")
+
+        self.assertFalse(
+            QualPoints.objects.filter(
+                debater__in=self.team.debaters.all(), season="2024"
+            ).exists()
+        )
+        self.assertFalse(
+            QUAL.objects.filter(
+                debater__in=self.team.debaters.all(),
+                season="2024",
+                qual_type=QUAL.POINTS,
+            ).exists()
+        )
+
     def test_redo_rankings_toty(self):
         """Test redo_rankings function for toty"""
         # Create some results and rankings
@@ -505,6 +545,32 @@ class RankingsUtilsTest(TestCase):
         )
         self.assertEqual(quals.count(), 2)
 
+    def test_update_online_quals_ignores_results_excluded_from_points(self):
+        online_tournament = Tournament.objects.create(
+            name="Online Tournament Excluded",
+            host=self.school,
+            date=date(2024, 4, 1),
+            season="2024",
+            online_qual_points=True,
+            num_teams=16,
+        )
+        TeamResult.objects.create(
+            team=self.team,
+            tournament=online_tournament,
+            type_of_place=Debater.VARSITY,
+            place=1,
+            counts_for_points=False,
+        )
+
+        with self.settings(ONLINE_SEASONS=("2024",), ONLINE_QUAL_BAR=10):
+            rankings.update_online_quals(self.team, "2024")
+
+        self.assertFalse(
+            OnlineQUAL.objects.filter(
+                debater__in=self.team.debaters.all(), season="2024"
+            ).exists()
+        )
+
     def test_update_toty_no_debaters(self):
         """Test update_toty with team having no debaters"""
         empty_team = Team.objects.create(name="Empty Team")
@@ -536,6 +602,21 @@ class RankingsUtilsTest(TestCase):
         self.assertEqual(soty.debater, self.debater1)
         self.assertGreater(soty.points, 0)
         self.assertGreater(soty.marker_one, 0)
+
+    def test_update_soty_ignores_results_excluded_from_points(self):
+        SpeakerResult.objects.create(
+            debater=self.debater1,
+            tournament=self.tournament,
+            type_of_place=Debater.VARSITY,
+            place=1,
+            counts_for_points=False,
+        )
+
+        soty = rankings.update_soty(self.debater1, "2024")
+        self.assertIsNone(soty)
+        self.assertFalse(
+            SOTY.objects.filter(debater=self.debater1, season="2024").exists()
+        )
 
     def test_update_soty_no_results(self):
         """Test update_soty with no results"""

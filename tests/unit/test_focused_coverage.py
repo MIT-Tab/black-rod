@@ -157,6 +157,7 @@ class FocusedCoverageTest(TestCase):
         )
         self.assertEqual(team_result.place, 1)
         self.assertFalse(team_result.ghost_points)
+        self.assertTrue(team_result.counts_for_points)
 
         # Test SpeakerResult
         speaker_result = SpeakerResult.objects.create(
@@ -168,6 +169,7 @@ class FocusedCoverageTest(TestCase):
         )
         self.assertEqual(speaker_result.place, 1)
         self.assertFalse(speaker_result.tie)
+        self.assertTrue(speaker_result.counts_for_points)
 
         # Test relationships
         self.assertEqual(team_result.tournament, self.tournament)

@@ -237,6 +237,7 @@ def create_speaker_awards(
             type_of_place=type_of_result,
             place=award["place"],
             tie=award["tie"],
+            counts_for_points=award.get("counts_for_points", True),
         )
 
         debaters_changed += [debater]
@@ -275,6 +276,7 @@ def create_team_awards(team_completed_actions, team_awards, type_of_result, tour
             team=team,
             type_of_place=type_of_result,
             place=award["place"],
+            counts_for_points=award.get("counts_for_points", True),
         )
 
         teams_changed += [team]
