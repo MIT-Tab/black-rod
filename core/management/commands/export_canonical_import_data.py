@@ -9,6 +9,7 @@ from django.utils import timezone
 from core.models import (
     Debater,
     DebaterAliasGroup,
+    QUAL,
     School,
     SchoolLookup,
     SpeakerResult,
@@ -121,9 +122,14 @@ class Command(BaseCommand):
         alias_groups = list(
             DebaterAliasGroup.objects.filter(id__in=alias_group_ids).order_by("id")
         )
+        quals = list(
+            QUAL.objects.select_related("tournament")
+            .filter(debater_id__in=debater_ids)
+            .order_by("season", "debater_id", "qual_type", "id")
+        )
 
         return {
-            "schema_version": 1,
+            "schema_version": 2,
             "exported_at": timezone.now().isoformat(),
             "starting_season": starting_season,
             "counts": {
@@ -134,6 +140,7 @@ class Command(BaseCommand):
                 "seed_debaters": len(seed_debaters),
                 "debaters": len(debaters),
                 "teams": len(teams),
+                "quals": len(quals),
             },
             "schools": [self._school_payload(school) for school in schools],
             "school_lookups": [
@@ -157,6 +164,7 @@ class Command(BaseCommand):
                 self._debater_payload(debater, include_school=True) for debater in debaters
             ],
             "teams": [self._team_payload(team) for team in teams],
+            "quals": [self._qual_payload(qual) for qual in quals],
             "tournaments": [
                 self._tournament_payload(tournament, debater_ids) for tournament in tournaments
             ],
@@ -235,6 +243,21 @@ class Command(BaseCommand):
             ],
         }
 
+    def _qual_payload(self, qual):
+        tournament = qual.tournament
+        return {
+            "id": qual.id,
+            "debater_id": qual.debater_id,
+            "season": qual.season,
+            "qual_type": qual.qual_type,
+            "qual_type_display": qual.get_qual_type_display(),
+            "tournament_id": qual.tournament_id,
+            "tournament_name": tournament.name if tournament else None,
+            "tournament_profile_path": (
+                tournament.get_absolute_url() if tournament else None
+            ),
+        }
+
     def _tournament_payload(self, tournament, debater_ids):
         return {
             "id": tournament.id,
@@ -277,6 +300,8 @@ class Command(BaseCommand):
             "debater_name": debater.name,
             "debater_school_id": debater.school_id,
             "debater_school_name": debater.school.name if debater.school else None,
+            "debater_status": debater.status,
+            "debater_status_display": debater.get_status_display(),
             "debater_profile_path": debater.get_absolute_url(),
             "debater_school_profile_path": (
                 debater.school.get_absolute_url() if debater.school else None

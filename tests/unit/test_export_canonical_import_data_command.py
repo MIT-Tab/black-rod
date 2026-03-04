@@ -9,6 +9,7 @@ from django.test import TestCase
 from core.models import (
     Debater,
     DebaterAliasGroup,
+    QUAL,
     School,
     SchoolLookup,
     SpeakerResult,
@@ -109,6 +110,12 @@ class ExportCanonicalImportDataCommandTest(TestCase):
             place=3,
             ghost_points=True,
         )
+        self.qual = QUAL.objects.create(
+            season="2022",
+            debater=self.alias_link,
+            qual_type=QUAL.BRANDEIS,
+            tournament=self.new_tournament,
+        )
 
     def test_command_exports_filtered_canonical_payload(self):
         with TemporaryDirectory() as tmpdir:
@@ -126,12 +133,13 @@ class ExportCanonicalImportDataCommandTest(TestCase):
 
             payload = json.loads(open(output_path, encoding="utf-8").read())
 
-        self.assertEqual(payload["schema_version"], 1)
+        self.assertEqual(payload["schema_version"], 2)
         self.assertEqual(payload["starting_season"], "2021")
         self.assertEqual(payload["counts"]["tournaments"], 1)
         self.assertEqual(payload["counts"]["seed_debaters"], 2)
         self.assertEqual(payload["counts"]["debaters"], 4)
         self.assertEqual(payload["counts"]["teams"], 1)
+        self.assertEqual(payload["counts"]["quals"], 1)
 
         self.assertEqual([t["id"] for t in payload["tournaments"]], [self.new_tournament.id])
         tournament_payload = payload["tournaments"][0]
@@ -187,6 +195,14 @@ class ExportCanonicalImportDataCommandTest(TestCase):
             debaters_by_id[self.alias_link.id]["linked_debater_ids"],
             [self.alex.id, self.alias_link.id],
         )
+        self.assertEqual(len(payload["quals"]), 1)
+        qual_payload = payload["quals"][0]
+        self.assertEqual(qual_payload["debater_id"], self.alias_link.id)
+        self.assertEqual(qual_payload["season"], "2022")
+        self.assertEqual(qual_payload["qual_type"], QUAL.BRANDEIS)
+        self.assertEqual(qual_payload["qual_type_display"], "Brandeis IV")
+        self.assertEqual(qual_payload["tournament_id"], self.new_tournament.id)
+        self.assertEqual(qual_payload["tournament_name"], self.new_tournament.name)
 
         self.assertEqual([lookup["server_name"] for lookup in payload["school_lookups"]], ["hostu"])
         self.assertEqual(
