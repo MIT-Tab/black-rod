@@ -1,13 +1,14 @@
+import json
 import random
+from django.apps import apps
 from django.core.management.base import BaseCommand
 from django.core import serializers
+from django.core.serializers.json import DjangoJSONEncoder
 from django.contrib.auth.models import Permission, Group
 from django.contrib.contenttypes.models import ContentType
 from taggit.models import Tag, TaggedItem
 from core.models import (
-    User, Video, Debater, School, Team, Tournament, Round, RoundStats,
-    SpeakerResult, TeamResult, COTY, NOTY, QUAL, SOTY, TOTY, TOTYReaff,
-    OnlineQUAL, SiteSetting, QualPoints, Reaff, SchoolLookup
+    User, Video
 )
 
 FAKE_PW = "pbkdf2_sha256$260000$fake$fakehashfordev"
@@ -22,19 +23,20 @@ class Command(BaseCommand):
         random.seed(1000)
         output_file = options['output']
 
-        public_models = [
-            School, SchoolLookup, Debater, Team, Tournament, Round, RoundStats,
-            SpeakerResult, TeamResult, COTY, NOTY, QUAL, SOTY, TOTY, TOTYReaff,
-            OnlineQUAL, SiteSetting, QualPoints, Reaff
-        ]
+        excluded_core_models = {User, Video}
+        core_models = sorted(
+            (model for model in apps.get_app_config("core").get_models() if model not in excluded_core_models),
+            key=lambda model: model._meta.label_lower,
+        )
 
         framework_models = [ContentType, Permission, Group, Tag, TaggedItem]
 
         all_objects = []
 
-        for model in public_models:
+        for model in core_models:
             try:
-                qs = model.objects.all()
+                manager = getattr(model, "all_objects", model.objects)
+                qs = manager.all()
                 self.stdout.write(f"Processing {model.__name__}: {qs.count()} objects")
                 for obj in qs.iterator(chunk_size=2000):
                     all_objects.append(obj)
@@ -54,13 +56,14 @@ class Command(BaseCommand):
         self._add_simulated_videos(all_objects)
 
         try:
-            data = serializers.serialize(
-                'json',
+            payload = serializers.serialize(
+                'python',
                 all_objects,
                 use_natural_foreign_keys=True,
                 use_natural_primary_keys=True,
-                indent=None,
             )
+            self._inject_unfiltered_debater_m2m(payload)
+            data = json.dumps(payload, ensure_ascii=False, cls=DjangoJSONEncoder)
         except Exception as e:
             self.stdout.write(self.style.ERROR(f"Error serializing data: {e}"))
             return
@@ -73,6 +76,37 @@ class Command(BaseCommand):
             return
 
         self.stdout.write(self.style.SUCCESS(f"Successfully created {output_file} with {len(all_objects)} objects"))
+
+    def _inject_unfiltered_debater_m2m(self, payload):
+        debater_model = apps.get_model("core", "Debater")
+        core_models = apps.get_app_config("core").get_models()
+
+        for model in core_models:
+            debater_m2m_fields = [
+                field for field in model._meta.many_to_many if field.remote_field.model is debater_model
+            ]
+            if not debater_m2m_fields:
+                continue
+
+            model_label = model._meta.label_lower
+            model_items = [item for item in payload if item["model"] == model_label]
+            if not model_items:
+                continue
+
+            for field in debater_m2m_fields:
+                through = field.remote_field.through
+                source_field_name = f"{field.m2m_field_name()}_id"
+                target_field_name = f"{field.m2m_reverse_field_name()}_id"
+
+                links_by_source = {}
+                rows = through._default_manager.values_list(source_field_name, target_field_name).order_by(
+                    source_field_name, target_field_name
+                )
+                for source_id, target_id in rows.iterator(chunk_size=2000):
+                    links_by_source.setdefault(source_id, []).append(target_id)
+
+                for item in model_items:
+                    item["fields"][field.name] = links_by_source.get(item["pk"], [])
 
     def _add_simulated_users(self, all_objects):
         users = User.objects.all()
