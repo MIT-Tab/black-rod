@@ -22,6 +22,7 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         random.seed(1000)
         output_file = options['output']
+        self._user_natural_key_map = {}
 
         excluded_core_models = {User, Video}
         core_models = sorted(
@@ -62,6 +63,7 @@ class Command(BaseCommand):
                 use_natural_foreign_keys=True,
                 use_natural_primary_keys=True,
             )
+            self._rewrite_sanitized_user_relations(payload)
             self._inject_unfiltered_debater_m2m(payload)
             data = json.dumps(payload, ensure_ascii=False, cls=DjangoJSONEncoder)
         except Exception as e:
@@ -108,6 +110,36 @@ class Command(BaseCommand):
                 for item in model_items:
                     item["fields"][field.name] = links_by_source.get(item["pk"], [])
 
+    def _rewrite_sanitized_user_relations(self, payload):
+        if not self._user_natural_key_map:
+            return
+
+        user_model = User
+        model_by_label = {
+            model._meta.label_lower: model
+            for model in apps.get_models()
+        }
+
+        for item in payload:
+            model = model_by_label.get(item["model"])
+            if model is None:
+                continue
+
+            for field in model._meta.fields:
+                if field.remote_field is None or field.remote_field.model is not user_model:
+                    continue
+
+                value = item["fields"].get(field.name)
+                if value is None:
+                    continue
+
+                normalized_value = tuple(value) if isinstance(value, list) else value
+                replacement_value = self._user_natural_key_map.get(normalized_value)
+                if replacement_value is None:
+                    continue
+
+                item["fields"][field.name] = list(replacement_value)
+
     def _add_simulated_users(self, all_objects):
         users = User.objects.all()
         total = users.count()
@@ -117,9 +149,11 @@ class Command(BaseCommand):
             "Drew","Sage","River","Phoenix","Rowan","Skylar","Emery","Finley"
         ]
         for idx, user in enumerate(users.iterator(chunk_size=2000)):
+            simulated_username = f"user_{user.id}"
+            self._user_natural_key_map[user.natural_key()] = (simulated_username,)
             simulated_user = User(
                 id=user.id,
-                username=f"user_{user.id}",
+                username=simulated_username,
                 first_name=first_names[idx % len(first_names)],
                 last_name=first_names[(total - idx - 1) % len(first_names)],
                 email=f"user_{user.id}@example.com",
