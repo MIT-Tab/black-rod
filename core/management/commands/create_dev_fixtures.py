@@ -33,6 +33,7 @@ class Command(BaseCommand):
         framework_models = [ContentType, Permission, Group, Tag, TaggedItem]
 
         all_objects = []
+        self._add_simulated_users(all_objects)
 
         for model in core_models:
             try:
@@ -53,7 +54,6 @@ class Command(BaseCommand):
             except Exception as e:
                 self.stdout.write(self.style.WARNING(f"Error processing {model.__name__}: {e}"))
 
-        self._add_simulated_users(all_objects)
         self._add_simulated_videos(all_objects)
 
         try:

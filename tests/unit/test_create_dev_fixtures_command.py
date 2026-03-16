@@ -46,10 +46,20 @@ class CreateDevFixturesCommandTest(TestCase):
             for item in payload
             if item["model"] == "core.claimdebaterrequest" and item["pk"] == claim_request.pk
         )
+        claim_request_index = next(
+            index
+            for index, item in enumerate(payload)
+            if item["model"] == "core.claimdebaterrequest" and item["pk"] == claim_request.pk
+        )
         debater_item = next(
             item
             for item in payload
             if item["model"] == "core.debater" and item["pk"] == debater.pk
+        )
+        first_user_index = next(
+            index
+            for index, item in enumerate(payload)
+            if item["model"] == "core.user"
         )
         user_items = [item for item in payload if item["model"] == "core.user"]
 
@@ -62,6 +72,7 @@ class CreateDevFixturesCommandTest(TestCase):
             [f"user_{reviewer.id}"],
         )
         self.assertEqual(debater_item["fields"]["user"], [f"user_{requester.id}"])
+        self.assertLess(first_user_index, claim_request_index)
         self.assertCountEqual(
             [item["fields"]["username"] for item in user_items],
             [f"user_{requester.id}", f"user_{reviewer.id}"],
