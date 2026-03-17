@@ -4,7 +4,10 @@ from django.db.models import Q
 
 from core.models import (
     COTY,
+    DebaterAlias,
     Debater,
+    ImportedRoundJudge,
+    ImportedRoundMetadata,
     MergeDebaterRequest,
     NOTY,
     OnlineQUAL,
@@ -193,6 +196,8 @@ def merge_debaters(primary, secondary):
     with transaction.atomic():
         _merge_speaker_results(primary, secondary)
         RoundStats.objects.filter(debater=secondary).update(debater=primary)
+        _merge_debater_aliases(primary, secondary)
+        _merge_manual_elo_options(primary, secondary)
 
         _merge_qual_points(primary, secondary)
         _merge_qualifications(primary, secondary)
@@ -223,6 +228,34 @@ def merge_debaters(primary, secondary):
         "affected_team_ids": [team.pk for team in affected_teams],
         "seasons": sorted(seasons),
     }
+
+
+def _merge_debater_aliases(primary, secondary):
+    for alias in DebaterAlias.objects.filter(debater=secondary).order_by("id"):
+        existing = DebaterAlias.objects.filter(
+            debater=primary,
+            source_name=alias.source_name,
+        ).first()
+        if existing is not None:
+            ImportedRoundMetadata.objects.filter(gov_1_alias=alias).update(gov_1_alias=existing)
+            ImportedRoundMetadata.objects.filter(gov_2_alias=alias).update(gov_2_alias=existing)
+            ImportedRoundMetadata.objects.filter(opp_1_alias=alias).update(opp_1_alias=existing)
+            ImportedRoundMetadata.objects.filter(opp_2_alias=alias).update(opp_2_alias=existing)
+            ImportedRoundJudge.objects.filter(debater_alias=alias).update(debater_alias=existing)
+            alias.delete()
+            continue
+        DebaterAlias.objects.filter(pk=alias.pk).update(debater=primary)
+
+
+def _merge_manual_elo_options(primary, secondary):
+    primary_opt = str(getattr(primary, "elo_manual_opt", "") or "").strip().lower()
+    secondary_opt = str(getattr(secondary, "elo_manual_opt", "") or "").strip().lower()
+    if primary_opt:
+        return
+    if not secondary_opt:
+        return
+    Debater.objects.filter(pk=primary.pk).update(elo_manual_opt=secondary_opt)
+    primary.elo_manual_opt = secondary_opt
 
 
 def _merge_speaker_results(primary, secondary):
@@ -644,7 +677,12 @@ def _recompute_qual_points_and_quals(debater, season):
         .filter(type_of_place=Debater.VARSITY)
         .filter(team__debaters=debater)
     )
-    if not all_results.exists() or not _school_included_in_oty(debater):
+    if not _school_included_in_oty(debater):
+        QualPoints.objects.filter(season=season, debater=debater).delete()
+        if not _is_online_season(season):
+            _sync_points_qual(debater=debater, season=season, qualified=False)
+        return
+    if not all_results.exists():
         return
     scoring_results = all_results.filter(counts_for_points=True)
 

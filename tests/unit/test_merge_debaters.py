@@ -6,6 +6,7 @@ from django.conf import settings
 
 from core.forms import MergeDebaterRequestForm
 from core.models import (
+    DebaterAlias,
     Debater,
     NOTY,
     OnlineQUAL,
@@ -199,6 +200,13 @@ def test_merge_debaters_reassigns_related_records():
         new_debater=primary,
         reaff_date=date.today(),
     )
+    secondary.elo_manual_opt = Debater.EloManualOpt.OPT_OUT
+    secondary.save(update_fields=["elo_manual_opt"])
+    alias = DebaterAlias.objects.create(
+        source_name="Secondary Dup",
+        normalized_name="secondary dup",
+        debater=secondary,
+    )
 
     result_meta = merge_debaters(primary, secondary)
 
@@ -225,6 +233,11 @@ def test_merge_debaters_reassigns_related_records():
     assert NOTY.objects.filter(debater=secondary).count() == 0
     assert OnlineQUAL.objects.filter(debater=secondary).count() == 0
     assert Reaff.objects.filter(new_debater=primary).exists()
+    primary.refresh_from_db()
+    assert primary.elo_manual_opt == Debater.EloManualOpt.OPT_OUT
+
+    alias.refresh_from_db()
+    assert alias.debater_id == primary.id
 
     assert result_meta["primary_id"] == primary.pk
     assert str(settings.CURRENT_SEASON) in result_meta["seasons"]
@@ -898,7 +911,7 @@ def test_merge_debaters_removes_stale_points_qual_when_recomputed_points_drop():
         num_debaters=20,
         num_novice_debaters=4,
         num_novice_teams=2,
-        qual=False,
+        qual_type=Tournament.BRANDEIS,
     )
 
     team = Team.objects.create(name="No Qual Team")

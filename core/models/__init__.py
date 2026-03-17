@@ -1,7 +1,14 @@
 from .debater import Debater, QualPoints, Reaff
+from .debater_alias import DebaterAlias
 from .results.speaker import SpeakerResult
 from .results.team import TeamResult
 from .round import Round, RoundStats
+from .round_import import (
+    ImportBatch,
+    ImportedRoundJudge,
+    ImportedRoundMetadata,
+    TournamentImport,
+)
 from .school import School, SchoolLookup
 from .school_admin import SchoolAdmin
 from .site_settings import SiteSetting
@@ -20,10 +27,12 @@ from .tags import ResourceTag, TaggedResource
 from .merge_request import MergeDebaterRequest
 from .claim_request import ClaimDebaterRequest
 from .debater_alias_group import DebaterAliasGroup
+from .synthetic_resolution_log import SyntheticResolutionLog
 
 __all__ = [
     "User",
     "Debater",
+    "DebaterAlias",
     "Reaff",
     "QualPoints",
     "School",
@@ -31,6 +40,10 @@ __all__ = [
     "SchoolAdmin",
     "Team",
     "Tournament",
+    "ImportBatch",
+    "TournamentImport",
+    "ImportedRoundMetadata",
+    "ImportedRoundJudge",
     "Round",
     "RoundStats",
     "SpeakerResult",
@@ -51,4 +64,5 @@ __all__ = [
     "MergeDebaterRequest",
     "ClaimDebaterRequest",
     "DebaterAliasGroup",
+    "SyntheticResolutionLog",
 ]

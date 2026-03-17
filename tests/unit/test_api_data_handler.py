@@ -262,7 +262,7 @@ def test_create_debaters_from_data_persists_and_maps(handler):
     )
 
     assert created_count == 1
-    saved = Debater.objects.get(first_name="Dan")
+    saved = Debater.all_objects.get(first_name="Dan")
     assert handler._debater_id_map["101"] == saved.id
 
 
@@ -300,7 +300,7 @@ def test_create_debaters_uses_lookup_when_bulk_create_drops_ids(handler, monkeyp
         ]
     )
 
-    saved = Debater.objects.get(first_name="Eve")
+    saved = Debater.all_objects.get(first_name="Eve")
     assert handler._debater_id_map["202"] == saved.id
 
 

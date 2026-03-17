@@ -47,6 +47,7 @@ def test_stats_counts_tournaments_from_all_sources(client):
     tournament_one = Tournament.objects.create(
         name="Invitational One",
         short_name="Inv One",
+        host=school,
         season="2024",
         date=date(2024, 1, 15),
         num_rounds=5,
@@ -58,6 +59,7 @@ def test_stats_counts_tournaments_from_all_sources(client):
     tournament_two = Tournament.objects.create(
         name="Invitational Two",
         short_name="Inv Two",
+        host=school,
         season="2024",
         date=date(2024, 2, 15),
         num_rounds=5,
@@ -69,6 +71,7 @@ def test_stats_counts_tournaments_from_all_sources(client):
     tournament_three = Tournament.objects.create(
         name="Invitational Three",
         short_name="Inv Three",
+        host=school,
         season="2024",
         date=date(2024, 3, 15),
         num_rounds=5,
@@ -103,3 +106,4 @@ def test_stats_counts_tournaments_from_all_sources(client):
     leaderboard = response.context["debaters_by_tournament_count"]
     assert leaderboard[0] == debater
     assert leaderboard[0].tournament_count == 3
+

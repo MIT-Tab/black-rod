@@ -1,8 +1,10 @@
 from django.urls import path
 
 from core.views import (
+    admin_audit_views,
     admin_views,
     coty_views,
+    debater_export_views,
     debater_views,
     debater_profile_views,
     noty_views,
@@ -11,6 +13,7 @@ from core.views import (
     school_admin_views,
     school_views,
     soty_views,
+    elo_views,
     merge_debater_views,
     claim_debater_views,
     team_views,
@@ -73,6 +76,11 @@ urlpatterns = [
         "core/debaters/<int:pk>",
         debater_views.DebaterDetailView.as_view(),
         name="debater_detail",
+    ),
+    path(
+        "core/debaters/<int:pk>/tab-cards-csv",
+        debater_export_views.debater_tab_cards_csv,
+        name="debater_tab_cards_csv",
     ),
     path(
         "core/debaters/<int:pk>/edit",
@@ -262,7 +270,38 @@ urlpatterns = [
     path("core/toty", toty_views.TOTYListView.as_view(), name="toty"),
     path("core/noty", noty_views.NOTYListView.as_view(), name="noty"),
     path("core/coty", coty_views.COTYListView.as_view(), name="coty"),
+    path("core/elo/", elo_views.elo_dashboard, name="elo_dashboard"),
     path("core/admin-tools/", admin_views.AdminToolsView.as_view(), name="admin_tools"),
+    path(
+        "core/admin/synthetic-resolve/",
+        admin_views.SyntheticResolutionView.as_view(),
+        name="synthetic_resolution",
+    ),
+    path(
+        "core/admin/elo-cache/invalidate/",
+        admin_views.EloCacheInvalidateView.as_view(),
+        name="invalidate_elo_cache",
+    ),
+    path(
+        "core/admin/tournament-pipeline-audit/",
+        admin_audit_views.ConsolidatedTournamentAuditView.as_view(),
+        name="tournament_pipeline_audit",
+    ),
+    path(
+        "core/admin/tournament-audit/<int:pk>/",
+        admin_audit_views.TournamentAuditDetailView.as_view(),
+        name="tournament_audit_detail",
+    ),
+    path(
+        "core/admin/tournament-audit/<int:tournament_id>/round/new/",
+        admin_audit_views.TournamentAuditRoundEditView.as_view(),
+        name="tournament_audit_round_create",
+    ),
+    path(
+        "core/admin/tournament-audit/<int:tournament_id>/round/<int:round_id>/",
+        admin_audit_views.TournamentAuditRoundEditView.as_view(),
+        name="tournament_audit_round_edit",
+    ),
     path(
         "core/mittab-dashboard/",
         admin_views.MitTabDashboardView.as_view(),

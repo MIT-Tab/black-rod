@@ -11,6 +11,8 @@ from core.models import (
     Tournament, Debater, School, Team, TeamResult, SpeakerResult,
     Round, RoundStats,
 )
+from core.utils.rounds import visible_canonical_rounds
+
 
 def index(request):
     seasons = settings.SEASONS
@@ -217,10 +219,10 @@ def stats(request):
             queryset=TeamResult.objects.select_related('tournament'),
         )
         gov_rounds_prefetch = Prefetch(
-            'govs', queryset=Round.objects.select_related('tournament')
+            'govs', queryset=visible_canonical_rounds(Round.objects.select_related('tournament'))
         )
         opp_rounds_prefetch = Prefetch(
-            'opps', queryset=Round.objects.select_related('tournament')
+            'opps', queryset=visible_canonical_rounds(Round.objects.select_related('tournament'))
         )
         debater_team_prefetch = Prefetch(
             'teams',

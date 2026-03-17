@@ -32,6 +32,21 @@
                                        class="btn btn-outline-warning btn-sm">Rankings Recompute</a>
                                     <span class="text-muted ml-2">Recompute TOTY, SOTY, or NOTY rankings</span>
                                 </li>
+                                <li class="list-group-item">
+                                    <a href="{% url 'core:tournament_pipeline_audit' %}"
+                                       class="btn btn-outline-primary btn-sm">Tournament Data Audit</a>
+                                    <span class="text-muted ml-2">Review round completeness and edit individual ballots</span>
+                                </li>
+                                <li class="list-group-item">
+                                    <a href="#elo-cache"
+                                       class="btn btn-outline-secondary btn-sm">Invalidate ELO Cache</a>
+                                    <span class="text-muted ml-2">Clear cached ELO dashboard and runtime pipeline data</span>
+                                </li>
+                                <li class="list-group-item">
+                                    <a href="#synthetic-resolution"
+                                       class="btn btn-outline-dark btn-sm">Synthetic Resolver</a>
+                                    <span class="text-muted ml-2">Resolve synthetic debaters, schools, or teams into canonical records</span>
+                                </li>
                             </ul>
                         </div>
                         <div class="col-md-6">
@@ -49,6 +64,45 @@
                                             <span class="badge badge-secondary">Regular User</span>
                                         {% endif %}
                                     </p>
+                                </div>
+                            </div>
+                            <div class="card mt-3" id="elo-cache">
+                                <div class="card-body">
+                                    <h6 class="card-title">Invalidate ELO Cache</h6>
+                                    <p class="card-text text-muted">Use this after updating rounds, quals, or debater identity data when you need the ELO dashboard to recompute from fresh state.</p>
+                                    <form method="post" action="{% url 'core:invalidate_elo_cache' %}">
+                                        {% csrf_token %}
+                                        <button class="btn btn-outline-secondary btn-sm" type="submit">Invalidate ELO Cache</button>
+                                    </form>
+                                </div>
+                            </div>
+                            <div class="card mt-3" id="synthetic-resolution">
+                                <div class="card-body">
+                                    <h6 class="card-title">Resolve Synthetic Entity</h6>
+                                    <form method="post" action="{% url 'core:synthetic_resolution' %}">
+                                        {% csrf_token %}
+                                        <div class="form-group">
+                                            <label for="entity_type">Entity Type</label>
+                                            <select class="form-control" name="entity_type" id="entity_type" required>
+                                                <option value="debater">Debater</option>
+                                                <option value="school">School</option>
+                                                <option value="team">Team</option>
+                                            </select>
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="synthetic_id">Synthetic ID</label>
+                                            <input class="form-control" type="number" name="synthetic_id" id="synthetic_id" required>
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="target_id">Target ID</label>
+                                            <input class="form-control" type="number" name="target_id" id="target_id" required>
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="reason">Reason</label>
+                                            <input class="form-control" type="text" name="reason" id="reason" placeholder="Manual reconciliation">
+                                        </div>
+                                        <button class="btn btn-outline-dark btn-sm" type="submit">Resolve</button>
+                                    </form>
                                 </div>
                             </div>
                         </div>

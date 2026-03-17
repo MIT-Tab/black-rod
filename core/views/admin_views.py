@@ -28,6 +28,9 @@ from core.models import (
     Team,
 )
 from core.utils.rankings import redo_rankings, update_noty, update_soty, update_toty
+from core.utils.elo_runtime_engine.cache import clear_runtime_caches
+from core.utils.synthetic_resolution import resolve_synthetic_entity
+from core.views.elo_cache import invalidate_cached_elo_state
 
 
 class AdminToolsView(UserPassesTestMixin, TemplateView):
@@ -35,6 +38,50 @@ class AdminToolsView(UserPassesTestMixin, TemplateView):
 
     def test_func(self):
         return self.request.user.is_superuser
+
+
+class SyntheticResolutionView(UserPassesTestMixin, TemplateView):
+    template_name = "admin/admin_tools.html"
+
+    def test_func(self):
+        return self.request.user.is_superuser
+
+    def post(self, request, *args, **kwargs):
+        entity_type = str(request.POST.get("entity_type") or "").strip().lower()
+        synthetic_id = request.POST.get("synthetic_id")
+        target_id = request.POST.get("target_id")
+        reason = str(request.POST.get("reason") or "").strip()
+
+        try:
+            resolve_synthetic_entity(
+                entity_type=entity_type,
+                synthetic_id=int(synthetic_id),
+                target_id=int(target_id),
+                actor=request.user,
+                reason=reason,
+                source_context={"source": "admin_tools"},
+            )
+            messages.success(request, "Synthetic entity resolved successfully.")
+        except Exception as exc:
+            messages.error(request, "Synthetic resolution failed: %s" % exc)
+
+        return redirect("core:admin_tools")
+
+
+class EloCacheInvalidateView(UserPassesTestMixin, TemplateView):
+    template_name = "admin/admin_tools.html"
+
+    def test_func(self):
+        return self.request.user.is_superuser
+
+    def post(self, request, *args, **kwargs):
+        version = invalidate_cached_elo_state()
+        clear_runtime_caches()
+        messages.success(
+            request,
+            f"ELO cache invalidated successfully. Active namespace version: {version}.",
+        )
+        return redirect("core:admin_tools")
 
 
 SchoolShortNameFormSet = modelformset_factory(
@@ -66,7 +113,7 @@ class SchoolShortNameAuditView(UserPassesTestMixin, TemplateView):
             | Q(short_name__iexact=F("name"))
         )
 
-        queryset = (
+        return (
             School.objects.filter(missing_short_name)
             .annotate(
                 toty_count=Count("debaters__teams__toty", distinct=True),
@@ -86,7 +133,6 @@ class SchoolShortNameAuditView(UserPassesTestMixin, TemplateView):
             )
             .order_by("-appearance_total", "name")
         )
-        return queryset
 
     def get_formset(self, data=None):
         return SchoolShortNameFormSet(
@@ -285,29 +331,22 @@ class MitTabDashboardView(UserPassesTestMixin, TemplateView):
             content_div = soup.find("div", {"id": "content"})
 
             if not content_div:
-                error_message = "Content div not found in the response"
-                return tournaments, error_message
+                return tournaments, "Content div not found in the response"
 
-            links = content_div.find_all("a", href=True)
-
-            for link in links:
+            for link in content_div.find_all("a", href=True):
                 href = link.get("href", "")
                 text = link.get_text(strip=True)
-
                 match = re.match(r"^(.*?)\.nu-tab\.com$", text)
-                if match:
-                    tournament_name = match.group(1)
-                    if href.startswith("http"):
-                        tournament_url = href
-                    else:
-                        tournament_url = f"http://{text}"
+                if not match:
+                    continue
+                tournament_name = match.group(1)
+                tournament_url = href if href.startswith("http") else f"http://{text}"
+                tournaments.append({"name": tournament_name, "url": tournament_url})
 
-                    tournaments.append({"name": tournament_name, "url": tournament_url})
-
-        except requests.RequestException as e:
-            error_message = f"Failed to fetch data from nu-tab.com: {str(e)}"
-        except Exception as e:
-            error_message = f"Error parsing tournament data: {str(e)}"
+        except requests.RequestException as exc:
+            error_message = f"Failed to fetch data from nu-tab.com: {exc}"
+        except Exception as exc:  # pragma: no cover - defensive template surface
+            error_message = f"Error parsing tournament data: {exc}"
 
         return tournaments, error_message
 
@@ -341,7 +380,6 @@ class RankingsRecomputeView(UserPassesTestMixin, TemplateView):
     def post(self, request, *args, **kwargs):
         season = request.POST.get("season")
         ranking_type = request.POST.get("ranking_type")
-
         if not season or not ranking_type:
             return JsonResponse(
                 {"success": False, "error": "Season and ranking type are required"}
@@ -353,18 +391,21 @@ class RankingsRecomputeView(UserPassesTestMixin, TemplateView):
                 "soty": lambda: self._update_soty_rankings(season),
                 "noty": lambda: self._update_noty_rankings(season),
             }
-
             if ranking_type in ranking_funcs:
                 ranking_funcs[ranking_type]()
                 return JsonResponse(
                     {
                         "success": True,
-                        "message": f"Successfully recomputed {ranking_type.upper()} rankings for season {season}",
+                        "message": (
+                            f"Successfully recomputed {ranking_type.upper()} "
+                            f"rankings for season {season}"
+                        ),
                     }
                 )
+        except Exception as exc:  # pragma: no cover - AJAX error surface
+            return JsonResponse({"success": False, "error": str(exc)})
 
-        except Exception as e:
-            return JsonResponse({"success": False, "error": str(e)})
+        return JsonResponse({"success": False, "error": "Unknown ranking type"})
 
     def _update_toty_rankings(self, season):
         for team in Team.objects.all():
@@ -393,7 +434,6 @@ class MergeSuggestionsView(UserPassesTestMixin, TemplateView):
         return self.request.user.is_superuser
 
     def post(self, request, *args, **kwargs):
-        """Handle creating a merge request via AJAX."""
         debater_one_id = request.POST.get("debater_one")
         debater_two_id = request.POST.get("debater_two")
 
@@ -418,11 +458,11 @@ class MergeSuggestionsView(UserPassesTestMixin, TemplateView):
             mg_video_count=Count('mg_videos', distinct=True),
             mo_video_count=Count('mo_videos', distinct=True),
         ).select_related('school')
-        
+
         debaters_dict = {d.pk: d for d in debaters_with_counts}
         debater_one_annotated = debaters_dict.get(debater_one.pk)
         debater_two_annotated = debaters_dict.get(debater_two.pk)
-        
+
         # Calculate totals and determine primary/secondary
         if debater_one_annotated and debater_two_annotated:
             one_total = (
@@ -444,7 +484,6 @@ class MergeSuggestionsView(UserPassesTestMixin, TemplateView):
                 debater_two_annotated.mo_video_count
             )
             
-            # Swap if debater_two has more results
             if two_total > one_total:
                 primary_debater = debater_two
                 secondary_debater = debater_one
@@ -461,7 +500,7 @@ class MergeSuggestionsView(UserPassesTestMixin, TemplateView):
             Q(primary_debater=primary_debater, secondary_debater=secondary_debater) |
             Q(primary_debater=secondary_debater, secondary_debater=primary_debater)
         ).filter(status=MergeDebaterRequest.STATUS_PENDING).first()
-        
+
         if existing:
             return JsonResponse({"success": False, "error": "A pending merge request already exists for these debaters."})
 
@@ -475,10 +514,10 @@ class MergeSuggestionsView(UserPassesTestMixin, TemplateView):
             secondary_name=secondary_debater.name if secondary_debater else "",
             secondary_school_name=secondary_debater.school.name if secondary_debater and secondary_debater.school else "",
         )
-        
+
         # Clear the cache so next page load shows updated suggestions
         cache.delete('merge_suggestions_list')
-        
+
         return JsonResponse({
             "success": True,
             "message": f"Merge request created for {primary_debater.name} and {secondary_debater.name}."
@@ -498,10 +537,9 @@ class MergeSuggestionsView(UserPassesTestMixin, TemplateView):
                 context["suggestions"] = cached_suggestions
                 context["cached"] = True
                 return context
-        
-        suggestions = self._build_suggestions()
-        
+
         # Cache the results for 5 minutes
+        suggestions = self._build_suggestions()
         cache.set(cache_key, suggestions, 300)
         
         context["suggestions"] = suggestions
@@ -518,13 +556,12 @@ class MergeSuggestionsView(UserPassesTestMixin, TemplateView):
         pending_requests = MergeDebaterRequest.objects.filter(
             status=MergeDebaterRequest.STATUS_PENDING
         ).values_list('primary_debater_id', 'secondary_debater_id')
-        
         for primary_id, secondary_id in pending_requests:
             if primary_id:
                 pending_debater_ids.add(primary_id)
             if secondary_id:
                 pending_debater_ids.add(secondary_id)
-        
+
         # First, get recent debaters WITHOUT the expensive counts
         # We'll calculate counts only for those we actually need
         debaters = list(
@@ -541,19 +578,19 @@ class MergeSuggestionsView(UserPassesTestMixin, TemplateView):
             )
             .order_by("-id")[:2000]  # Only look at most recent 2000
         )
-        
+
         # Group by exact normalized full name first to find exact matches
         name_groups = defaultdict(list)
         for debater in debaters:
             key = (debater.first_normalized, debater.last_normalized)
             name_groups[key].append(debater)
-        
+
         # Also group by first letter for fuzzy matching
         first_letter_groups = defaultdict(list)
         for debater in debaters:
             if debater.first_normalized:
                 first_letter_groups[debater.first_normalized[0]].append(debater)
-        
+
         # Collect pairs to check
         pairs_to_check = []
         
@@ -561,16 +598,16 @@ class MergeSuggestionsView(UserPassesTestMixin, TemplateView):
         for (first, last), group in name_groups.items():
             if len(group) < 2:
                 continue
-            
+
             for i in range(len(group)):
                 for j in range(i + 1, len(group)):
                     pairs_to_check.append((group[i], group[j], 1.0))
-        
+
         # Second pass: fuzzy matches within same first letter (limit to small groups)
         for letter, group in first_letter_groups.items():
-            if len(group) > 100:  # Skip large groups
+            if len(group) > 100:
                 continue
-                
+
             for i in range(len(group)):
                 for j in range(i + 1, len(group)):
                     first_debater = group[i]
@@ -580,21 +617,20 @@ class MergeSuggestionsView(UserPassesTestMixin, TemplateView):
                     if (first_debater.first_normalized, first_debater.last_normalized) == \
                        (second_debater.first_normalized, second_debater.last_normalized):
                         continue
-                    
+
                     # Calculate similarity
                     name_similarity = self._calculate_name_similarity(first_debater, second_debater)
-                    
                     if name_similarity < 0.75:
                         continue
                     
                     pairs_to_check.append((first_debater, second_debater, name_similarity))
-        
+
         # Now fetch counts only for debaters in our pairs
         debater_ids_to_count = set()
         for first, second, _ in pairs_to_check:
             debater_ids_to_count.add(first.id)
             debater_ids_to_count.add(second.id)
-        
+
         # Fetch counts in one query for all relevant debaters
         if debater_ids_to_count:
             debaters_with_counts = {
@@ -608,7 +644,7 @@ class MergeSuggestionsView(UserPassesTestMixin, TemplateView):
                                Count('mo_videos', distinct=True),
                 )
             }
-            
+
             # Add total_results to each
             for debater in debaters_with_counts.values():
                 debater.total_results = (
@@ -619,24 +655,24 @@ class MergeSuggestionsView(UserPassesTestMixin, TemplateView):
                 )
         else:
             debaters_with_counts = {}
-        
+
         # Create suggestions from pairs
         suggestions = []
         for first, second, name_similarity in pairs_to_check:
             # Get the versions with counts
             first_with_counts = debaters_with_counts.get(first.id, first)
             second_with_counts = debaters_with_counts.get(second.id, second)
-            
+
             # Add total_results if not already set
             if not hasattr(first_with_counts, 'total_results'):
                 first_with_counts.total_results = 0
             if not hasattr(second_with_counts, 'total_results'):
                 second_with_counts.total_results = 0
-            
+
             suggestion = self._create_suggestion(first_with_counts, second_with_counts, name_similarity)
             if suggestion:
                 suggestions.append(suggestion)
-        
+
         # Sort by score (highest first)
         suggestions.sort(key=lambda x: x["score"], reverse=True)
         
@@ -648,10 +684,11 @@ class MergeSuggestionsView(UserPassesTestMixin, TemplateView):
         
         if score <= 0:
             return None
-        
+
         min_results = min(first.total_results, second.total_results)
         max_results = max(first.total_results, second.total_results)
         
+
         return {
             "debater_one": first,
             "debater_two": second,
@@ -678,20 +715,20 @@ class MergeSuggestionsView(UserPassesTestMixin, TemplateView):
         
         # Factor 1: Name similarity (0-100 points)
         score += name_similarity * 100
-        
+
         # Factor 2: Recency (0-50 points)
         max_id = max(first.id, second.id)
         recency_score = min(max_id / 200, 50)
         score += recency_score
-        
+
         # Factor 3: Same school (0-30 points)
         if first.school_id == second.school_id:
             score += 30
-        
-        # Factor 4: Imbalanced results (0-40 points)
+
         min_results = min(first.total_results, second.total_results)
         max_results = max(first.total_results, second.total_results)
         
+
         if max_results > 0:
             if min_results <= 5:
                 imbalance_ratio = 1.0 - (min_results / (max_results + 1))
@@ -699,5 +736,5 @@ class MergeSuggestionsView(UserPassesTestMixin, TemplateView):
             else:
                 # Both have many results, less likely to be duplicate
                 score -= 20
-        
+
         return score

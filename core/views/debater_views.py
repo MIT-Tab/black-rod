@@ -1,14 +1,15 @@
 from dal import autocomplete
 from django import forms
 from django.conf import settings
-from django.http import HttpResponse
 from django.db import connection
 from django.db.models import Q
+from django.http import HttpResponse
 from django.urls import reverse_lazy
-from django_filters import FilterSet, CharFilter, ChoiceFilter
+from django_filters import CharFilter, ChoiceFilter, FilterSet
 from django_tables2 import Column
 from haystack.query import SearchQuerySet
 
+from core.access import can_download_debater_tab_cards
 from core.forms import DebaterForm
 from core.models.debater import Debater
 from core.models.debater_alias_group import DebaterAliasGroup
@@ -24,7 +25,10 @@ from core.utils.generics import (
     CustomUpdateView,
 )
 from core.utils.perms import has_perm
-from core.utils.rounds import get_tab_card_data
+from core.utils.rounds import get_tab_card_data, visible_canonical_rounds
+from core.views.debater_export_views import (
+    build_debater_partner_breakdown,
+)
 
 
 class SeasonFilterWidget(forms.MultiWidget):
@@ -175,7 +179,6 @@ class DebaterDetailView(CustomDetailView):
     public_view = True
     model = Debater
     template_name = "debaters/detail.html"
-
     buttons = [
         {
             "name": "Delete",
@@ -196,117 +199,90 @@ class DebaterDetailView(CustomDetailView):
     def get_context_data(self, *args, **kwargs):
         context = super().get_context_data(*args, **kwargs)
 
-        tournaments = []
-
         tournaments = [
             result.tournament
-            for result in TeamResult.objects.filter(team__debaters=self.object).all()
+            for result in TeamResult.objects.filter(team__debaters=self.object, team__synthetic=False)
         ]
-        tournaments += [
-            result.tournament for result in self.object.speaker_results.all()
-        ]
+        tournaments += [result.tournament for result in self.object.speaker_results.all()]
 
         if "all" in self.request.GET:
-            for team in self.object.teams.all():
-                tournaments += [round.tournament for round in team.govs.all()]
-                tournaments += [round.tournament for round in team.opps.all()]
+            for team in self.object.teams.filter(synthetic=False):
+                tournaments += [
+                    round_obj.tournament
+                    for round_obj in visible_canonical_rounds(team.govs.all())
+                ]
+                tournaments += [
+                    round_obj.tournament
+                    for round_obj in visible_canonical_rounds(team.opps.all())
+                ]
 
         tournaments = list(set(tournaments))
-
-        seasons = [tournament.season for tournament in tournaments]
-        seasons = list(set(seasons))
-
+        seasons = list(set([tournament.season for tournament in tournaments]))
         seasons.sort(key=lambda season: season, reverse=True)
+
         current_season = settings.CURRENT_SEASON
+        if seasons:
+            current_season = self.request.GET.get("season", seasons[0]) or seasons[0]
 
-        if not len(seasons) == 0:
-            current_season = self.request.GET.get("season", seasons[0])
-
-        if current_season == "":
-            current_season = seasons[0]
-
-        seasons = [season for season in settings.SEASONS if season[0] in seasons]
-
-        seasons.sort(key=lambda season: season[0], reverse=True)
-
-        context["seasons"] = seasons
-
+        season_choices = [season for season in settings.SEASONS if season[0] in seasons]
+        season_choices.sort(key=lambda season: season[0], reverse=True)
+        context["seasons"] = season_choices
         context["current_season"] = current_season
 
-        tournaments = [
-            tournament
-            for tournament in tournaments
-            if tournament.season == current_season
-        ]
-
+        tournaments = [tournament for tournament in tournaments if tournament.season == current_season]
         tournaments.sort(key=lambda tournament: tournament.date)
 
         tournament_render = []
-
         for tournament in tournaments:
-            to_add = {}
-            to_add["tournament"] = tournament
-            to_append = []
-
-            to_append += [
-                ("team", result)
-                for result in TeamResult.objects.filter(team__debaters=self.object)
+            team_results = list(
+                TeamResult.objects.filter(team__debaters=self.object, team__synthetic=False)
                 .filter(tournament=tournament)
                 .order_by("-type_of_place")
-                .all()
-            ]
-            to_append += [
-                ("speaker", result)
-                for result in self.object.speaker_results.filter(tournament=tournament)
-                .order_by("-type_of_place")
-                .all()
-            ]
+            )
+            speaker_results = list(
+                self.object.speaker_results.filter(tournament=tournament).order_by("-type_of_place")
+            )
 
             team_result = (
-                TeamResult.objects.filter(team__debaters=self.object)
+                TeamResult.objects.filter(team__debaters=self.object, team__synthetic=False)
                 .filter(tournament=tournament)
                 .first()
             )
-
-            gov_round = Round.objects.filter(gov__debaters=self.object).filter(
-                tournament=tournament
+            gov_round = visible_canonical_rounds(
+                Round.objects.filter(gov__debaters=self.object, gov__synthetic=False).filter(
+                    tournament=tournament
+                )
+            )
+            opp_round = visible_canonical_rounds(
+                Round.objects.filter(opp__debaters=self.object, opp__synthetic=False).filter(
+                    tournament=tournament
+                )
             )
 
-            opp_round = Round.objects.filter(opp__debaters=self.object).filter(
-                tournament=tournament
-            )
-
-            # THIS IS WHERE YOU HAVE TO CHANGE THINGS #
             team = None if not team_result else team_result.team
-
             if not team and (gov_round.exists() or opp_round.exists()):
-                if gov_round.exists():
-                    team = gov_round.first().gov
-                else:
-                    team = opp_round.first().opp
+                team = gov_round.first().gov if gov_round.exists() else opp_round.first().opp
 
-            to_add["team"] = team
-            to_add["data"] = to_append
-            to_add["tab_card"] = get_tab_card_data(team, tournament)
-
-            tournament_render.append(to_add)
+            tournament_render.append(
+                {
+                    "tournament": tournament,
+                    "team": team,
+                    "data": [("team", result) for result in team_results]
+                    + [("speaker", result) for result in speaker_results],
+                    "tab_card": get_tab_card_data(team, tournament),
+                }
+            )
 
         context["results"] = tournament_render
-
-        context["totys"] = TOTY.objects.filter(team__debaters=self.object).order_by(
-            "place", "season"
+        context["totys"] = TOTY.objects.filter(team__debaters=self.object, team__synthetic=False).order_by(
+            "place",
+            "season",
         )
-
         context["sotys"] = self.object.soty.order_by("place", "season")
-
         context["notys"] = self.object.noty.order_by("place", "season")
 
-        teams = list(self.object.teams.all())
-        teams.sort(
-            key=lambda team: (num_distinct_tournaments(team), team.toty_points),
-            reverse=True,
-        )
-
+        teams = list(self.object.teams.filter(synthetic=False))
+        teams.sort(key=lambda team: (num_distinct_tournaments(team), team.toty_points), reverse=True)
         context["teams"] = teams
 
         also_debated_under = []
@@ -316,62 +292,51 @@ class DebaterDetailView(CustomDetailView):
                 .select_related("school")
                 .order_by("school__name", "first_name", "last_name")
             )
-
         context["also_debated_under"] = also_debated_under
 
-        context["videos"] = []
-        context["videos"] += list(self.object.pm_videos.all())
-        context["videos"] += list(self.object.lo_videos.all())
-        context["videos"] += list(self.object.mg_videos.all())
-        context["videos"] += list(self.object.mo_videos.all())
-
-        context["videos"] = [
-            video for video in context["videos"] if has_perm(self.request.user, video)
-        ]
-
+        videos = []
+        videos += list(self.object.pm_videos.all())
+        videos += list(self.object.lo_videos.all())
+        videos += list(self.object.mg_videos.all())
+        videos += list(self.object.mo_videos.all())
+        context["videos"] = [video for video in videos if has_perm(self.request.user, video)]
+        context["partner_breakdown"] = build_debater_partner_breakdown(self.object)
+        context["can_download_tab_cards_csv"] = can_download_debater_tab_cards(
+            self.request.user,
+            self.object,
+        )
         return context
 
 
 class DebaterUpdateView(CustomUpdateView):
     model = Debater
-
     form_class = DebaterForm
     template_name = "debaters/update.html"
 
     def get_context_data(self, *args, **kwargs):
         context = super().get_context_data(*args, **kwargs)
-
-        context["totys"] = TOTY.objects.filter(team__debaters=self.object).order_by(
-            "place", "season"
+        context["totys"] = TOTY.objects.filter(team__debaters=self.object, team__synthetic=False).order_by(
+            "place",
+            "season",
         )
-
         context["sotys"] = self.object.soty.order_by("place", "season")
-
         context["notys"] = self.object.noty.order_by("place", "season")
-
-        teams = list(self.object.teams.all())
-        teams.sort(
-            key=lambda team: (num_distinct_tournaments(team), team.toty_points),
-            reverse=True,
-        )
-
+        teams = list(self.object.teams.filter(synthetic=False))
+        teams.sort(key=lambda team: (num_distinct_tournaments(team), team.toty_points), reverse=True)
         context["teams"] = teams
-
         return context
 
 
 class DebaterCreateView(CustomCreateView):
     model = Debater
-
     form_class = DebaterForm
     template_name = "debaters/create.html"
 
     def post(self, *args, **kwargs):
-        to_return = super().post(*args, **kwargs)
-
+        response = super().post(*args, **kwargs)
         if "ajax" in self.request.POST:
             return HttpResponse(self.object.id)
-        return to_return
+        return response
 
 
 class DebaterDeleteView(CustomDeleteView):
@@ -393,16 +358,13 @@ class DebaterAutocomplete(autocomplete.Select2QuerySetView):
         if not self.q:
             qs = base_manager.all()
         else:
-            search_ids = [q.pk for q in SearchQuerySet().models(Debater).filter(content=self.q).all()]
+            search_ids = [row.pk for row in SearchQuerySet().models(Debater).filter(content=self.q).all()]
             qs = base_manager.filter(id__in=search_ids)
 
         qs = qs.order_by("-pk")
-
         school = self.forwarded.get("school", None)
-
         if school:
             qs = qs.filter(school__id=school)
-
         return qs
 
 

@@ -180,42 +180,6 @@ def create_debaters(school_completed_actions, debater_actions):
     return completed_actions
 
 
-def create_rounds(team_completed_actions, tournament, rounds):
-    completed_actions = {}
-
-    Round.objects.filter(tournament=tournament).delete()
-
-    for round in rounds:
-        new_round = Round.objects.create(
-            round_number=int(round["round_number"]),
-            gov=Team.objects.get(id=team_completed_actions[round["gov"]]),
-            opp=Team.objects.get(id=team_completed_actions[round["opp"]]),
-            victor=round["victor"],
-            tournament=tournament,
-        )
-
-        completed_actions[round["id"]] = new_round.id
-
-    return completed_actions
-
-
-def create_round_stats(
-    debater_completed_actions, round_completed_actions, tournament, round_stats
-):
-    RoundStats.objects.filter(round__tournament=tournament).all().delete()
-
-    for round_stat in round_stats:
-        round_stat = RoundStats.objects.create(
-            round=Round.objects.get(id=round_completed_actions[round_stat["round"]]),
-            debater=Debater.objects.get(
-                id=debater_completed_actions[round_stat["debater"]]
-            ),
-            speaks=round_stat["speaks"],
-            ranks=round_stat["ranks"],
-            debater_role=round_stat["role"],
-        )
-
-
 def create_speaker_awards(
     debater_completed_actions, speaker_awards, type_of_result, tournament
 ):

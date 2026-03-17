@@ -1,0 +1,428 @@
+{# ELO dashboard template with run controls, advanced tuning options, summary badges, and sortable ranking output from runtime pipeline results. #}
+
+{% extends "base/base.html" %}
+
+{% block title %}ELO{% endblock title %}
+
+{% block extra_head %}
+<style>
+    .elo-dashboard {
+        --elo-body-size: 0.98rem;
+        --elo-support-size: 0.95rem;
+        --elo-heading-size: 1.1rem;
+    }
+
+    .elo-dashboard .card-body,
+    .elo-dashboard .form-label,
+    .elo-dashboard .form-check-label,
+    .elo-dashboard .form-control,
+    .elo-dashboard .form-control-sm,
+    .elo-dashboard .form-range,
+    .elo-dashboard .btn,
+    .elo-dashboard .page-link,
+    .elo-dashboard summary {
+        font-size: var(--elo-body-size);
+    }
+
+    .elo-dashboard .card-title {
+        font-size: var(--elo-heading-size);
+    }
+
+    .elo-dashboard .text-muted,
+    .elo-dashboard .form-text,
+    .elo-dashboard small,
+    .elo-dashboard .badge,
+    .elo-dashboard .alert,
+    .elo-dashboard #elo-rankings-table,
+    .elo-dashboard .js-sort-rankings {
+        font-size: var(--elo-support-size) !important;
+        line-height: 1.45;
+    }
+
+    .elo-dashboard .badge {
+        font-weight: 500;
+    }
+
+    .elo-dashboard .section-note {
+        color: #5f6b76;
+    }
+
+    .elo-dashboard .range-meta {
+        color: #5f6b76;
+        font-size: var(--elo-support-size);
+    }
+</style>
+{% endblock extra_head %}
+
+{% block content %}
+<div class="row mt-lg-5 ml-lg-2 mr-lg-2 mb-lg-5 m-1 elo-dashboard">
+    <div class="col-lg-3">
+        {% for error in errors %}
+            <div class="alert alert-danger m-2" role="alert">{{ error }}</div>
+        {% endfor %}
+
+        <div class="rounded-l5 shadow-lg card m-2">
+            <div class="card-body">
+                <h5 class="card-title">Run Configuration</h5>
+                <form method="post">
+                    {% csrf_token %}
+
+                    <div class="mb-3 border rounded p-2">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <label class="form-label mb-0">Computation Seasons Included</label>
+                            <span class="badge badge-light border" id="compute-season-range-output">
+                                {{ compute_season_range_label }}
+                            </span>
+                        </div>
+                        <div class="form-text section-note d-block mb-2">
+                            This range determines which seasons are used to calculate ELO. Selecting 2018 through 2025 includes results from the 2018-2019 season through the 2025-2026 season.
+                        </div>
+                        <div class="mb-2">
+                            <div class="d-flex justify-content-between range-meta mb-1">
+                                <span>Start season</span>
+                                <span id="compute-season-start-output">{{ compute_season_start_label }}</span>
+                            </div>
+                            {{ form.season_start }}
+                        </div>
+                        <div class="mb-1">
+                            <div class="d-flex justify-content-between range-meta mb-1">
+                                <span>End season</span>
+                                <span id="compute-season-end-output">{{ compute_season_end_label }}</span>
+                            </div>
+                            {{ form.season_end }}
+                        </div>
+                    </div>
+
+                    <div class="mb-3 border rounded p-2">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <label class="form-label mb-0">Display Active Seasons</label>
+                            <span class="badge badge-light border" id="active-season-range-output">
+                                {{ active_season_range_label }}
+                            </span>
+                        </div>
+                        <div class="form-text section-note d-block mb-2">
+                            This filter only controls who appears in the rankings. Ratings are still computed from the selected computation seasons.
+                        </div>
+                        <div class="mb-2">
+                            <div class="d-flex justify-content-between range-meta mb-1">
+                                <span>Start season</span>
+                                <span id="active-season-start-output">{{ active_season_start_label }}</span>
+                            </div>
+                            {{ form.active_season_start }}
+                        </div>
+                        <div class="mb-1">
+                            <div class="d-flex justify-content-between range-meta mb-1">
+                                <span>End season</span>
+                                <span id="active-season-end-output">{{ active_season_end_label }}</span>
+                            </div>
+                            {{ form.active_season_end }}
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-6 mb-2">{{ form.min_rounds.label_tag }}{{ form.min_rounds }}</div>
+                        <div class="col-6 mb-2">{{ form.min_outrounds.label_tag }}{{ form.min_outrounds }}</div>
+                    </div>
+
+                    <div class="mb-2">
+                        {{ form.higher_elo_win_share.label_tag }}
+                        {{ form.higher_elo_win_share }}
+                        <div class="d-flex justify-content-between">
+                            <span class="range-meta">0%</span>
+                            <span class="range-meta" id="higher-elo-win-share-output">50%</span>
+                            <span class="range-meta">100%</span>
+                        </div>
+                        {% if form.higher_elo_win_share.help_text %}
+                            <div class="form-text section-note">{{ form.higher_elo_win_share.help_text }}</div>
+                        {% endif %}
+                    </div>
+
+                    <div class="mb-3">
+                        {{ form.higher_elo_loss_share.label_tag }}
+                        {{ form.higher_elo_loss_share }}
+                        <div class="d-flex justify-content-between">
+                            <span class="range-meta">0%</span>
+                            <span class="range-meta" id="higher-elo-loss-share-output">50%</span>
+                            <span class="range-meta">100%</span>
+                        </div>
+                        {% if form.higher_elo_loss_share.help_text %}
+                            <div class="form-text section-note">{{ form.higher_elo_loss_share.help_text }}</div>
+                        {% endif %}
+                    </div>
+
+                    <details class="mb-3 border rounded p-2">
+                        <summary class="fw-semibold">See advanced settings</summary>
+                        <div class="row mt-2">
+                            <div class="col-6 mb-2">{{ form.k_max.label_tag }}{{ form.k_max }}</div>
+                            <div class="col-6 mb-2">{{ form.k_min.label_tag }}{{ form.k_min }}</div>
+                            <div class="col-12 mb-2">{{ form.k_decay_scale.label_tag }}{{ form.k_decay_scale }}</div>
+                            <div class="col-12 mb-2">{{ form.initial_rating.label_tag }}{{ form.initial_rating }}</div>
+                        </div>
+                    </details>
+
+                    <div class="mb-3">
+                        <div class="form-check mb-1">
+                            {{ form.exclude_proam_partnerships }}
+                            <label class="form-check-label" for="{{ form.exclude_proam_partnerships.id_for_label }}">{{ form.exclude_proam_partnerships.label }}</label>
+                        </div>
+                        <div class="form-check mb-1">
+                            {{ form.exclude_dino_rounds }}
+                            <label class="form-check-label" for="{{ form.exclude_dino_rounds.id_for_label }}">{{ form.exclude_dino_rounds.label }}</label>
+                        </div>
+                    </div>
+
+                    <div>
+                        <button class="btn btn-info btn-block" type="submit">Run ELO</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-9">
+        {% if result %}
+            <div class="shadow-lg card m-2 rounded-l5">
+                <div class="card-body">
+                    <h5 class="card-title mb-2">ELO Dashboard</h5>
+                    <div class="d-flex flex-wrap mb-2">
+                        <span class="badge badge-info mr-1 mb-1">Matched {{ result.matched_tournaments }}</span>
+                        <span class="badge badge-info mr-1 mb-1">Debates {{ result.debates_processed }}</span>
+                        <span class="badge badge-info mr-1 mb-1">Prelims {{ result.prelims_processed }}</span>
+                        <span class="badge badge-info mr-1 mb-1">Outrounds {{ result.outrounds_processed }}</span>
+                    </div>
+                    <div class="alert alert-warning mb-0 py-2" role="alert">
+                        <strong>Beta notice:</strong> This feature is in early beta. The underlying data is incomplete and may contain inaccuracies. Please verify important rankings or conclusions independently.
+                    </div>
+                </div>
+            </div>
+
+            <div class="shadow-lg card m-2 rounded-l5">
+                <div class="card-body">
+                    <div class="d-flex flex-wrap justify-content-between align-items-center mb-2">
+                        <h5 class="card-title mb-0">Rankings</h5>
+                        {% if page_obj %}
+                            <span class="text-muted">
+                                Showing {{ page_obj.start_index }}-{{ page_obj.end_index }} of {{ page_obj.paginator.count }}
+                                ({{ rankings_per_page }} per page)
+                            </span>
+                        {% endif %}
+                    </div>
+                    {% if table_rows %}
+                        <div class="table-responsive">
+                            <table class="table table-sm table-hover align-middle" id="elo-rankings-table">
+                                <thead>
+                                    <tr>
+                                        <th><button class="btn btn-link btn-sm p-0 text-decoration-none js-sort-rankings" type="button" data-sort-key="rank">Rank</button></th>
+                                        <th>Debater</th>
+                                        <th>School</th>
+                                        <th><button class="btn btn-link btn-sm p-0 text-decoration-none js-sort-rankings" type="button" data-sort-key="rounds">Rounds</button></th>
+                                        <th><button class="btn btn-link btn-sm p-0 text-decoration-none js-sort-rankings" type="button" data-sort-key="prelim_rounds">Inrounds</button></th>
+                                        <th><button class="btn btn-link btn-sm p-0 text-decoration-none js-sort-rankings" type="button" data-sort-key="outround_rounds">Outrounds</button></th>
+                                        <th><button class="btn btn-link btn-sm p-0 text-decoration-none js-sort-rankings" type="button" data-sort-key="elo">ELO</button></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for row in table_rows %}
+                                        <tr>
+                                            <td data-sort-value="{{ row.rank }}">{{ row.rank }}</td>
+                                            <td>
+                                                {% if row.debater_id %}
+                                                    <a href="{% url 'core:debater_detail' pk=row.debater_id %}">{{ row.name|default:"-" }}</a>
+                                                {% else %}
+                                                    {{ row.name|default:"-" }}
+                                                {% endif %}
+                                            </td>
+                                            <td>
+                                                {% if row.schools %}
+                                                    {% for school in row.schools %}
+                                                        <a href="{% url 'core:school_detail' pk=school.id %}">{{ school.name }}</a>{% if not forloop.last %}, {% endif %}
+                                                    {% endfor %}
+                                                {% else %}
+                                                    {{ row.school_name|default:"-" }}
+                                                {% endif %}
+                                            </td>
+                                            <td data-sort-value="{{ row.rounds }}">{{ row.rounds }}</td>
+                                            <td data-sort-value="{{ row.prelim_rounds }}">{{ row.prelim_rounds }}</td>
+                                            <td data-sort-value="{{ row.outround_rounds }}">{{ row.outround_rounds }}</td>
+                                            <td data-sort-value="{{ row.elo }}">{{ row.elo|floatformat:2 }}</td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        {% if page_obj and page_obj.has_other_pages %}
+                            <nav aria-label="ELO rankings pagination" class="mt-3">
+                                <ul class="pagination justify-content-center mb-0">
+                                    {% if page_obj.has_previous %}
+                                        <li class="page-item">
+                                            <a class="page-link" href="?page={{ page_obj.previous_page_number }}">Previous</a>
+                                        </li>
+                                    {% endif %}
+                                    {% if page_obj.has_next %}
+                                        <li class="page-item">
+                                            <a class="page-link" href="?page={{ page_obj.next_page_number }}">Next</a>
+                                        </li>
+                                    {% endif %}
+                                </ul>
+                            </nav>
+                        {% endif %}
+                    {% else %}
+                        <div class="text-muted">No ranking rows for this run.</div>
+                    {% endif %}
+                </div>
+            </div>
+        {% else %}
+            <div class="shadow-lg card m-2 rounded-l5">
+                <div class="card-body">
+                    <h5 class="card-title">ELO Dashboard</h5>
+                    <p class="text-muted mb-0">Run ELO from the left panel to generate rankings.</p>
+                </div>
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+(() => {
+    const formatSeasonLabel = (value) => {
+        const year = Number(value);
+        if (!Number.isFinite(year)) {
+            return String(value);
+        }
+        return `${year}-${year + 1}`;
+    };
+
+    const formatSeasonRangeLabel = (startValue, endValue) => {
+        const startLabel = formatSeasonLabel(startValue);
+        const endLabel = formatSeasonLabel(endValue);
+        return startLabel === endLabel ? startLabel : `${startLabel} through ${endLabel}`;
+    };
+
+    const bindSeasonRange = (startId, endId, outputId, startOutputId, endOutputId) => {
+        const start = document.getElementById(startId);
+        const end = document.getElementById(endId);
+        const output = document.getElementById(outputId);
+        const startOutput = startOutputId ? document.getElementById(startOutputId) : null;
+        const endOutput = endOutputId ? document.getElementById(endOutputId) : null;
+        if (!start || !end || !output) {
+            return;
+        }
+        const sync = (source) => {
+            const startValue = Number(start.value);
+            const endValue = Number(end.value);
+            if (startValue > endValue) {
+                if (source === "start") {
+                    end.value = String(startValue);
+                } else {
+                    start.value = String(endValue);
+                }
+            }
+            output.textContent = formatSeasonRangeLabel(start.value, end.value);
+            if (startOutput) {
+                startOutput.textContent = formatSeasonLabel(start.value);
+            }
+            if (endOutput) {
+                endOutput.textContent = formatSeasonLabel(end.value);
+            }
+        };
+        sync("start");
+        start.addEventListener("input", () => sync("start"));
+        end.addEventListener("input", () => sync("end"));
+        start.addEventListener("change", () => sync("start"));
+        end.addEventListener("change", () => sync("end"));
+    };
+
+    bindSeasonRange(
+        "{{ form.season_start.id_for_label }}",
+        "{{ form.season_end.id_for_label }}",
+        "compute-season-range-output",
+        "compute-season-start-output",
+        "compute-season-end-output",
+    );
+    bindSeasonRange(
+        "{{ form.active_season_start.id_for_label }}",
+        "{{ form.active_season_end.id_for_label }}",
+        "active-season-range-output",
+        "active-season-start-output",
+        "active-season-end-output",
+    );
+
+    const sliders = document.querySelectorAll(".js-elo-share-slider");
+    sliders.forEach((slider) => {
+        const outputId = slider.dataset.sliderOutputId;
+        if (!outputId) {
+            return;
+        }
+        const output = document.getElementById(outputId);
+        if (!output) {
+            return;
+        }
+        const update = () => {
+            output.textContent = `${Number(slider.value).toFixed(0)}%`;
+        };
+        update();
+        slider.addEventListener("input", update);
+        slider.addEventListener("change", update);
+    });
+
+    const table = document.getElementById("elo-rankings-table");
+    if (table) {
+        const tbody = table.querySelector("tbody");
+        const buttons = table.querySelectorAll(".js-sort-rankings");
+        const columnIndexByKey = {
+            rank: 0,
+            rounds: 3,
+            prelim_rounds: 4,
+            outround_rounds: 5,
+            elo: 6,
+        };
+        const baseLabelByKey = {
+            rank: "Rank",
+            rounds: "Rounds",
+            prelim_rounds: "Inrounds",
+            outround_rounds: "Outrounds",
+            elo: "ELO",
+        };
+        let activeKey = null;
+        let ascending = false;
+
+        const updateLabels = () => {
+            buttons.forEach((button) => {
+                const key = button.dataset.sortKey;
+                const baseLabel = baseLabelByKey[key] || key;
+                button.textContent = key === activeKey ? `${baseLabel} ${ascending ? "↑" : "↓"}` : baseLabel;
+            });
+        };
+
+        buttons.forEach((button) => {
+            button.addEventListener("click", () => {
+                const key = button.dataset.sortKey;
+                const columnIndex = columnIndexByKey[key];
+                if (columnIndex === undefined) {
+                    return;
+                }
+                if (activeKey === key) {
+                    ascending = !ascending;
+                } else {
+                    activeKey = key;
+                    ascending = false;
+                }
+
+                const rows = Array.from(tbody.querySelectorAll("tr"));
+                rows.sort((leftRow, rightRow) => {
+                    const leftValue = parseFloat(leftRow.cells[columnIndex].dataset.sortValue || "0");
+                    const rightValue = parseFloat(rightRow.cells[columnIndex].dataset.sortValue || "0");
+                    if (Number.isNaN(leftValue) || Number.isNaN(rightValue)) {
+                        return 0;
+                    }
+                    return ascending ? leftValue - rightValue : rightValue - leftValue;
+                });
+                rows.forEach((row) => tbody.appendChild(row));
+                updateLabels();
+            });
+        });
+        updateLabels();
+    }
+})();
+</script>
+{% endblock content %}

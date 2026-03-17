@@ -3,7 +3,7 @@ import os
 from unittest.mock import patch
 from django.test import TestCase, override_settings
 
-from apda.settings.base import SECRET_KEY, DEBUG, DATABASES, INSTALLED_APPS, MIDDLEWARE, STATIC_URL, TEMPLATES, LANGUAGE_CODE, TIME_ZONE, ALLOWED_HOSTS, CACHES, AUTHENTICATION_BACKENDS, AUTH_PASSWORD_VALIDATORS
+from apda.settings.base import SECRET_KEY, DEBUG, DATABASES, INSTALLED_APPS, MIDDLEWARE, STATIC_URL, TEMPLATES, LANGUAGE_CODE, TIME_ZONE, ALLOWED_HOSTS, CACHES, AUTHENTICATION_BACKENDS, AUTH_PASSWORD_VALIDATORS, NAV_MENU_LEFT
 
 
 class APDASettingsTest(TestCase):
@@ -132,3 +132,18 @@ class APDASettingsTest(TestCase):
         if "AUTH_PASSWORD_VALIDATORS" in globals():
             validators = globals()["AUTH_PASSWORD_VALIDATORS"]
             self.assertIsInstance(validators, list)
+
+    def test_nav_menu_merges_data_tools_into_existing_tabs(self):
+        top_level_names = [item["name"] for item in NAV_MENU_LEFT]
+        self.assertNotIn("Data Tools", top_level_names)
+
+        results_menu = next(item for item in NAV_MENU_LEFT if item["name"] == "Results")
+        admin_menu = next(item for item in NAV_MENU_LEFT if item["name"] == "Admin")
+
+        result_names = [item["name"] for item in results_menu["submenu"]]
+        admin_names = [item["name"] for item in admin_menu["submenu"]]
+
+        self.assertIn("ELO Rankings", result_names)
+        self.assertIn("Admin Tools", admin_names)
+        self.assertIn("Synthetic Resolver", admin_names)
+        self.assertIn("Tournament Data Audit", admin_names)

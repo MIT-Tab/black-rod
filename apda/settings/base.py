@@ -279,6 +279,12 @@ NAV_MENU_LEFT = [
             {"name": "Tournaments", "url": "core:tournament_list", "root": True},
             {"name": "Teams", "url": "core:team_list", "root": True},
             {"name": "Stats", "url": "core:stats", "root": True},
+            {
+                "name": "ELO Rankings",
+                "url": "core:elo_dashboard",
+                "root": True,
+                "validators": ["core.menu_validators.has_exclusive_pre_access_validator"],
+            },
         ],
     },
     {
@@ -322,6 +328,21 @@ NAV_MENU_LEFT = [
             {
                 "name": "Django Admin",
                 "url": "/admin/",
+                "validators": ["menu_generator.validators.is_superuser"],
+            },
+            {
+                "name": "Admin Tools",
+                "url": "core:admin_tools",
+                "validators": ["menu_generator.validators.is_superuser"],
+            },
+            {
+                "name": "Synthetic Resolver",
+                "url": "/core/admin-tools/#synthetic-resolution",
+                "validators": ["menu_generator.validators.is_superuser"],
+            },
+            {
+                "name": "Tournament Data Audit",
+                "url": "core:tournament_pipeline_audit",
                 "validators": ["menu_generator.validators.is_superuser"],
             },
             {

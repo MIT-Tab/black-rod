@@ -1,0 +1,99 @@
+{% extends "base/base.html" %}
+{% block content %}
+    <div class="row mt-lg-5 ml-lg-2 mr-lg-2 mb-lg-5 m-1">
+        <div class="col-lg-12">
+            <div class="card m-2">
+                <div class="card-body">
+                    <h5 class="card-title">Tournament Data Audit</h5>
+                    <p class="card-text mb-2">
+                        Includes seasons from <strong>2017 onward</strong> for:
+                        {{ included_type_labels|join:", " }}.
+                    </p>
+                    <div class="d-flex flex-wrap mb-3">
+                        <a class="btn btn-sm btn-outline-secondary mr-2 mb-2" href="{% url 'core:admin_tools' %}">Back to Admin Tools</a>
+                        <a class="btn btn-sm btn-outline-primary mb-2"
+                           href="{% url 'core:tournament_pipeline_audit' %}{% if show_incomplete_only %}{% else %}?incomplete_only=1{% endif %}">
+                            {% if show_incomplete_only %}Show All Tournaments{% else %}Show Incomplete Only{% endif %}
+                        </a>
+                    </div>
+                    <div class="mb-3">
+                        <span class="badge badge-light p-2 mr-2">Tournaments: {{ summary.total_tournaments }}</span>
+                        <span class="badge badge-warning p-2 mr-2">Incomplete: {{ summary.incomplete_tournaments }}</span>
+                        <span class="badge badge-success p-2 mr-2">Complete: {{ summary.complete_tournaments }}</span>
+                        <span class="badge badge-info p-2">Linked Imports: {{ summary.linked_imports }}</span>
+                    </div>
+                    <style>
+                        .compact-audit-table td,
+                        .compact-audit-table th {
+                            padding: 0.22rem 0.35rem;
+                            font-size: 0.82rem;
+                            white-space: nowrap;
+                            vertical-align: middle;
+                        }
+                    </style>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-striped table-hover compact-audit-table">
+                            <thead>
+                                <tr>
+                                    <th><a href="{{ sort_headers.season.url }}" class="text-dark">Season{{ sort_headers.season.indicator }}</a></th>
+                                    <th><a href="{{ sort_headers.date.url }}" class="text-dark">Date{{ sort_headers.date.indicator }}</a></th>
+                                    <th><a href="{{ sort_headers.tournament.url }}" class="text-dark">Tournament{{ sort_headers.tournament.indicator }}</a></th>
+                                    <th><a href="{{ sort_headers.type.url }}" class="text-dark">Type{{ sort_headers.type.indicator }}</a></th>
+                                    <th><a href="{{ sort_headers.teams.url }}" class="text-dark">Teams{{ sort_headers.teams.indicator }}</a></th>
+                                    <th><a href="{{ sort_headers.prelims.url }}" class="text-dark">Prelims{{ sort_headers.prelims.indicator }}</a></th>
+                                    <th><a href="{{ sort_headers.recorded_in.url }}" class="text-dark">Recorded In{{ sort_headers.recorded_in.indicator }}</a></th>
+                                    <th><a href="{{ sort_headers.expected_in.url }}" class="text-dark">Expected In{{ sort_headers.expected_in.indicator }}</a></th>
+                                    <th><a href="{{ sort_headers.in_pct.url }}" class="text-dark">In %{{ sort_headers.in_pct.indicator }}</a></th>
+                                    <th><a href="{{ sort_headers.recorded_out.url }}" class="text-dark">Recorded Out{{ sort_headers.recorded_out.indicator }}</a></th>
+                                    <th><a href="{{ sort_headers.expected_out.url }}" class="text-dark">Expected Out{{ sort_headers.expected_out.indicator }}</a></th>
+                                    <th><a href="{{ sort_headers.out_pct.url }}" class="text-dark">Out %{{ sort_headers.out_pct.indicator }}</a></th>
+                                    <th><a href="{{ sort_headers.total_pct.url }}" class="text-dark">Total %{{ sort_headers.total_pct.indicator }}</a></th>
+                                    <th><a href="{{ sort_headers.imports.url }}" class="text-dark">Imports{{ sort_headers.imports.indicator }}</a></th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in rows %}
+                                    <tr>
+                                        <td>{{ row.season_display }}</td>
+                                        <td>{{ row.date|date:"Y-m-d" }}</td>
+                                        <td><a href="{{ row.audit_detail_url }}">{{ row.tournament_name }}</a></td>
+                                        <td>{{ row.qual_type_label }}</td>
+                                        <td>{{ row.recorded_team_count }}</td>
+                                        <td>{{ row.recorded_num_rounds }}</td>
+                                        <td>{{ row.recorded_prelim }}</td>
+                                        <td>{{ row.expected_prelim }}</td>
+                                        <td>{{ row.prelim_pct }}%</td>
+                                        <td>{{ row.recorded_outround }}</td>
+                                        <td>{{ row.expected_outround }}</td>
+                                        <td>{{ row.outround_pct }}%</td>
+                                        <td>
+                                            {% if row.total_pct < 80 %}
+                                                <span class="text-danger font-weight-bold">{{ row.total_pct }}%</span>
+                                            {% elif row.total_pct < 100 %}
+                                                <span class="text-warning font-weight-bold">{{ row.total_pct }}%</span>
+                                            {% else %}
+                                                <span class="text-success font-weight-bold">{{ row.total_pct }}%</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>{{ row.linked_import_count }}</td>
+                                        <td>
+                                            <div class="d-flex">
+                                                <a class="btn btn-sm btn-outline-primary mr-1" href="{{ row.audit_detail_url }}">Audit</a>
+                                                <a class="btn btn-sm btn-outline-dark" href="{{ row.public_tournament_url }}">Tournament</a>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                {% empty %}
+                                    <tr>
+                                        <td colspan="15" class="text-center text-muted">No tournaments found.</td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock content %}

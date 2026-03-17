@@ -4,6 +4,7 @@ from django.conf import settings
 from django.db.models import Q, Prefetch
 from django.core.cache import cache
 from django.http import HttpResponse, QueryDict
+from django.shortcuts import get_object_or_404
 from django.urls import reverse_lazy
 from django.utils import timezone
 from django.utils.decorators import method_decorator
@@ -30,7 +31,10 @@ from core.utils.generics import (
     CustomUpdateView,
     SeasonColumn,
 )
-from core.utils.rounds import get_tab_card_data
+from core.utils.rounds import (
+    get_tab_card_data,
+    visible_canonical_rounds,
+)
 
 
 class TournamentFilter(FilterSet):
@@ -143,7 +147,63 @@ class RecentResultsWidgetView(TemplateView):
             else:
                 selected_qs = eligible_base_qs.none()
 
-        tournaments_qs = selected_qs.select_related("host").prefetch_related(
+        tournaments = self._build_tournament_cards(selected_qs, limit=3 if use_recent_week else 0)
+
+        # Final safety net: if strict filters yield nothing, show the latest day
+        # that has any varsity winner/finalist data so the widget never renders empty.
+        if not tournaments:
+            fallback_all_qs = with_posted_finals(Tournament.objects.filter(num_teams__gt=0))
+            fallback_latest = fallback_all_qs.order_by("-date").first()
+            scope_day = fallback_latest.date if fallback_latest else None
+            use_recent_week = False
+
+            if scope_day:
+                fallback_qs = fallback_all_qs.filter(date=scope_day).order_by("name")
+                tournaments = self._build_tournament_cards(fallback_qs)
+
+        context["tournaments"] = tournaments
+        context["has_results"] = bool(tournaments)
+        context["recent_window"] = (start, today)
+        context["using_recent_week"] = use_recent_week
+        context["scope_day"] = scope_day
+        return context
+
+    def _build_tournament_cards(self, queryset, limit=0):
+        tournaments = []
+        tournaments_qs = queryset.select_related("host").prefetch_related(*self._results_prefetches())
+
+        for tournament in tournaments_qs:
+            winner = next(
+                (res for res in tournament.widget_team_results if res.place == 1),
+                None,
+            )
+            finalist = next(
+                (res for res in tournament.widget_team_results if res.place == 2),
+                None,
+            )
+            if not winner or not finalist:
+                continue
+
+            tournaments.append(
+                {
+                    "name": tournament.display,
+                    "host": tournament.host.name if tournament.host else "",
+                    "date": tournament.date,
+                    "num_teams": tournament.num_teams,
+                    "winner": self._team_display(winner.team),
+                    "finalist": self._team_display(finalist.team),
+                    "speakers": self._speaker_cards(tournament),
+                    "url": tournament.get_absolute_url(),
+                }
+            )
+            if limit and len(tournaments) >= limit:
+                break
+
+        return tournaments
+
+    @staticmethod
+    def _results_prefetches():
+        return (
             Prefetch(
                 "team_results",
                 queryset=TeamResult.objects.filter(
@@ -164,120 +224,18 @@ class RecentResultsWidgetView(TemplateView):
             ),
         )
 
-        tournaments = []
-
-        for tournament in tournaments_qs:
-            winner = next(
-                (res for res in tournament.widget_team_results if res.place == 1),
-                None,
-            )
-            finalist = next(
-                (res for res in tournament.widget_team_results if res.place == 2),
-                None,
-            )
-
-            if not winner or not finalist:
-                continue
-
-            speakers = [
-                {
-                    "name": res.debater.name,
-                    "school": res.debater.school.name if res.debater.school else "",
-                    "place": res.place,
-                    "tie": res.tie,
-                    "url": res.debater.get_absolute_url(),
-                }
-                for res in tournament.widget_speakers[:3]
-            ]
-
-            tournaments.append(
-                {
-                    "name": tournament.display,
-                    "host": tournament.host.name if tournament.host else "",
-                    "date": tournament.date,
-                    "num_teams": tournament.num_teams,
-                    "winner": self._team_display(winner.team),
-                    "finalist": self._team_display(finalist.team),
-                    "speakers": speakers,
-                    "url": tournament.get_absolute_url(),
-                }
-            )
-
-            if use_recent_week and len(tournaments) >= 3:
-                break
-
-        # Final safety net: if strict filters yield nothing, show the latest day
-        # that has any varsity winner/finalist data so the widget never renders empty.
-        if not tournaments:
-            fallback_all_qs = with_posted_finals(Tournament.objects.filter(num_teams__gt=0))
-            fallback_latest = fallback_all_qs.order_by("-date").first()
-            scope_day = fallback_latest.date if fallback_latest else None
-            use_recent_week = False
-
-            if scope_day:
-                fallback_qs = fallback_all_qs.filter(date=scope_day).order_by("name").select_related(
-                    "host"
-                ).prefetch_related(
-                    Prefetch(
-                        "team_results",
-                        queryset=TeamResult.objects.filter(
-                            type_of_place=Debater.VARSITY, place__in=[1, 2]
-                        )
-                        .select_related("team")
-                        .prefetch_related("team__debaters__school"),
-                        to_attr="widget_team_results",
-                    ),
-                    Prefetch(
-                        "speaker_results",
-                        queryset=SpeakerResult.objects.filter(
-                            type_of_place=Debater.VARSITY, place__gt=0
-                        )
-                        .select_related("debater__school")
-                        .order_by("place"),
-                        to_attr="widget_speakers",
-                    ),
-                )
-
-                for tournament in fallback_qs:
-                    winner = next(
-                        (res for res in tournament.widget_team_results if res.place == 1),
-                        None,
-                    )
-                    finalist = next(
-                        (res for res in tournament.widget_team_results if res.place == 2),
-                        None,
-                    )
-                    if not winner or not finalist:
-                        continue
-
-                    tournaments.append(
-                        {
-                            "name": tournament.display,
-                            "host": tournament.host.name if tournament.host else "",
-                            "date": tournament.date,
-                            "num_teams": tournament.num_teams,
-                            "winner": self._team_display(winner.team),
-                            "finalist": self._team_display(finalist.team),
-                            "speakers": [
-                                {
-                                    "name": res.debater.name,
-                                    "school": res.debater.school.name if res.debater.school else "",
-                                    "place": res.place,
-                                    "tie": res.tie,
-                                    "url": res.debater.get_absolute_url(),
-                                }
-                                for res in tournament.widget_speakers[:3]
-                            ],
-                            "url": tournament.get_absolute_url(),
-                        }
-                    )
-
-        context["tournaments"] = tournaments
-        context["has_results"] = bool(tournaments)
-        context["recent_window"] = (start, today)
-        context["using_recent_week"] = use_recent_week
-        context["scope_day"] = scope_day
-        return context
+    @staticmethod
+    def _speaker_cards(tournament):
+        return [
+            {
+                "name": res.debater.name,
+                "school": res.debater.school.name if res.debater.school else "",
+                "place": res.place,
+                "tie": res.tie,
+                "url": res.debater.get_absolute_url(),
+            }
+            for res in tournament.widget_speakers[:3]
+        ]
 
     def _team_display(self, team):
         debaters = list(team.debaters.select_related("school").all())
@@ -408,8 +366,8 @@ class TournamentDetailView(CustomDetailView):
 
         context["novice_speaker_results"] = nspeakers
 
-        context["tab_cards_available"] = Round.objects.filter(
-            tournament=self.object
+        context["tab_cards_available"] = visible_canonical_rounds(
+            Round.objects.filter(tournament=self.object)
         ).exists()
 
         teams = (

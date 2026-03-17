@@ -5,8 +5,6 @@ from django.test import TestCase, override_settings
 
 from core.models import (
     Debater,
-    Round,
-    RoundStats,
     School,
     SchoolLookup,
     SpeakerResult,
@@ -112,7 +110,7 @@ class ImportManagementMutationTests(TestCase):
         hybrid = Debater.objects.get(id=completed["3"])
         self.assertEqual(hybrid.school, self.other_school)
 
-    def test_create_teams_and_rounds_and_stats(self):
+    def test_create_teams_still_works(self):
         debater_one = Debater.objects.create(first_name="Alex", last_name="One", school=self.school)
         debater_two = Debater.objects.create(first_name="Blair", last_name="Two", school=self.school)
         debater_map = {1: debater_one.id, 2: debater_two.id}
@@ -121,27 +119,6 @@ class ImportManagementMutationTests(TestCase):
         team_actions = import_management.create_teams(debater_map, teams_payload)
         team = Team.objects.get(id=team_actions[5])
         self.assertEqual(team.debaters.count(), 2)
-
-        tournament = Tournament.objects.create(
-            name="Import Test",
-            host=self.school,
-            date=date(2024, 1, 1),
-            season="2024",
-            num_teams=16,
-        )
-        rounds_payload = [
-            {"id": 9, "round_number": "1", "gov": 5, "opp": 5, "victor": 1}
-        ]
-        round_actions = import_management.create_rounds(team_actions, tournament, rounds_payload)
-        created_round = Round.objects.get(id=round_actions[9])
-        self.assertEqual(created_round.victor, 1)
-
-        stats_payload = [
-            {"round": 9, "debater": 1, "speaks": 27.5, "ranks": 1, "role": "PM"},
-            {"round": 9, "debater": 2, "speaks": 26.0, "ranks": 2, "role": "MG"},
-        ]
-        import_management.create_round_stats(debater_map, round_actions, tournament, stats_payload)
-        self.assertEqual(RoundStats.objects.filter(round=created_round).count(), 2)
 
     @override_settings(CURRENT_SEASON="2024", ONLINE_SEASONS=("2024",))
     @patch.multiple(

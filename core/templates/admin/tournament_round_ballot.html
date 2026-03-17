@@ -1,0 +1,136 @@
+{% extends "base/base.html" %}
+{% block content %}
+    <div class="row mt-lg-5 ml-lg-2 mr-lg-2 mb-lg-5 m-1">
+        <div class="col-lg-12">
+            <div class="card m-2">
+                <div class="card-body">
+                    <h5 class="card-title">
+                        {% if round_obj %}Modify Round{% else %}Add New Round{% endif %}
+                    </h5>
+                    <p class="card-text mb-3">
+                        {{ tournament.name }} · {{ tournament.season }}
+                    </p>
+                    {{ form.media }}
+                    <form method="post" novalidate>
+                        {% csrf_token %}
+                        {% if form.non_field_errors %}
+                            <div class="alert alert-danger">
+                                {% for error in form.non_field_errors %}
+                                    <div>{{ error }}</div>
+                                {% endfor %}
+                            </div>
+                        {% endif %}
+                        <div class="form-row">
+                            <div class="form-group col-md-3">
+                                <label for="{{ form.canonical_round_name.id_for_label }}">Canonical Name</label>
+                                {{ form.canonical_round_name }}
+                                {% for error in form.canonical_round_name.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                            </div>
+                            <div class="form-group col-md-3">
+                                <label for="{{ form.source_round_name.id_for_label }}">Source Round Name</label>
+                                {{ form.source_round_name }}
+                                {% for error in form.source_round_name.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                            </div>
+                            <div class="form-group col-md-2">
+                                <label for="{{ form.stage.id_for_label }}">Stage</label>
+                                {{ form.stage }}
+                                {% for error in form.stage.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                            </div>
+                            <div class="form-group col-md-2">
+                                <label for="{{ form.round_number.id_for_label }}">Round Number</label>
+                                {{ form.round_number }}
+                                {% for error in form.round_number.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                            </div>
+                            <div class="form-group col-md-2">
+                                <label for="{{ form.victor.id_for_label }}">Victor</label>
+                                {{ form.victor }}
+                                {% for error in form.victor.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                            </div>
+                        </div>
+                        <div class="form-row align-items-end">
+                            <div class="form-group col-md-2">
+                                <label for="{{ form.weight.id_for_label }}">Weight</label>
+                                {{ form.weight }}
+                                {% for error in form.weight.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                            </div>
+                            <div class="form-group col-md-2">
+                                <div class="form-check">
+                                    {{ form.is_rated }}
+                                    <label class="form-check-label" for="{{ form.is_rated.id_for_label }}">Rated Round</label>
+                                </div>
+                                {% for error in form.is_rated.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
+                            </div>
+                        </div>
+
+                        <h6 class="mt-4">Government</h6>
+                        <div class="table-responsive">
+                            <table class="table table-sm table-bordered">
+                                <thead>
+                                    <tr>
+                                        <th>Role</th>
+                                        <th>Canonical Debater</th>
+                                        <th>Source Name</th>
+                                        <th>Speaks</th>
+                                        <th>Ranks</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>PM</td>
+                                        <td>{{ form.pm_debater }}{% for error in form.pm_debater.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}</td>
+                                        <td>{{ form.pm_source_name }}{% for error in form.pm_source_name.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}</td>
+                                        <td>{{ form.pm_speaks }}{% for error in form.pm_speaks.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}</td>
+                                        <td>{{ form.pm_ranks }}{% for error in form.pm_ranks.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}</td>
+                                    </tr>
+                                    <tr>
+                                        <td>MG</td>
+                                        <td>{{ form.mg_debater }}{% for error in form.mg_debater.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}</td>
+                                        <td>{{ form.mg_source_name }}{% for error in form.mg_source_name.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}</td>
+                                        <td>{{ form.mg_speaks }}{% for error in form.mg_speaks.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}</td>
+                                        <td>{{ form.mg_ranks }}{% for error in form.mg_ranks.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <h6 class="mt-4">Opposition</h6>
+                        <div class="table-responsive">
+                            <table class="table table-sm table-bordered">
+                                <thead>
+                                    <tr>
+                                        <th>Role</th>
+                                        <th>Canonical Debater</th>
+                                        <th>Source Name</th>
+                                        <th>Speaks</th>
+                                        <th>Ranks</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>LO</td>
+                                        <td>{{ form.lo_debater }}{% for error in form.lo_debater.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}</td>
+                                        <td>{{ form.lo_source_name }}{% for error in form.lo_source_name.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}</td>
+                                        <td>{{ form.lo_speaks }}{% for error in form.lo_speaks.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}</td>
+                                        <td>{{ form.lo_ranks }}{% for error in form.lo_ranks.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}</td>
+                                    </tr>
+                                    <tr>
+                                        <td>MO</td>
+                                        <td>{{ form.mo_debater }}{% for error in form.mo_debater.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}</td>
+                                        <td>{{ form.mo_source_name }}{% for error in form.mo_source_name.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}</td>
+                                        <td>{{ form.mo_speaks }}{% for error in form.mo_speaks.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}</td>
+                                        <td>{{ form.mo_ranks }}{% for error in form.mo_ranks.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div class="mt-4">
+                            <button type="submit" class="btn btn-primary">Save Round</button>
+                            <a class="btn btn-outline-secondary" href="{{ audit_detail_url }}">Cancel</a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock content %}

@@ -3,11 +3,13 @@
 Tests for team views
 """
 from datetime import date
+from django.contrib.auth import get_user_model
 from django.test import TestCase, Client
 from django.urls import reverse
 
 from core.models import School, Tournament, Debater, Team
 from core.models.results.team import TeamResult
+from core.models.round import Round, RoundStats
 
 
 class TeamViewsTest(TestCase):
@@ -136,3 +138,36 @@ class TeamViewsTest(TestCase):
             reverse("core:team_detail", kwargs={"pk": self.team.pk})
         )
         self.assertEqual(response.status_code, 200)
+
+    def test_team_detail_hides_synthetic_debaters(self):
+        synthetic_debater = Debater.objects.create(
+            first_name="Synthetic",
+            last_name="Debater",
+            school=self.school,
+            synthetic=True,
+        )
+        self.team.debaters.add(synthetic_debater)
+
+        response = self.client.get(
+            reverse("core:team_detail", kwargs={"pk": self.team.pk})
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, "Synthetic Debater")
+
+    def test_synthetic_team_hidden_from_list(self):
+        synthetic_team = Team.objects.create(name="Synthetic Team", synthetic=True)
+        synthetic_team.debaters.add(self.debater1, self.debater2)
+
+        response = self.client.get(reverse("core:team_list"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Test Team")
+        self.assertNotContains(response, "Synthetic Team")
+
+    def test_synthetic_team_detail_returns_404(self):
+        synthetic_team = Team.objects.create(name="Synthetic Team", synthetic=True)
+        synthetic_team.debaters.add(self.debater1, self.debater2)
+
+        response = self.client.get(
+            reverse("core:team_detail", kwargs={"pk": synthetic_team.pk})
+        )
+        self.assertEqual(response.status_code, 404)

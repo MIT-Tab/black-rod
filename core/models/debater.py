@@ -14,6 +14,11 @@ class ActiveDebaterManager(models.Manager):
 
 
 class Debater(models.Model):
+    class EloManualOpt(models.TextChoices):
+        UNSET = "", "Unset"
+        OPT_IN = "opt_in", "Opt-in"
+        OPT_OUT = "opt_out", "Opt-out"
+
     first_name = models.CharField(max_length=32, blank=False)
 
     last_name = models.CharField(max_length=32, blank=True, default='')
@@ -81,7 +86,15 @@ class Debater(models.Model):
         blank=True,
         help_text="Optional location tags we only show alongside outreach opt-ins.",
     )
+    elo_manual_opt = models.CharField(
+        max_length=8,
+        choices=EloManualOpt.choices,
+        blank=True,
+        default=EloManualOpt.UNSET,
+        db_index=True,
+    )
     temporary = models.BooleanField(default=False, db_index=True)
+    synthetic = models.BooleanField(default=False, db_index=True)
 
     objects = ActiveDebaterManager()
     all_objects = models.Manager()

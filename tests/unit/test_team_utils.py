@@ -36,6 +36,19 @@ class TeamUtilityTests(TestCase):
 
         self.assertEqual(returned.id, existing.id)
 
+    def test_update_name_handles_unaffiliated_debaters(self):
+        unaffiliated = Debater.objects.create(
+            first_name="Unaffiliated",
+            last_name="Partner",
+            school=None,
+        )
+        team = Team.objects.create()
+        team.debaters.add(self.debater_one, unaffiliated)
+
+        team.update_name()
+
+        self.assertEqual(team.name, "Team School / Unaffiliated SP")
+
 
 class VideoPermissionTests(TestCase):
     def setUp(self):

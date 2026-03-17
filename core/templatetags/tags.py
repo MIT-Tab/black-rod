@@ -1,4 +1,4 @@
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from django import template
 
@@ -75,13 +75,19 @@ def opponent_side(round, team):
 
 @register.filter
 def number(num, exponent=None):
-    decimal_value = Decimal(num)
+    if num in {None, ""}:
+        return ""
+
+    try:
+        decimal_value = Decimal(num)
+    except (TypeError, ValueError, InvalidOperation):
+        return ""
 
     if exponent is not None:
         try:
             quantizer = Decimal("1").scaleb(int(exponent))
             decimal_value = decimal_value.quantize(quantizer)
-        except (ValueError, ArithmeticError):
+        except (ValueError, ArithmeticError, InvalidOperation):
             # Fall back to default normalization when the exponent is invalid.
             pass
 
@@ -121,18 +127,24 @@ def relevant_debaters(school, season):
 
 @register.filter
 def partner_display(team, debater):
-    partner = team.debaters.exclude(id=debater.id).first()
-
-    if not partner:
+    if not team or getattr(team, "synthetic", False):
         return "NO PARTNER"
+    partner = team.debaters.exclude(id=debater.id).exclude(synthetic=True).first()
+
+    if not partner or getattr(partner, "synthetic", False):
+        return "NO PARTNER"
+    if not partner.school:
+        return f'<a href="{partner.get_absolute_url()}">{partner.name}</a>'
     return f'<a href="{partner.get_absolute_url()}">{partner.name}</a> (<a href="{partner.school.get_absolute_url()}">{partner.school.name}</a>)'
 
 
 @register.filter
 def partner_name(team, debater):
-    partner = team.debaters.exclude(id=debater.id).first()
+    if not team or getattr(team, "synthetic", False):
+        return "NO PARTNER"
+    partner = team.debaters.exclude(id=debater.id).exclude(synthetic=True).first()
 
-    if not partner:
+    if not partner or getattr(partner, "synthetic", False):
         return "NO PARTNER"
     return f'<a href="{partner.get_absolute_url()}">{partner.name}</a>'
 

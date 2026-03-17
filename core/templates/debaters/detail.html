@@ -7,6 +7,12 @@
 {% block title %}
     {{ object }}
 {% endblock title %}
+{% block extra_buttons %}
+    {% if can_download_tab_cards_csv %}
+        <a href="{% url 'core:debater_tab_cards_csv' pk=object.id %}"
+           class="btn btn-sm mr-1 btn-outline-secondary float-right">Download Career Tab Cards CSV</a>
+    {% endif %}
+{% endblock extra_buttons %}
 {% block detail_view %}
     {% if object.user == request.user or request.user.is_superuser %}
         <div class="mb-3">
@@ -233,6 +239,42 @@
             </ul>
         </div>
     </div>
+    {% if partner_breakdown %}
+        <div class="card mb-2 rounded-l5 shadow-lg">
+            <div class="card-body">
+                <h5 class="card-title">Partner Breakdown</h5>
+                <hr />
+                <div
+                    style="
+                        width: 220px;
+                        height: 220px;
+                        max-width: 100%;
+                        border-radius: 50%;
+                        background: {{ partner_breakdown.pie_style }};
+                        border: 1px solid #d7dde5;
+                        margin: 0 auto 1rem auto;
+                    "
+                    aria-label="Partner rounds distribution pie chart"
+                    role="img"
+                ></div>
+                <div class="text-muted mb-2 text-center">
+                    <small>Total partnered rounds: {{ partner_breakdown.total_partner_rounds }}</small>
+                </div>
+                <ul class="list-unstyled mb-0">
+                    {% for partner in partner_breakdown.rows %}
+                        <li class="mb-1">
+                            <span
+                                class="d-inline-block rounded-circle align-middle"
+                                style="width: 10px; height: 10px; background: {{ partner.color }};"
+                            ></span>
+                            {{ partner.name }}
+                            <small class="text-muted">({{ partner.rounds }} rounds, {{ partner.share_pct|floatformat:1 }}%)</small>
+                        </li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+    {% endif %}
 {% endblock left_column %}
 {% block added_information_view %}
     <div class="card mb-3 rounded-l5 shadow-lg">

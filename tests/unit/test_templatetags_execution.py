@@ -191,21 +191,32 @@ class TemplateTagExecutionTest(TestCase):
 
         # Test with partner
         debater1 = Mock()
+        team = Mock()
+        team.synthetic = False
         debater2 = Mock()
         debater2.name = "Partner Name"
+        debater2.synthetic = False
         debater2.get_absolute_url.return_value = "/debater/2/"
         debater2.school.name = "Partner School"
         debater2.school.get_absolute_url.return_value = "/school/2/"
 
-        team = Mock()
-        team.debaters.exclude.return_value.first.return_value = debater2
+        first_exclude = Mock()
+        second_exclude = Mock()
+        first_exclude.exclude.return_value = second_exclude
+        second_exclude.first.return_value = debater2
+        team.debaters.exclude.return_value = first_exclude
 
         result = partner_display(team, debater1)
         expected = '<a href="/debater/2/">Partner Name</a> (<a href="/school/2/">Partner School</a>)'
         self.assertEqual(result, expected)
 
         # Test without partner
-        team.debaters.exclude.return_value.first.return_value = None
+        second_exclude.first.return_value = None
+        result = partner_display(team, debater1)
+        self.assertEqual(result, "NO PARTNER")
+
+        # Test with synthetic team
+        team.synthetic = True
         result = partner_display(team, debater1)
         self.assertEqual(result, "NO PARTNER")
 
@@ -215,19 +226,30 @@ class TemplateTagExecutionTest(TestCase):
 
         # Test with partner
         debater1 = Mock()
+        team = Mock()
+        team.synthetic = False
         debater2 = Mock()
         debater2.name = "Partner Name"
+        debater2.synthetic = False
         debater2.get_absolute_url.return_value = "/debater/2/"
 
-        team = Mock()
-        team.debaters.exclude.return_value.first.return_value = debater2
+        first_exclude = Mock()
+        second_exclude = Mock()
+        first_exclude.exclude.return_value = second_exclude
+        second_exclude.first.return_value = debater2
+        team.debaters.exclude.return_value = first_exclude
 
         result = partner_name(team, debater1)
         expected = '<a href="/debater/2/">Partner Name</a>'
         self.assertEqual(result, expected)
 
         # Test without partner
-        team.debaters.exclude.return_value.first.return_value = None
+        second_exclude.first.return_value = None
+        result = partner_name(team, debater1)
+        self.assertEqual(result, "NO PARTNER")
+
+        # Test with synthetic team
+        team.synthetic = True
         result = partner_name(team, debater1)
         self.assertEqual(result, "NO PARTNER")
 

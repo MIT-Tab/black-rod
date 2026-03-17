@@ -1,6 +1,11 @@
 # pylint: disable=import-outside-toplevel
 from datetime import date
+import tempfile
+from pathlib import Path
+from unittest.mock import patch
 import pytest
+from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Permission
 from django.conf import settings
 from django.test import TestCase, Client, override_settings
 from django.urls import reverse
@@ -10,6 +15,7 @@ from core.models.debater import Debater
 from core.models.team import Team
 from core.models.tournament import Tournament
 from core.models.standings.toty import TOTY
+from core.utils.elo_runtime_engine.models import DebaterRankingRow, EloRunResult
 
 
 class ViewTestCase(TestCase):
@@ -170,6 +176,15 @@ class IndexViewTests(TestCase):
         )
         TOTY.objects.create(season="2024", team=self.team, points=18)
 
+    def _user_with_exclusive_pre_access(self):
+        user = get_user_model().objects.create_user(
+            username="preaccess-user",
+            password="testpass123",
+            email="preaccess@example.com",
+        )
+        user.user_permissions.add(Permission.objects.get(codename="exclusive_pre_access"))
+        return user
+
     @override_settings(ONLINE_SEASONS=("2024",), ONLINE_QUAL_BAR=9.5, LAST_NOTY_SEASON=2025)
     def test_index_sets_online_context_for_online_season(self):
         response = self.client.get(
@@ -205,3 +220,94 @@ class IndexViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("replay_api_url", response.context)
         self.assertEqual(response.context["default"], "soty")
+
+    def test_elo_dashboard_requires_exclusive_pre_access(self):
+        response = self.client.get(reverse("core:elo_dashboard"))
+        self.assertEqual(response.status_code, 302)
+
+        user = get_user_model().objects.create_user(
+            username="no-preaccess",
+            password="testpass123",
+            email="no-preaccess@example.com",
+        )
+        self.client.force_login(user)
+
+        response = self.client.get(reverse("core:elo_dashboard"))
+        self.assertEqual(response.status_code, 403)
+
+    def test_elo_dashboard_paginates_rankings_50_per_page(self):
+        user = self._user_with_exclusive_pre_access()
+        self.client.force_login(user)
+        ranking_rows = [
+            DebaterRankingRow(
+                rank=index,
+                name=f"Debater {index:03d}",
+                debater_id=None,
+                schools=[],
+                school_name="Test University",
+                rounds=100 - index,
+                prelim_rounds=80 - index,
+                outround_rounds=index % 5,
+                elo=1700 - index,
+            )
+            for index in range(1, 52)
+        ]
+        result = EloRunResult(
+            matched_tournaments=1,
+            debates_processed=51,
+            prelims_processed=40,
+            outrounds_processed=11,
+            excluded_proam_debates=0,
+            qual_data_available=False,
+            excluded_default_opt_out_debaters=0,
+            ranking_rows=ranking_rows,
+        )
+
+        with patch("core.views.elo_views.get_cached_elo_state", return_value=result), patch(
+            "core.views.elo_views._resolve_elo_season_bounds",
+            return_value=(2017, 2025),
+        ):
+            first_page_response = self.client.get(reverse("core:elo_dashboard"))
+            second_page_response = self.client.get(reverse("core:elo_dashboard"), {"page": 2})
+
+        self.assertEqual(first_page_response.status_code, 200)
+        self.assertEqual(first_page_response.context["page_obj"].number, 1)
+        self.assertEqual(first_page_response.context["page_obj"].paginator.per_page, 50)
+        self.assertEqual(len(first_page_response.context["table_rows"]), 50)
+        self.assertContains(first_page_response, "Showing 1-50 of 51")
+        self.assertContains(first_page_response, "Debater 001")
+        self.assertNotContains(first_page_response, "Debater 051")
+        self.assertContains(first_page_response, "Computation Seasons Included")
+        self.assertContains(first_page_response, "2017-2018 through 2025-2026")
+        self.assertContains(first_page_response, "Display Active Seasons")
+        self.assertContains(first_page_response, "2018-2019 through 2025-2026")
+        self.assertContains(
+            first_page_response,
+            "This range determines which seasons are used to calculate ELO.",
+        )
+        self.assertContains(
+            first_page_response,
+            "This filter only controls who appears in the rankings. Ratings are still computed from the selected computation seasons.",
+        )
+        self.assertContains(first_page_response, "ELO Dashboard")
+        self.assertNotContains(first_page_response, "Run Summary")
+        self.assertNotContains(first_page_response, "Run ELO over imported tournament dataset data.")
+        self.assertNotContains(first_page_response, "Excluded ProAm Partnerships")
+        self.assertContains(first_page_response, 'href="?page=2">Next</a>')
+        self.assertNotContains(first_page_response, 'href="?page=2">2</a>')
+        self.assertNotContains(first_page_response, '<span class="page-link">...</span>')
+        self.assertContains(first_page_response, "Beta notice:")
+        self.assertContains(
+            first_page_response,
+            "This feature is in early beta. The underlying data is incomplete and may contain inaccuracies.",
+        )
+        self.assertNotContains(first_page_response, "Varsity/Nat-qual exclusions")
+
+        self.assertEqual(second_page_response.status_code, 200)
+        self.assertEqual(second_page_response.context["page_obj"].number, 2)
+        self.assertEqual(len(second_page_response.context["table_rows"]), 1)
+        self.assertContains(second_page_response, "Showing 51-51 of 51")
+        self.assertContains(second_page_response, "Debater 051")
+        self.assertNotContains(second_page_response, "Debater 001")
+        self.assertContains(second_page_response, 'href="?page=1">Previous</a>')
+        self.assertNotContains(second_page_response, 'href="?page=1">1</a>')

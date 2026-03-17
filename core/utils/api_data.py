@@ -1,10 +1,10 @@
 from urllib.parse import urlparse
-import re
 import requests
 from django.conf import settings
 from django.db import transaction
 from core.models.debater import Debater
 from core.models.school import School, SchoolLookup
+from core.utils.elo_runtime_engine.constants import season_to_int
 
 
 class APIDataHandler:
@@ -330,20 +330,9 @@ class APIDataHandler:
 
         return None
 
-    def _season_to_int(self, season_value):
-        if not season_value:
-            return None
-        match = re.search(r'\d{4}', str(season_value))
-        if not match:
-            return None
-        try:
-            return int(match.group())
-        except (TypeError, ValueError):
-            return None
-
     def _is_recent_season(self, season_value):
-        latest = self._season_to_int(season_value)
-        current = self._season_to_int(settings.CURRENT_SEASON)
+        latest = season_to_int(season_value)
+        current = season_to_int(settings.CURRENT_SEASON)
         if latest is None or current is None:
             return False
         return latest >= current - 2

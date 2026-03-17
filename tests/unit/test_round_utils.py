@@ -58,10 +58,10 @@ class RoundUtilityTests(TestCase):
         )
         Round.objects.create(
             tournament=self.tournament,
-            gov=self.team,
-            opp=self.opponent,
+            gov=self.opponent,
+            opp=self.team,
             round_number=4,
-            victor=Round.OPP,
+            victor=Round.GOV,
         )
 
         record = get_record(self.tournament, self.team)

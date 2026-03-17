@@ -53,3 +53,12 @@ bin/gunicorn_start
 
 apda/static_root/
 venv310
+tmp/
+core/fixtures/dev_fixtures_noframework*.json
+# local ELO artifacts
+debater_elo_rankings_local.txt
+debater_manual_opts.json
+debater_name_mappings.json
+apda/db.pre_strip_other.sqlite3
+.gitignore
+core/management/commands/black-rod.code-workspace

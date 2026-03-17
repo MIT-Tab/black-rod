@@ -8,26 +8,41 @@ from .debater import Debater
 class Team(models.Model):
     name = models.CharField(max_length=128, blank=False)
     short_name = models.CharField(max_length=128, blank=False, default="")
+    synthetic = models.BooleanField(default=False, db_index=True)
 
     debaters = models.ManyToManyField(Debater, related_name="teams")
 
     def update_name(self):
-        school_name = ""
+        debaters = list(self.debaters.select_related("school").all())
+        if not debaters:
+            return
 
-        if self.debaters.first().school == self.debaters.last().school:
-            school_name = self.debaters.first().school.name
+        first = debaters[0]
+        last = debaters[-1]
+        first_school = first.school.name if first.school else "Unaffiliated"
+        last_school = last.school.name if last.school else "Unaffiliated"
+
+        if first.school_id and first.school_id == last.school_id:
+            school_name = first_school
+        elif first_school == last_school:
+            school_name = first_school
         else:
-            school_name = f"{self.debaters.first().school.name} / {self.debaters.last().school.name}"
+            school_name = f"{first_school} / {last_school}"
 
-        self.name = f"{school_name} {''.join([debater.last_name[0] for debater in self.debaters.all()])}"
+        initials = "".join(
+            (debater.last_name[:1] or debater.first_name[:1] or "?")
+            for debater in debaters
+        )
+        self.name = f"{school_name} {initials}".strip()
 
     @property
     def debaters_display(self):
+        debaters = self.debaters.exclude(synthetic=True)
         return format_html(
             " and ".join(
                 [
                     f'<a href="{debater.get_absolute_url()}">{debater.name}</a>'
-                    for debater in self.debaters.all()
+                    for debater in debaters
                 ]
             )
         )
@@ -36,15 +51,19 @@ class Team(models.Model):
     def long_name(self):
         debaters = list(self.debaters.all())
         if len(debaters) == 2:
+            left_school = debaters[0].school.name if debaters[0].school else "Unaffiliated"
+            right_school = debaters[1].school.name if debaters[1].school else "Unaffiliated"
             school = (
-                debaters[0].school.name
-                if debaters[0].school == debaters[1].school
-                else f"{debaters[0].school.name} / {debaters[1].school.name}"
+                left_school
+                if debaters[0].school_id and debaters[0].school_id == debaters[1].school_id
+                else left_school if left_school == right_school
+                else f"{left_school} / {right_school}"
             )
             names = f"{debaters[0].first_name} {debaters[0].last_name} and {debaters[1].first_name} {debaters[1].last_name}"
             return f"{school} {names}"
         if debaters:
-            return f"{debaters[0].school.name} {debaters[0].first_name} {debaters[0].last_name}"
+            school_name = debaters[0].school.name if debaters[0].school else "Unaffiliated"
+            return f"{school_name} {debaters[0].first_name} {debaters[0].last_name}"
 
         return self.name
 

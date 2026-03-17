@@ -26,10 +26,12 @@
                 <td>Debaters</td>
                 <td>
                     <ul>
-                        {% for debater in object.debaters.all %}
+                        {% for debater in visible_debaters %}
                             <li>
                                 <a href="{{ debater.get_absolute_url }}">{{ debater.name }}</a> (<a href="{{ debater.school.get_absolute_url }}">{{ debater.school.name }}</a>)
                             </li>
+                        {% empty %}
+                            <li>No debaters</li>
                         {% endfor %}
                     </ul>
                 </td>

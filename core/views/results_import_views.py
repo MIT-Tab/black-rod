@@ -174,6 +174,7 @@ def cleanup_temporary_debaters(max_delete: int = MAX_TEMP_DELETIONS) -> int:
         )
         .filter(
             temporary=True,
+            synthetic=False,
             team_results_count=0,
             speaker_results_count=0,
             team_count=0,
@@ -192,7 +193,7 @@ def cleanup_temporary_schools(max_delete: int = MAX_TEMP_DELETIONS) -> int:
     schools_with_debaters = set(
         Debater.all_objects.exclude(school=None).values_list("school_id", flat=True)
     )
-    qs = School.all_objects.filter(temporary=True).exclude(id__in=schools_with_debaters)
+    qs = School.all_objects.filter(temporary=True, synthetic=False).exclude(id__in=schools_with_debaters)
     count = qs.count()
     if count > max_delete:
         raise RuntimeError(

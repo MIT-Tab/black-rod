@@ -1,5 +1,9 @@
+import json
+
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
+from django.db.models import Count
+from django.utils.html import format_html
 from import_export.admin import ImportExportModelAdmin
 
 from core.forms import (
@@ -15,6 +19,7 @@ from core.forms import (
 from core.models import (
     COTY,
     NOTY,
+    OnlineQUAL,
     QUAL,
     QualPoints,
     QualBar,
@@ -29,17 +34,24 @@ from core.models import (
     SpeakerResult,
     Team,
     TeamResult,
+    TaggedResource,
     TOTY,
     TOTYReaff,
     Tournament,
+    TournamentImport,
     User,
     Video,
     Resource,
     ResourceTag,
     Debater,
+    DebaterAlias,
     MergeDebaterRequest,
     ClaimDebaterRequest,
     DebaterAliasGroup,
+    ImportBatch,
+    ImportedRoundJudge,
+    ImportedRoundMetadata,
+    SyntheticResolutionLog,
 )
 from core.resources import (
     COTYResource,
@@ -70,10 +82,13 @@ class SchoolAdmin(ImportExportModelAdmin):
 @admin.register(Debater)
 class DebaterAdmin(ImportExportModelAdmin):
     resource_class = DebaterResource
-    list_display = ("first_name", "last_name", "school", "id")
-    list_filter = ("first_name", "last_name", "school", "id")
+    list_display = ("first_name", "last_name", "school", "synthetic", "temporary", "id")
+    list_filter = ("synthetic", "temporary", "first_name", "last_name", "school", "id")
     search_fields = ("first_name", "last_name", "school__name", "id")
     ordering = ("first_name", "last_name", "school")
+
+    def get_queryset(self, request):
+        return Debater.all_objects.select_related("school")
 
     @admin.display(
         description="Debater Name",
@@ -88,6 +103,27 @@ class DebaterAliasGroupAdmin(admin.ModelAdmin):
     list_display = ("name", "id")
     search_fields = ("label",)
     ordering = ("label", "id")
+
+
+@admin.register(DebaterAlias)
+class DebaterAliasAdmin(admin.ModelAdmin):
+    list_display = (
+        "source_name",
+        "normalized_name",
+        "debater",
+        "created_at",
+        "updated_at",
+    )
+    list_filter = ("created_at", "updated_at")
+    search_fields = (
+        "source_name",
+        "normalized_name",
+        "debater__first_name",
+        "debater__last_name",
+    )
+    ordering = ("source_name", "id")
+    list_select_related = ("debater",)
+    raw_id_fields = ("debater",)
 
 
 
@@ -128,7 +164,13 @@ class CustomUserAdmin(UserAdmin):
 @admin.register(Team)
 class TeamAdmin(ImportExportModelAdmin):
     list_display = ["name", "short_name", "id"]
-    search_fields = ["name", "short_name", "debaters__name", "debaters__school__name"]
+    search_fields = [
+        "name",
+        "short_name",
+        "debaters__first_name",
+        "debaters__last_name",
+        "debaters__school__name",
+    ]
 
     def get_queryset(self, request):
         return (
@@ -421,6 +463,39 @@ class QualBarAdmin(admin.ModelAdmin):
     list_display = ("season", "points")
     search_fields = ("season",)
 
+
+@admin.register(OnlineQUAL)
+class OnlineQUALAdmin(admin.ModelAdmin):
+    list_display = (
+        "debater_name",
+        "season",
+        "place",
+        "points",
+        "marker_one",
+        "marker_two",
+    )
+    list_filter = ("season", "place", "tied")
+    search_fields = ("debater__first_name", "debater__last_name")
+    ordering = ("season", "place", "debater__first_name", "debater__last_name")
+    list_select_related = ("debater",)
+    raw_id_fields = (
+        "debater",
+        "tournament_one",
+        "tournament_two",
+        "tournament_three",
+        "tournament_four",
+        "tournament_five",
+        "tournament_six",
+    )
+
+    @admin.display(
+        description="Debater Name",
+        ordering="debater__first_name",
+    )
+    def debater_name(self, obj):
+        return f"{obj.debater.first_name} {obj.debater.last_name}"
+
+
 @admin.register(Video)
 class VideoAdmin(admin.ModelAdmin):
     list_display = ("tournament", "round", "pm", "lo", "mg", "mo", "permissions")
@@ -478,9 +553,208 @@ class ResourceAdmin(admin.ModelAdmin):
         return obj.get_absolute_url()
 
 
+class RoundStatsInline(admin.TabularInline):
+    model = RoundStats
+    extra = 0
+    autocomplete_fields = ("debater",)
+    fields = ("debater", "debater_role", "score_index", "speaks", "ranks", "source_status")
+    ordering = ("score_index", "id")
+    show_change_link = True
 
-admin.site.register(Round)
-admin.site.register(RoundStats)
+
+class ImportedRoundMetadataInline(admin.StackedInline):
+    model = ImportedRoundMetadata
+    extra = 0
+    max_num = 1
+    autocomplete_fields = (
+        "gov_1_alias",
+        "gov_2_alias",
+        "opp_1_alias",
+        "opp_2_alias",
+        "sources",
+    )
+    fields = (
+        ("gov_1_alias", "gov_1_role"),
+        ("gov_2_alias", "gov_2_role"),
+        ("opp_1_alias", "opp_1_role"),
+        ("opp_2_alias", "opp_2_role"),
+        "raw_result_code",
+        "raw_outcome_text",
+        "sources",
+    )
+    show_change_link = True
+
+
+@admin.register(Round)
+class RoundAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "tournament_name",
+        "round_summary",
+        "stage",
+        "division",
+        "gov",
+        "opp",
+        "victor_display",
+        "is_rated",
+        "weight",
+        "stats_count",
+        "import_origin",
+    )
+    list_filter = ("stage", "division", "is_rated", "victor", "import_origin", "tournament__season")
+    search_fields = (
+        "=id",
+        "round_label",
+        "import_key",
+        "tournament__name",
+        "tournament__short_name",
+        "gov__name",
+        "opp__name",
+        "gov__debaters__first_name",
+        "gov__debaters__last_name",
+        "opp__debaters__first_name",
+        "opp__debaters__last_name",
+    )
+    ordering = ("-tournament__date", "-tournament_id", "round_number", "id")
+    list_select_related = ("tournament", "gov", "opp")
+    autocomplete_fields = ("tournament", "gov", "opp")
+    readonly_fields = ("stats_count", "imported_metadata_summary", "metadata_pretty")
+    fieldsets = (
+        ("Round", {"fields": ("tournament", "round_number", "round_label", "stage", "division", "elim_size")}),
+        ("Matchup", {"fields": ("gov", "opp", "victor", "is_rated", "weight", "stats_count")}),
+        ("Import", {"fields": ("import_origin", "import_key", "imported_metadata_summary")}),
+        ("Metadata", {"fields": ("metadata_pretty",), "classes": ("collapse",)}),
+    )
+    inlines = (RoundStatsInline, ImportedRoundMetadataInline)
+    save_on_top = True
+
+    def get_queryset(self, request):
+        return (
+            super()
+            .get_queryset(request)
+            .select_related("tournament", "gov", "opp", "imported_metadata")
+            .annotate(_stats_count=Count("stats", distinct=True))
+        )
+
+    @admin.display(description="Tournament", ordering="tournament__name")
+    def tournament_name(self, obj):
+        return obj.tournament.name
+
+    @admin.display(description="Round", ordering="round_number")
+    def round_summary(self, obj):
+        if obj.round_label:
+            return f"{obj.round_label} (#{obj.round_number})"
+        return f"Round {obj.round_number}"
+
+    @admin.display(description="Victor", ordering="victor")
+    def victor_display(self, obj):
+        return obj.get_victor_display()
+
+    @admin.display(description="Stats", ordering="_stats_count")
+    def stats_count(self, obj):
+        return getattr(obj, "_stats_count", obj.stats.count())
+
+    @admin.display(description="Imported Metadata")
+    def imported_metadata_summary(self, obj):
+        try:
+            metadata = obj.imported_metadata
+        except ImportedRoundMetadata.DoesNotExist:
+            return "No imported metadata"
+
+        summary = []
+        if metadata.raw_result_code:
+            summary.append(f"Result code: {metadata.raw_result_code}")
+        gov_aliases = [
+            alias.source_name
+            for alias in (metadata.gov_1_alias, metadata.gov_2_alias)
+            if alias is not None
+        ]
+        opp_aliases = [
+            alias.source_name
+            for alias in (metadata.opp_1_alias, metadata.opp_2_alias)
+            if alias is not None
+        ]
+        if gov_aliases:
+            summary.append(f"Gov aliases: {', '.join(gov_aliases)}")
+        if opp_aliases:
+            summary.append(f"Opp aliases: {', '.join(opp_aliases)}")
+        if metadata.raw_outcome_text:
+            summary.append(metadata.raw_outcome_text)
+        return " | ".join(summary) or "Imported metadata present"
+
+    @admin.display(description="Metadata JSON")
+    def metadata_pretty(self, obj):
+        if not obj.metadata:
+            return "No metadata"
+        return format_html(
+            "<pre>{}</pre>",
+            json.dumps(obj.metadata, indent=2, sort_keys=True),
+        )
+
+
+@admin.register(RoundStats)
+class RoundStatsAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "tournament_name",
+        "round_summary",
+        "debater",
+        "debater_role",
+        "score_index",
+        "speaks",
+        "ranks",
+        "source_status",
+    )
+    list_filter = (
+        "debater_role",
+        "source_status",
+        "round__stage",
+        "round__division",
+        "round__is_rated",
+        "round__tournament__season",
+    )
+    search_fields = (
+        "=id",
+        "debater__first_name",
+        "debater__last_name",
+        "debater__school__name",
+        "round__tournament__name",
+        "round__round_label",
+        "round__import_key",
+    )
+    ordering = ("-round__tournament__date", "-round_id", "score_index", "id")
+    list_select_related = ("round__tournament", "debater", "debater__school")
+    autocomplete_fields = ("round", "debater")
+    readonly_fields = ("metadata_pretty",)
+    fields = (
+        "round",
+        "debater",
+        "debater_role",
+        "score_index",
+        "speaks",
+        "ranks",
+        "source_status",
+        "metadata_pretty",
+    )
+
+    @admin.display(description="Tournament", ordering="round__tournament__name")
+    def tournament_name(self, obj):
+        return obj.round.tournament.name
+
+    @admin.display(description="Round", ordering="round__round_number")
+    def round_summary(self, obj):
+        label = obj.round.round_label or f"Round {obj.round.round_number}"
+        return f"{label} / {obj.round.gov} vs {obj.round.opp}"
+
+    @admin.display(description="Metadata JSON")
+    def metadata_pretty(self, obj):
+        if not obj.metadata:
+            return "No metadata"
+        return format_html(
+            "<pre>{}</pre>",
+            json.dumps(obj.metadata, indent=2, sort_keys=True),
+        )
+
 
 admin.site.register(SchoolLookup)
 
@@ -499,3 +773,152 @@ class ResourceTagAdmin(admin.ModelAdmin):
     list_display = ("name", "slug")
     search_fields = ("name", "slug")
     ordering = ("name",)
+
+
+@admin.register(TaggedResource)
+class TaggedResourceAdmin(admin.ModelAdmin):
+    list_display = ("id", "tag", "content_type", "object_id")
+    list_filter = ("content_type", "tag")
+    search_fields = ("tag__name", "tag__slug")
+    ordering = ("content_type", "object_id", "tag__name")
+    raw_id_fields = ("tag",)
+
+
+@admin.register(ImportBatch)
+class ImportBatchAdmin(admin.ModelAdmin):
+    list_display = ("id", "created_at", "tournament_import_count")
+    ordering = ("-created_at", "-id")
+    readonly_fields = ("created_at",)
+
+    @admin.display(description="Tournament Imports")
+    def tournament_import_count(self, obj):
+        return obj.tournament_imports.count()
+
+
+@admin.register(TournamentImport)
+class TournamentImportAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "tournament",
+        "import_type",
+        "original_file_name",
+        "source_hash",
+        "batch",
+        "imported_at",
+    )
+    list_filter = ("import_type", "imported_at")
+    search_fields = ("tournament__name", "original_file_name", "source_hash")
+    ordering = ("tournament__name", "-imported_at", "-id")
+    list_select_related = ("tournament", "batch")
+    raw_id_fields = ("tournament", "batch")
+    readonly_fields = ("imported_at",)
+
+
+@admin.register(ImportedRoundMetadata)
+class ImportedRoundMetadataAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "round",
+        "tournament_name",
+        "gov_alias_summary",
+        "opp_alias_summary",
+        "raw_result_code",
+    )
+    search_fields = (
+        "round__tournament__name",
+        "round__import_key",
+        "gov_1_alias__source_name",
+        "gov_2_alias__source_name",
+        "opp_1_alias__source_name",
+        "opp_2_alias__source_name",
+        "raw_result_code",
+        "raw_outcome_text",
+    )
+    ordering = ("round__tournament__name", "round__round_number", "id")
+    list_select_related = (
+        "round__tournament",
+        "gov_1_alias",
+        "gov_2_alias",
+        "opp_1_alias",
+        "opp_2_alias",
+    )
+    raw_id_fields = (
+        "round",
+        "gov_1_alias",
+        "gov_2_alias",
+        "opp_1_alias",
+        "opp_2_alias",
+        "sources",
+    )
+
+    @admin.display(description="Tournament", ordering="round__tournament__name")
+    def tournament_name(self, obj):
+        return obj.round.tournament.name
+
+    @admin.display(description="Gov Aliases")
+    def gov_alias_summary(self, obj):
+        return ", ".join(
+            alias.source_name
+            for alias in (obj.gov_1_alias, obj.gov_2_alias)
+            if alias is not None
+        ) or "-"
+
+    @admin.display(description="Opp Aliases")
+    def opp_alias_summary(self, obj):
+        return ", ".join(
+            alias.source_name
+            for alias in (obj.opp_1_alias, obj.opp_2_alias)
+            if alias is not None
+        ) or "-"
+
+
+@admin.register(ImportedRoundJudge)
+class ImportedRoundJudgeAdmin(admin.ModelAdmin):
+    list_display = ("id", "original_name", "round_metadata", "debater_alias", "is_chair")
+    list_filter = ("is_chair",)
+    search_fields = (
+        "original_name",
+        "debater_alias__source_name",
+        "debater_alias__debater__first_name",
+        "debater_alias__debater__last_name",
+        "round_metadata__round__tournament__name",
+    )
+    ordering = (
+        "round_metadata__round__tournament__name",
+        "round_metadata__round__round_number",
+        "id",
+    )
+    list_select_related = ("round_metadata__round__tournament", "debater_alias__debater")
+    raw_id_fields = ("round_metadata", "debater_alias")
+
+
+@admin.register(SyntheticResolutionLog)
+class SyntheticResolutionLogAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "entity_type",
+        "synthetic_id",
+        "resolved_to_id",
+        "actor",
+        "created_at",
+    )
+    list_filter = ("entity_type", "created_at")
+    search_fields = (
+        "synthetic_name",
+        "resolved_to_name",
+        "reason",
+        "synthetic_id",
+        "resolved_to_id",
+    )
+    readonly_fields = (
+        "entity_type",
+        "synthetic_id",
+        "synthetic_name",
+        "resolved_to_id",
+        "resolved_to_name",
+        "actor",
+        "reason",
+        "source_context",
+        "synthetic_snapshot",
+        "created_at",
+    )

@@ -318,6 +318,7 @@ class TournamentImportForm(forms.Form):
     )
 
 
+
 class TournamentResultsImportOptionsForm(forms.Form):
     api_url = forms.URLField(
         required=False,
@@ -989,6 +990,12 @@ class DebaterProfileEditForm(forms.ModelForm):
         help_text="Link to your Google Doc paradigm. Make sure sharing is enabled so others can view it.",
         widget=forms.URLInput(attrs={'placeholder': 'https://docs.google.com/document/d/...'})
     )
+    elo_manual_opt = forms.ChoiceField(
+        required=False,
+        label="ELO Inclusion Override",
+        choices=Debater.EloManualOpt.choices,
+        help_text="Override the default ELO inclusion heuristic for this profile.",
+    )
 
     class Meta:
         model = Debater
@@ -998,6 +1005,7 @@ class DebaterProfileEditForm(forms.ModelForm):
             'status',
             'first_season',
             'latest_season',
+            'elo_manual_opt',
             'paradigm',
             'dino_to_contact_opt_in',
             'dino_judge_contact_opt_in',
@@ -1042,7 +1050,7 @@ class DebaterProfileEditForm(forms.ModelForm):
         )
 
         # Text inputs should use consistent styling
-        for field_name in ('first_name', 'last_name', 'paradigm'):
+        for field_name in ('first_name', 'last_name', 'paradigm', 'elo_manual_opt'):
             if field_name in self.fields:
                 self.fields[field_name].widget.attrs.setdefault('class', 'form-control')
 

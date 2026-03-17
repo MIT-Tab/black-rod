@@ -13,6 +13,7 @@ class School(models.Model):
 
     included_in_oty = models.BooleanField(default=True, verbose_name="Included in OTY")
     temporary = models.BooleanField(default=False, db_index=True)
+    synthetic = models.BooleanField(default=False, db_index=True)
 
     objects = ActiveSchoolManager()
     all_objects = models.Manager()

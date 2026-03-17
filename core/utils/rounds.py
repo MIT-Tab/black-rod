@@ -3,13 +3,20 @@ from django.db.models import Q
 from core.models.round import Round
 
 
+def visible_canonical_rounds(queryset=None):
+    base_queryset = queryset if queryset is not None else Round.objects.all()
+    return base_queryset
+
+
 def get_record(tournament, team):
     gov_wins = [1, 3, 6]
     opp_wins = [2, 4, 6]
 
     num_wins = 0
 
-    rounds = tournament.rounds.filter(Q(gov=team) | Q(opp=team))
+    rounds = visible_canonical_rounds(
+        tournament.rounds.filter(Q(gov=team) | Q(opp=team))
+    )
 
     if not rounds.exists():
         return ""
@@ -30,14 +37,14 @@ def get_tab_card_data(team, tournament):
     speaker_one = team.debaters.first()
     speaker_two = team.debaters.last()
 
-    rounds = Round.objects.filter(Q(gov=team) | Q(opp=team))
+    rounds = visible_canonical_rounds(
+        Round.objects.filter(Q(gov=team) | Q(opp=team)).filter(tournament=tournament)
+    )
 
     if not rounds.exists():
         return None
 
     to_return = []
-
-    print(rounds)
 
     for round in rounds.order_by("round_number").all():
         to_add = {

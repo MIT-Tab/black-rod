@@ -15,7 +15,7 @@ from core.utils.generics import (
     CustomTable,
     CustomUpdateView,
 )
-from core.utils.rounds import get_record, get_tab_card_data
+from core.utils.rounds import get_record, get_tab_card_data, visible_canonical_rounds
 
 
 class TeamFilter(FilterSet):
@@ -66,6 +66,9 @@ class TeamListView(CustomListView):
 
     filterset_class = TeamFilter
 
+    def get_queryset(self):
+        return Team.objects.filter(synthetic=False)
+
 
 class TeamDetailView(CustomDetailView):
     public_view = True
@@ -89,8 +92,13 @@ class TeamDetailView(CustomDetailView):
         },
     ]
 
+    def get_object(self, queryset=None):
+        queryset = Team.objects.filter(synthetic=False)
+        return super().get_object(queryset=queryset)
+
     def get_context_data(self, *args, **kwargs):
         context = super().get_context_data(*args, **kwargs)
+        context["visible_debaters"] = self.object.debaters.exclude(synthetic=True)
 
         results = self.object.team_results.order_by("tournament__date")
 
@@ -109,7 +117,9 @@ class TeamDetailView(CustomDetailView):
             ]
             tournaments_handled += [result.tournament]
 
-        rounds = Round.objects.filter(Q(gov=self.object) | Q(opp=self.object))
+        rounds = visible_canonical_rounds(
+            Round.objects.filter(Q(gov=self.object) | Q(opp=self.object))
+        )
 
         tournaments = []
 
@@ -169,10 +179,11 @@ class TeamDeleteView(CustomDeleteView):
 
 class TeamAutocomplete(autocomplete.Select2QuerySetView):
     def get_result_label(self, record):
-        return f"<{record.id}> {record.name} ({', '.join([d.name for d in record.debaters.all()])})"
+        visible_names = [d.name for d in record.debaters.exclude(synthetic=True)]
+        return f"<{record.id}> {record.name} ({', '.join(visible_names)})"
 
     def get_queryset(self):
-        qs = Team.objects.all()
+        qs = Team.objects.filter(synthetic=False)
 
         if self.q:
             query = Q()
