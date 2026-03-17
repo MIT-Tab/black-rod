@@ -1,4 +1,7 @@
 {% extends "base/base.html" %}
+{% block extra_head %}
+    {{ import_move_form_media }}
+{% endblock extra_head %}
 {% block content %}
     <div class="row mt-lg-5 ml-lg-2 mr-lg-2 mb-lg-5 m-1">
         <div class="col-lg-12">
@@ -8,6 +11,11 @@
                     <p class="card-text mb-2">
                         Season {{ tournament.season }} · {{ tournament.date|date:"Y-m-d" }}
                     </p>
+                    {% if round_amendment_recording.enabled %}
+                        <div class="alert alert-info py-2">
+                            Development mode is active. Supported round and import edits here are also appended to <code>{{ round_amendment_recording.path }}</code>.
+                        </div>
+                    {% endif %}
                     <div class="d-flex flex-wrap mb-3">
                         <a class="btn btn-sm btn-outline-secondary mr-2 mb-2" href="{% url 'core:tournament_pipeline_audit' %}">Back to Audit</a>
                         <a class="btn btn-sm btn-outline-primary mr-2 mb-2" href="{{ add_round_url }}">Add New Round</a>
@@ -61,12 +69,66 @@
                                         </td>
                                         <td>{{ row.origin_label }}</td>
                                         <td>
-                                            <a class="btn btn-sm btn-outline-primary" href="{{ row.modify_url }}">Modify Round</a>
+                                            <a class="btn btn-sm btn-outline-primary mr-2" href="{{ row.modify_url }}">Modify Round</a>
+                                            <form method="post" action="{{ row.delete_url }}" class="d-inline">
+                                                {% csrf_token %}
+                                                <button type="submit" class="btn btn-sm btn-outline-danger">Delete Round</button>
+                                            </form>
                                         </td>
                                     </tr>
                                 {% empty %}
                                     <tr>
                                         <td colspan="10" class="text-center text-muted">No canonical rounds exist for this tournament yet.</td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    <h6 class="mt-4">Linked Tournament Imports</h6>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-striped">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Type</th>
+                                    <th>Source File</th>
+                                    <th>Source Hash</th>
+                                    <th>Imported At</th>
+                                    <th>Linked Rounds</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in import_rows %}
+                                    <tr>
+                                        <td>{{ row.id }}</td>
+                                        <td>{{ row.import_type_label }}</td>
+                                        <td>{{ row.original_file_name|default:"-" }}</td>
+                                        <td><code>{{ row.source_hash|default:"-" }}</code></td>
+                                        <td>{{ row.imported_at|date:"Y-m-d H:i" }}</td>
+                                        <td>{{ row.linked_round_count }}</td>
+                                        <td>
+                                            <form method="post" action="{{ row.move_url }}" class="mb-2">
+                                                {% csrf_token %}
+                                                {{ row.move_form.tournament_import_id }}
+                                                <div class="form-row align-items-center">
+                                                    <div class="col-md-8">
+                                                        {{ row.move_form.target_tournament }}
+                                                    </div>
+                                                    <div class="col-md-4 mt-2 mt-md-0">
+                                                        <button type="submit" class="btn btn-sm btn-outline-secondary btn-block">Move Import</button>
+                                                    </div>
+                                                </div>
+                                            </form>
+                                            <form method="post" action="{{ row.delete_url }}">
+                                                {% csrf_token %}
+                                                <button type="submit" class="btn btn-sm btn-outline-danger">Delete Import</button>
+                                            </form>
+                                        </td>
+                                    </tr>
+                                {% empty %}
+                                    <tr>
+                                        <td colspan="7" class="text-center text-muted">No tournament imports are linked to this tournament.</td>
                                     </tr>
                                 {% endfor %}
                             </tbody>

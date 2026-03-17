@@ -318,6 +318,38 @@ class TournamentImportForm(forms.Form):
     )
 
 
+class RoundAmendmentUploadForm(forms.Form):
+    amendment_file = forms.FileField(
+        label="Round amendment JSON",
+        help_text="Upload a JSON file with synthetic resolutions, round edits, or tournament import moves/deletes.",
+        widget=forms.ClearableFileInput(
+            attrs={"accept": ".json,application/json"}
+        ),
+    )
+
+    def clean_amendment_file(self):
+        uploaded = self.cleaned_data["amendment_file"]
+        name = str(getattr(uploaded, "name", "") or "").lower()
+        if name and not name.endswith(".json"):
+            raise forms.ValidationError("Please upload a .json amendment file.")
+        return uploaded
+
+
+class TournamentImportMoveForm(forms.Form):
+    tournament_import_id = forms.IntegerField(widget=forms.HiddenInput())
+    target_tournament = forms.ModelChoiceField(
+        queryset=Tournament.objects.all(),
+        widget=autocomplete.ModelSelect2(url="core:all_tournament_autocomplete"),
+    )
+
+    def __init__(self, *args, **kwargs):
+        current_tournament = kwargs.pop("current_tournament", None)
+        super().__init__(*args, **kwargs)
+        queryset = Tournament.objects.all().order_by("-date", "id")
+        if current_tournament is not None:
+            queryset = queryset.exclude(pk=getattr(current_tournament, "pk", current_tournament))
+        self.fields["target_tournament"].queryset = queryset
+
 
 class TournamentResultsImportOptionsForm(forms.Form):
     api_url = forms.URLField(

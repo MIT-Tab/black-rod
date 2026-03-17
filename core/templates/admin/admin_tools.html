@@ -13,6 +13,11 @@
                 <div class="card-body">
                     <h5 class="card-title">Admin Tools</h5>
                     <p class="card-text">Welcome to the APDA Admin Tools page. This is a central location for administrative functions.</p>
+                    {% if round_amendment_recording.enabled %}
+                        <div class="alert alert-info py-2">
+                            Development mode is active. Supported admin edits are also appended to <code>{{ round_amendment_recording.path }}</code>.
+                        </div>
+                    {% endif %}
                     <div class="row">
                         <div class="col-md-6">
                             <h6>Quick Links</h6>
@@ -60,6 +65,11 @@
                                     <a href="#synthetic-resolution"
                                        class="btn btn-outline-dark btn-sm">Synthetic Resolver</a>
                                     <span class="text-muted ml-2">Resolve synthetic debaters, schools, or teams into canonical records</span>
+                                </li>
+                                <li class="list-group-item">
+                                    <a href="#round-amendments"
+                                       class="btn btn-outline-dark btn-sm">Round Amendments</a>
+                                    <span class="text-muted ml-2">Upload JSON amendments for imported round data and tournament import fixes</span>
                                 </li>
                                 <li class="list-group-item">
                                     <a href="{% url 'core:synthetic_resolution_suggestions' %}"
@@ -140,6 +150,42 @@
                                         </div>
                                         <button class="btn btn-outline-dark btn-sm" type="submit">Resolve</button>
                                     </form>
+                                </div>
+                            </div>
+                            <div class="card mt-3" id="round-amendments">
+                                <div class="card-body">
+                                    <h6 class="card-title">Round Amendments</h6>
+                                    <p class="card-text text-muted">Upload a JSON file to apply synthetic resolutions, create/update/delete imported rounds, delete tournament imports, or move imports between tournaments.</p>
+                                    <form method="post"
+                                          action="{% url 'core:round_amendments_upload' %}"
+                                          enctype="multipart/form-data">
+                                        {% csrf_token %}
+                                        <div class="form-group">
+                                            <label for="{{ round_amendment_form.amendment_file.id_for_label }}">{{ round_amendment_form.amendment_file.label }}</label>
+                                            {{ round_amendment_form.amendment_file }}
+                                            {% if round_amendment_form.amendment_file.help_text %}
+                                                <small class="form-text text-muted">{{ round_amendment_form.amendment_file.help_text }}</small>
+                                            {% endif %}
+                                            {% for error in round_amendment_form.amendment_file.errors %}
+                                                <div class="text-danger small mt-1">{{ error }}</div>
+                                            {% endfor %}
+                                        </div>
+                                        <button class="btn btn-outline-dark btn-sm" type="submit">Upload and Apply</button>
+                                    </form>
+                                    <div class="small text-muted mt-3">
+                                        <strong>Accepted schema:</strong>
+                                        <pre class="mb-0 mt-2"><code>{
+  "rounds": {
+    "update": [{"tournament_id": 1, "import_key": "round-123", "round_label": "R4"}]
+  },
+  "tournament_imports": {
+    "move": [{"id": 44, "target_tournament_id": 99}]
+  },
+  "synthetic_resolutions": [
+    {"entity_type": "debater", "synthetic_id": 501, "target_id": 77}
+  ]
+}</code></pre>
+                                    </div>
                                 </div>
                             </div>
                         </div>

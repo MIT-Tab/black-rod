@@ -309,6 +309,11 @@ urlpatterns = [
         name="invalidate_elo_cache",
     ),
     path(
+        "core/admin/round-amendments/",
+        admin_views.RoundAmendmentUploadView.as_view(),
+        name="round_amendments_upload",
+    ),
+    path(
         "core/admin/tournament-pipeline-audit/",
         admin_audit_views.ConsolidatedTournamentAuditView.as_view(),
         name="tournament_pipeline_audit",
@@ -327,6 +332,21 @@ urlpatterns = [
         "core/admin/tournament-audit/<int:tournament_id>/round/<int:round_id>/",
         admin_audit_views.TournamentAuditRoundEditView.as_view(),
         name="tournament_audit_round_edit",
+    ),
+    path(
+        "core/admin/tournament-audit/<int:tournament_id>/round/<int:round_id>/delete/",
+        admin_audit_views.TournamentAuditRoundDeleteView.as_view(),
+        name="tournament_audit_round_delete",
+    ),
+    path(
+        "core/admin/tournament-audit/<int:tournament_id>/imports/<int:import_id>/delete/",
+        admin_audit_views.TournamentImportDeleteView.as_view(),
+        name="tournament_import_delete",
+    ),
+    path(
+        "core/admin/tournament-audit/<int:tournament_id>/imports/<int:import_id>/move/",
+        admin_audit_views.TournamentImportMoveView.as_view(),
+        name="tournament_import_move",
     ),
     path(
         "core/mittab-dashboard/",

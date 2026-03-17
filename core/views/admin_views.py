@@ -18,6 +18,7 @@ from django.http import JsonResponse
 from django.shortcuts import redirect
 from django.views.generic import TemplateView
 
+from core.forms import RoundAmendmentUploadForm
 from core.models import (
     DebaterAliasGroup,
     MergeDebaterRequest,
@@ -29,6 +30,16 @@ from core.models import (
 )
 from core.utils.rankings import redo_rankings, update_noty, update_soty, update_toty
 from core.utils.elo_runtime_engine.cache import clear_runtime_caches
+from core.utils.round_amendments import (
+    RoundAmendmentError,
+    apply_round_amendments,
+    load_round_amendment_document,
+)
+from core.utils.round_amendment_recorder import (
+    build_synthetic_resolution_action,
+    record_round_amendment_action,
+    round_amendment_recording_context,
+)
 from core.utils.synthetic_resolution import resolve_synthetic_entity
 from core.views.elo_cache import invalidate_cached_elo_state
 
@@ -38,6 +49,12 @@ class AdminToolsView(UserPassesTestMixin, TemplateView):
 
     def test_func(self):
         return self.request.user.is_superuser
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["round_amendment_form"] = kwargs.get("round_amendment_form") or RoundAmendmentUploadForm()
+        context["round_amendment_recording"] = round_amendment_recording_context()
+        return context
 
 
 class SyntheticResolutionView(UserPassesTestMixin, TemplateView):
@@ -62,6 +79,23 @@ class SyntheticResolutionView(UserPassesTestMixin, TemplateView):
                 source_context={"source": "admin_tools"},
             )
             messages.success(request, "Synthetic entity resolved successfully.")
+            try:
+                recorded_path = record_round_amendment_action(
+                    build_synthetic_resolution_action(
+                        entity_type=entity_type,
+                        synthetic_id=int(synthetic_id),
+                        target_id=int(target_id),
+                        reason=reason,
+                    )
+                )
+            except Exception as exc:
+                messages.warning(request, "Synthetic entity resolved but amendment recording failed: %s" % exc)
+            else:
+                if recorded_path:
+                    messages.info(
+                        request,
+                        f"Recorded amendment action to {recorded_path}.",
+                    )
         except Exception as exc:
             messages.error(request, "Synthetic resolution failed: %s" % exc)
 
@@ -82,6 +116,57 @@ class EloCacheInvalidateView(UserPassesTestMixin, TemplateView):
             f"ELO cache invalidated successfully. Active namespace version: {version}.",
         )
         return redirect("core:admin_tools")
+
+
+class RoundAmendmentUploadView(AdminToolsView):
+    def post(self, request, *args, **kwargs):
+        form = RoundAmendmentUploadForm(request.POST, request.FILES)
+        if not form.is_valid():
+            messages.error(request, "Please upload a valid amendment JSON file.")
+            return self.render_to_response(self.get_context_data(round_amendment_form=form))
+
+        uploaded_file = form.cleaned_data["amendment_file"]
+        try:
+            document = load_round_amendment_document(uploaded_file)
+            summary = apply_round_amendments(
+                document,
+                actor=request.user,
+                source_context={
+                    "source": "admin_tools_round_amendment_upload",
+                    "file_name": str(getattr(uploaded_file, "name", "") or ""),
+                },
+            )
+        except RoundAmendmentError as exc:
+            messages.error(request, f"Round amendment upload failed: {exc}")
+            return self.render_to_response(self.get_context_data(round_amendment_form=form))
+        except Exception as exc:
+            messages.error(request, f"Round amendment upload failed: {exc}")
+            return self.render_to_response(self.get_context_data(round_amendment_form=form))
+
+        messages.success(request, self._build_success_message(summary))
+        return redirect("core:admin_tools")
+
+    @staticmethod
+    def _build_success_message(summary):
+        detail_map = (
+            ("synthetic_resolutions", "synthetic resolutions"),
+            ("rounds_created", "rounds created"),
+            ("rounds_updated", "rounds updated"),
+            ("rounds_deleted", "rounds deleted"),
+            ("rounds_moved", "rounds moved"),
+            ("tournament_imports_deleted", "tournament imports deleted"),
+            ("tournament_imports_moved", "tournament import move actions"),
+            ("linked_source_imports_moved", "linked source imports moved"),
+        )
+        details = [
+            f"{int(summary[key])} {label}"
+            for key, label in detail_map
+            if int(summary.get(key) or 0)
+        ]
+        detail_suffix = ""
+        if details:
+            detail_suffix = " " + "; ".join(details) + "."
+        return f"Applied {int(summary.get('actions_applied') or 0)} amendment actions.{detail_suffix}"
 
 
 SchoolShortNameFormSet = modelformset_factory(

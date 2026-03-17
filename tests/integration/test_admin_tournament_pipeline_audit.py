@@ -1,8 +1,11 @@
 from datetime import date
 from decimal import Decimal
+import json
+import os
+import tempfile
 
 from django.contrib.auth import get_user_model
-from django.test import Client, TestCase
+from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 
 from core.models import (
@@ -210,6 +213,36 @@ class TournamentPipelineAuditViewTest(TestCase):
             ),
         )
         self.assertContains(response, "Forum Post")
+        self.assertContains(response, "Delete Round")
+
+    def test_tournament_audit_detail_lists_linked_import_actions(self):
+        import_row = TournamentImport.objects.create(
+            tournament=self.tournament,
+            import_type=TournamentImport.ImportType.FILE_BACKUP,
+            original_file_name="audit.json",
+        )
+        round_obj = self._create_round(
+            tournament=self.tournament,
+            gov=self.team_a,
+            opp=self.team_b,
+            round_number=1,
+            stage=Round.Stage.PRELIM,
+            import_origin="file_backup",
+            label="P1",
+        )
+        metadata = ImportedRoundMetadata.objects.create(round=round_obj)
+        metadata.sources.add(import_row)
+
+        self.client.force_login(self.superuser)
+        response = self.client.get(
+            reverse("core:tournament_audit_detail", kwargs={"pk": self.tournament.id})
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Linked Tournament Imports")
+        self.assertContains(response, "Move Import")
+        self.assertContains(response, "Delete Import")
+        self.assertContains(response, "audit.json")
 
     def test_round_edit_updates_ballot_data(self):
         original_round = self._create_round(
@@ -399,3 +432,166 @@ class TournamentPipelineAuditViewTest(TestCase):
         self.assertEqual(round_obj.round_label, "Semifinal")
         self.assertEqual(round_obj.metadata["round_label"], "Semifinal")
         self.assertEqual(round_obj.elim_size, 4)
+
+    def test_round_create_records_amendment_json_in_development(self):
+        gov_1, gov_2 = list(self.team_a.debaters.order_by("id"))
+        opp_1, opp_2 = list(self.team_b.debaters.order_by("id"))
+
+        self.client.force_login(self.superuser)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            amendment_path = os.path.join(temp_dir, "round-amendments.local.json")
+            with override_settings(ENV="development", ROUND_AMENDMENTS_FILE=amendment_path):
+                response = self.client.post(
+                    reverse(
+                        "core:tournament_audit_round_create",
+                        kwargs={"tournament_id": self.tournament.id},
+                    ),
+                    {
+                        "canonical_round_name": "Recorded Round",
+                        "source_round_name": "Recorded Source",
+                        "stage": Round.Stage.PRELIM,
+                        "outround_stage": "",
+                        "round_number": 2,
+                        "victor": Round.GOV,
+                        "is_rated": "on",
+                        "weight": "1.0",
+                        "gov_1_debater": gov_1.id,
+                        "gov_1_source_name": "",
+                        "gov_1_role": "PM",
+                        "gov_1_speaks": "27.5",
+                        "gov_1_ranks": "1",
+                        "gov_2_debater": gov_2.id,
+                        "gov_2_source_name": "",
+                        "gov_2_role": "MG",
+                        "gov_2_speaks": "27.0",
+                        "gov_2_ranks": "2",
+                        "opp_1_debater": opp_1.id,
+                        "opp_1_source_name": "",
+                        "opp_1_role": "LO",
+                        "opp_1_speaks": "26.5",
+                        "opp_1_ranks": "3",
+                        "opp_2_debater": opp_2.id,
+                        "opp_2_source_name": "",
+                        "opp_2_role": "MO",
+                        "opp_2_speaks": "26.0",
+                        "opp_2_ranks": "4",
+                    },
+                )
+
+            self.assertEqual(response.status_code, 302)
+            with open(amendment_path, "r", encoding="utf-8") as handle:
+                recorded = json.load(handle)
+            self.assertEqual(recorded["actions"][0]["type"], "create_round")
+            self.assertEqual(recorded["actions"][0]["tournament_id"], self.tournament.id)
+            self.assertEqual(recorded["actions"][0]["gov_debater_ids"], [gov_1.id, gov_2.id])
+            self.assertTrue(recorded["actions"][0]["import_key"].startswith("manual-amendment-"))
+
+    def test_round_delete_view_deletes_round_and_records_amendment_in_development(self):
+        round_obj = self._create_round(
+            tournament=self.tournament,
+            gov=self.team_a,
+            opp=self.team_b,
+            round_number=1,
+            stage=Round.Stage.PRELIM,
+            import_origin="manual",
+            label="Delete Me",
+        )
+        round_obj.import_key = "delete-me-round"
+        round_obj.save(update_fields=["import_key"])
+
+        self.client.force_login(self.superuser)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            amendment_path = os.path.join(temp_dir, "round-amendments.local.json")
+            with override_settings(ENV="development", ROUND_AMENDMENTS_FILE=amendment_path):
+                response = self.client.post(
+                    reverse(
+                        "core:tournament_audit_round_delete",
+                        kwargs={"tournament_id": self.tournament.id, "round_id": round_obj.id},
+                    ),
+                    follow=True,
+                )
+
+            self.assertEqual(response.status_code, 200)
+            self.assertFalse(Round.objects.filter(pk=round_obj.pk).exists())
+            with open(amendment_path, "r", encoding="utf-8") as handle:
+                recorded = json.load(handle)
+            self.assertEqual(recorded["actions"][0]["type"], "delete_round")
+            self.assertEqual(recorded["actions"][0]["import_key"], "delete-me-round")
+
+    def test_tournament_import_move_view_moves_import_and_rounds(self):
+        target_tournament = Tournament.objects.create(
+            name="Target Tournament",
+            host=self.school,
+            date=date(2017, 10, 4),
+            season="2017",
+            num_rounds=2,
+            num_teams=4,
+            qual_type=Tournament.POINTS,
+        )
+        import_row = TournamentImport.objects.create(
+            tournament=self.tournament,
+            import_type=TournamentImport.ImportType.FILE_BACKUP,
+            original_file_name="move.json",
+            source_hash="move-hash",
+        )
+        round_obj = self._create_round(
+            tournament=self.tournament,
+            gov=self.team_a,
+            opp=self.team_b,
+            round_number=1,
+            stage=Round.Stage.PRELIM,
+            import_origin="file_backup",
+            label="Move Round",
+        )
+        metadata = ImportedRoundMetadata.objects.create(round=round_obj)
+        metadata.sources.add(import_row)
+
+        self.client.force_login(self.superuser)
+        response = self.client.post(
+            reverse(
+                "core:tournament_import_move",
+                kwargs={"tournament_id": self.tournament.id, "import_id": import_row.id},
+            ),
+            {
+                f"import-{import_row.id}-tournament_import_id": import_row.id,
+                f"import-{import_row.id}-target_tournament": target_tournament.id,
+            },
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        round_obj.refresh_from_db()
+        import_row.refresh_from_db()
+        self.assertEqual(round_obj.tournament_id, target_tournament.id)
+        self.assertEqual(import_row.tournament_id, target_tournament.id)
+
+    def test_tournament_import_delete_view_deletes_import_and_linked_rounds(self):
+        import_row = TournamentImport.objects.create(
+            tournament=self.tournament,
+            import_type=TournamentImport.ImportType.FILE_BACKUP,
+            original_file_name="delete.json",
+        )
+        round_obj = self._create_round(
+            tournament=self.tournament,
+            gov=self.team_a,
+            opp=self.team_b,
+            round_number=1,
+            stage=Round.Stage.PRELIM,
+            import_origin="file_backup",
+            label="Delete Import Round",
+        )
+        metadata = ImportedRoundMetadata.objects.create(round=round_obj)
+        metadata.sources.add(import_row)
+
+        self.client.force_login(self.superuser)
+        response = self.client.post(
+            reverse(
+                "core:tournament_import_delete",
+                kwargs={"tournament_id": self.tournament.id, "import_id": import_row.id},
+            ),
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(TournamentImport.objects.filter(pk=import_row.pk).exists())
+        self.assertFalse(Round.objects.filter(pk=round_obj.pk).exists())

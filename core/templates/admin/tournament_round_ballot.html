@@ -10,6 +10,11 @@
                     <p class="card-text mb-3">
                         {{ tournament.name }} · {{ tournament.season }}
                     </p>
+                    {% if round_amendment_recording.enabled %}
+                        <div class="alert alert-info py-2">
+                            Development mode is active. Saving this round also appends an amendment action to <code>{{ round_amendment_recording.path }}</code>.
+                        </div>
+                    {% endif %}
                     {{ form.media }}
                     <form method="post" novalidate>
                         {% csrf_token %}

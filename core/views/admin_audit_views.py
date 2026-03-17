@@ -7,11 +7,31 @@ from django.db import transaction
 from django.db.models import Count
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse
+from django.views import View
 from django.views.generic import TemplateView
 
 from core.admin_audit_forms import ROUND_BALLOT_SLOTS, TournamentRoundBallotForm
-from core.models import DebaterAlias, ImportedRoundMetadata, Round, RoundStats, TeamResult, Tournament
+from core.forms import TournamentImportMoveForm
+from core.models import (
+    DebaterAlias,
+    ImportedRoundMetadata,
+    Round,
+    RoundStats,
+    TeamResult,
+    Tournament,
+    TournamentImport,
+)
 from core.utils.elo_runtime_engine.cache import clear_runtime_caches
+from core.utils.round_amendment_recorder import (
+    build_round_delete_action,
+    build_round_upsert_action,
+    build_tournament_import_delete_action,
+    build_tournament_import_move_action,
+    ensure_development_round_import_key,
+    record_round_amendment_action,
+    round_amendment_recording_context,
+)
+from core.utils.round_amendments import apply_round_amendments
 from core.utils.team import get_or_create_team_for_debaters
 
 
@@ -356,18 +376,59 @@ class TournamentAuditDetailView(
                         "core:tournament_audit_round_edit",
                         kwargs={"tournament_id": tournament.id, "round_id": round_obj.id},
                     ),
+                    "delete_url": reverse(
+                        "core:tournament_audit_round_delete",
+                        kwargs={"tournament_id": tournament.id, "round_id": round_obj.id},
+                    ),
+                }
+            )
+
+        import_rows = []
+        linked_imports = TournamentImport.objects.filter(tournament=tournament).order_by(
+            "-imported_at",
+            "-id",
+        )
+        for import_row in linked_imports:
+            import_rows.append(
+                {
+                    "id": int(import_row.id),
+                    "import_type_label": import_row.get_import_type_display(),
+                    "original_file_name": str(import_row.original_file_name or ""),
+                    "source_hash": str(import_row.source_hash or ""),
+                    "imported_at": import_row.imported_at,
+                    "linked_round_count": int(
+                        Round.objects.filter(imported_metadata__sources=import_row)
+                        .distinct()
+                        .count()
+                    ),
+                    "delete_url": reverse(
+                        "core:tournament_import_delete",
+                        kwargs={"tournament_id": tournament.id, "import_id": import_row.id},
+                    ),
+                    "move_url": reverse(
+                        "core:tournament_import_move",
+                        kwargs={"tournament_id": tournament.id, "import_id": import_row.id},
+                    ),
+                    "move_form": TournamentImportMoveForm(
+                        prefix=f"import-{import_row.id}",
+                        initial={"tournament_import_id": int(import_row.id)},
+                        current_tournament=tournament,
+                    ),
                 }
             )
 
         context["tournament"] = tournament
         context["audit_row"] = audit_row
         context["round_rows"] = round_rows
+        context["import_rows"] = import_rows
         context["add_round_url"] = reverse(
             "core:tournament_audit_round_create",
             kwargs={"tournament_id": tournament.id},
         )
         context["imported_round_count"] = imported_round_count
         context["manual_round_count"] = manual_round_count
+        context["import_move_form_media"] = TournamentImportMoveForm(current_tournament=tournament).media
+        context["round_amendment_recording"] = round_amendment_recording_context()
         return context
 
     @staticmethod
@@ -412,7 +473,7 @@ class TournamentAuditRoundEditView(SuperuserRequiredMixin, TemplateView):
         if not form.is_valid():
             return self.render_to_response(self.get_context_data(form=form))
 
-        round_obj = self.save_round(form)
+        round_obj, action_type, recorded_path, recording_error = self.save_round(form)
         messages.success(
             request,
             "Saved round %s for %s."
@@ -421,6 +482,13 @@ class TournamentAuditRoundEditView(SuperuserRequiredMixin, TemplateView):
                 str(self.tournament.name or ""),
             ),
         )
+        if recorded_path:
+            messages.info(request, f"Recorded {action_type} amendment to {recorded_path}.")
+        elif recording_error:
+            messages.warning(
+                request,
+                f"Round was saved but amendment recording failed: {recording_error}",
+            )
         return redirect("core:tournament_audit_detail", pk=self.tournament.id)
 
     def get_context_data(self, **kwargs):
@@ -432,9 +500,11 @@ class TournamentAuditRoundEditView(SuperuserRequiredMixin, TemplateView):
             "core:tournament_audit_detail",
             kwargs={"pk": self.tournament.id},
         )
+        context["round_amendment_recording"] = round_amendment_recording_context()
         return context
 
     def save_round(self, form):
+        is_new_round = self.round_obj is None
         cleaned_data = form.cleaned_data
         existing_stat_meta = self._existing_stat_meta_by_role(self.round_obj)
         gov_team = get_or_create_team_for_debaters(
@@ -447,6 +517,7 @@ class TournamentAuditRoundEditView(SuperuserRequiredMixin, TemplateView):
         )
 
         round_obj = self.round_obj or Round(tournament=self.tournament)
+        ensure_development_round_import_key(round_obj)
         metadata = dict(round_obj.metadata or {}) if isinstance(round_obj.metadata, dict) else {}
         canonical_round_name = str(cleaned_data.get("canonical_round_name") or "").strip()
         outround_stage = cleaned_data.get("outround_stage")
@@ -504,7 +575,16 @@ class TournamentAuditRoundEditView(SuperuserRequiredMixin, TemplateView):
             self._sync_imported_metadata(round_obj, cleaned_data)
 
         clear_runtime_caches()
-        return round_obj
+        action_type = "create_round" if is_new_round else "update_round"
+        recorded_path = None
+        recording_error = None
+        try:
+            recorded_path = record_round_amendment_action(
+                build_round_upsert_action(round_obj, action_type=action_type)
+            )
+        except Exception as exc:
+            recording_error = exc
+        return round_obj, action_type, recorded_path, recording_error
 
     @staticmethod
     def _existing_stat_meta_by_role(round_obj):
@@ -601,3 +681,75 @@ class TournamentAuditRoundEditView(SuperuserRequiredMixin, TemplateView):
         if source_name:
             return source_name
         return str(debater.name or "").strip()
+
+
+class TournamentAuditRoundDeleteView(SuperuserRequiredMixin, View):
+    def post(self, request, *args, **kwargs):
+        tournament = get_object_or_404(Tournament, pk=kwargs.get("tournament_id"))
+        round_obj = get_object_or_404(Round.objects.filter(tournament=tournament), pk=kwargs.get("round_id"))
+        action = build_round_delete_action(round_obj)
+
+        apply_round_amendments({"actions": [action]}, actor=request.user, source_context={"source": "tournament_audit_round_delete"})
+        messages.success(request, f"Deleted round {round_obj.round_label or round_obj.id} from {tournament.name}.")
+
+        try:
+            recorded_path = record_round_amendment_action(action)
+        except Exception as exc:
+            messages.warning(request, f"Round was deleted but amendment recording failed: {exc}")
+        else:
+            if recorded_path:
+                messages.info(request, f"Recorded delete_round amendment to {recorded_path}.")
+
+        return redirect("core:tournament_audit_detail", pk=tournament.id)
+
+
+class TournamentImportDeleteView(SuperuserRequiredMixin, View):
+    def post(self, request, *args, **kwargs):
+        tournament = get_object_or_404(Tournament, pk=kwargs.get("tournament_id"))
+        import_row = get_object_or_404(TournamentImport.objects.filter(tournament=tournament), pk=kwargs.get("import_id"))
+        action = build_tournament_import_delete_action(import_row)
+
+        apply_round_amendments({"actions": [action]}, actor=request.user, source_context={"source": "tournament_import_delete"})
+        messages.success(request, f"Deleted tournament import {import_row.id} from {tournament.name}.")
+
+        try:
+            recorded_path = record_round_amendment_action(action)
+        except Exception as exc:
+            messages.warning(request, f"Tournament import was deleted but amendment recording failed: {exc}")
+        else:
+            if recorded_path:
+                messages.info(request, f"Recorded delete_tournament_import amendment to {recorded_path}.")
+
+        return redirect("core:tournament_audit_detail", pk=tournament.id)
+
+
+class TournamentImportMoveView(SuperuserRequiredMixin, View):
+    def post(self, request, *args, **kwargs):
+        tournament = get_object_or_404(Tournament, pk=kwargs.get("tournament_id"))
+        import_row = get_object_or_404(TournamentImport.objects.filter(tournament=tournament), pk=kwargs.get("import_id"))
+        form = TournamentImportMoveForm(
+            request.POST,
+            prefix=f"import-{import_row.id}",
+            current_tournament=tournament,
+        )
+        if not form.is_valid():
+            messages.error(request, "Please choose a valid target tournament.")
+            return redirect("core:tournament_audit_detail", pk=tournament.id)
+
+        target_tournament = form.cleaned_data["target_tournament"]
+        action = build_tournament_import_move_action(import_row, target_tournament.id)
+        apply_round_amendments({"actions": [action]}, actor=request.user, source_context={"source": "tournament_import_move"})
+        messages.success(
+            request,
+            f"Moved tournament import {import_row.id} from {tournament.name} to {target_tournament.name}.",
+        )
+
+        try:
+            recorded_path = record_round_amendment_action(action)
+        except Exception as exc:
+            messages.warning(request, f"Tournament import was moved but amendment recording failed: {exc}")
+        else:
+            if recorded_path:
+                messages.info(request, f"Recorded move_tournament_import amendment to {recorded_path}.")
+
+        return redirect("core:tournament_audit_detail", pk=tournament.id)

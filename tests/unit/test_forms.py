@@ -1,8 +1,10 @@
 """Targeted validation for core forms."""
 
 import pytest
+from django.core.files.uploadedfile import SimpleUploadedFile
 
 from core.forms import (
+    RoundAmendmentUploadForm,
     TeamChoiceField,
     TeamForm,
     TournamentCreateForm,
@@ -19,14 +21,21 @@ def test_team_form_requires_exactly_two_debaters():
     two = Debater.objects.create(first_name="B", last_name="Two", school=school)
     three = Debater.objects.create(first_name="C", last_name="Three", school=school)
 
-    valid_form = TeamForm(data={"debaters": [str(one.pk), str(two.pk)]})
+    valid_form = TeamForm(
+        data={"debaters": [str(one.pk), str(two.pk)], "short_name": "AB"}
+    )
     assert valid_form.is_valid()
 
-    invalid_form = TeamForm(data={"debaters": [str(one.pk)]})
+    invalid_form = TeamForm(data={"debaters": [str(one.pk)], "short_name": "A"})
     assert not invalid_form.is_valid()
     assert "debaters" in invalid_form.errors or "__all__" in invalid_form.errors
 
-    too_many_form = TeamForm(data={"debaters": [str(one.pk), str(two.pk), str(three.pk)]})
+    too_many_form = TeamForm(
+        data={
+            "debaters": [str(one.pk), str(two.pk), str(three.pk)],
+            "short_name": "ABC",
+        }
+    )
     assert not too_many_form.is_valid()
 
 
@@ -54,6 +63,25 @@ def test_tournament_import_form_validates_url():
     assert "url" in form.errors
 
     valid = TournamentImportForm(data={"url": "https://nu-tab.com"})
+    assert valid.is_valid()
+
+
+def test_round_amendment_upload_form_requires_json_extension():
+    invalid = RoundAmendmentUploadForm(
+        files={"amendment_file": SimpleUploadedFile("rounds.txt", b"{}", content_type="text/plain")}
+    )
+    assert not invalid.is_valid()
+    assert "amendment_file" in invalid.errors
+
+    valid = RoundAmendmentUploadForm(
+        files={
+            "amendment_file": SimpleUploadedFile(
+                "rounds.json",
+                b"{}",
+                content_type="application/json",
+            )
+        }
+    )
     assert valid.is_valid()
 
 

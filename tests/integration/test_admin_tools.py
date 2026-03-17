@@ -1,11 +1,17 @@
+from datetime import date
+import json
+import os
+import tempfile
+
 from django.contrib.auth import get_user_model
 from django.contrib.messages import get_messages
 from django.core.cache import cache
-from django.test import Client, TestCase
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 from unittest.mock import patch
 
-from core.models import Debater, School, SyntheticResolutionLog, Team
+from core.models import Debater, Round, School, SyntheticResolutionLog, Team, Tournament
 from core.views.admin_views import MergeSuggestionsView
 from core.views.elo_cache import get_cached_elo_state, set_cached_elo_state
 
@@ -39,6 +45,69 @@ class AdminToolsViewTest(TestCase):
         self.assertContains(response, "School Short Names")
         self.assertContains(response, 'id="synthetic_search"', html=False)
         self.assertContains(response, 'id="target_search"', html=False)
+        self.assertContains(response, reverse("core:round_amendments_upload"))
+        self.assertContains(response, "Round Amendments")
+
+    def test_round_amendment_upload_creates_round(self):
+        self.client.force_login(self.superuser)
+        tournament = Tournament.objects.create(
+            host=self.school,
+            date=date(2024, 2, 10),
+            season="2024",
+            manual_name="Admin Upload Open",
+            num_rounds=5,
+        )
+        gov_one = Debater.objects.create(first_name="Gov", last_name="One", school=self.school)
+        gov_two = Debater.objects.create(first_name="Gov", last_name="Two", school=self.school)
+        opp_one = Debater.objects.create(first_name="Opp", last_name="One", school=self.school)
+        opp_two = Debater.objects.create(first_name="Opp", last_name="Two", school=self.school)
+
+        payload = b"""{
+  "rounds": {
+    "create": [
+      {
+        "tournament_id": %d,
+        "gov_debater_ids": [%d, %d],
+        "opp_debater_ids": [%d, %d],
+        "round_number": 1,
+        "stage": "prelim",
+        "round_label": "Upload Round",
+        "victor": 1,
+        "import_key": "upload-round-1",
+        "import_origin": "file_backup"
+      }
+    ]
+  }
+}""" % (
+            tournament.id,
+            gov_one.id,
+            gov_two.id,
+            opp_one.id,
+            opp_two.id,
+        )
+
+        response = self.client.post(
+            reverse("core:round_amendments_upload"),
+            {
+                "amendment_file": SimpleUploadedFile(
+                    "round-amendments.json",
+                    payload,
+                    content_type="application/json",
+                )
+            },
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(
+            Round.objects.filter(
+                tournament=tournament,
+                import_key="upload-round-1",
+                round_label="Upload Round",
+            ).exists()
+        )
+        messages = [message.message for message in get_messages(response.wsgi_request)]
+        self.assertTrue(any(message.startswith("Applied 1 amendment actions.") for message in messages))
 
     def test_merge_suggestions_builder_excludes_synthetic_debaters(self):
         first = Debater.objects.create(
@@ -225,6 +294,42 @@ class AdminToolsViewTest(TestCase):
 
         messages = [message.message for message in get_messages(response.wsgi_request)]
         self.assertIn("Synthetic entity resolved successfully.", messages)
+
+    def test_synthetic_resolution_records_round_amendment_in_development(self):
+        self.client.force_login(self.superuser)
+        target = Debater.objects.create(
+            first_name="Target",
+            last_name="Debater",
+            school=self.school,
+        )
+        synthetic = Debater.all_objects.create(
+            first_name="Synthetic",
+            last_name="Debater",
+            school=self.school,
+            temporary=True,
+            synthetic=True,
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            amendment_path = os.path.join(temp_dir, "round-amendments.local.json")
+            with override_settings(ENV="development", ROUND_AMENDMENTS_FILE=amendment_path):
+                response = self.client.post(
+                    reverse("core:synthetic_resolution"),
+                    {
+                        "entity_type": "debater",
+                        "synthetic_id": str(synthetic.id),
+                        "target_id": str(target.id),
+                        "reason": "record this change",
+                    },
+                    follow=True,
+                )
+
+            self.assertEqual(response.status_code, 200)
+            with open(amendment_path, "r", encoding="utf-8") as handle:
+                recorded = json.load(handle)
+            self.assertEqual(len(recorded["actions"]), 1)
+            self.assertEqual(recorded["actions"][0]["type"], "resolve_synthetic")
+            self.assertEqual(recorded["actions"][0]["synthetic_id"], synthetic.id)
+            self.assertEqual(recorded["actions"][0]["target_id"], target.id)
 
     def test_resolver_debater_autocomplete_supports_id_and_synthetic_filter(self):
         self.client.force_login(self.superuser)
