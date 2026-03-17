@@ -33,6 +33,8 @@ class AdminToolsViewTest(TestCase):
         self.assertContains(response, "Resolve Synthetic Entity")
         self.assertContains(response, reverse("core:synthetic_resolution"))
         self.assertContains(response, reverse("core:synthetic_resolution_suggestions"))
+        self.assertContains(response, 'id="synthetic_search"', html=False)
+        self.assertContains(response, 'id="target_search"', html=False)
 
     def test_merge_suggestions_builder_excludes_synthetic_debaters(self):
         first = Debater.objects.create(
@@ -219,3 +221,89 @@ class AdminToolsViewTest(TestCase):
 
         messages = [message.message for message in get_messages(response.wsgi_request)]
         self.assertIn("Synthetic entity resolved successfully.", messages)
+
+    def test_resolver_debater_autocomplete_supports_id_and_synthetic_filter(self):
+        self.client.force_login(self.superuser)
+        synthetic = Debater.all_objects.create(
+            first_name="Search",
+            last_name="Synthetic",
+            school=self.school,
+            temporary=True,
+            synthetic=True,
+        )
+        canonical = Debater.objects.create(
+            first_name="Search",
+            last_name="Canonical",
+            school=self.school,
+        )
+
+        synthetic_response = self.client.get(
+            reverse("core:debater_autocomplete"),
+            {"q": str(synthetic.id), "synthetic": "true"},
+        )
+        self.assertEqual(synthetic_response.status_code, 200)
+        self.assertContains(synthetic_response, synthetic.name)
+        self.assertNotContains(synthetic_response, canonical.name)
+
+        canonical_response = self.client.get(
+            reverse("core:debater_autocomplete"),
+            {"q": self.school.name, "synthetic": "false"},
+        )
+        self.assertEqual(canonical_response.status_code, 200)
+        self.assertContains(canonical_response, canonical.name)
+        self.assertNotContains(canonical_response, synthetic.name)
+
+    def test_resolver_school_autocomplete_supports_id_and_synthetic_filter(self):
+        self.client.force_login(self.superuser)
+        synthetic_school = School.objects.create(name="Resolver Synthetic College", synthetic=True)
+        canonical_school = School.objects.create(name="Resolver Canonical College", synthetic=False)
+
+        synthetic_response = self.client.get(
+            reverse("core:school_autocomplete"),
+            {"q": "Resolver", "synthetic": "true"},
+        )
+        self.assertEqual(synthetic_response.status_code, 200)
+        self.assertContains(synthetic_response, synthetic_school.name)
+        self.assertNotContains(synthetic_response, canonical_school.name)
+
+        canonical_response = self.client.get(
+            reverse("core:school_autocomplete"),
+            {"q": str(canonical_school.id), "synthetic": "false"},
+        )
+        self.assertEqual(canonical_response.status_code, 200)
+        self.assertContains(canonical_response, canonical_school.name)
+        self.assertNotContains(canonical_response, synthetic_school.name)
+
+    def test_resolver_team_autocomplete_supports_id_and_synthetic_filter(self):
+        self.client.force_login(self.superuser)
+        school = School.objects.create(name="Resolver Team School")
+        synthetic_member = Debater.objects.create(
+            first_name="Synthetic",
+            last_name="Partner",
+            school=school,
+        )
+        canonical_member = Debater.objects.create(
+            first_name="Canonical",
+            last_name="Partner",
+            school=school,
+        )
+        synthetic_team = Team.objects.create(name="Resolver Synthetic Team", synthetic=True)
+        synthetic_team.debaters.add(synthetic_member)
+        canonical_team = Team.objects.create(name="Resolver Canonical Team", synthetic=False)
+        canonical_team.debaters.add(canonical_member)
+
+        synthetic_response = self.client.get(
+            reverse("core:team_autocomplete"),
+            {"q": school.name, "synthetic": "true"},
+        )
+        self.assertEqual(synthetic_response.status_code, 200)
+        self.assertContains(synthetic_response, synthetic_team.name)
+        self.assertNotContains(synthetic_response, canonical_team.name)
+
+        canonical_response = self.client.get(
+            reverse("core:team_autocomplete"),
+            {"q": str(canonical_team.id), "synthetic": "false"},
+        )
+        self.assertEqual(canonical_response.status_code, 200)
+        self.assertContains(canonical_response, canonical_team.name)
+        self.assertNotContains(canonical_response, synthetic_team.name)

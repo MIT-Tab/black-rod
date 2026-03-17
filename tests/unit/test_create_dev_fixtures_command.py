@@ -1,10 +1,11 @@
 import json
 from tempfile import TemporaryDirectory
 
+from django.contrib.auth.models import Group, Permission
 from django.core.management import call_command
 from django.test import TestCase
 
-from core.models import ClaimDebaterRequest, Debater, School, User
+from core.models import ClaimDebaterRequest, Debater, School, SyntheticResolutionLog, User
 
 
 class CreateDevFixturesCommandTest(TestCase):
@@ -19,6 +20,10 @@ class CreateDevFixturesCommandTest(TestCase):
             email="reviewer@example.com",
             password="secret",
         )
+        fixture_group = Group.objects.create(name="fixture-group")
+        exclusive_pre_access = Permission.objects.get(codename="exclusive_pre_access")
+        requester.groups.add(fixture_group)
+        requester.user_permissions.add(exclusive_pre_access)
         school = School.objects.create(name="Fixture School", short_name="FS")
         debater = Debater.objects.create(
             first_name="Casey",
@@ -32,6 +37,15 @@ class CreateDevFixturesCommandTest(TestCase):
             status=ClaimDebaterRequest.STATUS_DENIED,
             processed_by=reviewer,
             denial_reason="Needs more info",
+        )
+        resolution_log = SyntheticResolutionLog.objects.create(
+            entity_type=SyntheticResolutionLog.EntityType.DEBATER,
+            synthetic_id=9001,
+            synthetic_name="Synthetic Casey",
+            resolved_to_id=debater.pk,
+            resolved_to_name=debater.name,
+            actor=reviewer,
+            reason="Fixture coverage",
         )
 
         with TemporaryDirectory() as tmpdir:
@@ -61,7 +75,27 @@ class CreateDevFixturesCommandTest(TestCase):
             for index, item in enumerate(payload)
             if item["model"] == "core.user"
         )
+        first_group_index = next(
+            index
+            for index, item in enumerate(payload)
+            if item["model"] == "auth.group"
+        )
+        first_permission_index = next(
+            index
+            for index, item in enumerate(payload)
+            if item["model"] == "auth.permission"
+        )
         user_items = [item for item in payload if item["model"] == "core.user"]
+        requester_user_item = next(
+            item
+            for item in payload
+            if item["model"] == "core.user" and item["fields"]["username"] == f"user_{requester.id}"
+        )
+        resolution_log_item = next(
+            item
+            for item in payload
+            if item["model"] == "core.syntheticresolutionlog" and item["pk"] == resolution_log.pk
+        )
 
         self.assertEqual(
             claim_request_item["fields"]["requested_by"],
@@ -72,6 +106,20 @@ class CreateDevFixturesCommandTest(TestCase):
             [f"user_{reviewer.id}"],
         )
         self.assertEqual(debater_item["fields"]["user"], [f"user_{requester.id}"])
+        self.assertEqual(
+            requester_user_item["fields"]["groups"],
+            [["fixture-group"]],
+        )
+        self.assertEqual(
+            requester_user_item["fields"]["user_permissions"],
+            [["exclusive_pre_access", "core", "user"]],
+        )
+        self.assertEqual(
+            resolution_log_item["fields"]["actor"],
+            [f"user_{reviewer.id}"],
+        )
+        self.assertLess(first_group_index, first_user_index)
+        self.assertLess(first_permission_index, first_user_index)
         self.assertLess(first_user_index, claim_request_index)
         self.assertCountEqual(
             [item["fields"]["username"] for item in user_items],

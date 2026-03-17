@@ -1,5 +1,6 @@
 from dal import autocomplete
 from django.conf import settings
+from django.db.models import Q
 from django.shortcuts import redirect, reverse
 from django.urls import reverse_lazy
 from django_filters import FilterSet
@@ -141,15 +142,34 @@ class SchoolDeleteView(CustomDeleteView):
 
 class SchoolAutocomplete(autocomplete.Select2QuerySetView):
     def get_result_label(self, record):
-        return f"<{record.id}> {record.display_name}"
+        synthetic_label = " [Synthetic]" if record.synthetic else ""
+        return f"<{record.id}> {record.display_name}{synthetic_label}"
+
+    def _synthetic_filter(self):
+        raw_value = str(self.request.GET.get("synthetic") or "").strip().lower()
+        if raw_value in {"1", "true", "yes"}:
+            return True
+        if raw_value in {"0", "false", "no"}:
+            return False
+        return None
 
     def get_queryset(self):
         base_manager = (
             School.all_objects if self.request.user.has_perm("core.change_tournament") else School.objects
         )
         qs = base_manager.all()
+        synthetic_filter = self._synthetic_filter()
+        if synthetic_filter is not None:
+            qs = qs.filter(synthetic=synthetic_filter)
 
         if self.q:
-            qs = qs.filter(name__icontains=self.q)
+            query_text = str(self.q).strip()
+            if query_text.isdigit():
+                qs = qs.filter(pk=int(query_text))
+            else:
+                name_query = Q(name__icontains=query_text) | Q(short_name__icontains=query_text)
+                for term in query_text.split():
+                    name_query |= Q(name__icontains=term) | Q(short_name__icontains=term)
+                qs = qs.filter(name_query)
 
-        return qs
+        return qs.order_by("name", "id")

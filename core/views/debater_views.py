@@ -354,19 +354,43 @@ class DebaterDeleteView(CustomDeleteView):
 class DebaterAutocomplete(autocomplete.Select2QuerySetView):
     def get_result_label(self, record):
         school_name = record.school.name if record.school else "Unaffiliated"
-        return f"<{record.id}> {record.display_name} ({school_name})"
+        synthetic_label = " [Synthetic]" if record.synthetic else ""
+        return f"<{record.id}> {record.display_name} ({school_name}){synthetic_label}"
+
+    def _synthetic_filter(self):
+        raw_value = str(self.request.GET.get("synthetic") or "").strip().lower()
+        if raw_value in {"1", "true", "yes"}:
+            return True
+        return False
 
     def get_queryset(self):
         base_manager = (
             Debater.all_objects if self.request.user.has_perm("core.change_tournament") else Debater.objects
         )
-        if not self.q:
-            qs = base_manager.all()
-        else:
-            search_ids = [row.pk for row in SearchQuerySet().models(Debater).filter(content=self.q).all()]
-            qs = base_manager.filter(id__in=search_ids)
+        qs = base_manager.all()
 
-        qs = qs.filter(synthetic=False).order_by("-pk")
+        if self.q:
+            query_text = str(self.q).strip()
+            if query_text.isdigit():
+                qs = qs.filter(pk=int(query_text))
+            else:
+                haystack_ids = [
+                    row.pk for row in SearchQuerySet().models(Debater).filter(content=query_text).all()
+                ]
+                name_filters = (
+                    Q(first_name__icontains=query_text)
+                    | Q(last_name__icontains=query_text)
+                    | Q(school__name__icontains=query_text)
+                )
+                for term in query_text.split():
+                    name_filters |= (
+                        Q(first_name__icontains=term)
+                        | Q(last_name__icontains=term)
+                        | Q(school__name__icontains=term)
+                    )
+                qs = qs.filter(Q(id__in=haystack_ids) | name_filters)
+
+        qs = qs.filter(synthetic=self._synthetic_filter()).order_by("-pk")
         school = self.forwarded.get("school", None)
         if school:
             qs = qs.filter(school__id=school)

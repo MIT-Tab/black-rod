@@ -2,55 +2,95 @@ from decimal import Decimal
 
 from dal import autocomplete
 from django import forms
+from django.core.exceptions import ObjectDoesNotExist
 
-from core.models import Debater, Round
+from core.models import Debater, ImportedRoundMetadata, Round
 
 
 ROUND_BALLOT_SLOTS = (
     {
-        "role": "PM",
+        "label": "Gov 1",
         "side": "gov",
         "member_index": 0,
-        "debater_field": "pm_debater",
-        "source_name_field": "pm_source_name",
-        "speaks_field": "pm_speaks",
-        "ranks_field": "pm_ranks",
+        "alias_field": "gov_1_alias",
+        "import_role_field": "gov_1_role",
+        "debater_field": "gov_1_debater",
+        "source_name_field": "gov_1_source_name",
+        "role_field": "gov_1_role",
+        "speaks_field": "gov_1_speaks",
+        "ranks_field": "gov_1_ranks",
     },
     {
-        "role": "MG",
+        "label": "Gov 2",
         "side": "gov",
         "member_index": 1,
-        "debater_field": "mg_debater",
-        "source_name_field": "mg_source_name",
-        "speaks_field": "mg_speaks",
-        "ranks_field": "mg_ranks",
+        "alias_field": "gov_2_alias",
+        "import_role_field": "gov_2_role",
+        "debater_field": "gov_2_debater",
+        "source_name_field": "gov_2_source_name",
+        "role_field": "gov_2_role",
+        "speaks_field": "gov_2_speaks",
+        "ranks_field": "gov_2_ranks",
     },
     {
-        "role": "LO",
+        "label": "Opp 1",
         "side": "opp",
         "member_index": 0,
-        "debater_field": "lo_debater",
-        "source_name_field": "lo_source_name",
-        "speaks_field": "lo_speaks",
-        "ranks_field": "lo_ranks",
+        "alias_field": "opp_1_alias",
+        "import_role_field": "opp_1_role",
+        "debater_field": "opp_1_debater",
+        "source_name_field": "opp_1_source_name",
+        "role_field": "opp_1_role",
+        "speaks_field": "opp_1_speaks",
+        "ranks_field": "opp_1_ranks",
     },
     {
-        "role": "MO",
+        "label": "Opp 2",
         "side": "opp",
         "member_index": 1,
-        "debater_field": "mo_debater",
-        "source_name_field": "mo_source_name",
-        "speaks_field": "mo_speaks",
-        "ranks_field": "mo_ranks",
+        "alias_field": "opp_2_alias",
+        "import_role_field": "opp_2_role",
+        "debater_field": "opp_2_debater",
+        "source_name_field": "opp_2_source_name",
+        "role_field": "opp_2_role",
+        "speaks_field": "opp_2_speaks",
+        "ranks_field": "opp_2_ranks",
     },
 )
 
 
 class TournamentRoundBallotForm(forms.Form):
-    canonical_round_name = forms.CharField(max_length=32)
+    OUTROUND_STAGE_CHOICES = (
+        (2, "Final"),
+        (4, "Semifinal"),
+        (8, "Quarterfinal"),
+        (16, "Octafinal"),
+        (32, "Double Octafinal"),
+        (64, "Triple Octafinal"),
+        (128, "Quadruple Octafinal"),
+    )
+    OUTROUND_STAGE_LABELS = dict(OUTROUND_STAGE_CHOICES)
+    GOV_ROLE_CHOICES = (
+        ("", "---------"),
+        (ImportedRoundMetadata.SpeakerRole.PM, "PM"),
+        (ImportedRoundMetadata.SpeakerRole.MG, "MG"),
+    )
+    OPP_ROLE_CHOICES = (
+        ("", "---------"),
+        (ImportedRoundMetadata.SpeakerRole.LO, "LO"),
+        (ImportedRoundMetadata.SpeakerRole.MO, "MO"),
+    )
+
+    canonical_round_name = forms.CharField(max_length=32, required=False)
     source_round_name = forms.CharField(max_length=128, required=False)
     stage = forms.ChoiceField(choices=Round.Stage.choices)
-    round_number = forms.IntegerField(min_value=1)
+    outround_stage = forms.TypedChoiceField(
+        choices=(("", "---------"),) + OUTROUND_STAGE_CHOICES,
+        coerce=int,
+        empty_value=None,
+        required=False,
+    )
+    round_number = forms.IntegerField(min_value=1, required=False)
     victor = forms.TypedChoiceField(
         choices=Round.VICTOR_CHOICES,
         coerce=int,
@@ -65,41 +105,45 @@ class TournamentRoundBallotForm(forms.Form):
         initial=Decimal("1.0"),
     )
 
-    pm_debater = forms.ModelChoiceField(
+    gov_1_debater = forms.ModelChoiceField(
         queryset=Debater.all_objects.none(),
-        label="PM",
+        label="Gov 1",
         widget=autocomplete.ModelSelect2(url="core:debater_autocomplete"),
     )
-    pm_source_name = forms.CharField(max_length=128, required=False, label="PM Source Name")
-    pm_speaks = forms.DecimalField(required=False, max_digits=6, decimal_places=4, label="PM Speaks")
-    pm_ranks = forms.DecimalField(required=False, max_digits=6, decimal_places=4, label="PM Ranks")
+    gov_1_source_name = forms.CharField(max_length=128, required=False, label="Gov 1 Source Name")
+    gov_1_role = forms.ChoiceField(required=False, choices=GOV_ROLE_CHOICES, label="Gov 1 Role")
+    gov_1_speaks = forms.DecimalField(required=False, max_digits=6, decimal_places=4, label="Gov 1 Speaks")
+    gov_1_ranks = forms.DecimalField(required=False, max_digits=6, decimal_places=4, label="Gov 1 Ranks")
 
-    mg_debater = forms.ModelChoiceField(
+    gov_2_debater = forms.ModelChoiceField(
         queryset=Debater.all_objects.none(),
-        label="MG",
+        label="Gov 2",
         widget=autocomplete.ModelSelect2(url="core:debater_autocomplete"),
     )
-    mg_source_name = forms.CharField(max_length=128, required=False, label="MG Source Name")
-    mg_speaks = forms.DecimalField(required=False, max_digits=6, decimal_places=4, label="MG Speaks")
-    mg_ranks = forms.DecimalField(required=False, max_digits=6, decimal_places=4, label="MG Ranks")
+    gov_2_source_name = forms.CharField(max_length=128, required=False, label="Gov 2 Source Name")
+    gov_2_role = forms.ChoiceField(required=False, choices=GOV_ROLE_CHOICES, label="Gov 2 Role")
+    gov_2_speaks = forms.DecimalField(required=False, max_digits=6, decimal_places=4, label="Gov 2 Speaks")
+    gov_2_ranks = forms.DecimalField(required=False, max_digits=6, decimal_places=4, label="Gov 2 Ranks")
 
-    lo_debater = forms.ModelChoiceField(
+    opp_1_debater = forms.ModelChoiceField(
         queryset=Debater.all_objects.none(),
-        label="LO",
+        label="Opp 1",
         widget=autocomplete.ModelSelect2(url="core:debater_autocomplete"),
     )
-    lo_source_name = forms.CharField(max_length=128, required=False, label="LO Source Name")
-    lo_speaks = forms.DecimalField(required=False, max_digits=6, decimal_places=4, label="LO Speaks")
-    lo_ranks = forms.DecimalField(required=False, max_digits=6, decimal_places=4, label="LO Ranks")
+    opp_1_source_name = forms.CharField(max_length=128, required=False, label="Opp 1 Source Name")
+    opp_1_role = forms.ChoiceField(required=False, choices=OPP_ROLE_CHOICES, label="Opp 1 Role")
+    opp_1_speaks = forms.DecimalField(required=False, max_digits=6, decimal_places=4, label="Opp 1 Speaks")
+    opp_1_ranks = forms.DecimalField(required=False, max_digits=6, decimal_places=4, label="Opp 1 Ranks")
 
-    mo_debater = forms.ModelChoiceField(
+    opp_2_debater = forms.ModelChoiceField(
         queryset=Debater.all_objects.none(),
-        label="MO",
+        label="Opp 2",
         widget=autocomplete.ModelSelect2(url="core:debater_autocomplete"),
     )
-    mo_source_name = forms.CharField(max_length=128, required=False, label="MO Source Name")
-    mo_speaks = forms.DecimalField(required=False, max_digits=6, decimal_places=4, label="MO Speaks")
-    mo_ranks = forms.DecimalField(required=False, max_digits=6, decimal_places=4, label="MO Ranks")
+    opp_2_source_name = forms.CharField(max_length=128, required=False, label="Opp 2 Source Name")
+    opp_2_role = forms.ChoiceField(required=False, choices=OPP_ROLE_CHOICES, label="Opp 2 Role")
+    opp_2_speaks = forms.DecimalField(required=False, max_digits=6, decimal_places=4, label="Opp 2 Speaks")
+    opp_2_ranks = forms.DecimalField(required=False, max_digits=6, decimal_places=4, label="Opp 2 Ranks")
 
     def __init__(self, *args, tournament, round_obj=None, **kwargs):
         self.tournament = tournament
@@ -126,9 +170,23 @@ class TournamentRoundBallotForm(forms.Form):
         if not self.is_bound and round_obj is not None:
             self.initial.update(self.initial_from_round(round_obj))
 
+        self.ballot_rows = [
+            {
+                "label": slot["label"],
+                "side": slot["side"],
+                "debater": self[slot["debater_field"]],
+                "source_name": self[slot["source_name_field"]],
+                "role": self[slot["role_field"]],
+                "speaks": self[slot["speaks_field"]],
+                "ranks": self[slot["ranks_field"]],
+            }
+            for slot in ROUND_BALLOT_SLOTS
+        ]
+
     def clean(self):
         cleaned_data = super().clean()
         selected_ids = []
+        role_selections = {"gov": [], "opp": []}
 
         for slot in ROUND_BALLOT_SLOTS:
             debater = cleaned_data.get(slot["debater_field"])
@@ -147,6 +205,28 @@ class TournamentRoundBallotForm(forms.Form):
                     "Selected debaters need a school so a canonical team can be built.",
                 )
 
+            role = str(cleaned_data.get(slot["role_field"]) or "").strip()
+            if role:
+                role_selections[slot["side"]].append((slot["role_field"], role))
+
+        for side in ("gov", "opp"):
+            seen_roles = set()
+            for field_name, role in role_selections[side]:
+                if role in seen_roles:
+                    self.add_error(field_name, "Each side can only use a role once.")
+                    continue
+                seen_roles.add(role)
+
+        if cleaned_data.get("stage") != Round.Stage.OUTROUND:
+            cleaned_data["outround_stage"] = None
+
+        if not str(cleaned_data.get("canonical_round_name") or "").strip():
+            cleaned_data["canonical_round_name"] = self.default_round_name(
+                cleaned_data.get("stage"),
+                cleaned_data.get("round_number"),
+                cleaned_data.get("outround_stage"),
+            )
+
         weight = cleaned_data.get("weight")
         if weight in (None, ""):
             cleaned_data["weight"] = Decimal("1.0")
@@ -154,25 +234,33 @@ class TournamentRoundBallotForm(forms.Form):
         return cleaned_data
 
     @classmethod
+    def default_round_name(cls, stage, round_number, outround_stage):
+        number = int(round_number or 0)
+        if str(stage or "") == Round.Stage.OUTROUND:
+            label = cls.OUTROUND_STAGE_LABELS.get(int(outround_stage or 0))
+            if label:
+                return label
+            return "E%s" % (number or "?")
+        return "P%s" % (number or "?")
+
+    @classmethod
     def initial_from_round(cls, round_obj):
         metadata = round_obj.metadata if isinstance(round_obj.metadata, dict) else {}
+        imported_metadata = cls._imported_metadata(round_obj)
         team_a_names = cls._metadata_name_list(metadata.get("team_a_names"))
         team_b_names = cls._metadata_name_list(metadata.get("team_b_names"))
-        stat_map = cls._build_role_stat_map(round_obj)
-        imported_metadata = getattr(round_obj, "imported_metadata", None)
-        alias_name_by_role = cls._alias_name_by_role(imported_metadata)
+        team_a_ids = cls._metadata_id_list(metadata.get("team_a_ids"))
+        team_b_ids = cls._metadata_id_list(metadata.get("team_b_ids"))
+        stat_map = cls._build_stat_map_by_debater(round_obj)
 
-        gov_members = list(
-            round_obj.gov.debaters.all().select_related("school").order_by("id")
-        )
-        opp_members = list(
-            round_obj.opp.debaters.all().select_related("school").order_by("id")
-        )
+        gov_members = cls._ordered_team_members(round_obj.gov, team_a_ids)
+        opp_members = cls._ordered_team_members(round_obj.opp, team_b_ids)
 
         initial = {
             "canonical_round_name": str(round_obj.round_label or "").strip(),
             "source_round_name": str(metadata.get("source_round_name") or "").strip(),
             "stage": round_obj.stage,
+            "outround_stage": round_obj.elim_size,
             "round_number": round_obj.round_number,
             "victor": round_obj.victor,
             "is_rated": bool(round_obj.is_rated),
@@ -180,49 +268,47 @@ class TournamentRoundBallotForm(forms.Form):
         }
 
         for slot in ROUND_BALLOT_SLOTS:
-            role_data = stat_map.get(slot["role"], {})
             members = gov_members if slot["side"] == "gov" else opp_members
             source_names = team_a_names if slot["side"] == "gov" else team_b_names
+            alias = (
+                getattr(imported_metadata, slot["alias_field"], None)
+                if imported_metadata is not None
+                else None
+            )
             fallback_debater = (
                 members[slot["member_index"]]
                 if len(members) > slot["member_index"]
                 else None
             )
-            debater = role_data.get("debater") or fallback_debater
-            initial[slot["debater_field"]] = debater
-
+            debater = getattr(alias, "debater", None) or fallback_debater
+            debater_data = stat_map.get(getattr(debater, "id", None), {})
             fallback_source_name = (
                 source_names[slot["member_index"]]
                 if len(source_names) > slot["member_index"]
                 else ""
             )
+
+            initial[slot["debater_field"]] = debater
             initial[slot["source_name_field"]] = (
-                role_data.get("speaker_name")
-                or alias_name_by_role.get(slot["role"])
+                getattr(alias, "source_name", "")
+                or debater_data.get("speaker_name")
                 or fallback_source_name
                 or (debater.name if debater else "")
             )
-            initial[slot["speaks_field"]] = role_data.get("speaks")
-            initial[slot["ranks_field"]] = role_data.get("ranks")
+            initial[slot["role_field"]] = str(
+                getattr(imported_metadata, slot["import_role_field"], "") or debater_data.get("role") or ""
+            ).strip()
+            initial[slot["speaks_field"]] = debater_data.get("speaks")
+            initial[slot["ranks_field"]] = debater_data.get("ranks")
 
         return initial
 
     @staticmethod
-    def _alias_name_by_role(imported_metadata):
-        if imported_metadata is None:
-            return {}
-        role_map = {}
-        for alias_field, role_field in (
-            ("gov_1_alias", "gov_1_role"),
-            ("gov_2_alias", "gov_2_role"),
-            ("opp_1_alias", "opp_1_role"),
-            ("opp_2_alias", "opp_2_role"),
-        ):
-            alias = getattr(imported_metadata, alias_field, None)
-            role = str(getattr(imported_metadata, role_field, "") or "").strip()
-            if alias is not None and role:
-                role_map[role] = alias.source_name
-        return role_map
+    def _imported_metadata(round_obj):
+        try:
+            return round_obj.imported_metadata
+        except ObjectDoesNotExist:
+            return None
 
     @staticmethod
     def _metadata_name_list(raw_value):
@@ -231,35 +317,60 @@ class TournamentRoundBallotForm(forms.Form):
         return [str(value or "").strip() for value in raw_value if str(value or "").strip()]
 
     @staticmethod
-    def _build_role_stat_map(round_obj):
+    def _metadata_id_list(raw_value):
+        if not isinstance(raw_value, list):
+            return []
+        values = []
+        for value in raw_value:
+            try:
+                values.append(int(value))
+            except (TypeError, ValueError):
+                continue
+        return values
+
+    @staticmethod
+    def _ordered_team_members(team, ordered_ids):
+        if team is None:
+            return []
+        by_id = {
+            debater.id: debater
+            for debater in team.debaters.all().select_related("school").order_by("id")
+        }
+        ordered_members = []
+        for debater_id in ordered_ids:
+            debater = by_id.pop(debater_id, None)
+            if debater is not None:
+                ordered_members.append(debater)
+        ordered_members.extend(by_id.values())
+        return ordered_members
+
+    @staticmethod
+    def _build_stat_map_by_debater(round_obj):
         grouped = {}
         aggregates = {}
         stat_rows = round_obj.stats.select_related("debater").order_by("score_index", "id")
         for stat in stat_rows:
-            role = str(stat.debater_role or "").strip().upper()
-            if role not in {"PM", "MG", "LO", "MO"}:
-                continue
-            metadata = stat.metadata if isinstance(stat.metadata, dict) else {}
-            if role not in grouped:
-                grouped[role] = {
-                    "debater": stat.debater,
+            if stat.debater_id not in grouped:
+                metadata = stat.metadata if isinstance(stat.metadata, dict) else {}
+                grouped[stat.debater_id] = {
+                    "role": str(stat.debater_role or "").strip().upper(),
                     "speaker_name": str(metadata.get("speaker_name") or "").strip(),
                 }
-                aggregates[role] = {
+                aggregates[stat.debater_id] = {
                     "speaks_total": Decimal("0"),
                     "speaks_count": 0,
                     "ranks_total": Decimal("0"),
                     "ranks_count": 0,
                 }
             if stat.speaks is not None:
-                aggregates[role]["speaks_total"] += stat.speaks
-                aggregates[role]["speaks_count"] += 1
+                aggregates[stat.debater_id]["speaks_total"] += stat.speaks
+                aggregates[stat.debater_id]["speaks_count"] += 1
             if stat.ranks is not None:
-                aggregates[role]["ranks_total"] += stat.ranks
-                aggregates[role]["ranks_count"] += 1
+                aggregates[stat.debater_id]["ranks_total"] += stat.ranks
+                aggregates[stat.debater_id]["ranks_count"] += 1
 
-        for role, summary in grouped.items():
-            counts = aggregates[role]
+        for debater_id, summary in grouped.items():
+            counts = aggregates[debater_id]
             summary["speaks"] = (
                 counts["speaks_total"] / counts["speaks_count"]
                 if counts["speaks_count"]

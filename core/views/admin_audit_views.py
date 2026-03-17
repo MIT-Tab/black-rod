@@ -438,16 +438,18 @@ class TournamentAuditRoundEditView(SuperuserRequiredMixin, TemplateView):
         cleaned_data = form.cleaned_data
         existing_stat_meta = self._existing_stat_meta_by_role(self.round_obj)
         gov_team = get_or_create_team_for_debaters(
-            cleaned_data["pm_debater"],
-            cleaned_data["mg_debater"],
+            cleaned_data["gov_1_debater"],
+            cleaned_data["gov_2_debater"],
         )
         opp_team = get_or_create_team_for_debaters(
-            cleaned_data["lo_debater"],
-            cleaned_data["mo_debater"],
+            cleaned_data["opp_1_debater"],
+            cleaned_data["opp_2_debater"],
         )
 
         round_obj = self.round_obj or Round(tournament=self.tournament)
         metadata = dict(round_obj.metadata or {}) if isinstance(round_obj.metadata, dict) else {}
+        canonical_round_name = str(cleaned_data.get("canonical_round_name") or "").strip()
+        outround_stage = cleaned_data.get("outround_stage")
         source_round_name = str(cleaned_data.get("source_round_name") or "").strip()
         if source_round_name:
             metadata["source_round_name"] = source_round_name
@@ -458,40 +460,41 @@ class TournamentAuditRoundEditView(SuperuserRequiredMixin, TemplateView):
         team_b_names = []
         for slot in ROUND_BALLOT_SLOTS:
             debater = cleaned_data[slot["debater_field"]]
-            source_name = str(
-                cleaned_data.get(slot["source_name_field"]) or debater.name
-            ).strip()
+            source_name = self._resolved_slot_source_name(cleaned_data, slot)
             if slot["side"] == "gov":
                 team_a_names.append(source_name)
             else:
                 team_b_names.append(source_name)
 
-        metadata["round_label"] = str(cleaned_data["canonical_round_name"] or "").strip()
+        metadata["round_label"] = canonical_round_name
         metadata["stage"] = str(cleaned_data["stage"] or "")
         metadata["is_rated"] = bool(cleaned_data.get("is_rated"))
         metadata["weight"] = float(cleaned_data.get("weight") or Decimal("1.0"))
         metadata["team_a_ids"] = [
-            int(cleaned_data["pm_debater"].id),
-            int(cleaned_data["mg_debater"].id),
+            int(cleaned_data["gov_1_debater"].id),
+            int(cleaned_data["gov_2_debater"].id),
         ]
         metadata["team_b_ids"] = [
-            int(cleaned_data["lo_debater"].id),
-            int(cleaned_data["mo_debater"].id),
+            int(cleaned_data["opp_1_debater"].id),
+            int(cleaned_data["opp_2_debater"].id),
         ]
         metadata["team_a_names"] = team_a_names
         metadata["team_b_names"] = team_b_names
 
         round_obj.gov = gov_team
         round_obj.opp = opp_team
-        round_obj.round_label = str(cleaned_data["canonical_round_name"] or "").strip()
+        round_obj.round_label = canonical_round_name
         round_obj.stage = str(cleaned_data["stage"] or "")
         round_obj.round_number = int(cleaned_data["round_number"] or 0)
         round_obj.victor = int(cleaned_data["victor"])
         round_obj.is_rated = bool(cleaned_data.get("is_rated"))
         round_obj.weight = float(cleaned_data.get("weight") or Decimal("1.0"))
         round_obj.metadata = metadata
-        if round_obj.stage != Round.Stage.OUTROUND:
-            round_obj.elim_size = None
+        round_obj.elim_size = (
+            int(outround_stage)
+            if round_obj.stage == Round.Stage.OUTROUND and outround_stage
+            else None
+        )
         if not round_obj.import_origin:
             round_obj.import_origin = "manual"
 
@@ -525,18 +528,20 @@ class TournamentAuditRoundEditView(SuperuserRequiredMixin, TemplateView):
         stat_rows = []
         for slot in ROUND_BALLOT_SLOTS:
             debater = cleaned_data[slot["debater_field"]]
-            role_data = existing_stat_meta.get(slot["role"], {})
+            role = str(cleaned_data.get(slot["role_field"]) or "").strip().upper()
+            role_data = existing_stat_meta.get(role, {})
             stat_metadata = dict(role_data.get("metadata") or {})
-            stat_metadata["speaker_name"] = str(
-                cleaned_data.get(slot["source_name_field"]) or debater.name
-            ).strip()
+            stat_metadata["speaker_name"] = TournamentAuditRoundEditView._resolved_slot_source_name(
+                cleaned_data,
+                slot,
+            )
             stat_rows.append(
                 RoundStats(
                     round=round_obj,
                     debater=debater,
                     speaks=cleaned_data.get(slot["speaks_field"]),
                     ranks=cleaned_data.get(slot["ranks_field"]),
-                    debater_role=slot["role"],
+                    debater_role=role or None,
                     score_index=1,
                     source_status=str(role_data.get("source_status") or ""),
                     metadata=stat_metadata,
@@ -552,30 +557,30 @@ class TournamentAuditRoundEditView(SuperuserRequiredMixin, TemplateView):
 
         imported_metadata, _ = ImportedRoundMetadata.objects.get_or_create(round=round_obj)
         imported_metadata.gov_1_alias = self._alias_for(
-            cleaned_data["pm_debater"],
-            cleaned_data.get("pm_source_name"),
+            cleaned_data["gov_1_debater"],
+            self._resolved_slot_source_name(cleaned_data, ROUND_BALLOT_SLOTS[0]),
         )
         imported_metadata.gov_2_alias = self._alias_for(
-            cleaned_data["mg_debater"],
-            cleaned_data.get("mg_source_name"),
+            cleaned_data["gov_2_debater"],
+            self._resolved_slot_source_name(cleaned_data, ROUND_BALLOT_SLOTS[1]),
         )
         imported_metadata.opp_1_alias = self._alias_for(
-            cleaned_data["lo_debater"],
-            cleaned_data.get("lo_source_name"),
+            cleaned_data["opp_1_debater"],
+            self._resolved_slot_source_name(cleaned_data, ROUND_BALLOT_SLOTS[2]),
         )
         imported_metadata.opp_2_alias = self._alias_for(
-            cleaned_data["mo_debater"],
-            cleaned_data.get("mo_source_name"),
+            cleaned_data["opp_2_debater"],
+            self._resolved_slot_source_name(cleaned_data, ROUND_BALLOT_SLOTS[3]),
         )
-        imported_metadata.gov_1_role = ImportedRoundMetadata.SpeakerRole.PM
-        imported_metadata.gov_2_role = ImportedRoundMetadata.SpeakerRole.MG
-        imported_metadata.opp_1_role = ImportedRoundMetadata.SpeakerRole.LO
-        imported_metadata.opp_2_role = ImportedRoundMetadata.SpeakerRole.MO
+        imported_metadata.gov_1_role = str(cleaned_data.get("gov_1_role") or "").strip() or None
+        imported_metadata.gov_2_role = str(cleaned_data.get("gov_2_role") or "").strip() or None
+        imported_metadata.opp_1_role = str(cleaned_data.get("opp_1_role") or "").strip() or None
+        imported_metadata.opp_2_role = str(cleaned_data.get("opp_2_role") or "").strip() or None
         imported_metadata.save()
 
     @staticmethod
     def _alias_for(debater, source_name):
-        cleaned = " ".join(str(source_name or debater.name or "").split()).strip()
+        cleaned = str(source_name or debater.name or "").strip()
         if not cleaned:
             return None
         normalized = cleaned.casefold()
@@ -588,3 +593,11 @@ class TournamentAuditRoundEditView(SuperuserRequiredMixin, TemplateView):
             alias.normalized_name = normalized
             alias.save(update_fields=["normalized_name", "updated_at"])
         return alias
+
+    @staticmethod
+    def _resolved_slot_source_name(cleaned_data, slot):
+        debater = cleaned_data[slot["debater_field"]]
+        source_name = str(cleaned_data.get(slot["source_name_field"]) or "").strip()
+        if source_name:
+            return source_name
+        return str(debater.name or "").strip()

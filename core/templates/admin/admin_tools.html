@@ -1,4 +1,8 @@
 {% extends "base/base.html" %}
+{% block extra_head %}
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+{% endblock extra_head %}
 {% block font_awesome %}
     {% include "base/_font_awesome.html" %}
 {% endblock font_awesome %}
@@ -97,10 +101,28 @@
                                         <div class="form-group">
                                             <label for="synthetic_id">Synthetic ID</label>
                                             <input class="form-control" type="number" name="synthetic_id" id="synthetic_id" required>
+                                            <small class="form-text text-muted">Type an ID directly, or use the synthetic-only search below.</small>
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="synthetic_search">Synthetic Search</label>
+                                            <select class="form-control resolver-search"
+                                                    id="synthetic_search"
+                                                    data-target-input="synthetic_id"
+                                                    data-synthetic="true"></select>
+                                            <small class="form-text text-muted">Search by ID or by the current entity's name fields. Results are restricted to synthetic records.</small>
                                         </div>
                                         <div class="form-group">
                                             <label for="target_id">Target ID</label>
                                             <input class="form-control" type="number" name="target_id" id="target_id" required>
+                                            <small class="form-text text-muted">Type an ID directly, or use the canonical-only search below.</small>
+                                        </div>
+                                        <div class="form-group">
+                                            <label for="target_search">Target Search</label>
+                                            <select class="form-control resolver-search"
+                                                    id="target_search"
+                                                    data-target-input="target_id"
+                                                    data-synthetic="false"></select>
+                                            <small class="form-text text-muted">Search by ID or by the current entity's name fields. Results are restricted to non-synthetic records.</small>
                                         </div>
                                         <div class="form-group">
                                             <label for="reason">Reason</label>
@@ -116,4 +138,75 @@
             </div>
         </div>
     </div>
+    <script>
+    document.addEventListener('DOMContentLoaded', function () {
+        if (!window.jQuery || !jQuery.fn.select2) {
+            return;
+        }
+
+        const $entityType = $('#entity_type');
+        const autocompleteUrls = {
+            debater: '{% url "core:debater_autocomplete" %}',
+            school: '{% url "core:school_autocomplete" %}',
+            team: '{% url "core:team_autocomplete" %}'
+        };
+
+        function clearResolverSearches() {
+            $('.resolver-search').each(function clearSearch() {
+                const $select = $(this);
+                $select.val(null).trigger('change');
+                $select.empty();
+            });
+            $('#synthetic_id, #target_id').val('');
+        }
+
+        function initResolverSearch($select) {
+            const targetInputId = $select.data('target-input');
+            const syntheticValue = String($select.data('synthetic')) === 'true';
+
+            $select.select2({
+                width: '100%',
+                allowClear: true,
+                placeholder: 'Search by ID or name',
+                minimumInputLength: 1,
+                ajax: {
+                    delay: 200,
+                    dataType: 'json',
+                    transport: function transport(params, success, failure) {
+                        const requestParams = params.data || {};
+                        requestParams.synthetic = syntheticValue ? 'true' : 'false';
+                        requestParams.q = requestParams.term || '';
+                        delete requestParams.term;
+                        return $.ajax({
+                            url: autocompleteUrls[$entityType.val()],
+                            data: requestParams,
+                            success: success,
+                            error: failure
+                        });
+                    },
+                    processResults: function processResults(data) {
+                        return data;
+                    }
+                }
+            });
+
+            $select.on('select2:select', function onSelect(event) {
+                const selectedId = event.params && event.params.data ? event.params.data.id : '';
+                $('#' + targetInputId).val(selectedId || '');
+            });
+
+            $select.on('select2:clear', function onClear() {
+                $('#' + targetInputId).val('');
+            });
+        }
+
+        $('.resolver-search').each(function attachSearch() {
+            initResolverSearch($(this));
+        });
+
+        $entityType.on('change', function onEntityTypeChange() {
+            clearResolverSearches();
+        });
+    });
+    </script>
 {% endblock content %}

@@ -180,20 +180,39 @@ class TeamDeleteView(CustomDeleteView):
 class TeamAutocomplete(autocomplete.Select2QuerySetView):
     def get_result_label(self, record):
         visible_names = [d.name for d in record.debaters.exclude(synthetic=True)]
-        return f"<{record.id}> {record.name} ({', '.join(visible_names)})"
+        if not visible_names:
+            visible_names = [d.name for d in record.debaters.all()]
+        member_suffix = f" ({', '.join(visible_names)})" if visible_names else ""
+        synthetic_label = " [Synthetic]" if record.synthetic else ""
+        return f"<{record.id}> {record.name}{member_suffix}{synthetic_label}"
+
+    def _synthetic_filter(self):
+        raw_value = str(self.request.GET.get("synthetic") or "").strip().lower()
+        if raw_value in {"1", "true", "yes"}:
+            return True
+        return False
 
     def get_queryset(self):
-        qs = Team.objects.filter(synthetic=False)
+        qs = Team.objects.filter(synthetic=self._synthetic_filter())
 
         if self.q:
-            query = Q()
-            for term in self.q.split():
+            query_text = str(self.q).strip()
+            if query_text.isdigit():
+                qs = qs.filter(pk=int(query_text))
+            else:
                 query = (
-                    query
-                    | Q(name__icontains=term)
-                    | Q(debaters__first_name__icontains=term)
-                    | Q(debaters__last_name__icontains=term)
+                    Q(name__icontains=query_text)
+                    | Q(debaters__first_name__icontains=query_text)
+                    | Q(debaters__last_name__icontains=query_text)
+                    | Q(debaters__school__name__icontains=query_text)
                 )
-            qs = qs.filter(query).distinct()
+                for term in query_text.split():
+                    query |= (
+                        Q(name__icontains=term)
+                        | Q(debaters__first_name__icontains=term)
+                        | Q(debaters__last_name__icontains=term)
+                        | Q(debaters__school__name__icontains=term)
+                    )
+                qs = qs.filter(query).distinct()
 
-        return qs
+        return qs.order_by("name", "id")

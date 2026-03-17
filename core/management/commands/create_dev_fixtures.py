@@ -23,6 +23,7 @@ class Command(BaseCommand):
         random.seed(1000)
         output_file = options['output']
         self._user_natural_key_map = {}
+        self._sanitized_username_by_user_id = {}
 
         excluded_core_models = {User, Video}
         core_models = sorted(
@@ -33,21 +34,21 @@ class Command(BaseCommand):
         framework_models = [ContentType, Permission, Group, Tag, TaggedItem]
 
         all_objects = []
-        self._add_simulated_users(all_objects)
-
-        for model in core_models:
+        for model in framework_models:
             try:
-                manager = getattr(model, "all_objects", model.objects)
-                qs = manager.all()
+                qs = model.objects.all()
                 self.stdout.write(f"Processing {model.__name__}: {qs.count()} objects")
                 for obj in qs.iterator(chunk_size=2000):
                     all_objects.append(obj)
             except Exception as e:
                 self.stdout.write(self.style.WARNING(f"Error processing {model.__name__}: {e}"))
 
-        for model in framework_models:
+        self._add_simulated_users(all_objects)
+
+        for model in core_models:
             try:
-                qs = model.objects.all()
+                manager = getattr(model, "all_objects", model.objects)
+                qs = manager.all()
                 self.stdout.write(f"Processing {model.__name__}: {qs.count()} objects")
                 for obj in qs.iterator(chunk_size=2000):
                     all_objects.append(obj)
@@ -64,6 +65,7 @@ class Command(BaseCommand):
                 use_natural_primary_keys=True,
             )
             self._rewrite_sanitized_user_relations(payload)
+            self._inject_sanitized_user_m2m(payload)
             self._inject_unfiltered_debater_m2m(payload)
             data = json.dumps(payload, ensure_ascii=False, cls=DjangoJSONEncoder)
         except Exception as e:
@@ -140,6 +142,31 @@ class Command(BaseCommand):
 
                 item["fields"][field.name] = list(replacement_value)
 
+    def _inject_sanitized_user_m2m(self, payload):
+        user_items_by_username = {
+            item["fields"]["username"]: item
+            for item in payload
+            if item["model"] == User._meta.label_lower
+        }
+        if not user_items_by_username:
+            return
+
+        users = (
+            User.objects.filter(pk__in=self._sanitized_username_by_user_id)
+            .prefetch_related("groups", "user_permissions")
+            .order_by("id")
+        )
+        for user in users.iterator(chunk_size=2000):
+            item = user_items_by_username[self._sanitized_username_by_user_id[user.pk]]
+            item["fields"]["groups"] = sorted(
+                (group.natural_key() for group in user.groups.all()),
+                key=lambda value: tuple(value),
+            )
+            item["fields"]["user_permissions"] = sorted(
+                (permission.natural_key() for permission in user.user_permissions.all()),
+                key=lambda value: tuple(value),
+            )
+
     def _add_simulated_users(self, all_objects):
         users = User.objects.all()
         total = users.count()
@@ -151,6 +178,7 @@ class Command(BaseCommand):
         for idx, user in enumerate(users.iterator(chunk_size=2000)):
             simulated_username = f"user_{user.id}"
             self._user_natural_key_map[user.natural_key()] = (simulated_username,)
+            self._sanitized_username_by_user_id[user.id] = simulated_username
             simulated_user = User(
                 id=user.id,
                 username=simulated_username,

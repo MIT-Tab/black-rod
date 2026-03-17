@@ -236,26 +236,31 @@ class TournamentPipelineAuditViewTest(TestCase):
                 "canonical_round_name": "Quarterfinal",
                 "source_round_name": "QF Source",
                 "stage": Round.Stage.OUTROUND,
+                "outround_stage": 8,
                 "round_number": 3,
                 "victor": Round.OPP,
                 "is_rated": "on",
                 "weight": "1.5",
-                "pm_debater": pm.id,
-                "pm_source_name": "Pat Prime",
-                "pm_speaks": "28.5",
-                "pm_ranks": "1",
-                "mg_debater": mg.id,
-                "mg_source_name": "Morgan Gov",
-                "mg_speaks": "28.0",
-                "mg_ranks": "2",
-                "lo_debater": lo.id,
-                "lo_source_name": "Lee Opp",
-                "lo_speaks": "29.0",
-                "lo_ranks": "1",
-                "mo_debater": mo.id,
-                "mo_source_name": "Mika Opp",
-                "mo_speaks": "28.0",
-                "mo_ranks": "2",
+                "gov_1_debater": pm.id,
+                "gov_1_source_name": "",
+                "gov_1_role": "MG",
+                "gov_1_speaks": "28.5",
+                "gov_1_ranks": "1",
+                "gov_2_debater": mg.id,
+                "gov_2_source_name": "Morgan Gov",
+                "gov_2_role": "PM",
+                "gov_2_speaks": "28.0",
+                "gov_2_ranks": "2",
+                "opp_1_debater": lo.id,
+                "opp_1_source_name": "Lee Opp",
+                "opp_1_role": "LO",
+                "opp_1_speaks": "29.0",
+                "opp_1_ranks": "1",
+                "opp_2_debater": mo.id,
+                "opp_2_source_name": "",
+                "opp_2_role": "",
+                "opp_2_speaks": "28.0",
+                "opp_2_ranks": "2",
             },
         )
         self.assertEqual(response.status_code, 302)
@@ -263,25 +268,134 @@ class TournamentPipelineAuditViewTest(TestCase):
         original_round.refresh_from_db()
         self.assertEqual(original_round.round_label, "Quarterfinal")
         self.assertEqual(original_round.stage, Round.Stage.OUTROUND)
+        self.assertEqual(original_round.elim_size, 8)
         self.assertEqual(original_round.round_number, 3)
         self.assertEqual(original_round.victor, Round.OPP)
         self.assertEqual(original_round.weight, 1.5)
         self.assertEqual(original_round.metadata["source_round_name"], "QF Source")
-        self.assertEqual(original_round.metadata["team_a_names"], ["Pat Prime", "Morgan Gov"])
-        self.assertEqual(original_round.metadata["team_b_names"], ["Lee Opp", "Mika Opp"])
+        self.assertEqual(original_round.metadata["team_a_names"], [pm.name, "Morgan Gov"])
+        self.assertEqual(original_round.metadata["team_b_names"], ["Lee Opp", mo.name])
         self.assertEqual(set(original_round.gov.debaters.values_list("id", flat=True)), {pm.id, mg.id})
         self.assertEqual(set(original_round.opp.debaters.values_list("id", flat=True)), {lo.id, mo.id})
 
         stats = {
-            stat.debater_role: stat
+            stat.debater_id: stat
             for stat in original_round.stats.select_related("debater").all()
         }
-        self.assertEqual(stats["PM"].metadata["speaker_name"], "Pat Prime")
-        self.assertEqual(str(stats["PM"].speaks), "28.5000")
-        self.assertEqual(stats["LO"].metadata["speaker_name"], "Lee Opp")
+        self.assertEqual(stats[pm.id].debater_role, "MG")
+        self.assertEqual(stats[pm.id].metadata["speaker_name"], pm.name)
+        self.assertEqual(str(stats[pm.id].speaks), "28.5000")
+        self.assertEqual(stats[mg.id].debater_role, "PM")
+        self.assertEqual(stats[mg.id].metadata["speaker_name"], "Morgan Gov")
+        self.assertEqual(stats[lo.id].debater_role, "LO")
+        self.assertEqual(stats[lo.id].metadata["speaker_name"], "Lee Opp")
+        self.assertIsNone(stats[mo.id].debater_role)
+        self.assertEqual(stats[mo.id].metadata["speaker_name"], mo.name)
 
         imported_metadata = original_round.imported_metadata
-        self.assertEqual(imported_metadata.gov_1_alias.source_name, "Pat Prime")
+        self.assertEqual(imported_metadata.gov_1_alias.source_name, pm.name)
         self.assertEqual(imported_metadata.gov_2_alias.source_name, "Morgan Gov")
         self.assertEqual(imported_metadata.opp_1_alias.source_name, "Lee Opp")
-        self.assertEqual(imported_metadata.opp_2_alias.source_name, "Mika Opp")
+        self.assertEqual(imported_metadata.opp_2_alias.source_name, mo.name)
+        self.assertEqual(imported_metadata.gov_1_role, "MG")
+        self.assertEqual(imported_metadata.gov_2_role, "PM")
+        self.assertEqual(imported_metadata.opp_1_role, "LO")
+        self.assertIsNone(imported_metadata.opp_2_role)
+
+    def test_round_create_defaults_blank_canonical_name_from_stage_data(self):
+        gov_1, gov_2 = list(self.team_a.debaters.order_by("id"))
+        opp_1, opp_2 = list(self.team_b.debaters.order_by("id"))
+
+        self.client.force_login(self.superuser)
+        response = self.client.post(
+            reverse(
+                "core:tournament_audit_round_create",
+                kwargs={"tournament_id": self.tournament.id},
+            ),
+            {
+                "canonical_round_name": "",
+                "source_round_name": "",
+                "stage": Round.Stage.PRELIM,
+                "outround_stage": "",
+                "round_number": 2,
+                "victor": Round.GOV,
+                "is_rated": "on",
+                "weight": "1.0",
+                "gov_1_debater": gov_1.id,
+                "gov_1_source_name": "",
+                "gov_1_role": "",
+                "gov_1_speaks": "27.5",
+                "gov_1_ranks": "1",
+                "gov_2_debater": gov_2.id,
+                "gov_2_source_name": "",
+                "gov_2_role": "",
+                "gov_2_speaks": "27.0",
+                "gov_2_ranks": "2",
+                "opp_1_debater": opp_1.id,
+                "opp_1_source_name": "",
+                "opp_1_role": "",
+                "opp_1_speaks": "26.5",
+                "opp_1_ranks": "3",
+                "opp_2_debater": opp_2.id,
+                "opp_2_source_name": "",
+                "opp_2_role": "",
+                "opp_2_speaks": "26.0",
+                "opp_2_ranks": "4",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+
+        round_obj = Round.objects.get(tournament=self.tournament, round_number=2)
+        self.assertEqual(round_obj.round_label, "P2")
+        self.assertEqual(round_obj.metadata["round_label"], "P2")
+        self.assertEqual(round_obj.metadata["team_a_names"], [gov_1.name, gov_2.name])
+        self.assertEqual(round_obj.metadata["team_b_names"], [opp_1.name, opp_2.name])
+        self.assertIsNone(round_obj.elim_size)
+
+    def test_round_create_defaults_blank_canonical_name_from_outround_stage(self):
+        gov_1, gov_2 = list(self.team_c.debaters.order_by("id"))
+        opp_1, opp_2 = list(self.team_d.debaters.order_by("id"))
+
+        self.client.force_login(self.superuser)
+        response = self.client.post(
+            reverse(
+                "core:tournament_audit_round_create",
+                kwargs={"tournament_id": self.tournament.id},
+            ),
+            {
+                "canonical_round_name": "",
+                "source_round_name": "",
+                "stage": Round.Stage.OUTROUND,
+                "outround_stage": 4,
+                "round_number": 3,
+                "victor": Round.OPP,
+                "is_rated": "on",
+                "weight": "1.0",
+                "gov_1_debater": gov_1.id,
+                "gov_1_source_name": "",
+                "gov_1_role": "",
+                "gov_1_speaks": "28.5",
+                "gov_1_ranks": "1",
+                "gov_2_debater": gov_2.id,
+                "gov_2_source_name": "",
+                "gov_2_role": "",
+                "gov_2_speaks": "28.0",
+                "gov_2_ranks": "2",
+                "opp_1_debater": opp_1.id,
+                "opp_1_source_name": "",
+                "opp_1_role": "",
+                "opp_1_speaks": "29.0",
+                "opp_1_ranks": "1",
+                "opp_2_debater": opp_2.id,
+                "opp_2_source_name": "",
+                "opp_2_role": "",
+                "opp_2_speaks": "28.0",
+                "opp_2_ranks": "2",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+
+        round_obj = Round.objects.get(tournament=self.tournament, stage=Round.Stage.OUTROUND)
+        self.assertEqual(round_obj.round_label, "Semifinal")
+        self.assertEqual(round_obj.metadata["round_label"], "Semifinal")
+        self.assertEqual(round_obj.elim_size, 4)
