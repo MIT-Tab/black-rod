@@ -1,4 +1,5 @@
 import json
+from collections import defaultdict
 from statistics import median
 
 from django.conf import settings
@@ -26,6 +27,91 @@ class FilteredSearchView(SearchView):
                 and getattr(result.object, "synthetic", False)
             )
         ]
+
+
+def _load_team_member_ids():
+    team_member_ids = defaultdict(list)
+    through_rows = Team.debaters.through.objects.filter(
+        debater__synthetic=False,
+        debater__temporary=False,
+    ).order_by("team_id", "id").values_list("team_id", "debater_id")
+    for team_id, debater_id in through_rows.iterator(chunk_size=5000):
+        if team_id is None or debater_id is None:
+            continue
+        team_member_ids[int(team_id)].append(int(debater_id))
+    return team_member_ids
+
+
+def _top_debaters_by_tournament_count(limit=10):
+    tournament_ids_by_debater = defaultdict(set)
+    team_member_ids = _load_team_member_ids()
+
+    def add_direct_attendance(queryset):
+        for debater_id, tournament_id in queryset.iterator(chunk_size=5000):
+            if debater_id is None or tournament_id is None:
+                continue
+            tournament_ids_by_debater[int(debater_id)].add(int(tournament_id))
+
+    def add_team_attendance(queryset):
+        for team_id, tournament_id in queryset.iterator(chunk_size=5000):
+            if team_id is None or tournament_id is None:
+                continue
+            for debater_id in team_member_ids.get(int(team_id), ()):
+                tournament_ids_by_debater[debater_id].add(int(tournament_id))
+
+    add_direct_attendance(
+        RoundStats.objects.filter(
+            round__tournament_id__isnull=False,
+            debater__synthetic=False,
+            debater__temporary=False,
+        ).values_list(
+            "debater_id",
+            "round__tournament_id",
+        )
+    )
+    add_direct_attendance(
+        SpeakerResult.objects.filter(
+            tournament_id__isnull=False,
+            debater__synthetic=False,
+            debater__temporary=False,
+        ).values_list(
+            "debater_id",
+            "tournament_id",
+        )
+    )
+    add_team_attendance(
+        TeamResult.objects.filter(tournament_id__isnull=False).values_list(
+            "team_id",
+            "tournament_id",
+        )
+    )
+    add_team_attendance(
+        visible_canonical_rounds(
+            Round.objects.filter(gov_id__isnull=False, tournament_id__isnull=False)
+        ).values_list("gov_id", "tournament_id")
+    )
+    add_team_attendance(
+        visible_canonical_rounds(
+            Round.objects.filter(opp_id__isnull=False, tournament_id__isnull=False)
+        ).values_list("opp_id", "tournament_id")
+    )
+
+    if not tournament_ids_by_debater:
+        return []
+
+    tournament_counts = {
+        debater_id: len(tournament_ids)
+        for debater_id, tournament_ids in tournament_ids_by_debater.items()
+        if tournament_ids
+    }
+    debaters = list(
+        Debater.objects.filter(id__in=tournament_counts.keys()).select_related("school")
+    )
+    for debater in debaters:
+        debater.tournament_count = tournament_counts.get(int(debater.id), 0)
+
+    debaters.sort(key=lambda d: (-d.tournament_count, d.last_name, d.first_name))
+    return debaters[:limit]
 
 
 def index(request):
@@ -200,94 +286,7 @@ def stats(request):
             'median_novices': median(novice_counts) if novice_counts else 0
         })
 
-    attendance_sample_size = 200
-    approx_tournament_count = (
-        Count('round_stats__round__tournament', distinct=True)
-        + Count('speaker_results__tournament', distinct=True)
-        + Count('teams__team_results__tournament', distinct=True)
-        + Count('teams__govs__tournament', distinct=True)
-        + Count('teams__opps__tournament', distinct=True)
-    )
-
-    candidate_ids = list(
-        Debater.objects.annotate(
-            approx_tournament_count=approx_tournament_count
-        )
-        .filter(approx_tournament_count__gt=0)
-        .order_by('-approx_tournament_count', 'last_name', 'first_name')
-        .values_list('id', flat=True)[:attendance_sample_size]
-    )
-
-    debaters_by_tournament_count = []
-    if candidate_ids:
-        round_stats_prefetch = Prefetch(
-            'round_stats',
-            queryset=RoundStats.objects.select_related('round__tournament'),
-        )
-        speaker_results_prefetch = Prefetch(
-            'speaker_results',
-            queryset=SpeakerResult.objects.select_related('tournament'),
-        )
-        team_results_prefetch = Prefetch(
-            'team_results',
-            queryset=TeamResult.objects.select_related('tournament'),
-        )
-        gov_rounds_prefetch = Prefetch(
-            'govs', queryset=visible_canonical_rounds(Round.objects.select_related('tournament'))
-        )
-        opp_rounds_prefetch = Prefetch(
-            'opps', queryset=visible_canonical_rounds(Round.objects.select_related('tournament'))
-        )
-        debater_team_prefetch = Prefetch(
-            'teams',
-            queryset=Team.objects.prefetch_related(
-                team_results_prefetch,
-                gov_rounds_prefetch,
-                opp_rounds_prefetch,
-            ),
-        )
-
-        debater_queryset = (
-            Debater.objects.filter(id__in=candidate_ids)
-            .select_related('school')
-            .prefetch_related(
-                debater_team_prefetch,
-                round_stats_prefetch,
-                speaker_results_prefetch,
-            )
-        )
-
-        for debater in debater_queryset:
-            tournaments = set()
-
-            for stat in debater.round_stats.all():
-                if stat.round and stat.round.tournament_id:
-                    tournaments.add(stat.round.tournament_id)
-
-            for speaker_result in debater.speaker_results.all():
-                if speaker_result.tournament_id:
-                    tournaments.add(speaker_result.tournament_id)
-
-            for team in debater.teams.all():
-                for team_result in team.team_results.all():
-                    if team_result.tournament_id:
-                        tournaments.add(team_result.tournament_id)
-                for round_obj in team.govs.all():
-                    if round_obj.tournament_id:
-                        tournaments.add(round_obj.tournament_id)
-                for round_obj in team.opps.all():
-                    if round_obj.tournament_id:
-                        tournaments.add(round_obj.tournament_id)
-
-            tournament_count = len(tournaments)
-            if tournament_count:
-                debater.tournament_count = tournament_count
-                debaters_by_tournament_count.append(debater)
-
-        debaters_by_tournament_count.sort(
-            key=lambda d: (-d.tournament_count, d.last_name, d.first_name)
-        )
-        debaters_by_tournament_count = debaters_by_tournament_count[:10]
+    debaters_by_tournament_count = _top_debaters_by_tournament_count(limit=10)
 
     teams_by_tournament_count = Team.objects.annotate(
         tournament_count=Count('team_results__tournament', distinct=True)

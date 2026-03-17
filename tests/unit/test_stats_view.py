@@ -107,3 +107,61 @@ def test_stats_counts_tournaments_from_all_sources(client):
     assert leaderboard[0] == debater
     assert leaderboard[0].tournament_count == 3
 
+
+@pytest.mark.django_db
+def test_stats_ignores_synthetic_debaters_in_tournament_attendance(client):
+    cache.clear()
+
+    school = School.objects.create(name="Synthetic Test School", short_name="STS")
+    real_debater = Debater.objects.create(
+        first_name="Real",
+        last_name="Debater",
+        school=school,
+    )
+    synthetic_debater = Debater.all_objects.create(
+        first_name="Synthetic",
+        last_name="Debater",
+        school=school,
+        synthetic=True,
+    )
+
+    real_team = Team.objects.create(name="Real Team", short_name="RT")
+    real_team.debaters.set([real_debater])
+    synthetic_team = Team.objects.create(name="Synthetic Team", short_name="ST")
+    synthetic_team.debaters.set([synthetic_debater])
+
+    tournament = Tournament.objects.create(
+        name="Synthetic Invitational",
+        short_name="Synth Inv",
+        host=school,
+        season="2024",
+        date=date(2024, 4, 15),
+        num_rounds=5,
+        num_teams=8,
+        num_novice_teams=0,
+        num_debaters=16,
+        num_novice_debaters=0,
+    )
+
+    Round.objects.create(
+        round_number=1,
+        gov=real_team,
+        opp=synthetic_team,
+        tournament=tournament,
+    )
+    SpeakerResult.objects.create(
+        tournament=tournament,
+        debater=synthetic_debater,
+        place=1,
+    )
+    TeamResult.objects.create(
+        tournament=tournament,
+        team=synthetic_team,
+        place=2,
+    )
+
+    response = client.get("/stats/")
+
+    assert response.status_code == 200
+    leaderboard_ids = [debater.id for debater in response.context["debaters_by_tournament_count"]]
+    assert synthetic_debater.id not in leaderboard_ids
