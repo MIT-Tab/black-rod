@@ -7,6 +7,8 @@ from core.utils.elo_runtime_engine.constants import DEFAULT_RATING
 
 
 class TournamentSnapshot:
+    __slots__ = ("timestamp", "tournament_id", "tournament_name", "season")
+
     def __init__(self, timestamp, tournament_id, tournament_name, season):
         self.timestamp = timestamp
         self.tournament_id = tournament_id
@@ -15,6 +17,18 @@ class TournamentSnapshot:
 
 
 class PlayerStats:
+    __slots__ = (
+        "rating",
+        "rounds",
+        "prelim_rounds",
+        "outround_rounds",
+        "yearly_results",
+        "season_snapshots",
+        "name_hints",
+        "school_hints",
+        "school_hints_by_season",
+    )
+
     def __init__(self):
         self.rating = DEFAULT_RATING
         self.rounds = 0.0
@@ -28,6 +42,26 @@ class PlayerStats:
 
 
 class Debate:
+    __slots__ = (
+        "timestamp",
+        "tournament_key",
+        "tournament_name",
+        "season",
+        "stage",
+        "sort_key",
+        "round_label",
+        "team_a",
+        "team_b",
+        "winner",
+        "source_kind",
+        "source_label",
+        "participant_names",
+        "team_a_school",
+        "team_b_school",
+        "weight",
+        "is_proam_partnership",
+    )
+
     def __init__(
         self,
         timestamp,
@@ -68,12 +102,35 @@ class Debate:
 
 
 class DebaterRankingRow:
+    __slots__ = (
+        "rank",
+        "name",
+        "school_name",
+        "schools",
+        "debater_id",
+        "elo",
+        "rounds",
+        "prelim_rounds",
+        "outround_rounds",
+    )
+
     def __init__(self, **kwargs):
         for key, value in kwargs.items():
             setattr(self, key, value)
 
 
 class EloRunResult:
+    __slots__ = (
+        "matched_tournaments",
+        "debates_processed",
+        "prelims_processed",
+        "outrounds_processed",
+        "excluded_proam_debates",
+        "qual_data_available",
+        "excluded_default_opt_out_debaters",
+        "ranking_rows",
+    )
+
     def __init__(
         self,
         matched_tournaments,
@@ -96,6 +153,15 @@ class EloRunResult:
 
 
 class EloComputeResult:
+    __slots__ = (
+        "matched_tournaments",
+        "debates_processed",
+        "prelims_processed",
+        "outrounds_processed",
+        "excluded_proam_debates",
+        "stats",
+    )
+
     def __init__(
         self,
         matched_tournaments,
@@ -114,6 +180,20 @@ class EloComputeResult:
 
 
 class DebaterProfile:
+    __slots__ = (
+        "player_id",
+        "display_name",
+        "primary_debater_id",
+        "school_name",
+        "schools",
+        "first_season",
+        "latest_season",
+        "first_year_tournament_count",
+        "has_nat_qual",
+        "affiliated_active_seasons",
+        "latest_affiliated_season",
+    )
+
     def __init__(
         self,
         player_id,

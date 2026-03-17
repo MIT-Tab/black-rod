@@ -277,6 +277,33 @@ def _load_team_members_by_id(team_ids):
     }
 
 
+def _ordered_rounds_queryset(*, include_sources):
+    queryset = Round.objects.select_related(
+        "tournament",
+        "gov",
+        "opp",
+        "imported_metadata",
+        "imported_metadata__gov_1_alias",
+        "imported_metadata__gov_2_alias",
+        "imported_metadata__opp_1_alias",
+        "imported_metadata__opp_2_alias",
+    )
+    if include_sources:
+        queryset = queryset.prefetch_related(
+            Prefetch(
+                "imported_metadata__sources",
+                queryset=TournamentImport.objects.order_by("id"),
+                to_attr="ordered_sources",
+            ),
+        )
+    return queryset.order_by(
+        "tournament__date",
+        "tournament_id",
+        "round_number",
+        "id",
+    )
+
+
 def _build_debate_from_round(
     round_obj,
     season,
@@ -374,39 +401,6 @@ def _build_debate_from_round(
 
 
 def build_ingested_snapshots_and_debates(allowed_seasons, include_novice, include_proam, completed_only, max_date):
-    rounds = list(
-        Round.objects.select_related(
-            "tournament",
-            "gov",
-            "opp",
-            "imported_metadata",
-            "imported_metadata__gov_1_alias",
-            "imported_metadata__gov_2_alias",
-            "imported_metadata__opp_1_alias",
-            "imported_metadata__opp_2_alias",
-        )
-        .prefetch_related(
-            Prefetch(
-                "imported_metadata__sources",
-                queryset=TournamentImport.objects.order_by("id"),
-                to_attr="ordered_sources",
-            ),
-        )
-        .order_by(
-            "tournament__date",
-            "tournament_id",
-            "round_number",
-            "id",
-        )
-    )
-    team_members_by_id = _load_team_members_by_id(
-        {
-            int(team_id)
-            for round_obj in rounds
-            for team_id in (round_obj.gov_id, round_obj.opp_id)
-            if team_id is not None
-        }
-    )
     representative_by_id, _linked_ids_by_representative = load_representative_debater_maps()
     representative_first_seasons = _load_representative_first_seasons(representative_by_id)
     debater_school_by_id = {}
@@ -434,10 +428,29 @@ def build_ingested_snapshots_and_debates(allowed_seasons, include_novice, includ
         preferred = sorted(candidates, key=lambda row: (row[1], row[0], row[2]))[-1]
         debater_school_by_id[representative_id] = preferred[2]
     manual_round_ids = []
-    for round_obj in rounds:
+    team_ids = set()
+    for round_obj in _ordered_rounds_queryset(include_sources=False).iterator(chunk_size=1000):
+        tournament = round_obj.tournament
+        season = str(tournament.season or "").strip()
+        if not _round_is_in_scope(
+            tournament,
+            season,
+            allowed_seasons,
+            include_novice,
+            include_proam,
+            completed_only,
+            max_date,
+        ):
+            continue
+        if round_obj.gov_id is not None:
+            team_ids.add(int(round_obj.gov_id))
+        if round_obj.opp_id is not None:
+            team_ids.add(int(round_obj.opp_id))
         metadata = round_obj.metadata if isinstance(round_obj.metadata, dict) else {}
         if not _has_contract_team_identity(round_obj, metadata):
             manual_round_ids.append(int(round_obj.id))
+
+    team_members_by_id = _load_team_members_by_id(team_ids)
 
     scored_debaters_by_round_id = defaultdict(set)
     if manual_round_ids:
@@ -455,7 +468,7 @@ def build_ingested_snapshots_and_debates(allowed_seasons, include_novice, includ
     seen_tournaments = set()
     seen_forum_keys = set()
 
-    for round_obj in rounds:
+    for round_obj in _ordered_rounds_queryset(include_sources=True).iterator(chunk_size=1000):
         tournament = round_obj.tournament
         season = str(tournament.season or "").strip()
         if not _round_is_in_scope(
