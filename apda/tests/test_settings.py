@@ -145,5 +145,7 @@ class APDASettingsTest(TestCase):
 
         self.assertIn("ELO Rankings", result_names)
         self.assertIn("Admin Tools", admin_names)
-        self.assertIn("Synthetic Resolver", admin_names)
+        self.assertIn("Scheduling Workspace", admin_names)
         self.assertIn("Tournament Data Audit", admin_names)
+        self.assertNotIn("Synthetic Resolver", admin_names)
+        self.assertNotIn("School Short Names", admin_names)

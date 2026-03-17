@@ -50,24 +50,38 @@
   "dependencies": {
     "bootstrap": "4.6.2",
     "bootstrap-datepicker": "1.9.0",
+    "edmonds-blossom": "^1.0.0",
     "jquery": "^3.7.1",
     "jquery-ui": "^1.14.1",
+    "papaparse": "^5.5.3",
     "popper.js": "1.16.1",
     "select2": "4.0.11"
   },
   "eslintConfig": {
-    "extends": ["airbnb-base", "prettier"],
-    "plugins": ["prettier"],
+    "extends": [
+      "airbnb-base",
+      "prettier"
+    ],
+    "plugins": [
+      "prettier"
+    ],
     "rules": {
       "prettier/prettier": "error",
       "no-bitwise": "off",
       "no-alert": "off",
-      "max-len": ["error", 120],
+      "max-len": [
+        "error",
+        120
+      ],
       "import/no-unresolved": "off"
     },
     "env": {
       "browser": true,
       "jquery": true
+    },
+    "parserOptions": {
+      "ecmaVersion": 2020,
+      "sourceType": "module"
     }
   },
   "prettier": {
@@ -83,7 +97,11 @@
         "@babel/preset-env",
         {
           "targets": {
-            "browsers": [">0.5%", "last 2 versions", "not dead"]
+            "browsers": [
+              ">0.5%",
+              "last 2 versions",
+              "not dead"
+            ]
           }
         }
       ]

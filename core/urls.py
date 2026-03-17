@@ -12,6 +12,7 @@ from core.views import (
     round_views,
     school_admin_views,
     school_views,
+    scheduling_views,
     soty_views,
     elo_views,
     merge_debater_views,
@@ -272,6 +273,31 @@ urlpatterns = [
     path("core/coty", coty_views.COTYListView.as_view(), name="coty"),
     path("core/elo/", elo_views.elo_dashboard, name="elo_dashboard"),
     path("core/admin-tools/", admin_views.AdminToolsView.as_view(), name="admin_tools"),
+    path(
+        "core/admin/scheduling/",
+        scheduling_views.SchedulingDashboardView.as_view(),
+        name="scheduling_dashboard",
+    ),
+    path(
+        "core/admin/scheduling/workspace-data/",
+        scheduling_views.SchedulingWorkspaceDataView.as_view(),
+        name="scheduling_workspace_data",
+    ),
+    path(
+        "core/admin/scheduling/save-browser-run/",
+        scheduling_views.SchedulingBrowserRunSaveView.as_view(),
+        name="scheduling_save_browser_run",
+    ),
+    path(
+        "core/admin/scheduling/download/<str:kind>/",
+        scheduling_views.SchedulingWorkspaceCSVDownloadView.as_view(),
+        name="scheduling_download_csv",
+    ),
+    path(
+        "core/admin/scheduling/runs/<int:pk>/output/",
+        scheduling_views.SchedulingRunOutputDownloadView.as_view(),
+        name="scheduling_run_output",
+    ),
     path(
         "core/admin/synthetic-resolve/",
         admin_views.SyntheticResolutionView.as_view(),

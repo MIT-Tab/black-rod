@@ -12,6 +12,7 @@ from .round_import import (
 from .school import School, SchoolLookup
 from .school_admin import SchoolAdmin
 from .site_settings import SiteSetting
+from .scheduler import SchedulerWorkspace, SchedulingRun
 from .standings.coty import COTY
 from .standings.noty import NOTY
 from .standings.online_qual import OnlineQUAL
@@ -56,6 +57,8 @@ __all__ = [
     "TOTYReaff",
     "OnlineQUAL",
     "SiteSetting",
+    "SchedulerWorkspace",
+    "SchedulingRun",
     "Video",
     "Resource",
     "ResourceTag",

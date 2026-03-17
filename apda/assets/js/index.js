@@ -2,7 +2,7 @@ import "bootstrap";
 
 import "bootstrap-datepicker/build/build.less";
 import "../css/app.scss";
-import "../css/navigation.scss"
+import "../css/navigation.scss";
 
 import "bootstrap-datepicker";
 
@@ -13,8 +13,8 @@ import "jquery-ui/ui/widget";
 import "./sortable-formset";
 import "./school_admin_management";
 import "./data-entry";
-import "./data-entry";
 import "./replay";
+import initSchedulingBrowserRunner from "./scheduling_browser_runner";
 
 function getCookie(name) {
   let cookieValue = null;
@@ -103,4 +103,5 @@ $(document).ready(() => {
   });
 
   $("#teams").on("keyup", teamSearch);
+  initSchedulingBrowserRunner();
 });

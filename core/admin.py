@@ -45,6 +45,8 @@ from core.models import (
     ResourceTag,
     Debater,
     DebaterAlias,
+    SchedulerWorkspace,
+    SchedulingRun,
     MergeDebaterRequest,
     ClaimDebaterRequest,
     DebaterAliasGroup,
@@ -158,6 +160,19 @@ class CustomUserAdmin(UserAdmin):
     list_display = UserAdmin.list_display + ('can_view_private_videos',)
 
     list_filter = UserAdmin.list_filter + ('can_view_private_videos',)
+
+
+@admin.register(SchedulerWorkspace)
+class SchedulerWorkspaceAdmin(admin.ModelAdmin):
+    list_display = ("name", "version", "updated_at", "updated_by")
+    readonly_fields = ("created_at", "updated_at")
+
+
+@admin.register(SchedulingRun)
+class SchedulingRunAdmin(admin.ModelAdmin):
+    list_display = ("id", "workspace", "status", "created_at", "created_by")
+    list_filter = ("status",)
+    readonly_fields = ("created_at", "completed_at")
 
 
 

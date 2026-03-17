@@ -338,8 +338,8 @@ NAV_MENU_LEFT = [
                 "validators": ["menu_generator.validators.is_superuser"],
             },
             {
-                "name": "Synthetic Resolver",
-                "url": "/core/admin-tools/#synthetic-resolution",
+                "name": "Scheduling Workspace",
+                "url": "core:scheduling_dashboard",
                 "validators": ["menu_generator.validators.is_superuser"],
             },
             {
@@ -360,11 +360,6 @@ NAV_MENU_LEFT = [
             {
                 "name": "Manage School Admins",
                 "url": "core:manage_school_admins",
-            },
-            {
-                "name": "School Short Names",
-                "url": "core:school_short_name_audit",
-                "validators": ["menu_generator.validators.is_superuser"],
             },
             {
                 "name": "Potential Debater Links",

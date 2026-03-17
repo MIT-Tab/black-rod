@@ -37,9 +37,19 @@
                                     <span class="text-muted ml-2">Recompute TOTY, SOTY, or NOTY rankings</span>
                                 </li>
                                 <li class="list-group-item">
+                                    <a href="{% url 'core:scheduling_dashboard' %}"
+                                       class="btn btn-outline-info btn-sm">Scheduling Workspace</a>
+                                    <span class="text-muted ml-2">Upload scheduling CSVs, tune rules, and run the scheduler</span>
+                                </li>
+                                <li class="list-group-item">
                                     <a href="{% url 'core:tournament_pipeline_audit' %}"
                                        class="btn btn-outline-primary btn-sm">Tournament Data Audit</a>
                                     <span class="text-muted ml-2">Review round completeness and edit individual ballots</span>
+                                </li>
+                                <li class="list-group-item">
+                                    <a href="{% url 'core:school_short_name_audit' %}"
+                                       class="btn btn-outline-primary btn-sm">School Short Names</a>
+                                    <span class="text-muted ml-2">Review missing or duplicate school short names</span>
                                 </li>
                                 <li class="list-group-item">
                                     <a href="#elo-cache"

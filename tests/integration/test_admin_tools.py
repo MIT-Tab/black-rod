@@ -33,6 +33,10 @@ class AdminToolsViewTest(TestCase):
         self.assertContains(response, "Resolve Synthetic Entity")
         self.assertContains(response, reverse("core:synthetic_resolution"))
         self.assertContains(response, reverse("core:synthetic_resolution_suggestions"))
+        self.assertContains(response, reverse("core:scheduling_dashboard"))
+        self.assertContains(response, reverse("core:school_short_name_audit"))
+        self.assertContains(response, "Scheduling Workspace")
+        self.assertContains(response, "School Short Names")
         self.assertContains(response, 'id="synthetic_search"', html=False)
         self.assertContains(response, 'id="target_search"', html=False)
 

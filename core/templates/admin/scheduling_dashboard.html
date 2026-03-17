@@ -1,0 +1,529 @@
+{% extends "base/base.html" %}
+{% block content %}
+    <style>
+        .scheduler-file-row {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .scheduler-file-name {
+            min-width: 0;
+            word-break: break-word;
+        }
+
+        .scheduler-upload-form {
+            display: inline-flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 0.5rem;
+            margin: 0;
+        }
+
+        .scheduler-upload-form input[type="file"] {
+            max-width: 13rem;
+        }
+
+        .scheduler-preview-scroll {
+            max-height: 14rem;
+            overflow-y: auto;
+        }
+    </style>
+    <div class="row mt-lg-5 ml-lg-2 mr-lg-2 mb-lg-5 m-1">
+        <div class="col-lg-12">
+            <div class="card m-2">
+                <div class="card-body">
+                    <div class="d-flex flex-wrap justify-content-between align-items-start mb-3">
+                        <div>
+                            <h4 class="card-title mb-1">Scheduling Workspace</h4>
+                        </div>
+                        <a class="btn btn-outline-secondary btn-sm mt-2 mt-md-0" href="{% url 'core:admin_tools' %}">Back to Admin Tools</a>
+                    </div>
+
+                    <div class="card mb-3">
+                        <div class="card-header bg-white">
+                            <button class="btn btn-link text-dark font-weight-bold p-0"
+                                    type="button"
+                                    data-toggle="collapse"
+                                    data-target="#scheduling-config-collapse"
+                                    aria-expanded="true"
+                                    aria-controls="scheduling-config-collapse">
+                                Config and Instructions
+                            </button>
+                        </div>
+                        <div id="scheduling-config-collapse" class="collapse show">
+                            <div class="card-body">
+                                <div class="row">
+                                    <div class="col-lg-5 mb-3">
+                                        <div class="border rounded p-3 h-100">
+                                                <h5 class="card-title">Current Data</h5>
+                                                <p class="mb-2">
+                                                    <strong>Data Version:</strong> {{ workspace.version }}
+                                                </p>
+                                                <p class="mb-2">
+                                                    <strong>Last Updated:</strong> {{ workspace.updated_at }}
+                                                </p>
+                                                <p class="mb-3">
+                                                    <strong>Updated By:</strong>
+                                                    {% if workspace.updated_by %}
+                                                        {{ workspace.updated_by.username }}
+                                                    {% else %}
+                                                        Not recorded
+                                                    {% endif %}
+                                                </p>
+
+                                                {% if summary_error %}
+                                                    <div class="alert alert-warning mb-3">
+                                                        <strong>Current CSV warning:</strong> {{ summary_error }}
+                                                    </div>
+                                                {% elif summary %}
+                                                    <div class="row text-center">
+                                                        <div class="col-4">
+                                                            <div class="border rounded p-2">
+                                                                <div class="h4 mb-0">{{ summary.school_count }}</div>
+                                                                <small class="text-muted">Schools</small>
+                                                            </div>
+                                                        </div>
+                                                        <div class="col-4">
+                                                            <div class="border rounded p-2">
+                                                                <div class="h4 mb-0">{{ summary.date_count }}</div>
+                                                                <small class="text-muted">Dates</small>
+                                                            </div>
+                                                        </div>
+                                                        <div class="col-4">
+                                                            <div class="border rounded p-2">
+                                                                <div class="h4 mb-0">{{ summary.active_date_count }}</div>
+                                                                <small class="text-muted">Active Weekends</small>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <p class="mt-3 mb-0 text-muted">
+                                                        {{ summary.flexible_date_count }} flexible weekends, so the runner will test {{ summary.scenario_count }} scenarios automatically.
+                                                    </p>
+                                                {% else %}
+                                                    <p class="text-muted">No CSV files have been saved yet.</p>
+                                                {% endif %}
+
+                                                <hr>
+                                                {% if upload_form.non_field_errors %}
+                                                    <div class="alert alert-danger mb-3">
+                                                        {% for error in upload_form.non_field_errors %}
+                                                            <div>{{ error }}</div>
+                                                        {% endfor %}
+                                                    </div>
+                                                {% endif %}
+
+                                                <div class="mb-3">
+                                                    <div class="scheduler-file-row">
+                                                        <strong class="mr-2">Schools CSV:</strong>
+                                                        <span class="scheduler-file-name">
+                                                            {% if workspace.schools_filename %}
+                                                                {{ workspace.schools_filename }}
+                                                            {% else %}
+                                                                Not uploaded
+                                                            {% endif %}
+                                                        </span>
+                                                        <a class="btn btn-link btn-sm p-0 {% if not workspace.schools_csv %}disabled{% endif %}"
+                                                           href="{% url 'core:scheduling_download_csv' kind='schools' %}">Download</a>
+                                                        <form method="post" enctype="multipart/form-data" class="scheduler-upload-form">
+                                                            {% csrf_token %}
+                                                            <input type="hidden" name="action" value="upload_csv">
+                                                            {{ upload_form.workspace_version }}
+                                                            {{ upload_form.schools_csv }}
+                                                            <button class="btn btn-outline-primary btn-sm" type="submit">Upload</button>
+                                                        </form>
+                                                    </div>
+                                                    {% for error in upload_form.schools_csv.errors %}
+                                                        <div class="text-danger mt-1">{{ error }}</div>
+                                                    {% endfor %}
+                                                </div>
+
+                                                <div class="mb-3">
+                                                    <div class="scheduler-file-row">
+                                                        <strong class="mr-2">Dates CSV:</strong>
+                                                        <span class="scheduler-file-name">
+                                                            {% if workspace.dates_filename %}
+                                                                {{ workspace.dates_filename }}
+                                                            {% else %}
+                                                                Not uploaded
+                                                            {% endif %}
+                                                        </span>
+                                                        <a class="btn btn-link btn-sm p-0 {% if not workspace.dates_csv %}disabled{% endif %}"
+                                                           href="{% url 'core:scheduling_download_csv' kind='dates' %}">Download</a>
+                                                        <form method="post" enctype="multipart/form-data" class="scheduler-upload-form">
+                                                            {% csrf_token %}
+                                                            <input type="hidden" name="action" value="upload_csv">
+                                                            {{ upload_form.workspace_version }}
+                                                            {{ upload_form.dates_csv }}
+                                                            <button class="btn btn-outline-primary btn-sm" type="submit">Upload</button>
+                                                        </form>
+                                                    </div>
+                                                    {% for error in upload_form.dates_csv.errors %}
+                                                        <div class="text-danger mt-1">{{ error }}</div>
+                                                    {% endfor %}
+                                                </div>
+
+                                                <hr>
+                                                <h6 class="mb-2">Reference Sheets</h6>
+                                                <p class="mb-2">
+                                                    <a href="https://docs.google.com/spreadsheets/d/1y5dCb5Vi_24LwLXfkEB7z3qOnFhe42M_AxMQRnJ2uzA/edit?usp=sharing"
+                                                       target="_blank"
+                                                       rel="noopener noreferrer">Schools template</a>
+                                                    <span class="text-muted ml-2">Reference format for school preferences, priority, region, and tags</span>
+                                                </p>
+                                                <p class="mb-3">
+                                                    <a href="https://docs.google.com/spreadsheets/d/1QtITUnyL8My4G_aamUdVspB0rX-8YrAQ1G9Rg7-UTcU/edit?usp=sharing"
+                                                       target="_blank"
+                                                       rel="noopener noreferrer">Dates template</a>
+                                                    <span class="text-muted ml-2">Reference format for weekends, number of tournaments, and weekend tags</span>
+                                                </p>
+
+                                                {% if summary and summary.preview_schools %}
+                                                    <hr>
+                                                    <h6 class="mb-2">School Preview</h6>
+                                                    <div class="table-responsive scheduler-preview-scroll mb-3">
+                                                        <table class="table table-sm table-striped">
+                                                            <thead>
+                                                                <tr>
+                                                                    <th>School</th>
+                                                                    <th>Region</th>
+                                                                    <th>Desired</th>
+                                                                    <th>Priority</th>
+                                                                    <th>Tags</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody>
+                                                                {% for school in summary.preview_schools %}
+                                                                    <tr>
+                                                                        <td>{{ school.name }}</td>
+                                                                        <td>{{ school.region }}</td>
+                                                                        <td>{{ school.desired_tournaments }}</td>
+                                                                        <td>{{ school.priority }}</td>
+                                                                        <td>{{ school.tags|join:", " }}</td>
+                                                                    </tr>
+                                                                {% endfor %}
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+
+                                                    <h6 class="mb-2">Date Preview</h6>
+                                                    <div class="table-responsive scheduler-preview-scroll">
+                                                        <table class="table table-sm table-striped">
+                                                            <thead>
+                                                                <tr>
+                                                                    <th>Date</th>
+                                                                    <th>Tournaments</th>
+                                                                    <th>Tags</th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody>
+                                                                {% for date in summary.preview_dates %}
+                                                                    <tr>
+                                                                        <td>{{ date.date }}</td>
+                                                                        <td>{{ date.num_tournaments }}</td>
+                                                                        <td>{{ date.tags|join:", " }}</td>
+                                                                    </tr>
+                                                                {% endfor %}
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                {% endif %}
+                                        </div>
+                                    </div>
+
+                                    <div class="col-lg-7 mb-3">
+                                        <div class="border rounded p-3 h-100">
+                                                <h5 class="card-title">Adjust Scheduling Rules</h5>
+                                                <form method="post">
+                                                    {% csrf_token %}
+                                                    <input type="hidden" name="action" value="save_settings">
+                                                    {{ settings_form.workspace_version }}
+                                                    {% if settings_form.non_field_errors %}
+                                                        <div class="alert alert-danger">
+                                                            {% for error in settings_form.non_field_errors %}
+                                                                <div>{{ error }}</div>
+                                                            {% endfor %}
+                                                        </div>
+                                                    {% endif %}
+                                                    {% if settings_form.errors %}
+                                                        <div class="alert alert-danger">
+                                                            {% for field in settings_form %}
+                                                                {% for error in field.errors %}
+                                                                    <div>{{ field.label }}: {{ error }}</div>
+                                                                {% endfor %}
+                                                            {% endfor %}
+                                                        </div>
+                                                    {% endif %}
+
+                                                    <div class="row">
+                                                        <div class="col-md-6">
+                                                            <div class="form-group">
+                                                                <label for="{{ settings_form.max_workers.id_for_label }}">{{ settings_form.max_workers.label }}</label>
+                                                                {{ settings_form.max_workers }}
+                                                                <small class="form-text text-muted">{{ settings_form.max_workers.help_text }}</small>
+                                                            </div>
+                                                        </div>
+                                                        <div class="col-md-6">
+                                                            <div class="form-group">
+                                                                <label>Scenarios To Test</label>
+                                                                <input class="form-control" type="text" value="{{ summary.scenario_count|default:'Upload CSVs first' }}" readonly>
+                                                                <small class="form-text text-muted">Calculated automatically as 2 to the power of the number of flexible 1-2 weekends.</small>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    <h6 class="mt-3">Preference Scores</h6>
+                                                    <div class="row">
+                                                        <div class="col-md-4"><div class="form-group"><label for="{{ settings_form.already_scheduled_penalty.id_for_label }}">{{ settings_form.already_scheduled_penalty.label }}</label>{{ settings_form.already_scheduled_penalty }}</div></div>
+                                                        <div class="col-md-4"><div class="form-group"><label for="{{ settings_form.rank_1_penalty.id_for_label }}">{{ settings_form.rank_1_penalty.label }}</label>{{ settings_form.rank_1_penalty }}</div></div>
+                                                        <div class="col-md-4"><div class="form-group"><label for="{{ settings_form.rank_2_penalty.id_for_label }}">{{ settings_form.rank_2_penalty.label }}</label>{{ settings_form.rank_2_penalty }}</div></div>
+                                                        <div class="col-md-4"><div class="form-group"><label for="{{ settings_form.rank_3_penalty.id_for_label }}">{{ settings_form.rank_3_penalty.label }}</label>{{ settings_form.rank_3_penalty }}</div></div>
+                                                        <div class="col-md-4"><div class="form-group"><label for="{{ settings_form.impossible_penalty.id_for_label }}">{{ settings_form.impossible_penalty.label }}</label>{{ settings_form.impossible_penalty }}</div></div>
+                                                    </div>
+
+                                                    <h6 class="mt-3">Tags and Unopposed Rules</h6>
+                                                    <div class="row">
+                                                        <div class="col-md-4"><div class="form-group"><label for="{{ settings_form.missing_unopposed_host_penalty.id_for_label }}">{{ settings_form.missing_unopposed_host_penalty.label }}</label>{{ settings_form.missing_unopposed_host_penalty }}</div></div>
+                                                        <div class="col-md-4"><div class="form-group"><label for="{{ settings_form.missing_requested_unopposed_penalty.id_for_label }}">{{ settings_form.missing_requested_unopposed_penalty.label }}</label>{{ settings_form.missing_requested_unopposed_penalty }}</div></div>
+                                                        <div class="col-md-4"><div class="form-group"><label for="{{ settings_form.missing_tag_penalty.id_for_label }}">{{ settings_form.missing_tag_penalty.label }}</label>{{ settings_form.missing_tag_penalty }}</div></div>
+                                                        <div class="col-md-4"><div class="form-group"><label for="{{ settings_form.tag_bonus.id_for_label }}">{{ settings_form.tag_bonus.label }}</label>{{ settings_form.tag_bonus }}</div></div>
+                                                    </div>
+
+                                                    <h6 class="mt-3">Region Adjustments</h6>
+                                                    <p class="text-muted small mb-3">
+                                                        These values only matter when a weekend creates region slots. A 1-tournament weekend has no region slot, so region adjustments do not apply there. A 2-tournament weekend only creates North and South slots, and Central schools use the separate 2-tournament-weekend Central value shown here instead of the usual Central-to-North or Central-to-South values. 3-tournament weekends create all three region slots, so all region adjustments apply as normal.
+                                                    </p>
+                                                    <div class="row">
+                                                        <div class="col-md-4"><div class="form-group"><label for="{{ settings_form.north_to_south_penalty.id_for_label }}">{{ settings_form.north_to_south_penalty.label }}</label>{{ settings_form.north_to_south_penalty }}</div></div>
+                                                        <div class="col-md-4"><div class="form-group"><label for="{{ settings_form.north_to_central_penalty.id_for_label }}">{{ settings_form.north_to_central_penalty.label }}</label>{{ settings_form.north_to_central_penalty }}</div></div>
+                                                        <div class="col-md-4"><div class="form-group"><label for="{{ settings_form.south_to_central_penalty.id_for_label }}">{{ settings_form.south_to_central_penalty.label }}</label>{{ settings_form.south_to_central_penalty }}</div></div>
+                                                        <div class="col-md-4"><div class="form-group"><label for="{{ settings_form.central_to_north_penalty.id_for_label }}">{{ settings_form.central_to_north_penalty.label }}</label>{{ settings_form.central_to_north_penalty }}</div></div>
+                                                        <div class="col-md-4"><div class="form-group"><label for="{{ settings_form.central_to_south_penalty.id_for_label }}">{{ settings_form.central_to_south_penalty.label }}</label>{{ settings_form.central_to_south_penalty }}</div></div>
+                                                        <div class="col-md-4"><div class="form-group"><label for="{{ settings_form.central_on_two_tournament_weekend_penalty.id_for_label }}">{{ settings_form.central_on_two_tournament_weekend_penalty.label }}</label>{{ settings_form.central_on_two_tournament_weekend_penalty }}</div></div>
+                                                        <div class="col-md-4"><div class="form-group"><label for="{{ settings_form.south_to_north_penalty.id_for_label }}">{{ settings_form.south_to_north_penalty.label }}</label>{{ settings_form.south_to_north_penalty }}</div></div>
+                                                    </div>
+
+                                                    <button class="btn btn-outline-primary" type="submit">Save Settings</button>
+                                                </form>
+                                        </div>
+                                    </div>
+                                </div>
+
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card mb-3">
+                        <div class="card-header bg-white">
+                            <h5 class="mb-0">Scheduling Runs</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-lg-4 mb-3">
+                                    <div class="border rounded p-3 h-100">
+                                        <h5 class="card-title">Latest Completed Run</h5>
+                                        {% if latest_completed_run %}
+                                        <p class="mb-2">
+                                            <strong>Ran At:</strong> {{ latest_completed_run.created_at }}
+                                        </p>
+                                        <p class="mb-2">
+                                            <strong>Ran By:</strong>
+                                            {% if latest_completed_run.created_by %}
+                                                {{ latest_completed_run.created_by.username }}
+                                            {% else %}
+                                                Unknown
+                                            {% endif %}
+                                        </p>
+                                        <p class="mb-2">
+                                            <strong>Best Penalty:</strong> {{ latest_completed_run.result.best_penalty }}
+                                        </p>
+                                        <p class="mb-3">
+                                            <strong>Best Seed:</strong> {{ latest_completed_run.result.best_seed }}
+                                        </p>
+                                        {% if latest_completed_run.result.unmatched_schools %}
+                                            <div class="mb-3">
+                                                <strong>Unmatched Schools:</strong>
+                                                <div class="mt-2">
+                                                    {% for school in latest_completed_run.result.unmatched_schools %}
+                                                        <span class="badge badge-warning mr-1 mb-1">{{ school }}</span>
+                                                    {% endfor %}
+                                                </div>
+                                            </div>
+                                        {% endif %}
+                                        <a class="btn btn-outline-secondary btn-sm"
+                                           href="{% url 'core:scheduling_run_output' pk=latest_completed_run.pk %}">Download Text Output</a>
+                                        {% else %}
+                                            <p class="text-muted mb-0">No completed runs yet.</p>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                                <div class="col-lg-8 mb-3">
+                                    <div class="border rounded p-3 h-100"
+                                         id="scheduling-browser-app"
+                                         data-workspace-url="{{ workspace_data_url }}"
+                                         data-save-run-url="{{ save_run_url }}">
+                                        <div class="d-flex flex-wrap justify-content-between align-items-start mb-3">
+                                            <div>
+                                                <h5 class="card-title mb-1">Run Scheduler In Browser</h5>
+                                                <p class="text-muted mb-0">
+                                                    The heavy matching work runs in Web Workers on this machine, not on the Django server.
+                                                    Keep this tab open while it runs. When it finishes, the result is saved back to the shared run history.
+                                                </p>
+                                            </div>
+                                            <div class="d-flex flex-wrap align-items-center">
+                                                <button class="btn btn-success mr-2 mb-2" id="scheduling-start-button" type="button">Start Browser Run</button>
+                                                <button class="btn btn-outline-danger mr-2 mb-2" id="scheduling-cancel-button" type="button" disabled>Cancel</button>
+                                                <button class="btn btn-outline-secondary mb-2" id="scheduling-refresh-workspace-button" type="button">Refresh Workspace Snapshot</button>
+                                            </div>
+                                        </div>
+                                        <div class="row">
+                                            <div class="col-md-5 mb-3">
+                                                <table class="table table-sm table-bordered mb-0">
+                                                    <tbody>
+                                                        <tr>
+                                                            <th>Status</th>
+                                                            <td><span id="scheduling-run-status">Idle</span></td>
+                                                        </tr>
+                                                        <tr>
+                                                            <th>Workers</th>
+                                                            <td><span id="scheduling-worker-count">-</span></td>
+                                                        </tr>
+                                                        <tr>
+                                                            <th>Scenarios Tested</th>
+                                                            <td><span id="scheduling-progress-count">0 / 0</span></td>
+                                                        </tr>
+                                                        <tr>
+                                                            <th>Best Penalty So Far</th>
+                                                            <td><span id="scheduling-best-penalty">-</span></td>
+                                                        </tr>
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                            <div class="col-md-7 mb-3">
+                                        <div class="progress mb-3" style="height: 1.5rem;">
+                                            <div id="scheduling-progress-bar"
+                                                 class="progress-bar progress-bar-striped"
+                                                 role="progressbar"
+                                                 style="width: 0%">0%</div>
+                                        </div>
+                                        <div class="small text-muted mb-2" id="scheduling-run-detail">
+                                            The current workspace snapshot will be loaded from the server when you start.
+                                        </div>
+                                        <div class="small" id="scheduling-save-status"></div>
+                                        <div class="mt-3">
+                                            <strong class="d-block mb-2">Run Log</strong>
+                                            <textarea class="form-control" id="scheduling-run-log" rows="8" readonly>Browser runner ready.</textarea>
+                                        </div>
+                                    </div>
+                                </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <h5 class="card-title mb-2">Recent Runs</h5>
+                            {% if recent_runs %}
+                                <div class="table-responsive">
+                                    <table class="table table-sm table-striped">
+                                        <thead>
+                                            <tr>
+                                                <th>Run</th>
+                                                <th>Status</th>
+                                                <th>User</th>
+                                                <th>Created</th>
+                                                <th>Penalty</th>
+                                                <th>Output</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% for run in recent_runs %}
+                                                <tr>
+                                                    <td>#{{ run.id }}</td>
+                                                    <td>
+                                                        {% if run.status == "completed" %}
+                                                            <span class="badge badge-success">Completed</span>
+                                                        {% else %}
+                                                            <span class="badge badge-danger">Failed</span>
+                                                        {% endif %}
+                                                    </td>
+                                                    <td>
+                                                        {% if run.created_by %}
+                                                            {{ run.created_by.username }}
+                                                        {% else %}
+                                                            Unknown
+                                                        {% endif %}
+                                                    </td>
+                                                    <td>{{ run.created_at }}</td>
+                                                    <td>
+                                                        {% if run.status == "completed" %}
+                                                            {{ run.result.best_penalty }}
+                                                        {% else %}
+                                                            {{ run.error_text }}
+                                                        {% endif %}
+                                                    </td>
+                                                    <td>
+                                                        {% if run.output_text %}
+                                                            <a href="{% url 'core:scheduling_run_output' pk=run.pk %}">Download</a>
+                                                        {% else %}
+                                                            -
+                                                        {% endif %}
+                                                    </td>
+                                                </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            {% else %}
+                                <p class="text-muted mb-0">No runs yet.</p>
+                            {% endif %}
+                            <hr>
+
+                                <h5 class="card-title mb-2" id="scheduling-latest-schedule-title">Latest Schedule</h5>
+                                <div id="scheduling-latest-schedule-body">
+                                    {% if latest_completed_run and latest_completed_run.result.schedule %}
+                                        <div class="table-responsive mb-3">
+                                            <table class="table table-sm table-striped">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Date</th>
+                                                        <th>Slots</th>
+                                                        <th>Tags</th>
+                                                        <th>School</th>
+                                                        <th>Region</th>
+                                                        <th>Preference</th>
+                                                        <th>Score</th>
+                                                        <th>Penalty Notes</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {% for day in latest_completed_run.result.schedule %}
+                                                        {% for assignment in day.assignments %}
+                                                            <tr>
+                                                                <td>{{ day.date }}</td>
+                                                                <td>{{ day.weekend_count }}</td>
+                                                                <td>{{ day.tags|join:", " }}</td>
+                                                                <td>{{ assignment.school }}</td>
+                                                                <td>{{ assignment.region }}</td>
+                                                                <td>{{ assignment.preference }}</td>
+                                                                <td>{{ assignment.weight }}</td>
+                                                                <td>{{ assignment.penalties_text }}</td>
+                                                            </tr>
+                                                        {% endfor %}
+                                                    {% endfor %}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    {% else %}
+                                        <p class="text-muted mb-3">No completed schedule yet.</p>
+                                    {% endif %}
+                                </div>
+                                <h5 class="card-title mb-2">Copyable Text Output</h5>
+                                <textarea class="form-control" rows="12" readonly>{% if latest_completed_run %}{{ latest_completed_run.output_text }}{% endif %}</textarea>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock content %}
