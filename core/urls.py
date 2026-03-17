@@ -328,6 +328,11 @@ urlpatterns = [
         name="merge_suggestions",
     ),
     path(
+        "core/admin/synthetic-resolution-suggestions/",
+        admin_views.SyntheticResolutionSuggestionsView.as_view(),
+        name="synthetic_resolution_suggestions",
+    ),
+    path(
         "core/school-admin/",
         school_admin_views.SchoolAdminDashboardView.as_view(),
         name="school_admin_dashboard",

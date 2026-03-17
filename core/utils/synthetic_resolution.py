@@ -94,6 +94,8 @@ def resolve_synthetic_debater(
 ):
     if not getattr(synthetic_debater, "synthetic", False):
         raise ValueError("Synthetic source debater must have synthetic=True")
+    if getattr(target_debater, "synthetic", False):
+        raise ValueError("Target debater must have synthetic=False")
     if synthetic_debater.id == target_debater.id:
         raise ValueError("Cannot resolve synthetic debater into itself")
 
@@ -122,6 +124,8 @@ def resolve_synthetic_school(
 ):
     if not getattr(synthetic_school, "synthetic", False):
         raise ValueError("Synthetic source school must have synthetic=True")
+    if getattr(target_school, "synthetic", False):
+        raise ValueError("Target school must have synthetic=False")
     if synthetic_school.id == target_school.id:
         raise ValueError("Cannot resolve synthetic school into itself")
 
@@ -163,6 +167,8 @@ def resolve_synthetic_team(
 ):
     if not getattr(synthetic_team, "synthetic", False):
         raise ValueError("Synthetic source team must have synthetic=True")
+    if getattr(target_team, "synthetic", False):
+        raise ValueError("Target team must have synthetic=False")
     if synthetic_team.id == target_team.id:
         raise ValueError("Cannot resolve synthetic team into itself")
 

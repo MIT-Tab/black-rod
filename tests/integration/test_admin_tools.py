@@ -1,10 +1,12 @@
 from django.contrib.auth import get_user_model
 from django.contrib.messages import get_messages
+from django.core.cache import cache
 from django.test import Client, TestCase
 from django.urls import reverse
 from unittest.mock import patch
 
 from core.models import Debater, School, SyntheticResolutionLog, Team
+from core.views.admin_views import MergeSuggestionsView
 from core.views.elo_cache import get_cached_elo_state, set_cached_elo_state
 
 
@@ -17,6 +19,8 @@ class AdminToolsViewTest(TestCase):
             password="password",
         )
         self.school = School.objects.create(name="Resolver University")
+        cache.delete("merge_suggestions_list")
+        cache.delete("synthetic_resolution_suggestions_list")
 
     def test_admin_tools_shows_synthetic_resolution_form(self):
         self.client.force_login(self.superuser)
@@ -28,6 +32,106 @@ class AdminToolsViewTest(TestCase):
         self.assertContains(response, reverse("core:invalidate_elo_cache"))
         self.assertContains(response, "Resolve Synthetic Entity")
         self.assertContains(response, reverse("core:synthetic_resolution"))
+        self.assertContains(response, reverse("core:synthetic_resolution_suggestions"))
+
+    def test_merge_suggestions_builder_excludes_synthetic_debaters(self):
+        first = Debater.objects.create(
+            first_name="Merge",
+            last_name="Candidate",
+            school=self.school,
+        )
+        second = Debater.objects.create(
+            first_name="Merge",
+            last_name="Candidate",
+            school=self.school,
+        )
+        synthetic = Debater.all_objects.create(
+            first_name="Merge",
+            last_name="Candidate",
+            school=self.school,
+            temporary=True,
+            synthetic=True,
+        )
+
+        suggestions = MergeSuggestionsView()._build_suggestions()
+
+        self.assertTrue(suggestions)
+        suggestion_ids = {
+            suggestion["debater_one"].id
+            for suggestion in suggestions
+        } | {
+            suggestion["debater_two"].id
+            for suggestion in suggestions
+        }
+        self.assertIn(first.id, suggestion_ids)
+        self.assertIn(second.id, suggestion_ids)
+        self.assertNotIn(synthetic.id, suggestion_ids)
+
+    def test_synthetic_resolution_suggestions_page_lists_synthetic_and_canonical_pair(self):
+        self.client.force_login(self.superuser)
+        synthetic = Debater.all_objects.create(
+            first_name="Casey",
+            last_name="Browne",
+            school=self.school,
+            temporary=True,
+            synthetic=True,
+        )
+        canonical = Debater.objects.create(
+            first_name="Casey",
+            last_name="Brown",
+            school=self.school,
+        )
+
+        response = self.client.get(
+            reverse("core:synthetic_resolution_suggestions"),
+            {"refresh": "1"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Synthetic Debater Resolution Suggestions")
+        self.assertContains(response, synthetic.name)
+        self.assertContains(response, canonical.name)
+
+    def test_synthetic_resolution_suggestions_post_resolves_debater(self):
+        self.client.force_login(self.superuser)
+        synthetic = Debater.all_objects.create(
+            first_name="Syn",
+            last_name="Thetic",
+            school=self.school,
+            temporary=True,
+            synthetic=True,
+        )
+        canonical = Debater.objects.create(
+            first_name="Canonical",
+            last_name="Debater",
+            school=self.school,
+        )
+
+        response = self.client.post(
+            reverse("core:synthetic_resolution_suggestions"),
+            {
+                "synthetic_debater": str(synthetic.id),
+                "canonical_debater": str(canonical.id),
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertJSONEqual(
+            response.content,
+            {
+                "success": True,
+                "message": f"Resolved synthetic debater {synthetic.name} into {canonical.name}.",
+            },
+        )
+        self.assertFalse(Debater.all_objects.filter(pk=synthetic.pk).exists())
+        self.assertTrue(Debater.all_objects.filter(pk=canonical.pk).exists())
+        self.assertTrue(
+            SyntheticResolutionLog.objects.filter(
+                entity_type=SyntheticResolutionLog.EntityType.DEBATER,
+                synthetic_id=synthetic.id,
+                resolved_to_id=canonical.id,
+            ).exists()
+        )
 
     def test_elo_cache_invalidation_clears_cached_dashboard_state(self):
         self.client.force_login(self.superuser)

@@ -429,9 +429,35 @@ class RankingsRecomputeView(UserPassesTestMixin, TemplateView):
 class MergeSuggestionsView(UserPassesTestMixin, TemplateView):
     template_name = "admin/merge_suggestions.html"
     max_suggestions = 200
+    cache_key = "merge_suggestions_list"
 
     def test_func(self):
         return self.request.user.is_superuser
+
+    @staticmethod
+    def _annotate_debaters_with_counts(queryset):
+        return queryset.annotate(
+            team_result_count=Count("teams__team_results", distinct=True),
+            speaker_result_count=Count("speaker_results", distinct=True),
+            round_stat_count=Count("round_stats", distinct=True),
+            pm_video_count=Count("pm_videos", distinct=True),
+            lo_video_count=Count("lo_videos", distinct=True),
+            mg_video_count=Count("mg_videos", distinct=True),
+            mo_video_count=Count("mo_videos", distinct=True),
+        ).select_related("school")
+
+    @staticmethod
+    def _set_total_results(debaters):
+        for debater in debaters:
+            debater.total_results = (
+                getattr(debater, "team_result_count", 0)
+                + getattr(debater, "speaker_result_count", 0)
+                + getattr(debater, "round_stat_count", 0)
+                + getattr(debater, "pm_video_count", 0)
+                + getattr(debater, "lo_video_count", 0)
+                + getattr(debater, "mg_video_count", 0)
+                + getattr(debater, "mo_video_count", 0)
+            )
 
     def post(self, request, *args, **kwargs):
         debater_one_id = request.POST.get("debater_one")
@@ -447,17 +473,9 @@ class MergeSuggestionsView(UserPassesTestMixin, TemplateView):
             return JsonResponse({"success": False, "error": "Unable to find one of the selected debaters."})
 
         # Ensure the debater with more results is kept as primary (avoid N+1 queries)
-        debaters_with_counts = Debater.objects.filter(
-            pk__in=[debater_one.pk, debater_two.pk]
-        ).annotate(
-            team_result_count=Count('teams__team_results', distinct=True),
-            speaker_result_count=Count('speaker_results', distinct=True),
-            round_stat_count=Count('round_stats', distinct=True),
-            pm_video_count=Count('pm_videos', distinct=True),
-            lo_video_count=Count('lo_videos', distinct=True),
-            mg_video_count=Count('mg_videos', distinct=True),
-            mo_video_count=Count('mo_videos', distinct=True),
-        ).select_related('school')
+        debaters_with_counts = self._annotate_debaters_with_counts(
+            Debater.objects.filter(pk__in=[debater_one.pk, debater_two.pk])
+        )
 
         debaters_dict = {d.pk: d for d in debaters_with_counts}
         debater_one_annotated = debaters_dict.get(debater_one.pk)
@@ -465,24 +483,9 @@ class MergeSuggestionsView(UserPassesTestMixin, TemplateView):
 
         # Calculate totals and determine primary/secondary
         if debater_one_annotated and debater_two_annotated:
-            one_total = (
-                debater_one_annotated.team_result_count +
-                debater_one_annotated.speaker_result_count +
-                debater_one_annotated.round_stat_count +
-                debater_one_annotated.pm_video_count +
-                debater_one_annotated.lo_video_count +
-                debater_one_annotated.mg_video_count +
-                debater_one_annotated.mo_video_count
-            )
-            two_total = (
-                debater_two_annotated.team_result_count +
-                debater_two_annotated.speaker_result_count +
-                debater_two_annotated.round_stat_count +
-                debater_two_annotated.pm_video_count +
-                debater_two_annotated.lo_video_count +
-                debater_two_annotated.mg_video_count +
-                debater_two_annotated.mo_video_count
-            )
+            self._set_total_results([debater_one_annotated, debater_two_annotated])
+            one_total = debater_one_annotated.total_results
+            two_total = debater_two_annotated.total_results
             
             if two_total > one_total:
                 primary_debater = debater_two
@@ -516,7 +519,7 @@ class MergeSuggestionsView(UserPassesTestMixin, TemplateView):
         )
 
         # Clear the cache so next page load shows updated suggestions
-        cache.delete('merge_suggestions_list')
+        cache.delete(self.cache_key)
 
         return JsonResponse({
             "success": True,
@@ -530,9 +533,8 @@ class MergeSuggestionsView(UserPassesTestMixin, TemplateView):
         force_refresh = self.request.GET.get('refresh') == '1'
         
         # Try to get from cache first (cache for 5 minutes)
-        cache_key = 'merge_suggestions_list'
         if not force_refresh:
-            cached_suggestions = cache.get(cache_key)
+            cached_suggestions = cache.get(self.cache_key)
             if cached_suggestions is not None:
                 context["suggestions"] = cached_suggestions
                 context["cached"] = True
@@ -540,7 +542,7 @@ class MergeSuggestionsView(UserPassesTestMixin, TemplateView):
 
         # Cache the results for 5 minutes
         suggestions = self._build_suggestions()
-        cache.set(cache_key, suggestions, 300)
+        cache.set(self.cache_key, suggestions, 300)
         
         context["suggestions"] = suggestions
         context["cached"] = False
@@ -565,7 +567,7 @@ class MergeSuggestionsView(UserPassesTestMixin, TemplateView):
         # First, get recent debaters WITHOUT the expensive counts
         # We'll calculate counts only for those we actually need
         debaters = list(
-            Debater.objects.filter(alias_group__isnull=True)
+            Debater.objects.filter(alias_group__isnull=True, synthetic=False)
             .exclude(first_name__isnull=True)
             .exclude(first_name="")
             .exclude(last_name__isnull=True)
@@ -634,25 +636,13 @@ class MergeSuggestionsView(UserPassesTestMixin, TemplateView):
         # Fetch counts in one query for all relevant debaters
         if debater_ids_to_count:
             debaters_with_counts = {
-                d.id: d for d in Debater.objects.filter(id__in=debater_ids_to_count).annotate(
-                    team_result_count=Count('teams__team_results', distinct=True),
-                    speaker_result_count=Count('speaker_results', distinct=True),
-                    round_stat_count=Count('round_stats', distinct=True),
-                    video_count=Count('pm_videos', distinct=True) + 
-                               Count('lo_videos', distinct=True) + 
-                               Count('mg_videos', distinct=True) + 
-                               Count('mo_videos', distinct=True),
+                d.id: d
+                for d in self._annotate_debaters_with_counts(
+                    Debater.objects.filter(id__in=debater_ids_to_count)
                 )
             }
 
-            # Add total_results to each
-            for debater in debaters_with_counts.values():
-                debater.total_results = (
-                    debater.team_result_count +
-                    debater.speaker_result_count +
-                    debater.round_stat_count +
-                    debater.video_count
-                )
+            self._set_total_results(debaters_with_counts.values())
         else:
             debaters_with_counts = {}
 
@@ -738,3 +728,171 @@ class MergeSuggestionsView(UserPassesTestMixin, TemplateView):
                 score -= 20
 
         return score
+
+
+class SyntheticResolutionSuggestionsView(MergeSuggestionsView):
+    template_name = "admin/synthetic_resolution_suggestions.html"
+    cache_key = "synthetic_resolution_suggestions_list"
+
+    def post(self, request, *args, **kwargs):
+        synthetic_debater_id = request.POST.get("synthetic_debater")
+        canonical_debater_id = request.POST.get("canonical_debater")
+        reason = str(request.POST.get("reason") or "").strip() or "Suggested synthetic debater resolution"
+
+        if not synthetic_debater_id or not canonical_debater_id:
+            return JsonResponse({"success": False, "error": "Missing debater selection."})
+
+        try:
+            synthetic_debater = Debater.all_objects.select_related("school").get(
+                pk=synthetic_debater_id,
+                synthetic=True,
+            )
+            canonical_debater = Debater.objects.select_related("school").get(pk=canonical_debater_id)
+        except Debater.DoesNotExist:
+            return JsonResponse({"success": False, "error": "Unable to find one of the selected debaters."})
+
+        if synthetic_debater.pk == canonical_debater.pk:
+            return JsonResponse({"success": False, "error": "Synthetic and canonical debaters must be different."})
+
+        try:
+            resolve_synthetic_entity(
+                entity_type="debater",
+                synthetic_id=synthetic_debater.pk,
+                target_id=canonical_debater.pk,
+                actor=request.user,
+                reason=reason,
+                source_context={"source": "synthetic_resolution_suggestions"},
+            )
+        except Exception as exc:
+            return JsonResponse({"success": False, "error": str(exc)})
+
+        cache.delete(self.cache_key)
+
+        return JsonResponse(
+            {
+                "success": True,
+                "message": f"Resolved synthetic debater {synthetic_debater.name} into {canonical_debater.name}.",
+            }
+        )
+
+    def _build_suggestions(self):
+        synthetic_debaters = list(
+            Debater.all_objects.filter(alias_group__isnull=True, synthetic=True)
+            .exclude(first_name__isnull=True)
+            .exclude(first_name="")
+            .exclude(last_name__isnull=True)
+            .exclude(last_name="")
+            .select_related("school")
+            .annotate(
+                first_normalized=Lower("first_name"),
+                last_normalized=Lower("last_name"),
+            )
+            .order_by("-id")[:1000]
+        )
+        canonical_debaters = list(
+            Debater.objects.filter(alias_group__isnull=True, synthetic=False)
+            .exclude(first_name__isnull=True)
+            .exclude(first_name="")
+            .exclude(last_name__isnull=True)
+            .exclude(last_name="")
+            .select_related("school")
+            .annotate(
+                first_normalized=Lower("first_name"),
+                last_normalized=Lower("last_name"),
+            )
+            .order_by("-id")[:2000]
+        )
+
+        canonical_name_groups = defaultdict(list)
+        canonical_first_letter_groups = defaultdict(list)
+        for debater in canonical_debaters:
+            key = (debater.first_normalized, debater.last_normalized)
+            canonical_name_groups[key].append(debater)
+            if debater.first_normalized:
+                canonical_first_letter_groups[debater.first_normalized[0]].append(debater)
+
+        pairs_to_check = []
+        seen_pairs = set()
+        for synthetic_debater in synthetic_debaters:
+            exact_matches = canonical_name_groups.get(
+                (synthetic_debater.first_normalized, synthetic_debater.last_normalized),
+                [],
+            )
+            for canonical_debater in exact_matches:
+                pair_key = (synthetic_debater.id, canonical_debater.id)
+                if pair_key in seen_pairs:
+                    continue
+                seen_pairs.add(pair_key)
+                pairs_to_check.append((synthetic_debater, canonical_debater, 1.0))
+
+            first_letter = (synthetic_debater.first_normalized or "")[:1]
+            fuzzy_candidates = canonical_first_letter_groups.get(first_letter, [])
+            if len(fuzzy_candidates) > 150:
+                fuzzy_candidates = fuzzy_candidates[:150]
+
+            for canonical_debater in fuzzy_candidates:
+                pair_key = (synthetic_debater.id, canonical_debater.id)
+                if pair_key in seen_pairs:
+                    continue
+                name_similarity = self._calculate_name_similarity(
+                    synthetic_debater,
+                    canonical_debater,
+                )
+                if name_similarity < 0.75:
+                    continue
+                seen_pairs.add(pair_key)
+                pairs_to_check.append((synthetic_debater, canonical_debater, name_similarity))
+
+        debater_ids_to_count = set()
+        for synthetic_debater, canonical_debater, _ in pairs_to_check:
+            debater_ids_to_count.add(synthetic_debater.id)
+            debater_ids_to_count.add(canonical_debater.id)
+
+        debaters_with_counts = {}
+        if debater_ids_to_count:
+            debaters_with_counts = {
+                d.id: d
+                for d in self._annotate_debaters_with_counts(
+                    Debater.all_objects.filter(id__in=debater_ids_to_count)
+                )
+            }
+            self._set_total_results(debaters_with_counts.values())
+
+        suggestions = []
+        for synthetic_debater, canonical_debater, name_similarity in pairs_to_check:
+            synthetic_with_counts = debaters_with_counts.get(synthetic_debater.id, synthetic_debater)
+            canonical_with_counts = debaters_with_counts.get(canonical_debater.id, canonical_debater)
+
+            if not hasattr(synthetic_with_counts, "total_results"):
+                synthetic_with_counts.total_results = 0
+            if not hasattr(canonical_with_counts, "total_results"):
+                canonical_with_counts.total_results = 0
+
+            suggestion = self._create_suggestion(
+                synthetic_with_counts,
+                canonical_with_counts,
+                name_similarity,
+            )
+            if suggestion:
+                suggestions.append(suggestion)
+
+        suggestions.sort(key=lambda x: x["score"], reverse=True)
+        return suggestions[:self.max_suggestions]
+
+    def _create_suggestion(self, synthetic_debater, canonical_debater, name_similarity):
+        score = self._calculate_merge_score(synthetic_debater, canonical_debater, name_similarity)
+        if score <= 0:
+            return None
+
+        min_results = min(synthetic_debater.total_results, canonical_debater.total_results)
+        max_results = max(synthetic_debater.total_results, canonical_debater.total_results)
+
+        return {
+            "synthetic_debater": synthetic_debater,
+            "canonical_debater": canonical_debater,
+            "score": score,
+            "name_similarity": name_similarity,
+            "same_school": synthetic_debater.school_id == canonical_debater.school_id,
+            "min_results": min_results,
+            "max_results": max_results,
+        }

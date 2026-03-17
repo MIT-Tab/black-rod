@@ -1,0 +1,232 @@
+{% extends "base/base.html" %}
+{% block font_awesome %}
+    {% include "base/_font_awesome.html" %}
+{% endblock font_awesome %}
+
+{% block content %}
+    <div class="row mt-lg-5 ml-lg-2 mr-lg-2 mb-lg-5 m-1">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <a class="btn btn-sm btn-outline-secondary" href="{% url 'core:admin_tools' %}">Back to Admin Tools</a>
+            </div>
+            <div class="card shadow-lg rounded-l5">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <div>
+                            <h5 class="card-title mb-1">Synthetic Debater Resolution Suggestions</h5>
+                            <p class="text-muted mb-0">
+                                Suggested matches between one synthetic debater and one canonical debater.
+                                {% if cached %}
+                                    <span class="badge badge-info ml-2">Cached</span>
+                                    <a href="?refresh=1" class="btn btn-sm btn-outline-secondary ml-2">
+                                        <i class="fas fa-sync-alt"></i> Refresh
+                                    </a>
+                                {% endif %}
+                            </p>
+                        </div>
+                        <span class="badge badge-pill badge-secondary" id="suggestion-count">{{ suggestions|length }} suggestions</span>
+                    </div>
+
+                    <div id="alert-container"></div>
+
+                    {% if messages %}
+                        {% for message in messages %}
+                            <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                                {{ message }}
+                                <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+                                    <span aria-hidden="true">&times;</span>
+                                </button>
+                            </div>
+                        {% endfor %}
+                    {% endif %}
+
+                    {% if suggestions %}
+                        <div class="table-responsive">
+                            <table class="table table-sm table-hover align-middle mb-0">
+                                <thead class="thead-light text-uppercase small">
+                                    <tr>
+                                        <th style="min-width: 240px;">Synthetic Debater</th>
+                                        <th style="min-width: 240px;">Canonical Debater</th>
+                                        <th style="width: 170px;">Details</th>
+                                        <th style="width: 120px;" class="text-right">Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="suggestions-tbody">
+                                    {% for pair in suggestions %}
+                                        <tr data-synthetic-debater="{{ pair.synthetic_debater.id }}" data-canonical-debater="{{ pair.canonical_debater.id }}">
+                                            <td class="align-middle py-2">
+                                                <div class="font-weight-bold text-dark">{{ pair.synthetic_debater.name }}</div>
+                                                <div class="text-muted small">
+                                                    ID {{ pair.synthetic_debater.id }}
+                                                    &middot;
+                                                    {% if pair.synthetic_debater.school %}
+                                                        {{ pair.synthetic_debater.school.name }}
+                                                    {% else %}
+                                                        Unknown School
+                                                    {% endif %}
+                                                    &middot;
+                                                    {{ pair.synthetic_debater.first_season|default:"?" }} – {{ pair.synthetic_debater.latest_season|default:"?" }}
+                                                    &middot;
+                                                    <span class="badge badge-dark">Synthetic</span>
+                                                    <span class="badge badge-info">{{ pair.synthetic_debater.total_results }} results</span>
+                                                </div>
+                                            </td>
+                                            <td class="align-middle py-2">
+                                                <div class="font-weight-bold text-dark">{{ pair.canonical_debater.name }}</div>
+                                                <div class="text-muted small">
+                                                    ID {{ pair.canonical_debater.id }}
+                                                    &middot;
+                                                    {% if pair.canonical_debater.school %}
+                                                        {{ pair.canonical_debater.school.name }}
+                                                    {% else %}
+                                                        Unknown School
+                                                    {% endif %}
+                                                    &middot;
+                                                    {{ pair.canonical_debater.first_season|default:"?" }} – {{ pair.canonical_debater.latest_season|default:"?" }}
+                                                    &middot;
+                                                    <span class="badge badge-success">Canonical</span>
+                                                    <span class="badge badge-info">{{ pair.canonical_debater.total_results }} results</span>
+                                                </div>
+                                            </td>
+                                            <td class="align-middle py-2">
+                                                <div class="d-flex flex-column gap-1">
+                                                    {% if pair.same_school %}
+                                                        <span class="badge badge-warning px-2 py-1 text-uppercase small">
+                                                            <i class="fas fa-school mr-1"></i> Same School
+                                                        </span>
+                                                    {% else %}
+                                                        <span class="badge badge-light px-2 py-1 text-uppercase small">Different Schools</span>
+                                                    {% endif %}
+                                                    {% if pair.min_results <= 5 and pair.max_results > 5 %}
+                                                        <span class="badge badge-danger px-2 py-1 text-uppercase small mt-1">
+                                                            <i class="fas fa-exclamation-triangle mr-1"></i> Low Results
+                                                        </span>
+                                                    {% endif %}
+                                                    <span class="badge badge-secondary px-2 py-1 small mt-1">
+                                                        {% widthratio pair.name_similarity 1 100 %}% Match
+                                                    </span>
+                                                </div>
+                                            </td>
+                                            <td class="text-right align-middle py-2">
+                                                <button type="button"
+                                                        class="btn btn-dark btn-sm shadow-sm px-3 resolve-synthetic-btn"
+                                                        data-synthetic-debater="{{ pair.synthetic_debater.id }}"
+                                                        data-canonical-debater="{{ pair.canonical_debater.id }}">
+                                                    <i class="fas fa-check mr-1"></i> Resolve
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <div class="alert alert-success mb-0" role="alert">
+                            No synthetic debater resolution candidates found.
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const alertContainer = document.getElementById('alert-container');
+        const suggestionCount = document.getElementById('suggestion-count');
+        const tbody = document.getElementById('suggestions-tbody');
+        const processedSyntheticIds = new Set();
+
+        function showAlert(message, type) {
+            const alert = document.createElement('div');
+            alert.className = `alert alert-${type} alert-dismissible fade show`;
+            alert.innerHTML = `
+                ${message}
+                <button type="button" class="close" data-dismiss="alert">
+                    <span>&times;</span>
+                </button>
+            `;
+            alertContainer.appendChild(alert);
+            setTimeout(() => {
+                $(alert).alert('close');
+            }, 5000);
+        }
+
+        function updateCount() {
+            const remainingRows = tbody.querySelectorAll('tr').length;
+            suggestionCount.textContent = `${remainingRows} suggestions`;
+        }
+
+        function removeSyntheticRows(syntheticDebaterId) {
+            tbody.querySelectorAll(`tr[data-synthetic-debater="${syntheticDebaterId}"]`).forEach(row => {
+                row.style.transition = 'opacity 0.3s';
+                row.style.opacity = '0';
+                setTimeout(() => {
+                    row.remove();
+                    updateCount();
+                    if (tbody.querySelectorAll('tr').length === 0) {
+                        tbody.parentElement.parentElement.innerHTML = `
+                            <div class="alert alert-success mb-0" role="alert">
+                                No synthetic debater resolution candidates found.
+                            </div>
+                        `;
+                    }
+                }, 300);
+            });
+        }
+
+        document.querySelectorAll('.resolve-synthetic-btn').forEach(button => {
+            button.addEventListener('click', function(e) {
+                e.preventDefault();
+
+                const btn = this;
+                const syntheticDebater = btn.dataset.syntheticDebater;
+                const canonicalDebater = btn.dataset.canonicalDebater;
+
+                if (processedSyntheticIds.has(syntheticDebater)) {
+                    removeSyntheticRows(syntheticDebater);
+                    return;
+                }
+
+                btn.disabled = true;
+                const originalHTML = btn.innerHTML;
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Resolving...';
+
+                const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value ||
+                                 document.cookie.split('; ').find(row => row.startsWith('csrftoken='))?.split('=')[1];
+
+                fetch(window.location.href, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'X-CSRFToken': csrfToken,
+                    },
+                    body: `synthetic_debater=${syntheticDebater}&canonical_debater=${canonicalDebater}`
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        processedSyntheticIds.add(syntheticDebater);
+                        removeSyntheticRows(syntheticDebater);
+                    } else {
+                        if (data.error && (data.error.includes('Unable to find') || data.error.includes('does not exist'))) {
+                            processedSyntheticIds.add(syntheticDebater);
+                            removeSyntheticRows(syntheticDebater);
+                        } else {
+                            showAlert(data.error || 'Failed to resolve synthetic debater', 'danger');
+                            btn.disabled = false;
+                            btn.innerHTML = originalHTML;
+                        }
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    showAlert('An error occurred while resolving the synthetic debater', 'danger');
+                    btn.disabled = false;
+                    btn.innerHTML = originalHTML;
+                });
+            });
+        });
+    });
+    </script>
+{% endblock content %}

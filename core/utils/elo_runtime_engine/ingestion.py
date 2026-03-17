@@ -1,11 +1,13 @@
 """Transforms contract-backed rounds into deduplicated runtime Debate and TournamentSnapshot objects with minimal legacy fallback."""
 
 
-from datetime import datetime, time, timezone
 from collections import defaultdict
-from django.core.exceptions import ObjectDoesNotExist
+from datetime import datetime, time, timezone
 
-from core.models import Debater, Round, RoundStats
+from django.core.exceptions import ObjectDoesNotExist
+from django.db.models import Prefetch
+
+from core.models import Debater, Round, RoundStats, Team, TournamentImport
 from core.utils.debater_aliases import load_representative_debater_maps
 from core.utils.elo_runtime_engine.constants import (
     normalize_school_name,
@@ -84,6 +86,10 @@ def _has_contract_team_metadata(metadata):
 
 
 def _imported_alias_rows(round_obj, side):
+    cached = getattr(round_obj, "_elo_imported_alias_rows", None)
+    if cached is not None and side in cached:
+        return cached.get(side, ())
+
     try:
         imported_metadata = round_obj.imported_metadata
     except ObjectDoesNotExist:
@@ -99,7 +105,13 @@ def _imported_alias_rows(round_obj, side):
         if alias_row is None or alias_row.debater_id is None:
             continue
         values.append((int(alias_row.debater_id), str(alias_row.source_name or "").strip()))
-    return tuple(values)
+    resolved = tuple(values)
+
+    if cached is None:
+        cached = {}
+        setattr(round_obj, "_elo_imported_alias_rows", cached)
+    cached[side] = resolved
+    return resolved
 
 
 def _has_contract_team_identity(round_obj, metadata):
@@ -123,7 +135,7 @@ def _round_is_in_scope(tournament, season, allowed_seasons, include_novice, incl
     return True
 
 
-def _team_from_metadata_or_round(metadata, round_obj, side, representative_by_id):
+def _team_from_metadata_or_round(metadata, round_obj, side, representative_by_id, team_members_by_id):
     imported_aliases = _imported_alias_rows(round_obj, side)
     if imported_aliases:
         team_ids = tuple(alias_row[0] for alias_row in imported_aliases)
@@ -143,9 +155,7 @@ def _team_from_metadata_or_round(metadata, round_obj, side, representative_by_id
     if not team:
         return (), ()
 
-    debaters = list(team.debaters.all())
-    ids = [int(debater.id) for debater in debaters if debater.id]
-    names = [str(debater.name or "").strip() for debater in debaters]
+    ids, names = team_members_by_id.get(int(team.id), ((), ()))
     return _collapse_linked_team_ids(ids, names, representative_by_id)
 
 
@@ -239,6 +249,34 @@ def _infer_is_proam_partnership(debate_season, team_a, team_b, representative_fi
     )
 
 
+def _load_team_members_by_id(team_ids):
+    rows_by_team_id = defaultdict(list)
+    if not team_ids:
+        return rows_by_team_id
+
+    for team_id, debater_id, first_name, last_name in (
+        Team.debaters.through.objects.filter(team_id__in=team_ids)
+        .order_by("team_id", "id")
+        .values_list("team_id", "debater_id", "debater__first_name", "debater__last_name")
+    ):
+        if team_id is None or debater_id is None:
+            continue
+        rows_by_team_id[int(team_id)].append(
+            (
+                int(debater_id),
+                ("%s %s" % (str(first_name or "").strip(), str(last_name or "").strip())).strip(),
+            )
+        )
+
+    return {
+        team_id: (
+            tuple(member_id for member_id, _member_name in members),
+            tuple(member_name for _member_id, member_name in members),
+        )
+        for team_id, members in rows_by_team_id.items()
+    }
+
+
 def _build_debate_from_round(
     round_obj,
     season,
@@ -247,6 +285,7 @@ def _build_debate_from_round(
     scored_debaters_by_round_id,
     representative_by_id,
     representative_first_seasons,
+    team_members_by_id,
 ):
     winner = winner_code_for_debate(round_obj)
     if not is_rated_debate(round_obj):
@@ -261,12 +300,14 @@ def _build_debate_from_round(
         round_obj,
         "a",
         representative_by_id,
+        team_members_by_id,
     )
     team_b, names_b = _team_from_metadata_or_round(
         metadata,
         round_obj,
         "b",
         representative_by_id,
+        team_members_by_id,
     )
     if not has_contract_team_identity:
         scored_debater_ids = scored_debaters_by_round_id.get(int(round_obj.id)) or set()
@@ -344,13 +385,27 @@ def build_ingested_snapshots_and_debates(allowed_seasons, include_novice, includ
             "imported_metadata__opp_1_alias",
             "imported_metadata__opp_2_alias",
         )
-        .prefetch_related("imported_metadata__sources")
+        .prefetch_related(
+            Prefetch(
+                "imported_metadata__sources",
+                queryset=TournamentImport.objects.order_by("id"),
+                to_attr="ordered_sources",
+            ),
+        )
         .order_by(
             "tournament__date",
             "tournament_id",
             "round_number",
             "id",
         )
+    )
+    team_members_by_id = _load_team_members_by_id(
+        {
+            int(team_id)
+            for round_obj in rounds
+            for team_id in (round_obj.gov_id, round_obj.opp_id)
+            if team_id is not None
+        }
     )
     representative_by_id, _linked_ids_by_representative = load_representative_debater_maps()
     representative_first_seasons = _load_representative_first_seasons(representative_by_id)
@@ -434,6 +489,7 @@ def build_ingested_snapshots_and_debates(allowed_seasons, include_novice, includ
             scored_debaters_by_round_id,
             representative_by_id,
             representative_first_seasons,
+            team_members_by_id,
         )
         if not key or debate is None:
             continue

@@ -102,7 +102,9 @@ def debate_source_fields(debate):
         imported_metadata = None
 
     if imported_metadata is not None:
-        source_rows = list(imported_metadata.sources.all().order_by("id"))
+        source_rows = getattr(imported_metadata, "ordered_sources", None)
+        if source_rows is None:
+            source_rows = list(imported_metadata.sources.all().order_by("id"))
         if source_rows:
             primary_source = source_rows[0]
             source_kind = str(primary_source.import_type or "").strip() or "round"

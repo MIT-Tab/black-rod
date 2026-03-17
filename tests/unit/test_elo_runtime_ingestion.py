@@ -3,6 +3,9 @@
 from datetime import date
 
 import pytest
+from django.db import connection
+from django.db.models import Prefetch
+from django.test.utils import CaptureQueriesContext
 
 from core.models import (
     Debater,
@@ -17,6 +20,7 @@ from core.models import (
     TournamentImport,
 )
 from core.utils.elo_runtime_engine.constants import PARTNER_MODE
+from core.utils.elo_runtime_engine.debate_contract import debate_source_fields
 from core.utils.elo_runtime_engine.ingestion import build_ingested_snapshots_and_debates
 from core.utils.elo_runtime_engine.rating import apply_elo
 
@@ -120,6 +124,45 @@ def test_ingestion_collapses_side_to_single_speaker_when_only_one_has_speaks():
     assert debate.team_a == (fixture["gov_one"].id,)
     assert set(debate.team_b) == {fixture["opp_one"].id, fixture["opp_two"].id}
     assert fixture["gov_two"].id not in debate.participant_names
+
+
+@pytest.mark.django_db
+def test_debate_source_fields_uses_prefetched_import_sources_without_extra_queries():
+    fixture = _standard_runtime_fixture()
+    round_obj = _create_round_with_stats(
+        tournament=fixture["tournament"],
+        gov_team=fixture["gov_team"],
+        opp_team=fixture["opp_team"],
+        round_number=1,
+        victor=Round.GOV,
+        import_origin="file_backup",
+    )
+    imported_metadata = ImportedRoundMetadata.objects.create(round=round_obj)
+    source = TournamentImport.objects.create(
+        tournament=fixture["tournament"],
+        import_type=TournamentImport.ImportType.FILE_BACKUP,
+        original_file_name="runtime-fixture.json",
+    )
+    imported_metadata.sources.add(source)
+
+    prefetched_round = (
+        Round.objects.select_related("imported_metadata")
+        .prefetch_related(
+            Prefetch(
+                "imported_metadata__sources",
+                queryset=TournamentImport.objects.order_by("id"),
+                to_attr="ordered_sources",
+            )
+        )
+        .get(pk=round_obj.pk)
+    )
+
+    with CaptureQueriesContext(connection) as ctx:
+        source_kind, source_label = debate_source_fields(prefetched_round)
+
+    assert len(ctx) == 0
+    assert source_kind == TournamentImport.ImportType.FILE_BACKUP
+    assert source_label == "runtime-fixture.json"
 
 
 @pytest.mark.django_db
