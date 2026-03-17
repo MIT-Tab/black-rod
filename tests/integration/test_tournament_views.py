@@ -169,6 +169,37 @@ def test_tournament_detail_view_builds_context(monkeypatch, school):
     assert [r.team for r in context["novice_team_results"]] == [novice_team]
     assert context["varsity_speaker_results"][0].tie is True
     assert context["novice_speaker_results"][0].place == 0  # tie adjusts place
+    assert context["tab_cards_search_enabled"] is False
+    assert context["tab_cards_available"] is True
+    assert context["teams"] == []
+
+
+def test_tournament_detail_view_builds_tab_card_search_context_when_enabled(monkeypatch, school, settings):
+    settings.ENABLE_TOURNAMENT_TAB_CARD_SEARCH = True
+
+    tournament = Tournament.objects.create(
+        name="Contextual",
+        manual_name="Contextual",
+        host=school,
+        date=date(2024, 4, 1),
+        season=settings.CURRENT_SEASON,
+    )
+
+    varsity_team = Team.objects.create(name="Varsity Team")
+    overlap_team = Team.objects.create(name="Overlap Team")
+    Round.objects.create(gov=varsity_team, opp=overlap_team, tournament=tournament)
+
+    monkeypatch.setattr(tv, "get_tab_card_data", lambda team, _t: f"tab-{team.id}")
+
+    request = RequestFactory().get("/")
+    request.user = SimpleNamespace(is_authenticated=True, has_perms=lambda perms: True)
+    view = tv.TournamentDetailView()
+    view.setup(request, pk=tournament.pk)
+    view.object = tournament
+
+    context = view.get_context_data(object=tournament)
+
+    assert context["tab_cards_search_enabled"] is True
     assert context["tab_cards_available"] is True
     assert len(context["teams"]) == 2
     assert all(label.startswith("tab-") for _, label in context["teams"])
@@ -293,4 +324,3 @@ def test_schedule_view_groups_by_month(school):
     assert "Alpha" in jan_names
     assert "Beta" in jan_names
     assert any(entry["month"] == 2 for entry in context["tournaments"])
-

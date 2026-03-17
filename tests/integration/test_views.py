@@ -2,6 +2,7 @@
 from datetime import date
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 import pytest
 from django.contrib.auth import get_user_model
@@ -99,6 +100,24 @@ class ViewTestCase(TestCase):
         # Test school-tournament relationship
         tournaments = self.school.hosted_tournaments.all()
         self.assertIn(self.tournament, tournaments)
+
+    def test_filtered_search_view_excludes_synthetic_debaters(self):
+        synthetic = Debater.all_objects.create(
+            first_name="Synthetic",
+            last_name="Result",
+            school=self.school,
+            synthetic=True,
+        )
+        kept_result = SimpleNamespace(model=Debater, object=self.debater)
+        filtered_result = SimpleNamespace(model=Debater, object=synthetic)
+
+        from haystack.views import SearchView
+        from core.views.views import FilteredSearchView
+
+        with patch.object(SearchView, "get_results", return_value=[kept_result, filtered_result]):
+            results = FilteredSearchView().get_results()
+
+        self.assertEqual(results, [kept_result])
 
 
 class ModelIntegrationTest(TestCase):

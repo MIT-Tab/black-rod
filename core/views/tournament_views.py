@@ -366,21 +366,28 @@ class TournamentDetailView(CustomDetailView):
 
         context["novice_speaker_results"] = nspeakers
 
+        context["tab_cards_search_enabled"] = getattr(
+            settings,
+            "ENABLE_TOURNAMENT_TAB_CARD_SEARCH",
+            False,
+        )
         context["tab_cards_available"] = visible_canonical_rounds(
             Round.objects.filter(tournament=self.object)
         ).exists()
 
-        teams = (
-            Team.objects.filter(
-                Q(govs__tournament=self.object) | Q(opps__tournament=self.object)
+        context["teams"] = []
+        if context["tab_cards_search_enabled"]:
+            teams = (
+                Team.objects.filter(
+                    Q(govs__tournament=self.object) | Q(opps__tournament=self.object)
+                )
+                .distinct()
+                .all()
             )
-            .distinct()
-            .all()
-        )
 
-        context["teams"] = [
-            (team, get_tab_card_data(team, self.object)) for team in teams
-        ]
+            context["teams"] = [
+                (team, get_tab_card_data(team, self.object)) for team in teams
+            ]
 
         return context
 

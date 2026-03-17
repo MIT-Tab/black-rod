@@ -196,6 +196,9 @@ class DebaterDetailView(CustomDetailView):
         },
     ]
 
+    def get_queryset(self):
+        return Debater.objects.select_related("school", "alias_group")
+
     def get_context_data(self, *args, **kwargs):
         context = super().get_context_data(*args, **kwargs)
 
@@ -300,7 +303,9 @@ class DebaterDetailView(CustomDetailView):
         videos += list(self.object.mg_videos.all())
         videos += list(self.object.mo_videos.all())
         context["videos"] = [video for video in videos if has_perm(self.request.user, video)]
-        context["partner_breakdown"] = build_debater_partner_breakdown(self.object)
+        context["partner_breakdown"] = None
+        if getattr(settings, "ENABLE_DEBATER_PARTNER_PIE_CHART", False):
+            context["partner_breakdown"] = build_debater_partner_breakdown(self.object)
         context["can_download_tab_cards_csv"] = can_download_debater_tab_cards(
             self.request.user,
             self.object,
@@ -361,7 +366,7 @@ class DebaterAutocomplete(autocomplete.Select2QuerySetView):
             search_ids = [row.pk for row in SearchQuerySet().models(Debater).filter(content=self.q).all()]
             qs = base_manager.filter(id__in=search_ids)
 
-        qs = qs.order_by("-pk")
+        qs = qs.filter(synthetic=False).order_by("-pk")
         school = self.forwarded.get("school", None)
         if school:
             qs = qs.filter(school__id=school)

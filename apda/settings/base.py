@@ -117,6 +117,8 @@ WSGI_APPLICATION = "apda.wsgi.application"
 DEFAULT_SEASON = '2025'
 CURRENT_SEASON = '2025'
 GM_BIPOC_AUTOQUAL_START_SEASON = 2025
+ENABLE_DEBATER_PARTNER_PIE_CHART = False
+ENABLE_TOURNAMENT_TAB_CARD_SEARCH = False
 
 # Set defaults for non-production environments
 if os.environ.get("ENV") != "production":

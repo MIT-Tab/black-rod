@@ -90,7 +90,8 @@
     </table>
 {% endblock detail_view %}
 {% block left_column %}
-    {% for team, tab_card in teams %}
+    {% if tab_cards_search_enabled %}
+        {% for team, tab_card in teams %}
         <div class="modal fade" id="tournament_{{ team.id }}">
             <div class="modal-dialog modal-lg">
                 <div class="modal-content">
@@ -134,8 +135,9 @@
                 </div>
             </div>
         </div>
-    {% endfor %}
-    {% if tab_cards_available and user.is_authenticated %}
+        {% endfor %}
+    {% endif %}
+    {% if tab_cards_search_enabled and tab_cards_available and user.is_authenticated %}
         <div class="card mt-3 mb-3">
             <div class="card-body">
                 <h5 class="card-title pb-2">Teams</h5>

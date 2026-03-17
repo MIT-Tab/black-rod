@@ -7,6 +7,7 @@ from api.views import (
     LLMProxyView,
     RobotsTxtView,
 )
+from core.views.views import FilteredSearchView
 
 favicon_view = RedirectView.as_view(url='/favicon.ico', permanent=True)
 
@@ -14,7 +15,7 @@ urlpatterns = [
     path("admin/", admin.site.urls),
     path("auth/", include("django.contrib.auth.urls")),
     path("accounts/", include("allauth.urls")),
-    path("search/", include("haystack.urls")),
+    path("search/", FilteredSearchView(), name="haystack_search"),
     path("summernote/", include("django_summernote.urls")),
     path("llm/", LLMProxyView.as_view(), name='llm_proxy'),
     path("llms.txt", LLMDocumentationView.as_view(), name='llm_documentation'),

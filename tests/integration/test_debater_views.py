@@ -101,6 +101,15 @@ class DebaterViewsTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self._assert_shows_debater_name(response)
 
+    def test_synthetic_debater_hidden_from_list(self):
+        self._create_debater("Synthetic Debater", synthetic=True)
+
+        response = self.client.get(reverse("core:debater_list"))
+
+        self.assertEqual(response.status_code, 200)
+        self._assert_shows_debater_name(response)
+        self.assertNotContains(response, "Synthetic Debater")
+
     def test_debater_filter_by_school(self):
         """Test filtering debaters by school"""
         # Create another school and debater
@@ -119,6 +128,15 @@ class DebaterViewsTest(TestCase):
     def test_nonexistent_debater_404(self):
         """Test that non-existent debater returns 404"""
         response = self.client.get(reverse("core:debater_detail", kwargs={"pk": 99999}))
+        self.assertEqual(response.status_code, 404)
+
+    def test_synthetic_debater_detail_returns_404(self):
+        synthetic_debater = self._create_debater("Synthetic Debater", synthetic=True)
+
+        response = self.client.get(
+            reverse("core:debater_detail", kwargs={"pk": synthetic_debater.pk})
+        )
+
         self.assertEqual(response.status_code, 404)
 
     def test_debater_statistics_view(self):
@@ -183,6 +201,7 @@ class DebaterViewsTest(TestCase):
         self.debater.refresh_from_db()
         self.assertEqual(self.debater.elo_manual_opt, Debater.EloManualOpt.OPT_OUT)
 
+    @override_settings(ENABLE_DEBATER_PARTNER_PIE_CHART=True)
     def test_debater_detail_shows_partner_breakdown_pie_chart(self):
         partner = self._create_debater("Pat Partner")
         opp_one = self._create_debater("Opp A")
@@ -212,6 +231,29 @@ class DebaterViewsTest(TestCase):
         self.assertContains(response, "Partner Breakdown")
         self.assertContains(response, "conic-gradient(")
         self.assertContains(response, partner.name)
+
+    def test_debater_detail_hides_partner_breakdown_pie_chart_by_default(self):
+        partner = self._create_debater("Pat Partner")
+        opp_one = self._create_debater("Opp A")
+        opp_two = self._create_debater("Opp B")
+        team = self._create_team("Partnership", self.debater, partner)
+        opponent = self._create_team("Opposition", opp_one, opp_two)
+
+        Round.objects.create(
+            gov=team,
+            opp=opponent,
+            tournament=self.tournament,
+            round_number=1,
+            victor=Round.GOV,
+        )
+
+        response = self.client.get(
+            reverse("core:debater_detail", kwargs={"pk": self.debater.pk})
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, "Partner Breakdown")
+        self.assertNotContains(response, "conic-gradient(")
 
     def test_debater_detail_excludes_synthetic_partners_and_teams(self):
         real_partner = self._create_debater("Real Partner")

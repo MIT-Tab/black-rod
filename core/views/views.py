@@ -6,12 +6,26 @@ from django.core.cache import cache
 from django.db.models import Count, Avg, Q, Sum, F, Prefetch
 from django.shortcuts import render
 from django.urls import reverse
+from haystack.views import SearchView
 from core.models import (
     COTY, NOTY, SOTY, TOTY, OnlineQUAL,
     Tournament, Debater, School, Team, TeamResult, SpeakerResult,
     Round, RoundStats,
 )
 from core.utils.rounds import visible_canonical_rounds
+
+
+class FilteredSearchView(SearchView):
+    def get_results(self):
+        results = list(super().get_results())
+        return [
+            result
+            for result in results
+            if not (
+                result.model is Debater
+                and getattr(result.object, "synthetic", False)
+            )
+        ]
 
 
 def index(request):

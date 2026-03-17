@@ -10,7 +10,7 @@ from .school import School
 
 class ActiveDebaterManager(models.Manager):
     def get_queryset(self):
-        return super().get_queryset().filter(temporary=False)
+        return super().get_queryset().filter(temporary=False, synthetic=False)
 
 
 class Debater(models.Model):
