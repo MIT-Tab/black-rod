@@ -204,8 +204,6 @@ def build_round_upsert_action(round_obj, *, action_type):
         "division": str(round_obj.division or "") or None,
         "elim_size": int(round_obj.elim_size) if round_obj.elim_size else None,
         "round_label": str(round_obj.round_label or ""),
-        "is_rated": bool(round_obj.is_rated),
-        "weight": float(round_obj.weight or 0),
         "victor": int(round_obj.victor or 0),
         "metadata": deepcopy(round_obj.metadata or {}),
         "import_origin": str(round_obj.import_origin or ""),

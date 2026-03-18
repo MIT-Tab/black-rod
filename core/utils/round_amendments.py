@@ -382,10 +382,6 @@ def _apply_round_fields(round_obj, action, *, partial):
         round_obj.elim_size = None if elim_size in (None, "") else int(elim_size)
     if "round_label" in action:
         round_obj.round_label = str(action.get("round_label") or "")
-    if "is_rated" in action:
-        round_obj.is_rated = _coerce_bool(action.get("is_rated"))
-    if "weight" in action:
-        round_obj.weight = float(action.get("weight"))
     if "victor" in action:
         round_obj.victor = int(action.get("victor"))
     if "metadata" in action:

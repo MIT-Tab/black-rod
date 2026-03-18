@@ -92,15 +92,6 @@ class TournamentRoundBallotForm(forms.Form):
         coerce=int,
         empty_value=Round.UNKNOWN,
     )
-    is_rated = forms.BooleanField(required=False, initial=True)
-    weight = forms.DecimalField(
-        required=False,
-        min_value=Decimal("0.0001"),
-        max_digits=6,
-        decimal_places=4,
-        initial=Decimal("1.0"),
-    )
-
     gov_1_debater = forms.ModelChoiceField(
         queryset=Debater.all_objects.none(),
         label="Gov 1",
@@ -223,10 +214,6 @@ class TournamentRoundBallotForm(forms.Form):
                 cleaned_data.get("outround_stage"),
             )
 
-        weight = cleaned_data.get("weight")
-        if weight in (None, ""):
-            cleaned_data["weight"] = Decimal("1.0")
-
         return cleaned_data
 
     @classmethod
@@ -259,8 +246,6 @@ class TournamentRoundBallotForm(forms.Form):
             "outround_stage": round_obj.elim_size,
             "round_number": round_obj.round_number,
             "victor": round_obj.victor,
-            "is_rated": bool(round_obj.is_rated),
-            "weight": round_obj.weight,
         }
 
         for slot in ROUND_BALLOT_SLOTS:

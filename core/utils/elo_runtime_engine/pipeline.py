@@ -41,15 +41,7 @@ def _clamp_share(value, default_value):
 
 
 def _weighted_stage_count(debates, stage):
-    return int(
-        round(
-            sum(
-                float(getattr(row, "weight", 1.0) or 1.0)
-                for row in debates
-                if row.stage == stage
-            )
-        )
-    )
+    return sum(1 for row in debates if row.stage == stage)
 
 
 def _arg_bool(args, key, default=False):

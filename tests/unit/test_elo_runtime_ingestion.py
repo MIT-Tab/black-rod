@@ -76,7 +76,6 @@ def _create_round_with_stats(
         round_label=f"P{round_number}",
         stage=stage,
         victor=victor,
-        is_rated=True,
         import_origin=import_origin,
     )
     for debater, speaks, ranks, role in [
@@ -104,7 +103,6 @@ def test_ingestion_collapses_side_to_single_speaker_when_only_one_has_speaks():
         opp=fixture["opp_team"],
         round_number=1,
         victor=Round.GOV,
-        is_rated=True,
     )
     RoundStats.objects.create(round=round_obj, debater=fixture["gov_one"], speaks=28, ranks=1, debater_role="PM")
     RoundStats.objects.create(round=round_obj, debater=fixture["gov_two"], speaks=None, ranks=None, debater_role="MG")
@@ -174,7 +172,6 @@ def test_partner_mode_updates_only_scored_partner_when_teammate_missing_speaks()
         opp=fixture["opp_team"],
         round_number=1,
         victor=Round.GOV,
-        is_rated=True,
     )
     RoundStats.objects.create(round=round_obj, debater=fixture["gov_one"], speaks=28, ranks=1, debater_role="PM")
     RoundStats.objects.create(round=round_obj, debater=fixture["gov_two"], speaks=None, ranks=None, debater_role="MG")
@@ -246,7 +243,6 @@ def test_ingestion_collapses_linked_debater_ids_before_rating():
         opp=opp_team,
         round_number=1,
         victor=Round.GOV,
-        is_rated=True,
         metadata={
             "team_a_ids": [andrew_old.id, andrew_new.id],
             "team_a_names": ["Andrew Monteith", "Andrew Monteith"],
@@ -494,7 +490,6 @@ def test_ingestion_marks_proam_partnerships_from_first_year_status_across_linked
         round_number=1,
         round_label="P1",
         victor=Round.GOV,
-        is_rated=True,
         metadata={
             "team_a_ids": [novice_current.id, veteran_current.id],
             "team_a_names": ["Novice Current", "Veteran Current"],
@@ -537,7 +532,6 @@ def test_ingestion_skips_bye_rounds_even_when_marked_rated():
         opp=fixture["opp_team"],
         round_number=1,
         victor=Round.BYE,
-        is_rated=True,
     )
     RoundStats.objects.create(round=round_obj, debater=fixture["gov_one"], speaks=28, ranks=1, debater_role="PM")
 

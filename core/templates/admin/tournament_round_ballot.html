@@ -57,21 +57,6 @@
                                 {% for error in form.victor.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
                             </div>
                         </div>
-                        <div class="form-row align-items-end">
-                            <div class="form-group col-md-2">
-                                <label for="{{ form.weight.id_for_label }}">Weight</label>
-                                {{ form.weight }}
-                                {% for error in form.weight.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
-                            </div>
-                            <div class="form-group col-md-2">
-                                <div class="form-check">
-                                    {{ form.is_rated }}
-                                    <label class="form-check-label" for="{{ form.is_rated.id_for_label }}">Rated Round</label>
-                                </div>
-                                {% for error in form.is_rated.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}
-                            </div>
-                        </div>
-
                         <h6 class="mt-4">Ballot Slots</h6>
                         <div class="table-responsive">
                             <table class="table table-sm table-bordered">

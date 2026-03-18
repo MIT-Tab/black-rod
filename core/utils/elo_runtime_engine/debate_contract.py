@@ -1,4 +1,4 @@
-"""Extracts canonical winner, stage, weight, sort, and source labels from Round rows with minimal import-aware fallbacks."""
+"""Extracts canonical winner, stage, sort, and source labels from Round rows with minimal import-aware fallbacks."""
 
 
 from datetime import datetime, timezone
@@ -36,11 +36,7 @@ def is_rated_debate(debate):
         Round.BYE,
     }:
         return False
-
-    metadata = _metadata_dict(debate)
-    if "is_rated" in metadata:
-        return bool(metadata.get("is_rated"))
-    return bool(getattr(debate, "is_rated", False))
+    return True
 
 
 def debate_round_label(debate):
@@ -61,16 +57,6 @@ def debate_round_label(debate):
     if stage_value == "outround":
         return "E%s" % (sequence_number if sequence_number is not None else "?")
     return "P%s" % (sequence_number if sequence_number is not None else "?")
-
-
-def debate_weight(debate):
-    metadata = _metadata_dict(debate)
-    raw_weight = metadata.get("weight", getattr(debate, "weight", 1.0))
-    try:
-        weight = float(raw_weight)
-    except (TypeError, ValueError):
-        return 1.0
-    return weight if weight > 0 else 1.0
 
 
 def debate_sort_key(debate):

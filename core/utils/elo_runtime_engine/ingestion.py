@@ -21,7 +21,6 @@ from core.utils.elo_runtime_engine.debate_contract import (
     debate_timestamp,
     debate_tournament_key,
     debate_tournament_name,
-    debate_weight,
     is_rated_debate,
     metadata_team_ids,
     metadata_team_names,
@@ -386,7 +385,6 @@ def _build_debate_from_round(
         participant_names=participant_names,
         team_a_school=team_a_school,
         team_b_school=team_b_school,
-        weight=debate_weight(round_obj),
         is_proam_partnership=bool(
             metadata.get("is_proam_partnership", False)
             or _infer_is_proam_partnership(

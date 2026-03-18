@@ -45,7 +45,6 @@
                                     <th>Government</th>
                                     <th>Opposition</th>
                                     <th>Result</th>
-                                    <th>Rated</th>
                                     <th>Origin</th>
                                     <th></th>
                                 </tr>
@@ -60,13 +59,6 @@
                                         <td>{{ row.gov_name }}</td>
                                         <td>{{ row.opp_name }}</td>
                                         <td>{{ row.victor_label }}</td>
-                                        <td>
-                                            {% if row.is_rated %}
-                                                <span class="text-success">Yes</span>
-                                            {% else %}
-                                                <span class="text-muted">No</span>
-                                            {% endif %}
-                                        </td>
                                         <td>{{ row.origin_label }}</td>
                                         <td>
                                             <a class="btn btn-sm btn-outline-primary mr-2" href="{{ row.modify_url }}">Modify Round</a>
@@ -78,7 +70,7 @@
                                     </tr>
                                 {% empty %}
                                     <tr>
-                                        <td colspan="10" class="text-center text-muted">No canonical rounds exist for this tournament yet.</td>
+                                        <td colspan="9" class="text-center text-muted">No canonical rounds exist for this tournament yet.</td>
                                     </tr>
                                 {% endfor %}
                             </tbody>

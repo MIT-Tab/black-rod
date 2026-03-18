@@ -86,8 +86,6 @@ def test_round_amendments_create_update_and_delete_round_with_related_data():
                         "division": Round.Division.VARSITY,
                         "round_label": "Prelim 4",
                         "victor": Round.GOV,
-                        "is_rated": True,
-                        "weight": 1.25,
                         "import_origin": "file_backup",
                         "import_key": "round-amendment-1",
                         "metadata": {"source_round_name": "R4"},
@@ -131,7 +129,6 @@ def test_round_amendments_create_update_and_delete_round_with_related_data():
                     "tournament_id": tournament.id,
                     "import_key": "round-amendment-1",
                     "round_label": "Prelim 4 Revised",
-                    "weight": 1.5,
                     "stats": [
                         {"debater_id": gov_one.id, "debater_role": "PM", "speaks": "29.0", "ranks": "1"},
                         {"debater_id": gov_two.id, "debater_role": "MG", "speaks": "28.0", "ranks": "2"},
@@ -150,7 +147,6 @@ def test_round_amendments_create_update_and_delete_round_with_related_data():
     assert update_summary["rounds_updated"] == 1
     round_obj.refresh_from_db()
     assert round_obj.round_label == "Prelim 4 Revised"
-    assert float(round_obj.weight) == 1.5
     pm_stat = round_obj.stats.get(debater=gov_one)
     assert float(pm_stat.speaks) == 29.0
     assert round_obj.imported_metadata.raw_result_code == "3-0"

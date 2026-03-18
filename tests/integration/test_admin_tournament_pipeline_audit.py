@@ -104,7 +104,6 @@ class TournamentPipelineAuditViewTest(TestCase):
             import_origin=import_origin,
             round_label=label,
             victor=Round.GOV,
-            is_rated=True,
             metadata={"source_round_name": f"Source {label}"},
         )
         RoundStats.objects.create(
@@ -272,8 +271,6 @@ class TournamentPipelineAuditViewTest(TestCase):
                 "outround_stage": 8,
                 "round_number": 3,
                 "victor": Round.OPP,
-                "is_rated": "on",
-                "weight": "1.5",
                 "gov_1_debater": pm.id,
                 "gov_1_source_name": "",
                 "gov_1_role": "MG",
@@ -304,7 +301,6 @@ class TournamentPipelineAuditViewTest(TestCase):
         self.assertEqual(original_round.elim_size, 8)
         self.assertEqual(original_round.round_number, 3)
         self.assertEqual(original_round.victor, Round.OPP)
-        self.assertEqual(original_round.weight, 1.5)
         self.assertEqual(original_round.metadata["source_round_name"], "QF Source")
         self.assertEqual(original_round.metadata["team_a_names"], [pm.name, "Morgan Gov"])
         self.assertEqual(original_round.metadata["team_b_names"], ["Lee Opp", mo.name])
@@ -349,8 +345,6 @@ class TournamentPipelineAuditViewTest(TestCase):
                 "outround_stage": "",
                 "round_number": 2,
                 "victor": Round.GOV,
-                "is_rated": "on",
-                "weight": "1.0",
                 "gov_1_debater": gov_1.id,
                 "gov_1_source_name": "",
                 "gov_1_role": "",
@@ -399,8 +393,6 @@ class TournamentPipelineAuditViewTest(TestCase):
                 "outround_stage": 4,
                 "round_number": 3,
                 "victor": Round.OPP,
-                "is_rated": "on",
-                "weight": "1.0",
                 "gov_1_debater": gov_1.id,
                 "gov_1_source_name": "",
                 "gov_1_role": "",
@@ -454,8 +446,6 @@ class TournamentPipelineAuditViewTest(TestCase):
                         "outround_stage": "",
                         "round_number": 2,
                         "victor": Round.GOV,
-                        "is_rated": "on",
-                        "weight": "1.0",
                         "gov_1_debater": gov_1.id,
                         "gov_1_source_name": "",
                         "gov_1_role": "PM",
@@ -507,8 +497,6 @@ class TournamentPipelineAuditViewTest(TestCase):
                         "outround_stage": 8,
                         "round_number": 3,
                         "victor": Round.GOV,
-                        "is_rated": "on",
-                        "weight": "1.0",
                         "gov_1_debater": gov_1.id,
                         "gov_1_source_name": "",
                         "gov_1_role": "PM",

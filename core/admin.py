@@ -611,12 +611,10 @@ class RoundAdmin(admin.ModelAdmin):
         "gov",
         "opp",
         "victor_display",
-        "is_rated",
-        "weight",
         "stats_count",
         "import_origin",
     )
-    list_filter = ("stage", "division", "is_rated", "victor", "import_origin", "tournament__season")
+    list_filter = ("stage", "division", "victor", "import_origin", "tournament__season")
     search_fields = (
         "=id",
         "round_label",
@@ -636,7 +634,7 @@ class RoundAdmin(admin.ModelAdmin):
     readonly_fields = ("stats_count", "imported_metadata_summary", "metadata_pretty")
     fieldsets = (
         ("Round", {"fields": ("tournament", "round_number", "round_label", "stage", "division", "elim_size")}),
-        ("Matchup", {"fields": ("gov", "opp", "victor", "is_rated", "weight", "stats_count")}),
+        ("Matchup", {"fields": ("gov", "opp", "victor", "stats_count")}),
         ("Import", {"fields": ("import_origin", "import_key", "imported_metadata_summary")}),
         ("Metadata", {"fields": ("metadata_pretty",), "classes": ("collapse",)}),
     )
@@ -725,7 +723,6 @@ class RoundStatsAdmin(admin.ModelAdmin):
         "source_status",
         "round__stage",
         "round__division",
-        "round__is_rated",
         "round__tournament__season",
     )
     search_fields = (

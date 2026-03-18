@@ -54,17 +54,17 @@ def rebalance_team_deltas(team, pre_ratings, legacy_deltas, higher_share):
     return {higher: higher_final, lower: lower_final}
 
 
-def update_player_stats(player_stats, season, stage, won, weight):
-    player_stats.rounds += weight
+def update_player_stats(player_stats, season, stage, won):
+    player_stats.rounds += 1
     if won:
-        player_stats.yearly_results[season][0] += weight
+        player_stats.yearly_results[season][0] += 1
     else:
-        player_stats.yearly_results[season][1] += weight
+        player_stats.yearly_results[season][1] += 1
 
     if stage == "outround":
-        player_stats.outround_rounds += weight
+        player_stats.outround_rounds += 1
     else:
-        player_stats.prelim_rounds += weight
+        player_stats.prelim_rounds += 1
 
 
 def _seed_debate_players(debate, ratings, stats, initial_rating):
@@ -84,13 +84,13 @@ def _apply_school_hints(debate, stats):
 
     for player_id in debate.team_a:
         if team_a_school:
-            stats[player_id].school_hints[team_a_school] += debate.weight
-            stats[player_id].school_hints_by_season[debate.season][team_a_school] += debate.weight
+            stats[player_id].school_hints[team_a_school] += 1
+            stats[player_id].school_hints_by_season[debate.season][team_a_school] += 1
 
     for player_id in debate.team_b:
         if team_b_school:
-            stats[player_id].school_hints[team_b_school] += debate.weight
-            stats[player_id].school_hints_by_season[debate.season][team_b_school] += debate.weight
+            stats[player_id].school_hints[team_b_school] += 1
+            stats[player_id].school_hints_by_season[debate.season][team_b_school] += 1
 
 
 def _apply_name_hints(debate, stats):
@@ -98,7 +98,7 @@ def _apply_name_hints(debate, stats):
         text = str(name or "").strip()
         if not text:
             continue
-        stats[player_id].name_hints[text] += debate.weight
+        stats[player_id].name_hints[text] += 1
 
 
 def _record_season_snapshots(debate, stats, ratings):
@@ -130,33 +130,33 @@ def _apply_individual_mode(debate, stats, ratings, pre_ratings, k_max, k_min, k_
         for loser in losers:
             loser_k_pre = k_factor_for_experience(stats[loser].rounds, k_max, k_min, k_decay_scale)
             expected_winner = expected_score(pre_ratings[winner], pre_ratings[loser])
-            winner_delta = winner_k_pre * (1.0 - expected_winner) * debate.weight
-            loser_delta = loser_k_pre * (0.0 - (1.0 - expected_winner)) * debate.weight
+            winner_delta = winner_k_pre * (1.0 - expected_winner)
+            loser_delta = loser_k_pre * (0.0 - (1.0 - expected_winner))
 
             ratings[winner] += winner_delta
             ratings[loser] += loser_delta
 
             winner_k_post = k_factor_for_experience(
-                stats[winner].rounds + debate.weight,
+                stats[winner].rounds + 1,
                 k_max,
                 k_min,
                 k_decay_scale,
             )
             loser_k_post = k_factor_for_experience(
-                stats[loser].rounds + debate.weight,
+                stats[loser].rounds + 1,
                 k_max,
                 k_min,
                 k_decay_scale,
             )
 
-            update_player_stats(stats[winner], debate.season, debate.stage, True, debate.weight)
-            update_player_stats(stats[loser], debate.season, debate.stage, False, debate.weight)
-            processed += debate.weight
+            update_player_stats(stats[winner], debate.season, debate.stage, True)
+            update_player_stats(stats[loser], debate.season, debate.stage, False)
+            processed += 1
 
     return processed
 
 
-def _team_legacy_and_k(team, stats, debate_weight, k_max, k_min, k_decay_scale, team_delta):
+def _team_legacy_and_k(team, stats, k_max, k_min, k_decay_scale, team_delta):
     legacy = {}
     pre_k = {}
     post_k = {}
@@ -165,12 +165,12 @@ def _team_legacy_and_k(team, stats, debate_weight, k_max, k_min, k_decay_scale, 
         player_k = k_factor_for_experience(stats[player_id].rounds, k_max, k_min, k_decay_scale)
         pre_k[player_id] = player_k
         post_k[player_id] = k_factor_for_experience(
-            stats[player_id].rounds + debate_weight,
+            stats[player_id].rounds + 1,
             k_max,
             k_min,
             k_decay_scale,
         )
-        legacy[player_id] = player_k * team_delta * debate_weight
+        legacy[player_id] = player_k * team_delta
 
     return legacy, pre_k, post_k
 
@@ -195,7 +195,6 @@ def _apply_partner_mode(
     team_a_legacy, team_a_pre_k, team_a_post_k = _team_legacy_and_k(
         debate.team_a,
         stats,
-        debate.weight,
         k_max,
         k_min,
         k_decay_scale,
@@ -204,7 +203,6 @@ def _apply_partner_mode(
     team_b_legacy, team_b_pre_k, team_b_post_k = _team_legacy_and_k(
         debate.team_b,
         stats,
-        debate.weight,
         k_max,
         k_min,
         k_decay_scale,
@@ -232,13 +230,13 @@ def _apply_partner_mode(
 
     for player_id in debate.team_a:
         won = team_a_won
-        update_player_stats(stats[player_id], debate.season, debate.stage, won, debate.weight)
+        update_player_stats(stats[player_id], debate.season, debate.stage, won)
 
     for player_id in debate.team_b:
         won = not team_a_won
-        update_player_stats(stats[player_id], debate.season, debate.stage, won, debate.weight)
+        update_player_stats(stats[player_id], debate.season, debate.stage, won)
 
-    return debate.weight
+    return 1
 
 
 def apply_elo(
@@ -260,9 +258,6 @@ def apply_elo(
         debates if debates_sorted else sorted(debates, key=lambda row: (row.timestamp, row.sort_key, row.tournament_key))
     )
     for debate in ordered_debates:
-        if debate.weight <= 0:
-            continue
-
         pre_ratings = _seed_debate_players(debate, ratings, stats, initial_rating)
         _apply_name_hints(debate, stats)
         _apply_school_hints(debate, stats)

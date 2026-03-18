@@ -37,8 +37,6 @@ class Round(models.Model):
     )
     elim_size = models.PositiveSmallIntegerField(null=True, blank=True, db_index=True)
     round_label = models.CharField(max_length=32, blank=True, default="")
-    is_rated = models.BooleanField(default=False, db_index=True)
-    weight = models.FloatField(default=1.0)
     metadata = models.JSONField(default=dict, blank=True)
     import_origin = models.CharField(max_length=32, blank=True, default="")
     import_key = models.CharField(max_length=128, blank=True, default="", db_index=True)

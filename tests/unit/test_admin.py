@@ -233,9 +233,7 @@ class AdminTestCase(TestCase):
             round_label="Quarterfinal",
             stage=Round.Stage.OUTROUND,
             elim_size=8,
-            is_rated=True,
             victor=Round.GOV,
-            weight=1.5,
             import_origin="forum_post",
             metadata={"source_round_name": "QF Source"},
         )

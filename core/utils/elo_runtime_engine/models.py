@@ -58,7 +58,6 @@ class Debate:
         "participant_names",
         "team_a_school",
         "team_b_school",
-        "weight",
         "is_proam_partnership",
     )
 
@@ -79,7 +78,6 @@ class Debate:
         participant_names=None,
         team_a_school="",
         team_b_school="",
-        weight=1.0,
         is_proam_partnership=False,
     ):
         self.timestamp = timestamp
@@ -97,7 +95,6 @@ class Debate:
         self.participant_names = participant_names or {}
         self.team_a_school = team_a_school
         self.team_b_school = team_b_school
-        self.weight = float(weight or 1.0)
         self.is_proam_partnership = bool(is_proam_partnership)
 
 

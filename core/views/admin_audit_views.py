@@ -1,6 +1,4 @@
 from collections import defaultdict
-from decimal import Decimal
-
 from django.contrib import messages
 from django.contrib.auth.mixins import UserPassesTestMixin
 from django.db import transaction
@@ -371,7 +369,6 @@ class TournamentAuditDetailView(
                     "gov_name": str(round_obj.gov.long_name or round_obj.gov.name or ""),
                     "opp_name": str(round_obj.opp.long_name or round_obj.opp.name or ""),
                     "victor_label": round_obj.get_victor_display(),
-                    "is_rated": bool(round_obj.is_rated),
                     "origin_label": self._origin_label(round_obj),
                     "modify_url": reverse(
                         "core:tournament_audit_round_edit",
@@ -540,8 +537,6 @@ class TournamentAuditRoundEditView(SuperuserRequiredMixin, TemplateView):
 
         metadata["round_label"] = canonical_round_name
         metadata["stage"] = str(cleaned_data["stage"] or "")
-        metadata["is_rated"] = bool(cleaned_data.get("is_rated"))
-        metadata["weight"] = float(cleaned_data.get("weight") or Decimal("1.0"))
         metadata["team_a_ids"] = [
             int(cleaned_data["gov_1_debater"].id),
             int(cleaned_data["gov_2_debater"].id),
@@ -559,8 +554,6 @@ class TournamentAuditRoundEditView(SuperuserRequiredMixin, TemplateView):
         round_obj.stage = str(cleaned_data["stage"] or "")
         round_obj.round_number = int(cleaned_data["round_number"] or 0)
         round_obj.victor = int(cleaned_data["victor"])
-        round_obj.is_rated = bool(cleaned_data.get("is_rated"))
-        round_obj.weight = float(cleaned_data.get("weight") or Decimal("1.0"))
         round_obj.metadata = metadata
         round_obj.elim_size = (
             int(outround_stage)
