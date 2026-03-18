@@ -119,6 +119,51 @@ class ViewTestCase(TestCase):
 
         self.assertEqual(results, [kept_result])
 
+    def test_filtered_search_view_disables_load_all(self):
+        from core.views.views import FilteredSearchView
+
+        self.assertFalse(FilteredSearchView().load_all)
+
+    def test_filtered_search_view_skips_missing_objects(self):
+        missing_result = SimpleNamespace(model=Debater, object=None)
+        kept_result = SimpleNamespace(model=Debater, object=self.debater)
+
+        from haystack.views import SearchView
+        from core.views.views import FilteredSearchView
+
+        with patch.object(SearchView, "get_results", return_value=[missing_result, kept_result]):
+            results = FilteredSearchView().get_results()
+
+        self.assertEqual(results, [kept_result])
+
+    def test_filtered_search_view_resolves_debaters_by_pk_without_object_lookup(self):
+        class SearchHit:
+            model = Debater
+
+            def __init__(self, pk):
+                self.pk = str(pk)
+                self._object = None
+
+            @property
+            def object(self):
+                raise AssertionError("object property should not be used for debater hits")
+
+            @object.setter
+            def object(self, value):
+                self._object = value
+
+        stale_result = SearchHit(999999)
+        kept_result = SearchHit(self.debater.pk)
+
+        from haystack.views import SearchView
+        from core.views.views import FilteredSearchView
+
+        with patch.object(SearchView, "get_results", return_value=[stale_result, kept_result]):
+            results = FilteredSearchView().get_results()
+
+        self.assertEqual(results, [kept_result])
+        self.assertEqual(kept_result._object, self.debater)
+
 
 class ModelIntegrationTest(TestCase):
     """Test model interactions and business logic"""

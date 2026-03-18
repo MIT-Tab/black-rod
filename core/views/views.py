@@ -17,16 +17,41 @@ from core.utils.rounds import visible_canonical_rounds
 
 
 class FilteredSearchView(SearchView):
+    def __init__(self, *args, **kwargs):
+        kwargs.setdefault("load_all", False)
+        super().__init__(*args, **kwargs)
+
+    @staticmethod
+    def _load_debater_objects(results):
+        debater_pks = [
+            result.pk
+            for result in results
+            if result.model is Debater and getattr(result, "pk", None) is not None
+        ]
+        debaters = Debater.all_objects.select_related("school").in_bulk(debater_pks)
+        return {str(pk): debater for pk, debater in debaters.items()}
+
     def get_results(self):
         results = list(super().get_results())
-        return [
-            result
-            for result in results
-            if not (
-                result.model is Debater
-                and getattr(result.object, "synthetic", False)
-            )
-        ]
+        debaters_by_pk = self._load_debater_objects(results)
+        filtered_results = []
+
+        for result in results:
+            if result.model is Debater and getattr(result, "pk", None) is not None:
+                obj = debaters_by_pk.get(str(result.pk))
+                result.object = obj
+            else:
+                obj = getattr(result, "object", None)
+
+            if obj is None:
+                continue
+
+            if result.model is Debater and getattr(obj, "synthetic", False):
+                continue
+
+            filtered_results.append(result)
+
+        return filtered_results
 
 
 def _load_team_member_ids():
