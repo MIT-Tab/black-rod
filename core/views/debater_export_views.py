@@ -322,7 +322,6 @@ def debater_tab_cards_csv(request, pk):
             "opponent_2_name",
             "opponent_2_apda_id",
             "opponent_school",
-            "debater_role",
             "speaks",
             "ranks",
         ]
@@ -376,7 +375,9 @@ def debater_tab_cards_csv(request, pk):
 
         partner = _team_partner_for_debater(team, linked_debater_ids)
         speaks_value, ranks_value, debater_role = _resolve_round_stat_values(stat_rows)
-        if not debater_role and imported_alias_match:
+        if round_obj.stage == Round.Stage.OUTROUND:
+            debater_role = ""
+        elif not debater_role and imported_alias_match:
             debater_role = imported_alias_match["role"]
         source_debater_name = _source_name_from_stat_rows(stat_rows)
         if not source_debater_name and imported_alias_match:
@@ -413,7 +414,6 @@ def debater_tab_cards_csv(request, pk):
                 opponent_names[1] if len(opponent_names) > 1 else "",
                 opponent_ids[1] if len(opponent_ids) > 1 else "",
                 _team_school_display_from_debaters(_team_debaters_all(opponent)) if opponent else "",
-                debater_role,
                 _format_score_value(speaks_value),
                 _format_score_value(ranks_value),
             ]

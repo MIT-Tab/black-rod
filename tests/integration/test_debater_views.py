@@ -436,6 +436,7 @@ class DebaterViewsTest(TestCase):
         rows = list(csv.DictReader(StringIO(response.content.decode("utf-8"))))
 
         self.assertEqual(len(rows), 2)
+        self.assertNotIn("debater_role", rows[0])
         self.assertEqual(
             {(row["round_label"], row["partner_name"], row["opponent_1_name"]) for row in rows},
             {
@@ -443,6 +444,70 @@ class DebaterViewsTest(TestCase):
                 ("2", "Pat Alias", "Alias Opp One"),
             },
         )
+
+    def test_debater_tab_cards_csv_keeps_outround_roles_blank_even_with_imported_aliases(self):
+        self.client.force_login(self.user)
+
+        partner = self._create_debater("Pat Partner")
+        opp_one = self._create_debater("Opp A")
+        opp_two = self._create_debater("Opp B")
+
+        main_team = self._create_team("Main Team", self.debater, partner)
+        opponent = self._create_team("Opp Team", opp_one, opp_two)
+        outround = Round.objects.create(
+            gov=main_team,
+            opp=opponent,
+            tournament=self.tournament,
+            round_number=6,
+            round_label="V04",
+            stage=Round.Stage.OUTROUND,
+            victor=Round.GOV,
+        )
+
+        self_alias = DebaterAlias.objects.create(
+            debater=self.debater,
+            source_name=self.debater.name,
+            normalized_name=self.debater.name.casefold(),
+        )
+        partner_alias = DebaterAlias.objects.create(
+            debater=partner,
+            source_name=partner.name,
+            normalized_name=partner.name.casefold(),
+        )
+        opp_one_alias = DebaterAlias.objects.create(
+            debater=opp_one,
+            source_name=opp_one.name,
+            normalized_name=opp_one.name.casefold(),
+        )
+        opp_two_alias = DebaterAlias.objects.create(
+            debater=opp_two,
+            source_name=opp_two.name,
+            normalized_name=opp_two.name.casefold(),
+        )
+        ImportedRoundMetadata.objects.create(
+            round=outround,
+            gov_1_alias=self_alias,
+            gov_2_alias=partner_alias,
+            opp_1_alias=opp_one_alias,
+            opp_2_alias=opp_two_alias,
+        )
+
+        RoundStats.objects.create(
+            round=outround,
+            debater=self.debater,
+            debater_role="PM",
+        )
+
+        response = self.client.get(
+            reverse("core:debater_tab_cards_csv", kwargs={"pk": self.debater.pk})
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        rows = list(csv.DictReader(StringIO(response.content.decode("utf-8"))))
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["stage"], "Outround")
+        self.assertNotIn("debater_role", rows[0])
 
     def test_debater_tab_cards_csv_includes_wf_lf_and_bye_rounds_without_stats(self):
         self.client.force_login(self.user)
