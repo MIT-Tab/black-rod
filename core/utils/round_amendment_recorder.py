@@ -75,6 +75,7 @@ def backfill_synthetic_resolution_actions_from_logs(source="synthetic_resolution
     recorded = 0
     skipped = 0
     queryset = SyntheticResolutionLog.objects.filter(
+        action=SyntheticResolutionLog.Action.RESOLVED,
         source_context__source=str(source or "").strip(),
     ).order_by("created_at", "id")
 

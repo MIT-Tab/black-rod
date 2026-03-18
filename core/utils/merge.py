@@ -195,7 +195,7 @@ def merge_debaters(primary, secondary):
     seasons = {str(season) for season in seasons if season}
     with transaction.atomic():
         _merge_speaker_results(primary, secondary)
-        RoundStats.objects.filter(debater=secondary).update(debater=primary)
+        _merge_round_stats(primary, secondary)
         _merge_debater_aliases(primary, secondary)
         _merge_manual_elo_options(primary, secondary)
 
@@ -228,6 +228,43 @@ def merge_debaters(primary, secondary):
         "affected_team_ids": [team.pk for team in affected_teams],
         "seasons": sorted(seasons),
     }
+
+
+def _merge_round_stats(primary, secondary):
+    existing_rows = RoundStats.objects.filter(debater=primary).values(
+        "round_id",
+        "score_index",
+    )
+    occupied_slots = {
+        (int(row["round_id"]), int(row["score_index"] or 1))
+        for row in existing_rows
+    }
+    next_score_index_by_round = {}
+
+    for stat in RoundStats.objects.filter(debater=secondary).order_by("round_id", "score_index", "id"):
+        round_id = int(stat.round_id)
+        score_index = int(stat.score_index or 1)
+        desired_slot = (round_id, score_index)
+
+        if desired_slot in occupied_slots:
+            if round_id not in next_score_index_by_round:
+                next_score_index_by_round[round_id] = (
+                    max(
+                        RoundStats.objects.filter(round_id=round_id, debater=primary).values_list(
+                            "score_index",
+                            flat=True,
+                        ),
+                        default=0,
+                    )
+                    + 1
+                )
+            score_index = next_score_index_by_round[round_id]
+            next_score_index_by_round[round_id] += 1
+
+        stat.debater = primary
+        stat.score_index = score_index
+        stat.save(update_fields=["debater", "score_index"])
+        occupied_slots.add((round_id, score_index))
 
 
 def _merge_debater_aliases(primary, secondary):

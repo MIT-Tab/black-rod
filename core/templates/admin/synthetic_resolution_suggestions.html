@@ -109,14 +109,15 @@
                                                 <th style="min-width: 240px;">Synthetic Debater</th>
                                                 <th style="min-width: 240px;">Canonical Debater</th>
                                                 <th style="width: 170px;">Details</th>
-                                                <th style="width: 120px;" class="text-right">Action</th>
+                                                <th style="width: 220px;" class="text-right">Action</th>
                                             </tr>
                                         </thead>
                                         <tbody>
                                             {% for pair in debater_suggestions %}
                                                 <tr class="suggestion-row"
                                                     data-entity-type="debater"
-                                                    data-synthetic-id="{{ pair.synthetic_debater.id }}">
+                                                    data-synthetic-id="{{ pair.synthetic_debater.id }}"
+                                                    data-target-id="{{ pair.canonical_debater.id }}">
                                                     <td class="align-middle py-2">
                                                         <div class="font-weight-bold text-dark">{{ pair.synthetic_debater.name }}</div>
                                                         <div class="text-muted small">
@@ -172,11 +173,20 @@
                                                     </td>
                                                     <td class="text-right align-middle py-2">
                                                         <button type="button"
-                                                                class="btn btn-dark btn-sm shadow-sm px-3 resolve-synthetic-btn"
+                                                                class="btn btn-dark btn-sm shadow-sm px-3 synthetic-action-btn"
+                                                                data-action="resolve"
                                                                 data-entity-type="debater"
                                                                 data-synthetic-id="{{ pair.synthetic_debater.id }}"
                                                                 data-target-id="{{ pair.canonical_debater.id }}">
                                                             <i class="fas fa-check mr-1"></i> Resolve
+                                                        </button>
+                                                        <button type="button"
+                                                                class="btn btn-outline-secondary btn-sm shadow-sm px-3 synthetic-action-btn ml-1"
+                                                                data-action="reject"
+                                                                data-entity-type="debater"
+                                                                data-synthetic-id="{{ pair.synthetic_debater.id }}"
+                                                                data-target-id="{{ pair.canonical_debater.id }}">
+                                                            <i class="fas fa-times mr-1"></i> Reject
                                                         </button>
                                                     </td>
                                                 </tr>
@@ -203,14 +213,15 @@
                                                 <th style="min-width: 240px;">Synthetic School</th>
                                                 <th style="min-width: 240px;">Canonical School</th>
                                                 <th style="width: 170px;">Details</th>
-                                                <th style="width: 120px;" class="text-right">Action</th>
+                                                <th style="width: 220px;" class="text-right">Action</th>
                                             </tr>
                                         </thead>
                                         <tbody>
                                             {% for pair in school_suggestions %}
                                                 <tr class="suggestion-row"
                                                     data-entity-type="school"
-                                                    data-synthetic-id="{{ pair.synthetic_school.id }}">
+                                                    data-synthetic-id="{{ pair.synthetic_school.id }}"
+                                                    data-target-id="{{ pair.canonical_school.id }}">
                                                     <td class="align-middle py-2">
                                                         <div class="font-weight-bold text-dark">{{ pair.synthetic_school.name }}</div>
                                                         <div class="text-muted small">
@@ -249,11 +260,20 @@
                                                     </td>
                                                     <td class="text-right align-middle py-2">
                                                         <button type="button"
-                                                                class="btn btn-dark btn-sm shadow-sm px-3 resolve-synthetic-btn"
+                                                                class="btn btn-dark btn-sm shadow-sm px-3 synthetic-action-btn"
+                                                                data-action="resolve"
                                                                 data-entity-type="school"
                                                                 data-synthetic-id="{{ pair.synthetic_school.id }}"
                                                                 data-target-id="{{ pair.canonical_school.id }}">
                                                             <i class="fas fa-check mr-1"></i> Resolve
+                                                        </button>
+                                                        <button type="button"
+                                                                class="btn btn-outline-secondary btn-sm shadow-sm px-3 synthetic-action-btn ml-1"
+                                                                data-action="reject"
+                                                                data-entity-type="school"
+                                                                data-synthetic-id="{{ pair.synthetic_school.id }}"
+                                                                data-target-id="{{ pair.canonical_school.id }}">
+                                                            <i class="fas fa-times mr-1"></i> Reject
                                                         </button>
                                                     </td>
                                                 </tr>
@@ -324,8 +344,8 @@
             });
         }
 
-        function removeSyntheticRows(entityType, syntheticId) {
-            document.querySelectorAll(`.suggestion-row[data-entity-type="${entityType}"][data-synthetic-id="${syntheticId}"]`).forEach(row => {
+        function fadeAndRemoveRows(selector) {
+            document.querySelectorAll(selector).forEach(row => {
                 row.style.transition = 'opacity 0.3s';
                 row.style.opacity = '0';
                 setTimeout(() => {
@@ -333,6 +353,16 @@
                     updateCounts();
                 }, 300);
             });
+        }
+
+        function removeSyntheticRows(entityType, syntheticId) {
+            fadeAndRemoveRows(`.suggestion-row[data-entity-type="${entityType}"][data-synthetic-id="${syntheticId}"]`);
+        }
+
+        function removeSuggestionRow(entityType, syntheticId, targetId) {
+            fadeAndRemoveRows(
+                `.suggestion-row[data-entity-type="${entityType}"][data-synthetic-id="${syntheticId}"][data-target-id="${targetId}"]`
+            );
         }
 
         if (window.jQuery && window.jQuery.fn.select2) {
@@ -369,24 +399,31 @@
             });
         }
 
-        document.querySelectorAll('.resolve-synthetic-btn').forEach(button => {
-            button.addEventListener('click', function onResolve(event) {
+        document.querySelectorAll('.synthetic-action-btn').forEach(button => {
+            button.addEventListener('click', function onSyntheticAction(event) {
                 event.preventDefault();
 
                 const btn = this;
+                const action = btn.dataset.action || 'resolve';
                 const entityType = btn.dataset.entityType;
                 const syntheticId = btn.dataset.syntheticId;
                 const targetId = btn.dataset.targetId;
-                const requestKey = `${entityType}:${syntheticId}`;
+                const requestKey = `${action}:${entityType}:${syntheticId}:${targetId}`;
 
                 if (processedKeys.has(requestKey)) {
-                    removeSyntheticRows(entityType, syntheticId);
+                    if (action === 'resolve') {
+                        removeSyntheticRows(entityType, syntheticId);
+                    } else {
+                        removeSuggestionRow(entityType, syntheticId, targetId);
+                    }
                     return;
                 }
 
                 btn.disabled = true;
                 const originalHTML = btn.innerHTML;
-                btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i> Resolving...';
+                btn.innerHTML = action === 'reject'
+                    ? '<i class="fas fa-spinner fa-spin mr-1"></i> Rejecting...'
+                    : '<i class="fas fa-spinner fa-spin mr-1"></i> Resolving...';
 
                 const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value ||
                     document.cookie.split('; ').find(row => row.startsWith('csrftoken='))?.split('=')[1];
@@ -397,7 +434,7 @@
                         'Content-Type': 'application/x-www-form-urlencoded',
                         'X-CSRFToken': csrfToken,
                     },
-                    body: `entity_type=${encodeURIComponent(entityType)}&synthetic_id=${encodeURIComponent(syntheticId)}&target_id=${encodeURIComponent(targetId)}`
+                    body: `action=${encodeURIComponent(action)}&entity_type=${encodeURIComponent(entityType)}&synthetic_id=${encodeURIComponent(syntheticId)}&target_id=${encodeURIComponent(targetId)}`
                 })
                     .then(response => response.json())
                     .then(data => {
@@ -406,22 +443,40 @@
                                 showAlert(data.warning, 'warning');
                             }
                             processedKeys.add(requestKey);
-                            removeSyntheticRows(entityType, syntheticId);
+                            if (action === 'resolve') {
+                                removeSyntheticRows(entityType, syntheticId);
+                            } else {
+                                removeSuggestionRow(entityType, syntheticId, targetId);
+                            }
                             return;
                         }
 
                         if (data.error && (data.error.includes('Unable to find') || data.error.includes('does not exist'))) {
                             processedKeys.add(requestKey);
-                            removeSyntheticRows(entityType, syntheticId);
+                            if (action === 'resolve') {
+                                removeSyntheticRows(entityType, syntheticId);
+                            } else {
+                                removeSuggestionRow(entityType, syntheticId, targetId);
+                            }
                             return;
                         }
 
-                        showAlert(data.error || 'Failed to resolve the synthetic record', 'danger');
+                        showAlert(
+                            data.error || (action === 'reject'
+                                ? 'Failed to reject the synthetic suggestion'
+                                : 'Failed to resolve the synthetic record'),
+                            'danger'
+                        );
                         btn.disabled = false;
                         btn.innerHTML = originalHTML;
                     })
                     .catch(() => {
-                        showAlert('An error occurred while resolving the synthetic record', 'danger');
+                        showAlert(
+                            action === 'reject'
+                                ? 'An error occurred while rejecting the synthetic suggestion'
+                                : 'An error occurred while resolving the synthetic record',
+                            'danger'
+                        );
                         btn.disabled = false;
                         btn.innerHTML = originalHTML;
                     });

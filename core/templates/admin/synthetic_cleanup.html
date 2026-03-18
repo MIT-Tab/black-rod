@@ -8,15 +8,15 @@
                         <div>
                             <h5 class="card-title mb-1">Synthetic Cleanup</h5>
                             <p class="card-text text-muted mb-0">
-                                This page only lists synthetic schools, debaters, and teams with zero inbound references.
-                                Deletion is revalidated on submit to avoid side effects.
+                                This page lists synthetic schools, debaters, and teams that are either directly unreferenced
+                                or only linked inside an isolated synthetic-only cluster. Deletion is revalidated on submit.
                             </p>
                         </div>
                         <a class="btn btn-sm btn-outline-secondary mt-2 mt-md-0" href="{% url 'core:admin_tools' %}">Back to Admin Tools</a>
                     </div>
 
                     <div class="alert alert-secondary py-2">
-                        <strong>{{ total_count }}</strong> unreferenced synthetic entit{{ total_count|pluralize:"y,ies" }} currently eligible for deletion.
+                        <strong>{{ total_count }}</strong> synthetic cleanup entit{{ total_count|pluralize:"y,ies" }} currently eligible for deletion.
                     </div>
 
                     <form method="post">
@@ -62,7 +62,7 @@
                                             </table>
                                         </div>
                                     {% else %}
-                                        <p class="text-muted mb-0">No unreferenced synthetic {{ section.entity_type }}s found.</p>
+                                        <p class="text-muted mb-0">No eligible synthetic {{ section.entity_type }}s found.</p>
                                     {% endif %}
                                 </div>
                             </div>

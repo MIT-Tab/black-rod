@@ -51,6 +51,7 @@ def _snapshot_team(row):
 
 
 def _create_log(
+    action,
     entity_type,
     synthetic_row,
     target_row,
@@ -70,6 +71,7 @@ def _create_log(
         synthetic_id = snapshot.get("id")
 
     return SyntheticResolutionLog.objects.create(
+        action=action,
         entity_type=entity_type,
         synthetic_id=int(synthetic_id),
         synthetic_name=str(synthetic_name)[:255],
@@ -102,6 +104,7 @@ def resolve_synthetic_debater(
     snapshot = _snapshot_debater(synthetic_debater)
     with transaction.atomic():
         log = _create_log(
+            SyntheticResolutionLog.Action.RESOLVED,
             SyntheticResolutionLog.EntityType.DEBATER,
             synthetic_row=synthetic_debater,
             target_row=target_debater,
@@ -147,6 +150,7 @@ def resolve_synthetic_school(
                 row.save(update_fields=["school"])
 
         _create_log(
+            SyntheticResolutionLog.Action.RESOLVED,
             SyntheticResolutionLog.EntityType.SCHOOL,
             synthetic_row=synthetic_school,
             target_row=target_school,
@@ -193,6 +197,7 @@ def resolve_synthetic_team(
         TOTYReaff.objects.filter(new_team=synthetic_team).update(new_team=target_team)
 
         _create_log(
+            SyntheticResolutionLog.Action.RESOLVED,
             SyntheticResolutionLog.EntityType.TEAM,
             synthetic_row=synthetic_team,
             target_row=target_team,
@@ -234,3 +239,49 @@ def resolve_synthetic_entity(
         return {"entity_type": entity_key}
 
     raise ValueError("Unsupported entity_type=%r" % entity_type)
+
+
+def reject_synthetic_suggestion(
+    *,
+    entity_type,
+    synthetic_id,
+    target_id,
+    actor=None,
+    reason="",
+    source_context=None,
+):
+    entity_key = str(entity_type or "").strip().lower()
+    existing_log = SyntheticResolutionLog.objects.filter(
+        action=SyntheticResolutionLog.Action.REJECTED,
+        entity_type=entity_key,
+        synthetic_id=int(synthetic_id),
+        resolved_to_id=int(target_id),
+    ).first()
+    if existing_log is not None:
+        return existing_log
+
+    if entity_key == SyntheticResolutionLog.EntityType.DEBATER:
+        synthetic = Debater.all_objects.get(id=synthetic_id, synthetic=True)
+        target = Debater.all_objects.get(id=target_id, synthetic=False)
+        snapshot = _snapshot_debater(synthetic)
+    elif entity_key == SyntheticResolutionLog.EntityType.SCHOOL:
+        synthetic = School.all_objects.get(id=synthetic_id, synthetic=True)
+        target = School.all_objects.get(id=target_id, synthetic=False)
+        snapshot = _snapshot_school(synthetic)
+    elif entity_key == SyntheticResolutionLog.EntityType.TEAM:
+        synthetic = Team.objects.get(id=synthetic_id, synthetic=True)
+        target = Team.objects.get(id=target_id, synthetic=False)
+        snapshot = _snapshot_team(synthetic)
+    else:
+        raise ValueError("Unsupported entity_type=%r" % entity_type)
+
+    return _create_log(
+        SyntheticResolutionLog.Action.REJECTED,
+        entity_key,
+        synthetic_row=synthetic,
+        target_row=target,
+        actor=actor,
+        reason=reason,
+        source_context=source_context,
+        snapshot=snapshot,
+    )

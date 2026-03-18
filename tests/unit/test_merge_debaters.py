@@ -259,6 +259,86 @@ def test_merge_debaters_same_raises_error():
 
 
 @pytest.mark.django_db
+def test_merge_debaters_reindexes_conflicting_round_stats():
+    school = School.objects.create(name="RoundStats School")
+    primary = Debater.objects.create(
+        first_name="Theo",
+        last_name="Primary",
+        school=school,
+        first_season=settings.CURRENT_SEASON,
+        latest_season=settings.CURRENT_SEASON,
+    )
+    secondary = Debater.objects.create(
+        first_name="Theo",
+        last_name="Secondary",
+        school=school,
+        first_season=settings.CURRENT_SEASON,
+        latest_season=settings.CURRENT_SEASON,
+    )
+    opp_one = Debater.objects.create(
+        first_name="Opp",
+        last_name="One",
+        school=school,
+        first_season=settings.CURRENT_SEASON,
+        latest_season=settings.CURRENT_SEASON,
+    )
+    opp_two = Debater.objects.create(
+        first_name="Opp",
+        last_name="Two",
+        school=school,
+        first_season=settings.CURRENT_SEASON,
+        latest_season=settings.CURRENT_SEASON,
+    )
+    gov_team = Team.objects.create(name="Gov Team")
+    gov_team.debaters.set([primary, secondary])
+    opp_team = Team.objects.create(name="Opp Team")
+    opp_team.debaters.set([opp_one, opp_two])
+    tournament = Tournament.objects.create(
+        name="RoundStats Invitational",
+        season=settings.CURRENT_SEASON,
+        date=date.today(),
+        host=school,
+        num_teams=8,
+        num_debaters=16,
+        num_novice_debaters=0,
+        num_novice_teams=0,
+    )
+    round_record = Round.objects.create(
+        gov=gov_team,
+        opp=opp_team,
+        tournament=tournament,
+        round_number=1,
+    )
+    primary_stat = RoundStats.objects.create(
+        round=round_record,
+        debater=primary,
+        speaks=Decimal("30.0000"),
+        ranks=Decimal("1.0000"),
+        debater_role="PM",
+        score_index=1,
+    )
+    secondary_stat = RoundStats.objects.create(
+        round=round_record,
+        debater=secondary,
+        speaks=Decimal("29.0000"),
+        ranks=Decimal("2.0000"),
+        debater_role="MG",
+        score_index=1,
+    )
+
+    merge_debaters(primary, secondary)
+
+    stats = list(
+        RoundStats.objects.filter(round=round_record, debater=primary).order_by("score_index", "id")
+    )
+    assert [stat.score_index for stat in stats] == [1, 2]
+    assert stats[0].id == primary_stat.id
+    assert stats[1].id == secondary_stat.id
+    assert stats[1].debater_role == "MG"
+    assert stats[1].speaks == Decimal("29.0000")
+
+
+@pytest.mark.django_db
 def test_merge_debaters_updates_existing_qual_with_missing_details():
     school = School.objects.create(name="Qual School")
     primary = Debater.objects.create(

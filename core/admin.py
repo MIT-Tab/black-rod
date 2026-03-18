@@ -908,13 +908,14 @@ class ImportedRoundJudgeAdmin(admin.ModelAdmin):
 class SyntheticResolutionLogAdmin(admin.ModelAdmin):
     list_display = (
         "id",
+        "action",
         "entity_type",
         "synthetic_id",
         "resolved_to_id",
         "actor",
         "created_at",
     )
-    list_filter = ("entity_type", "created_at")
+    list_filter = ("action", "entity_type", "created_at")
     search_fields = (
         "synthetic_name",
         "resolved_to_name",
@@ -923,6 +924,7 @@ class SyntheticResolutionLogAdmin(admin.ModelAdmin):
         "resolved_to_id",
     )
     readonly_fields = (
+        "action",
         "entity_type",
         "synthetic_id",
         "synthetic_name",

@@ -29,6 +29,7 @@ from core.models import (
     School,
     SOTY,
     SpeakerResult,
+    SyntheticResolutionLog,
     Team,
     TeamResult,
     TOTY,
@@ -49,11 +50,12 @@ from core.utils.round_amendment_recorder import (
 from core.utils.synthetic_cleanup import (
     get_synthetic_entity,
     parse_selection_token,
+    synthetic_cleanup_analysis,
+    synthetic_entity_cleanup_blocker_summary,
+    synthetic_entity_is_cleanup_deletable,
     synthetic_cleanup_sections,
-    synthetic_entity_is_unreferenced,
-    synthetic_entity_reference_summary,
 )
-from core.utils.synthetic_resolution import resolve_synthetic_entity
+from core.utils.synthetic_resolution import reject_synthetic_suggestion, resolve_synthetic_entity
 from core.views.elo_cache import invalidate_cached_elo_state
 
 
@@ -89,8 +91,11 @@ class SyntheticCleanupView(UserPassesTestMixin, TemplateView):
             messages.info(request, "Select at least one synthetic entity to delete.")
             return redirect("core:synthetic_cleanup")
 
+        analysis = synthetic_cleanup_analysis()
+        selected_tokens = set(selections)
         deleted = []
         skipped = []
+        selected_objects = []
 
         for token in selections:
             entity_type, object_id = parse_selection_token(token)
@@ -99,19 +104,36 @@ class SyntheticCleanupView(UserPassesTestMixin, TemplateView):
                 skipped.append(f"{token} (missing)")
                 continue
 
-            if not synthetic_entity_is_unreferenced(obj):
+            if not synthetic_entity_is_cleanup_deletable(
+                obj,
+                analysis=analysis,
+                ignored_selection_tokens=selected_tokens,
+            ):
                 reference_labels = ", ".join(
                     f"{item['label']} ({item['count']})"
-                    for item in synthetic_entity_reference_summary(obj)
+                    for item in synthetic_entity_cleanup_blocker_summary(
+                        obj,
+                        analysis=analysis,
+                        ignored_selection_tokens=selected_tokens,
+                    )
                 )
                 skipped.append(f"{entity_type}:{obj.pk} ({reference_labels})")
                 continue
 
+            selected_objects.append((entity_type, obj))
+
+        for entity_type, obj in sorted(
+            selected_objects,
+            key=lambda item: {"team": 0, "debater": 1, "school": 2}.get(item[0], 99),
+        ):
             obj.delete()
-            deleted.append(f"{entity_type}:{object_id}")
+            deleted.append(f"{entity_type}:{obj.pk}")
 
         if deleted:
-            messages.success(request, f"Deleted {len(deleted)} unreferenced synthetic entit{'y' if len(deleted) == 1 else 'ies'}.")
+            messages.success(
+                request,
+                f"Deleted {len(deleted)} synthetic cleanup entit{'y' if len(deleted) == 1 else 'ies'}.",
+            )
         if skipped:
             messages.warning(
                 request,
@@ -890,9 +912,10 @@ class SyntheticResolutionSuggestionsView(MergeSuggestionsView):
     cache_version_key = "synthetic_resolution_suggestions_version"
     max_debater_suggestions = 100
     max_school_suggestions = 60
-    default_synthetic_debater_limit = 250
-    default_synthetic_school_limit = 150
-    default_canonical_debater_limit = 2500
+    default_synthetic_debater_limit = 500
+    default_synthetic_school_limit = 300
+    default_canonical_debater_limit = 10000
+    max_blocked_synthetic_debaters = 80
     school_stop_words = {
         "college",
         "campus",
@@ -901,6 +924,26 @@ class SyntheticResolutionSuggestionsView(MergeSuggestionsView):
         "school",
         "the",
         "university",
+    }
+    action_messages = {
+        "resolve": {
+            "debater": "Resolved synthetic debater {synthetic} into {canonical}.",
+            "school": "Resolved synthetic school {synthetic} into {canonical}.",
+        },
+        "reject": {
+            "debater": "Rejected synthetic debater suggestion {synthetic} -> {canonical}.",
+            "school": "Rejected synthetic school suggestion {synthetic} -> {canonical}.",
+        },
+    }
+    default_action_reasons = {
+        "resolve": {
+            "debater": "Suggested synthetic debater resolution",
+            "school": "Suggested synthetic school resolution",
+        },
+        "reject": {
+            "debater": "Rejected synthetic debater suggestion",
+            "school": "Rejected synthetic school suggestion",
+        },
     }
 
     def get_context_data(self, **kwargs):
@@ -964,17 +1007,17 @@ class SyntheticResolutionSuggestionsView(MergeSuggestionsView):
         return context
 
     def post(self, request, *args, **kwargs):
+        action = str(request.POST.get("action") or "resolve").strip().lower()
         entity_type = str(request.POST.get("entity_type") or "debater").strip().lower()
         synthetic_id = request.POST.get("synthetic_id") or request.POST.get("synthetic_debater")
         target_id = request.POST.get("target_id") or request.POST.get("canonical_debater")
         reason = str(request.POST.get("reason") or "").strip()
 
-        if entity_type == "debater":
-            reason = reason or "Suggested synthetic debater resolution"
-        elif entity_type == "school":
-            reason = reason or "Suggested synthetic school resolution"
-        else:
+        if action not in self.action_messages:
+            return JsonResponse({"success": False, "error": "Unsupported synthetic suggestion action."})
+        if entity_type not in self.action_messages[action]:
             return JsonResponse({"success": False, "error": "Unsupported synthetic entity type."})
+        reason = reason or self.default_action_reasons[action][entity_type]
 
         if not synthetic_id or not target_id:
             return JsonResponse({"success": False, "error": "Missing resolution selection."})
@@ -991,7 +1034,8 @@ class SyntheticResolutionSuggestionsView(MergeSuggestionsView):
             )
 
         try:
-            resolution_message = self._build_resolution_message(
+            response_message = self._build_action_message(
+                action=action,
                 entity_type=entity_type,
                 synthetic_id=synthetic_id,
                 target_id=target_id,
@@ -1002,35 +1046,47 @@ class SyntheticResolutionSuggestionsView(MergeSuggestionsView):
             )
 
         try:
-            resolve_synthetic_entity(
-                entity_type=entity_type,
-                synthetic_id=synthetic_id,
-                target_id=target_id,
-                actor=request.user,
-                reason=reason,
-                source_context={"source": "synthetic_resolution_suggestions"},
-            )
+            if action == "resolve":
+                resolve_synthetic_entity(
+                    entity_type=entity_type,
+                    synthetic_id=synthetic_id,
+                    target_id=target_id,
+                    actor=request.user,
+                    reason=reason,
+                    source_context={"source": "synthetic_resolution_suggestions"},
+                )
+            else:
+                reject_synthetic_suggestion(
+                    entity_type=entity_type,
+                    synthetic_id=synthetic_id,
+                    target_id=target_id,
+                    actor=request.user,
+                    reason=reason,
+                    source_context={"source": "synthetic_resolution_suggestions"},
+                )
         except Exception as exc:
             return JsonResponse({"success": False, "error": str(exc)})
 
         recording_warning = None
-        try:
-            record_round_amendment_action(
-                build_synthetic_resolution_action(
-                    entity_type=entity_type,
-                    synthetic_id=synthetic_id,
-                    target_id=target_id,
-                    reason=reason,
+        if action == "resolve":
+            try:
+                record_round_amendment_action(
+                    build_synthetic_resolution_action(
+                        entity_type=entity_type,
+                        synthetic_id=synthetic_id,
+                        target_id=target_id,
+                        reason=reason,
+                    )
                 )
-            )
-        except Exception as exc:
-            recording_warning = str(exc)
+            except Exception as exc:
+                recording_warning = str(exc)
 
         self._bump_cache_version()
 
         payload = {
             "success": True,
-            "message": resolution_message,
+            "message": response_message,
+            "action": action,
         }
         if recording_warning:
             payload["warning"] = (
@@ -1097,15 +1153,21 @@ class SyntheticResolutionSuggestionsView(MergeSuggestionsView):
         current_version = int(cache.get(self.cache_version_key) or 1)
         cache.set(self.cache_version_key, current_version + 1, None)
 
-    def _build_resolution_message(self, entity_type, synthetic_id, target_id):
+    def _build_action_message(self, action, entity_type, synthetic_id, target_id):
         if entity_type == "debater":
             synthetic = Debater.all_objects.get(pk=synthetic_id, synthetic=True)
             canonical = Debater.objects.get(pk=target_id)
-            return f"Resolved synthetic debater {synthetic.name} into {canonical.name}."
+            return self.action_messages[action]["debater"].format(
+                synthetic=synthetic.name,
+                canonical=canonical.name,
+            )
         if entity_type == "school":
             synthetic = School.all_objects.get(pk=synthetic_id, synthetic=True)
             canonical = School.objects.get(pk=target_id, synthetic=False)
-            return f"Resolved synthetic school {synthetic.name} into {canonical.name}."
+            return self.action_messages[action]["school"].format(
+                synthetic=synthetic.name,
+                canonical=canonical.name,
+            )
         raise ValueError("Unsupported synthetic entity type.")
 
     @staticmethod
@@ -1115,9 +1177,18 @@ class SyntheticResolutionSuggestionsView(MergeSuggestionsView):
 
     def _normalize_school_text(self, value):
         normalized = self._normalize_text(value)
-        tokens = [token for token in normalized.split() if token not in self.school_stop_words]
-        compact = " ".join(tokens) or normalized
-        return normalized, compact
+        raw_tokens = normalized.split()
+        compact_tokens = [token for token in raw_tokens if token not in self.school_stop_words]
+        compact = " ".join(compact_tokens) or normalized
+        if len(raw_tokens) == 1:
+            acronym = raw_tokens[0]
+        else:
+            acronym = "".join(
+                token[0]
+                for token in raw_tokens
+                if token and token not in {"of", "the"}
+            )
+        return normalized, compact, compact_tokens or raw_tokens, acronym
 
     def _prepare_debater_name(self, debater):
         first = self._normalize_text(debater.first_name)
@@ -1125,7 +1196,16 @@ class SyntheticResolutionSuggestionsView(MergeSuggestionsView):
         full = " ".join(part for part in [first, last] if part)
         return first, last, full
 
-    def _candidate_debater_queryset(self, synthetic_debaters, selected_debater_ids):
+    def _load_rejected_pair_keys(self, entity_type):
+        return {
+            (int(synthetic_id), int(target_id))
+            for synthetic_id, target_id in SyntheticResolutionLog.objects.filter(
+                action=SyntheticResolutionLog.Action.REJECTED,
+                entity_type=entity_type,
+            ).values_list("synthetic_id", "resolved_to_id")
+        }
+
+    def _candidate_debater_queryset(self, synthetic_debaters, selected_debater_ids, selected_school_ids):
         queryset = (
             Debater.objects.filter(alias_group__isnull=True, synthetic=False)
             .exclude(first_name__isnull=True)
@@ -1136,19 +1216,38 @@ class SyntheticResolutionSuggestionsView(MergeSuggestionsView):
             .order_by("-id")
         )
 
-        if selected_debater_ids and len(synthetic_debaters) <= 20:
-            last_prefix_filters = Q()
+        if (
+            (selected_debater_ids or selected_school_ids or len(synthetic_debaters) <= 20)
+            and len(synthetic_debaters) <= self.max_blocked_synthetic_debaters
+        ):
+            blocked_filters = Q()
             school_ids = set()
             for synthetic_debater in synthetic_debaters:
-                _, last_norm, _ = self._prepare_debater_name(synthetic_debater)
+                first_norm, last_norm, _ = self._prepare_debater_name(synthetic_debater)
+                row_filters = Q()
                 if last_norm:
-                    last_prefix_filters |= Q(last_name__istartswith=last_norm[:4])
+                    row_filters |= Q(last_name__iexact=last_norm)
+                    row_filters |= Q(last_name__istartswith=last_norm[:4])
+                    row_filters |= Q(last_name__istartswith=last_norm[:3])
+                    if len(last_norm) >= 4:
+                        row_filters |= Q(last_name__iendswith=last_norm[-4:])
+                    if first_norm:
+                        row_filters |= Q(
+                            first_name__istartswith=first_norm[:1],
+                            last_name__istartswith=last_norm[:2],
+                        )
+                        row_filters |= Q(
+                            first_name__istartswith=first_norm[:2],
+                            last_name__istartswith=last_norm[:2],
+                        )
+                if row_filters:
+                    blocked_filters |= row_filters
                 if synthetic_debater.school_id:
                     school_ids.add(synthetic_debater.school_id)
             if school_ids:
-                last_prefix_filters |= Q(school_id__in=school_ids)
-            if last_prefix_filters:
-                queryset = queryset.filter(last_prefix_filters)
+                blocked_filters |= Q(school_id__in=school_ids)
+            if blocked_filters:
+                queryset = queryset.filter(blocked_filters)
         else:
             queryset = queryset[: self.default_canonical_debater_limit]
 
@@ -1180,26 +1279,35 @@ class SyntheticResolutionSuggestionsView(MergeSuggestionsView):
         if not synthetic_debaters:
             return []
 
+        rejected_pairs = self._load_rejected_pair_keys(SyntheticResolutionLog.EntityType.DEBATER)
         canonical_debaters = self._candidate_debater_queryset(
             synthetic_debaters=synthetic_debaters,
             selected_debater_ids=selected_debater_ids,
+            selected_school_ids=selected_school_ids,
         )
         if not canonical_debaters:
             return []
 
         canonical_exact_name_groups = defaultdict(list)
+        canonical_last_name_groups = defaultdict(list)
         canonical_initial_last_groups = defaultdict(list)
         canonical_prefix_groups = defaultdict(list)
+        canonical_last_prefix_groups = defaultdict(list)
+        canonical_last_suffix_groups = defaultdict(list)
         canonical_school_initial_groups = defaultdict(list)
         canonical_by_id = {}
         for debater in canonical_debaters:
             first_norm, last_norm, _ = self._prepare_debater_name(debater)
             debater.first_normalized = first_norm
             debater.last_normalized = last_norm
+            debater.school_normalized = self._normalize_text(debater.school.name) if debater.school_id else ""
             canonical_by_id[debater.id] = debater
             canonical_exact_name_groups[(first_norm, last_norm)].append(debater.id)
+            canonical_last_name_groups[last_norm].append(debater.id)
             canonical_initial_last_groups[(first_norm[:1], last_norm[:4])].append(debater.id)
             canonical_prefix_groups[(first_norm[:3], last_norm[:4])].append(debater.id)
+            canonical_last_prefix_groups[last_norm[:3]].append(debater.id)
+            canonical_last_suffix_groups[last_norm[-4:]].append(debater.id)
             canonical_school_initial_groups[(debater.school_id, first_norm[:1])].append(debater.id)
 
         candidate_pairs = {}
@@ -1207,11 +1315,17 @@ class SyntheticResolutionSuggestionsView(MergeSuggestionsView):
             first_norm, last_norm, full_norm = self._prepare_debater_name(synthetic_debater)
             synthetic_debater.first_normalized = first_norm
             synthetic_debater.last_normalized = last_norm
+            synthetic_school_norm = (
+                self._normalize_text(synthetic_debater.school.name) if synthetic_debater.school_id else ""
+            )
 
             candidate_ids = []
             candidate_ids.extend(canonical_exact_name_groups.get((first_norm, last_norm), []))
+            candidate_ids.extend(canonical_last_name_groups.get(last_norm, []))
             candidate_ids.extend(canonical_initial_last_groups.get((first_norm[:1], last_norm[:4]), []))
             candidate_ids.extend(canonical_prefix_groups.get((first_norm[:3], last_norm[:4]), []))
+            candidate_ids.extend(canonical_last_prefix_groups.get(last_norm[:3], []))
+            candidate_ids.extend(canonical_last_suffix_groups.get(last_norm[-4:], []))
             if synthetic_debater.school_id:
                 candidate_ids.extend(
                     canonical_school_initial_groups.get((synthetic_debater.school_id, first_norm[:1]), [])
@@ -1226,20 +1340,46 @@ class SyntheticResolutionSuggestionsView(MergeSuggestionsView):
                 canonical_debater = canonical_by_id.get(candidate_id)
                 if canonical_debater is None:
                     continue
+                pair_key = (synthetic_debater.id, canonical_debater.id)
+                if pair_key in rejected_pairs:
+                    continue
                 canonical_full_norm = " ".join(
                     part
                     for part in [canonical_debater.first_normalized, canonical_debater.last_normalized]
                     if part
                 )
+                first_similarity = SequenceMatcher(
+                    None,
+                    first_norm,
+                    canonical_debater.first_normalized,
+                ).ratio()
+                last_similarity = SequenceMatcher(
+                    None,
+                    last_norm,
+                    canonical_debater.last_normalized,
+                ).ratio()
                 name_similarity = SequenceMatcher(None, full_norm, canonical_full_norm).ratio()
-                if name_similarity < 0.76 and not (
-                    synthetic_debater.school_id == canonical_debater.school_id and name_similarity >= 0.68
+                school_similarity = 0
+                if synthetic_school_norm and canonical_debater.school_normalized:
+                    school_similarity = SequenceMatcher(
+                        None,
+                        synthetic_school_norm,
+                        canonical_debater.school_normalized,
+                    ).ratio()
+                same_school = synthetic_debater.school_id == canonical_debater.school_id
+                if (
+                    name_similarity < 0.74
+                    and not (same_school and name_similarity >= 0.64)
+                    and not (last_similarity >= 0.82 and first_similarity >= 0.45)
+                    and not (school_similarity >= 0.78 and last_similarity >= 0.72)
                 ):
                     continue
                 preliminary_score = (
                     name_similarity * 100
+                    + last_similarity * 20
                     + min(max(synthetic_debater.id, canonical_debater.id) / 200, 50)
-                    + (30 if synthetic_debater.school_id == canonical_debater.school_id else 0)
+                    + (30 if same_school else 0)
+                    + school_similarity * 10
                 )
                 ranked_candidates.append((preliminary_score, name_similarity, canonical_debater))
 
@@ -1298,19 +1438,29 @@ class SyntheticResolutionSuggestionsView(MergeSuggestionsView):
         if not canonical_schools:
             return []
 
+        rejected_pairs = self._load_rejected_pair_keys(SyntheticResolutionLog.EntityType.SCHOOL)
         canonical_by_id = {}
         canonical_name_groups = defaultdict(list)
         canonical_compact_groups = defaultdict(list)
         canonical_short_groups = defaultdict(list)
         canonical_prefix_groups = defaultdict(list)
+        canonical_acronym_groups = defaultdict(list)
+        canonical_token_groups = defaultdict(list)
 
         for school in canonical_schools:
-            name_normalized, compact_name = self._normalize_school_text(school.name)
-            short_normalized, compact_short = self._normalize_school_text(school.short_name)
+            name_normalized, compact_name, compact_tokens, name_acronym = self._normalize_school_text(
+                school.name
+            )
+            short_normalized, compact_short, _, short_acronym = self._normalize_school_text(
+                school.short_name
+            )
             school.name_normalized = name_normalized
             school.compact_name = compact_name
+            school.compact_tokens = set(compact_tokens)
+            school.name_acronym = name_acronym
             school.short_normalized = short_normalized
             school.compact_short = compact_short
+            school.short_acronym = short_acronym
             canonical_by_id[school.id] = school
             canonical_name_groups[name_normalized].append(school.id)
             canonical_compact_groups[compact_name].append(school.id)
@@ -1318,11 +1468,24 @@ class SyntheticResolutionSuggestionsView(MergeSuggestionsView):
                 canonical_short_groups[short_normalized].append(school.id)
             if compact_name:
                 canonical_prefix_groups[compact_name[:5]].append(school.id)
+            if name_acronym:
+                canonical_acronym_groups[name_acronym].append(school.id)
+            if short_normalized:
+                canonical_acronym_groups[short_normalized].append(school.id)
+            if compact_short:
+                canonical_acronym_groups[compact_short].append(school.id)
+            for token in school.compact_tokens:
+                canonical_token_groups[token].append(school.id)
 
         suggestions = []
         for synthetic_school in synthetic_schools:
-            name_normalized, compact_name = self._normalize_school_text(synthetic_school.name)
-            short_normalized, compact_short = self._normalize_school_text(synthetic_school.short_name)
+            name_normalized, compact_name, compact_tokens, name_acronym = self._normalize_school_text(
+                synthetic_school.name
+            )
+            short_normalized, compact_short, _, _ = self._normalize_school_text(
+                synthetic_school.short_name
+            )
+            token_set = set(compact_tokens)
 
             candidate_ids = []
             candidate_ids.extend(canonical_name_groups.get(name_normalized, []))
@@ -1332,6 +1495,14 @@ class SyntheticResolutionSuggestionsView(MergeSuggestionsView):
                 candidate_ids.extend(canonical_short_groups.get(short_normalized, []))
             if compact_short:
                 candidate_ids.extend(canonical_short_groups.get(compact_short, []))
+            if name_acronym:
+                candidate_ids.extend(canonical_acronym_groups.get(name_acronym, []))
+            if short_normalized:
+                candidate_ids.extend(canonical_acronym_groups.get(short_normalized, []))
+            if compact_short:
+                candidate_ids.extend(canonical_acronym_groups.get(compact_short, []))
+            for token in token_set:
+                candidate_ids.extend(canonical_token_groups.get(token, []))
 
             ranked_candidates = []
             seen_candidate_ids = set()
@@ -1341,6 +1512,9 @@ class SyntheticResolutionSuggestionsView(MergeSuggestionsView):
                 seen_candidate_ids.add(candidate_id)
                 canonical_school = canonical_by_id.get(candidate_id)
                 if canonical_school is None:
+                    continue
+                pair_key = (synthetic_school.id, canonical_school.id)
+                if pair_key in rejected_pairs:
                     continue
 
                 name_similarity = SequenceMatcher(
@@ -1356,20 +1530,36 @@ class SyntheticResolutionSuggestionsView(MergeSuggestionsView):
                         canonical_school.compact_short or canonical_school.short_normalized,
                     ).ratio()
 
+                token_overlap = 0
+                if token_set and canonical_school.compact_tokens:
+                    token_overlap = len(token_set & canonical_school.compact_tokens) / max(
+                        len(token_set),
+                        len(canonical_school.compact_tokens),
+                    )
                 best_similarity = max(name_similarity, short_similarity)
                 same_short_name = bool(
                     short_normalized and short_normalized == canonical_school.short_normalized
                 )
-                if best_similarity < 0.72 and not same_short_name:
+                same_acronym = bool(
+                    (name_acronym and name_acronym == canonical_school.name_acronym)
+                    or (short_normalized and short_normalized == canonical_school.short_normalized)
+                    or (compact_short and compact_short == canonical_school.compact_short)
+                )
+                if best_similarity < 0.68 and token_overlap < 0.5 and not same_short_name and not same_acronym:
                     continue
 
                 score = best_similarity * 100
+                score += token_overlap * 25
                 if compact_name == canonical_school.compact_name:
                     score += 25
                 if same_short_name:
                     score += 30
+                if same_acronym:
+                    score += 20
 
-                ranked_candidates.append((score, best_similarity, same_short_name, canonical_school))
+                ranked_candidates.append(
+                    (score, best_similarity, same_short_name, canonical_school)
+                )
 
             ranked_candidates.sort(key=lambda item: item[0], reverse=True)
             for score, best_similarity, same_short_name, canonical_school in ranked_candidates[:3]:

@@ -11,11 +11,11 @@ from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 from unittest.mock import patch
 
-from core.models import Debater, Round, School, SchoolLookup, SyntheticResolutionLog, Team, Tournament
+from core.models import Debater, Round, RoundStats, School, SchoolLookup, SyntheticResolutionLog, Team, Tournament
 from core.utils.round_amendment_recorder import (
     backfill_synthetic_resolution_actions_from_logs,
 )
-from core.views.admin_views import MergeSuggestionsView
+from core.views.admin_views import MergeSuggestionsView, SyntheticResolutionSuggestionsView
 from core.views.elo_cache import get_cached_elo_state, set_cached_elo_state
 
 
@@ -28,8 +28,7 @@ class AdminToolsViewTest(TestCase):
             password="password",
         )
         self.school = School.objects.create(name="Resolver University")
-        cache.delete("merge_suggestions_list")
-        cache.delete("synthetic_resolution_suggestions_list")
+        cache.clear()
 
     def test_admin_tools_shows_synthetic_resolution_form(self):
         self.client.force_login(self.superuser)
@@ -53,7 +52,7 @@ class AdminToolsViewTest(TestCase):
         self.assertContains(response, reverse("core:synthetic_cleanup"))
         self.assertContains(response, "Synthetic Cleanup")
 
-    def test_synthetic_cleanup_lists_only_unreferenced_synthetic_entities(self):
+    def test_synthetic_cleanup_lists_direct_and_isolated_synthetic_entities(self):
         self.client.force_login(self.superuser)
 
         unused_school = School.all_objects.create(
@@ -97,15 +96,69 @@ class AdminToolsViewTest(TestCase):
             )
         )
 
+        isolated_school = School.all_objects.create(
+            name="Isolated Synthetic School",
+            short_name="ISS",
+            synthetic=True,
+        )
+        isolated_first = Debater.all_objects.create(
+            first_name="Isolated",
+            last_name="First",
+            school=isolated_school,
+            synthetic=True,
+        )
+        isolated_second = Debater.all_objects.create(
+            first_name="Isolated",
+            last_name="Second",
+            school=isolated_school,
+            synthetic=True,
+        )
+        isolated_team = Team.objects.create(
+            name="Isolated Synthetic Team",
+            short_name="IST",
+            synthetic=True,
+        )
+        isolated_team.debaters.add(isolated_first, isolated_second)
+
+        externally_linked_school = School.all_objects.create(
+            name="Externally Linked Synthetic School",
+            short_name="ELS",
+            synthetic=True,
+        )
+        externally_linked_debater = Debater.all_objects.create(
+            first_name="Externally",
+            last_name="Linked",
+            school=externally_linked_school,
+            synthetic=True,
+        )
+        externally_linked_team = Team.objects.create(
+            name="Externally Linked Synthetic Team",
+            short_name="ELT",
+            synthetic=True,
+        )
+        externally_linked_team.debaters.add(externally_linked_debater)
+        Debater.objects.create(
+            first_name="Real",
+            last_name="Link",
+            school=externally_linked_school,
+        )
+
         response = self.client.get(reverse("core:synthetic_cleanup"))
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, unused_school.name)
         self.assertContains(response, unused_debater.name)
         self.assertContains(response, unused_team.name)
+        self.assertContains(response, isolated_school.name)
+        self.assertContains(response, isolated_first.name)
+        self.assertContains(response, isolated_second.name)
+        self.assertContains(response, isolated_team.name)
         self.assertNotContains(response, used_school.name)
         self.assertNotContains(response, used_debater.name)
         self.assertNotContains(response, used_team.name)
+        self.assertNotContains(response, externally_linked_school.name)
+        self.assertNotContains(response, externally_linked_debater.name)
+        self.assertNotContains(response, externally_linked_team.name)
 
     def test_synthetic_cleanup_deletes_selected_entities_and_rechecks_references(self):
         self.client.force_login(self.superuser)
@@ -123,15 +176,39 @@ class AdminToolsViewTest(TestCase):
         )
         unused_team = Team.objects.create(name="Delete Synthetic Team", short_name="DST", synthetic=True)
 
-        referenced_team = Team.objects.create(name="Referenced Synthetic Team", short_name="RST", synthetic=True)
-        referenced_team.debaters.add(
-            Debater.all_objects.create(
-                first_name="Still",
-                last_name="Linked",
-                school=self.school,
-                synthetic=True,
-            )
+        isolated_school = School.all_objects.create(
+            name="Delete Isolated Synthetic School",
+            short_name="DISS",
+            synthetic=True,
         )
+        isolated_first = Debater.all_objects.create(
+            first_name="Delete",
+            last_name="Isolated One",
+            school=isolated_school,
+            synthetic=True,
+        )
+        isolated_second = Debater.all_objects.create(
+            first_name="Delete",
+            last_name="Isolated Two",
+            school=isolated_school,
+            synthetic=True,
+        )
+        isolated_team = Team.objects.create(name="Delete Isolated Synthetic Team", short_name="DIST", synthetic=True)
+        isolated_team.debaters.add(isolated_first, isolated_second)
+
+        partial_school = School.all_objects.create(
+            name="Partial Synthetic School",
+            short_name="PSS",
+            synthetic=True,
+        )
+        partial_debater = Debater.all_objects.create(
+            first_name="Partial",
+            last_name="Synthetic",
+            school=partial_school,
+            synthetic=True,
+        )
+        partial_team = Team.objects.create(name="Partial Synthetic Team", short_name="PST", synthetic=True)
+        partial_team.debaters.add(partial_debater)
 
         response = self.client.post(
             reverse("core:synthetic_cleanup"),
@@ -140,7 +217,12 @@ class AdminToolsViewTest(TestCase):
                     f"school:{unused_school.id}",
                     f"debater:{unused_debater.id}",
                     f"team:{unused_team.id}",
-                    f"team:{referenced_team.id}",
+                    f"school:{isolated_school.id}",
+                    f"debater:{isolated_first.id}",
+                    f"debater:{isolated_second.id}",
+                    f"team:{isolated_team.id}",
+                    f"school:{partial_school.id}",
+                    f"team:{partial_team.id}",
                 ]
             },
             follow=True,
@@ -150,11 +232,16 @@ class AdminToolsViewTest(TestCase):
         self.assertFalse(School.all_objects.filter(pk=unused_school.pk).exists())
         self.assertFalse(Debater.all_objects.filter(pk=unused_debater.pk).exists())
         self.assertFalse(Team.objects.filter(pk=unused_team.pk).exists())
-        self.assertTrue(Team.objects.filter(pk=referenced_team.pk).exists())
+        self.assertFalse(School.all_objects.filter(pk=isolated_school.pk).exists())
+        self.assertFalse(Debater.all_objects.filter(pk=isolated_first.pk).exists())
+        self.assertFalse(Debater.all_objects.filter(pk=isolated_second.pk).exists())
+        self.assertFalse(Team.objects.filter(pk=isolated_team.pk).exists())
+        self.assertTrue(School.all_objects.filter(pk=partial_school.pk).exists())
+        self.assertTrue(Team.objects.filter(pk=partial_team.pk).exists())
 
         messages = [message.message for message in get_messages(response.wsgi_request)]
-        self.assertIn("Deleted 3 unreferenced synthetic entities.", messages)
-        self.assertTrue(any(message.startswith("Skipped 1 selection") for message in messages))
+        self.assertIn("Deleted 7 synthetic cleanup entities.", messages)
+        self.assertTrue(any(message.startswith("Skipped 2 selections") for message in messages))
 
     def test_round_amendment_upload_creates_round(self):
         self.client.force_login(self.superuser)
@@ -329,6 +416,128 @@ class AdminToolsViewTest(TestCase):
         self.assertContains(response, synthetic_school.name)
         self.assertContains(response, canonical_school.name)
 
+    def test_synthetic_resolution_suggestions_school_scope_uses_name_blocking_beyond_recent_slice(self):
+        self.client.force_login(self.superuser)
+        synthetic_school = School.all_objects.create(
+            name="Synthetic Resolver School",
+            short_name="SRS",
+            temporary=True,
+            synthetic=True,
+        )
+        synthetic = Debater.all_objects.create(
+            first_name="Casey",
+            last_name="Browne",
+            school=synthetic_school,
+            temporary=True,
+            synthetic=True,
+        )
+        canonical = Debater.objects.create(
+            first_name="Casey",
+            last_name="Brown",
+            school=self.school,
+        )
+        for index in range(10):
+            Debater.objects.create(
+                first_name=f"Recent{index}",
+                last_name=f"Filler{index}",
+                school=self.school,
+            )
+
+        with patch.object(SyntheticResolutionSuggestionsView, "default_canonical_debater_limit", 5):
+            response = self.client.get(
+                reverse("core:synthetic_resolution_suggestions"),
+                {
+                    "run": "1",
+                    "synthetic_schools": [str(synthetic_school.id)],
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, synthetic.name)
+        self.assertContains(response, canonical.name)
+
+    def test_synthetic_resolution_suggestions_page_matches_school_acronyms(self):
+        self.client.force_login(self.superuser)
+        synthetic_school = School.all_objects.create(
+            name="UCLA",
+            short_name="",
+            temporary=True,
+            synthetic=True,
+        )
+        canonical_school = School.objects.create(
+            name="University of California Los Angeles",
+            short_name="",
+        )
+
+        response = self.client.get(
+            reverse("core:synthetic_resolution_suggestions"),
+            {
+                "run": "1",
+                "synthetic_schools": [str(synthetic_school.id)],
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, synthetic_school.name)
+        self.assertContains(response, canonical_school.name)
+
+    def test_synthetic_resolution_suggestions_post_rejects_and_filters_pair(self):
+        self.client.force_login(self.superuser)
+        synthetic = Debater.all_objects.create(
+            first_name="Casey",
+            last_name="Browne",
+            school=self.school,
+            temporary=True,
+            synthetic=True,
+        )
+        canonical = Debater.objects.create(
+            first_name="Casey",
+            last_name="Brown",
+            school=self.school,
+        )
+
+        response = self.client.post(
+            reverse("core:synthetic_resolution_suggestions"),
+            {
+                "action": "reject",
+                "entity_type": "debater",
+                "synthetic_id": str(synthetic.id),
+                "target_id": str(canonical.id),
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertJSONEqual(
+            response.content,
+            {
+                "success": True,
+                "message": f"Rejected synthetic debater suggestion {synthetic.name} -> {canonical.name}.",
+                "action": "reject",
+            },
+        )
+        self.assertTrue(Debater.all_objects.filter(pk=synthetic.pk).exists())
+        self.assertTrue(
+            SyntheticResolutionLog.objects.filter(
+                action=SyntheticResolutionLog.Action.REJECTED,
+                entity_type=SyntheticResolutionLog.EntityType.DEBATER,
+                synthetic_id=synthetic.id,
+                resolved_to_id=canonical.id,
+            ).exists()
+        )
+
+        follow_up = self.client.get(
+            reverse("core:synthetic_resolution_suggestions"),
+            {
+                "run": "1",
+                "synthetic_debaters": [str(synthetic.id)],
+                "refresh": "1",
+            },
+        )
+
+        self.assertEqual(follow_up.status_code, 200)
+        self.assertContains(follow_up, "No synthetic resolution candidates found")
+        self.assertEqual(follow_up.context["debater_suggestions"], [])
+
     def test_synthetic_resolution_suggestions_post_resolves_debater(self):
         self.client.force_login(self.superuser)
         synthetic = Debater.all_objects.create(
@@ -358,6 +567,7 @@ class AdminToolsViewTest(TestCase):
             {
                 "success": True,
                 "message": f"Resolved synthetic debater {synthetic.name} into {canonical.name}.",
+                "action": "resolve",
             },
         )
         self.assertFalse(Debater.all_objects.filter(pk=synthetic.pk).exists())
@@ -446,6 +656,7 @@ class AdminToolsViewTest(TestCase):
             {
                 "success": True,
                 "message": f"Resolved synthetic school {synthetic_school.name} into {canonical_school.name}.",
+                "action": "resolve",
             },
         )
         self.assertFalse(School.all_objects.filter(pk=synthetic_school.pk).exists())
