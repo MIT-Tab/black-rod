@@ -8,6 +8,7 @@ from datetime import date
 import csv
 from io import StringIO
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Permission
 from django.test import TestCase, Client, override_settings
 from django.urls import reverse
 
@@ -315,12 +316,14 @@ class DebaterViewsTest(TestCase):
         self.assertContains(response, "Observer")
         self.assertContains(response, "Dino")
 
-    @override_settings(ENV="development")
-    def test_debater_detail_shows_csv_button_for_any_authenticated_user_in_dev(self):
+    def test_debater_detail_shows_csv_button_for_user_with_debug_permission(self):
         other_user = get_user_model().objects.create_user(
-            username="other-dev-user",
+            username="other-debug-user",
             password="testpass123",
-            email="other-dev@example.com",
+            email="other-debug@example.com",
+        )
+        other_user.user_permissions.add(
+            Permission.objects.get(codename="can_view_debug_tab_cards")
         )
         self.client.force_login(other_user)
 
@@ -335,8 +338,7 @@ class DebaterViewsTest(TestCase):
             reverse("core:debater_tab_cards_csv", kwargs={"pk": self.debater.pk}),
         )
 
-    @override_settings(ENV="production")
-    def test_debater_detail_hides_csv_button_for_unlinked_user_outside_dev(self):
+    def test_debater_detail_hides_csv_button_for_unlinked_user_without_permission(self):
         other_user = get_user_model().objects.create_user(
             username="other-prod-user",
             password="testpass123",
@@ -351,12 +353,14 @@ class DebaterViewsTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertNotContains(response, "Download Career Tab Cards CSV")
 
-    @override_settings(ENV="development")
-    def test_debater_tab_cards_csv_download_works_for_unlinked_user_in_dev(self):
+    def test_debater_tab_cards_csv_download_works_for_user_with_debug_permission(self):
         other_user = get_user_model().objects.create_user(
-            username="other-dev-download",
+            username="other-debug-download",
             password="testpass123",
-            email="other-dev-download@example.com",
+            email="other-debug-download@example.com",
+        )
+        other_user.user_permissions.add(
+            Permission.objects.get(codename="can_view_debug_tab_cards")
         )
         self.client.force_login(other_user)
 
@@ -367,6 +371,78 @@ class DebaterViewsTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response["Content-Type"], "text/csv")
         self.assertIn("career-tab-cards.csv", response["Content-Disposition"])
+
+    def test_debater_tab_cards_csv_includes_rows_from_linked_debaters(self):
+        self.client.force_login(self.user)
+
+        alias_group = DebaterAliasGroup.objects.create(label="John Doe")
+        self.debater.alias_group = alias_group
+        self.debater.save()
+
+        alias_school = School.objects.create(name="University of Chicago")
+        linked_alias = self._create_debater(
+            "John Doe",
+            school=alias_school,
+            alias_group=alias_group,
+        )
+        main_partner = self._create_debater("Pat Main")
+        alias_partner = self._create_debater("Pat Alias", school=alias_school)
+        main_opp_one = self._create_debater("Main Opp One")
+        main_opp_two = self._create_debater("Main Opp Two")
+        alias_opp_one = self._create_debater("Alias Opp One", school=alias_school)
+        alias_opp_two = self._create_debater("Alias Opp Two", school=alias_school)
+
+        main_team = self._create_team("Main Team", self.debater, main_partner)
+        alias_team = self._create_team("Alias Team", linked_alias, alias_partner)
+        main_opponent = self._create_team("Main Opponents", main_opp_one, main_opp_two)
+        alias_opponent = self._create_team("Alias Opponents", alias_opp_one, alias_opp_two)
+
+        main_round = Round.objects.create(
+            gov=main_team,
+            opp=main_opponent,
+            tournament=self.tournament,
+            round_number=1,
+            victor=Round.GOV,
+        )
+        alias_round = Round.objects.create(
+            gov=alias_team,
+            opp=alias_opponent,
+            tournament=self.tournament,
+            round_number=2,
+            victor=Round.GOV,
+        )
+
+        RoundStats.objects.create(
+            round=main_round,
+            debater=self.debater,
+            speaks=28,
+            ranks=1,
+            debater_role="PM",
+        )
+        RoundStats.objects.create(
+            round=alias_round,
+            debater=linked_alias,
+            speaks=27,
+            ranks=2,
+            debater_role="PM",
+        )
+
+        response = self.client.get(
+            reverse("core:debater_tab_cards_csv", kwargs={"pk": self.debater.pk})
+        )
+
+        self.assertEqual(response.status_code, 200)
+
+        rows = list(csv.DictReader(StringIO(response.content.decode("utf-8"))))
+
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(
+            {(row["round_label"], row["partner_name"], row["opponent_1_name"]) for row in rows},
+            {
+                ("1", "Pat Main", "Main Opp One"),
+                ("2", "Pat Alias", "Alias Opp One"),
+            },
+        )
 
     def test_debater_tab_cards_csv_includes_wf_lf_and_bye_rounds_without_stats(self):
         self.client.force_login(self.user)

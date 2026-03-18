@@ -11,4 +11,8 @@ class User(AbstractUser):
                 "exclusive_pre_access",
                 "Can access exclusive pre-access ELO and speaks views",
             ),
+            (
+                "can_view_debug_tab_cards",
+                "Can view CSVs for debug",
+            ),
         )
