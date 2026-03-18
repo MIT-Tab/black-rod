@@ -289,3 +289,82 @@ def test_round_amendments_apply_synthetic_resolution():
         synthetic_id=synthetic.id,
         resolved_to_id=canonical.id,
     ).exists()
+
+
+@pytest.mark.django_db
+def test_round_amendments_update_round_can_create_synthetic_alias_and_slot_ref_stats():
+    tournament = _create_tournament("Synthetic Alias Round Open")
+    round_obj, (gov_one, gov_two, opp_one, opp_two) = _create_round_fixture(
+        tournament,
+        import_key="synthetic-alias-round",
+    )
+    ImportedRoundMetadata.objects.create(round=round_obj)
+
+    summary = apply_round_amendments(
+        {
+            "actions": [
+                {
+                    "type": "update_round",
+                    "round_id": round_obj.id,
+                    "imported_metadata": {
+                        "gov_1": {"debater_id": gov_one.id, "source_name": gov_one.name, "role": "PM"},
+                        "gov_2": {
+                            "source_name": "Elaine Zhang",
+                            "create_synthetic": True,
+                            "role": "MG",
+                        },
+                        "opp_1": {"debater_id": opp_one.id, "source_name": opp_one.name, "role": "LO"},
+                        "opp_2": {"debater_id": opp_two.id, "source_name": opp_two.name, "role": "MO"},
+                    },
+                    "stats": [
+                        {
+                            "debater_id": gov_one.id,
+                            "debater_role": "PM",
+                            "speaks": "29.0",
+                            "ranks": "1",
+                        },
+                        {
+                            "slot_ref": "gov_2",
+                            "debater_role": "MG",
+                            "speaks": "28.0",
+                            "ranks": "2",
+                            "metadata": {"source": "tab_card", "speaker_name": "Elaine Zhang"},
+                        },
+                        {
+                            "debater_id": opp_one.id,
+                            "debater_role": "LO",
+                            "speaks": "27.0",
+                            "ranks": "3",
+                        },
+                        {
+                            "debater_id": opp_two.id,
+                            "debater_role": "MO",
+                            "speaks": "26.0",
+                            "ranks": "4",
+                        },
+                    ],
+                }
+            ]
+        }
+    )
+
+    assert summary["rounds_updated"] == 1
+    round_obj.refresh_from_db()
+    metadata = round_obj.imported_metadata
+    synthetic_alias = metadata.gov_2_alias
+    assert synthetic_alias is not None
+    assert synthetic_alias.source_name == "Elaine Zhang"
+    assert synthetic_alias.debater.synthetic is True
+    assert synthetic_alias.debater.temporary is False
+    assert synthetic_alias.debater.first_name == "Elaine"
+    assert synthetic_alias.debater.last_name == "Zhang"
+    gov_team_member_ids = sorted(
+        round_obj.gov.debaters.through.objects.filter(team_id=round_obj.gov_id).values_list(
+            "debater_id",
+            flat=True,
+        )
+    )
+    assert gov_team_member_ids == sorted([gov_one.id, synthetic_alias.debater_id])
+    synthetic_stat = round_obj.stats.get(debater=synthetic_alias.debater)
+    assert synthetic_stat.debater_role == "MG"
+    assert float(synthetic_stat.speaks) == 28.0

@@ -174,3 +174,152 @@ def test_round_import_migration_preserves_trusted_manual_rounds():
     assert migrated.stage == "outround"
     assert migrated.metadata["record_origin"] == "trusted_pre_import_manual_round"
     assert migrated.metadata["preserved_by_round_import_migration"] is True
+
+
+@pytest.mark.django_db(transaction=True)
+def test_outround_speaker_position_migration_clears_only_outrounds():
+    migrate_from = [("core", "0062_schedulerworkspace_schedulingrun")]
+    migrate_to = [("core", "0063_outround_roundstats_no_speaker_positions")]
+
+    executor = MigrationExecutor(connection)
+    executor.migrate(migrate_from)
+    old_apps = executor.loader.project_state(migrate_from).apps
+
+    SchoolModel = old_apps.get_model("core", "School")
+    TeamModel = old_apps.get_model("core", "Team")
+    DebaterModel = old_apps.get_model("core", "Debater")
+    TournamentModel = old_apps.get_model("core", "Tournament")
+    RoundModel = old_apps.get_model("core", "Round")
+    RoundStatsModel = old_apps.get_model("core", "RoundStats")
+
+    school = SchoolModel.objects.create(name="Trigger Host", short_name="TH")
+    tournament = TournamentModel.objects.create(
+        name="Trigger Invitational",
+        manual_name="Trigger Invitational",
+        host=school,
+        date=date(2024, 2, 10),
+        season="2024",
+        num_rounds=5,
+    )
+    gov_team = TeamModel.objects.create(name="Trigger Gov", short_name="TG")
+    opp_team = TeamModel.objects.create(name="Trigger Opp", short_name="TO")
+    debater = DebaterModel.objects.create(
+        first_name="Alex",
+        last_name="Speaker",
+        school=school,
+    )
+
+    prelim_round = RoundModel.objects.create(
+        tournament=tournament,
+        gov=gov_team,
+        opp=opp_team,
+        round_number=1,
+        stage="prelim",
+        victor=Round.UNKNOWN,
+    )
+    outround = RoundModel.objects.create(
+        tournament=tournament,
+        gov=gov_team,
+        opp=opp_team,
+        round_number=6,
+        stage="outround",
+        elim_size=8,
+        victor=Round.UNKNOWN,
+    )
+    prelim_stat = RoundStatsModel.objects.create(
+        round=prelim_round,
+        debater=debater,
+        debater_role="PM",
+    )
+    outround_stat = RoundStatsModel.objects.create(
+        round=outround,
+        debater=debater,
+        score_index=2,
+        debater_role="LO",
+    )
+
+    executor = MigrationExecutor(connection)
+    executor.migrate(migrate_to)
+    new_apps = executor.loader.project_state(migrate_to).apps
+    MigratedRoundStats = new_apps.get_model("core", "RoundStats")
+
+    assert (
+        MigratedRoundStats.objects.get(pk=prelim_stat.pk).debater_role == "PM"
+    )
+    assert (
+        MigratedRoundStats.objects.get(pk=outround_stat.pk).debater_role is None
+    )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_outround_speaker_position_rule_blocks_future_positions():
+    migrate_to = [("core", "0063_outround_roundstats_no_speaker_positions")]
+
+    executor = MigrationExecutor(connection)
+    executor.migrate(migrate_to)
+    apps = executor.loader.project_state(migrate_to).apps
+
+    SchoolModel = apps.get_model("core", "School")
+    TeamModel = apps.get_model("core", "Team")
+    DebaterModel = apps.get_model("core", "Debater")
+    TournamentModel = apps.get_model("core", "Tournament")
+    RoundModel = apps.get_model("core", "Round")
+    RoundStatsModel = apps.get_model("core", "RoundStats")
+
+    school = SchoolModel.objects.create(name="Rule Host", short_name="RH")
+    tournament = TournamentModel.objects.create(
+        name="Rule Invitational",
+        manual_name="Rule Invitational",
+        host=school,
+        date=date(2024, 2, 10),
+        season="2024",
+        num_rounds=5,
+    )
+    gov_team = TeamModel.objects.create(name="Rule Gov", short_name="RG")
+    opp_team = TeamModel.objects.create(name="Rule Opp", short_name="RO")
+    debater = DebaterModel.objects.create(
+        first_name="Taylor",
+        last_name="Debater",
+        school=school,
+    )
+
+    outround = RoundModel.objects.create(
+        tournament=tournament,
+        gov=gov_team,
+        opp=opp_team,
+        round_number=6,
+        stage="outround",
+        elim_size=8,
+        victor=Round.UNKNOWN,
+    )
+
+    with pytest.raises(IntegrityError):
+        with transaction.atomic():
+            RoundStatsModel.objects.create(
+                round=outround,
+                debater=debater,
+                debater_role="PM",
+            )
+
+    prelim_round = RoundModel.objects.create(
+        tournament=tournament,
+        gov=gov_team,
+        opp=opp_team,
+        round_number=2,
+        stage="prelim",
+        victor=Round.UNKNOWN,
+    )
+    prelim_stat = RoundStatsModel.objects.create(
+        round=prelim_round,
+        debater=debater,
+        score_index=2,
+        debater_role="PM",
+    )
+
+    with pytest.raises(IntegrityError):
+        with transaction.atomic():
+            prelim_round.stage = "outround"
+            prelim_round.elim_size = 8
+            prelim_round.save(update_fields=["stage", "elim_size"])
+
+    assert RoundStatsModel.objects.get(pk=prelim_stat.pk).debater_role == "PM"

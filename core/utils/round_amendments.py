@@ -10,6 +10,7 @@ from core.models import (
     ImportedRoundMetadata,
     Round,
     RoundStats,
+    School,
     Team,
     Tournament,
     TournamentImport,
@@ -209,9 +210,11 @@ def _create_round(action, *, summary):
     _apply_round_fields(round_obj, action, partial=False)
     round_obj.save()
 
-    _replace_round_stats(round_obj, action.get("stats"))
+    metadata_row = None
     if "imported_metadata" in action:
-        _apply_imported_metadata(round_obj, action.get("imported_metadata"))
+        metadata_row = _apply_imported_metadata(round_obj, action.get("imported_metadata"))
+        _sync_round_teams_from_metadata(round_obj, action.get("imported_metadata"))
+    _replace_round_stats(round_obj, action.get("stats"), metadata_row=metadata_row)
 
     summary["rounds_created"] += 1
 
@@ -234,10 +237,12 @@ def _update_round(action, *, summary):
     _apply_round_fields(round_obj, action, partial=True)
     round_obj.save()
 
-    if "stats" in action:
-        _replace_round_stats(round_obj, action.get("stats"))
+    metadata_row = None
     if "imported_metadata" in action:
-        _apply_imported_metadata(round_obj, action.get("imported_metadata"))
+        metadata_row = _apply_imported_metadata(round_obj, action.get("imported_metadata"))
+        _sync_round_teams_from_metadata(round_obj, action.get("imported_metadata"))
+    if "stats" in action:
+        _replace_round_stats(round_obj, action.get("stats"), metadata_row=metadata_row)
 
     summary["rounds_updated"] += 1
 
@@ -389,7 +394,7 @@ def _apply_round_fields(round_obj, action, *, partial):
         round_obj.import_key = str(action.get("import_key") or "")
 
 
-def _replace_round_stats(round_obj, stats_payload):
+def _replace_round_stats(round_obj, stats_payload, *, metadata_row=None):
     if stats_payload is None:
         RoundStats.objects.filter(round=round_obj).delete()
         return
@@ -402,7 +407,24 @@ def _replace_round_stats(round_obj, stats_payload):
     for entry in stats_payload:
         if not isinstance(entry, dict):
             raise RoundAmendmentError("Each round stat entry must be an object.")
-        debater_id = _required_int(entry, "debater_id")
+        debater_id = entry.get("debater_id")
+        if debater_id in (None, ""):
+            slot_ref = str(entry.get("slot_ref") or "").strip()
+            if not slot_ref:
+                raise RoundAmendmentError("Each round stat entry requires either debater_id or slot_ref.")
+            if slot_ref not in ROUND_METADATA_SLOT_FIELDS:
+                raise RoundAmendmentError(f"Unsupported round stat slot_ref: {slot_ref}.")
+            metadata_source = metadata_row or getattr(round_obj, "imported_metadata", None)
+            if metadata_source is None:
+                raise RoundAmendmentError("Round stat slot_ref requires imported metadata on the round.")
+            alias_field, _ = ROUND_METADATA_SLOT_FIELDS[slot_ref]
+            alias = getattr(metadata_source, alias_field, None)
+            if alias is None:
+                raise RoundAmendmentError(
+                    f"Round stat slot_ref '{slot_ref}' could not be resolved to an imported alias."
+                )
+            debater_id = alias.debater_id
+        debater_id = int(debater_id)
         score_index = int(entry.get("score_index") or 1)
         unique_key = (debater_id, score_index)
         if unique_key in seen_keys:
@@ -429,7 +451,7 @@ def _replace_round_stats(round_obj, stats_payload):
 def _apply_imported_metadata(round_obj, payload):
     if payload is None:
         ImportedRoundMetadata.objects.filter(round=round_obj).delete()
-        return
+        return None
     if not isinstance(payload, dict):
         raise RoundAmendmentError("Imported round metadata must be an object or null.")
 
@@ -516,6 +538,7 @@ def _apply_imported_metadata(round_obj, payload):
             )
         if judge_rows:
             ImportedRoundJudge.objects.bulk_create(judge_rows)
+    return metadata_row
 
 
 def _resolve_alias(payload):
@@ -524,11 +547,55 @@ def _resolve_alias(payload):
         return DebaterAlias.objects.get(pk=int(alias_id))
 
     debater_id = payload.get("debater_id")
-    if debater_id is None:
-        raise RoundAmendmentError("Alias payloads require either alias_id or debater_id.")
+    create_synthetic = _coerce_bool(payload.get("create_synthetic", False))
+    source_name = str(payload.get("source_name") or "").strip()
+    if debater_id is None and not create_synthetic:
+        raise RoundAmendmentError(
+            "Alias payloads require either alias_id, debater_id, or create_synthetic=true."
+        )
 
-    debater = Debater.all_objects.get(pk=int(debater_id))
-    source_name = str(payload.get("source_name") or debater.name or "").strip()
+    if debater_id is not None:
+        debater = Debater.all_objects.get(pk=int(debater_id))
+        if not source_name:
+            source_name = str(debater.name or "").strip()
+    else:
+        if not source_name:
+            raise RoundAmendmentError(
+                "Synthetic alias payloads require a source_name when debater_id is omitted."
+            )
+        first_name = str(payload.get("first_name") or "").strip()
+        last_name = str(payload.get("last_name") or "").strip()
+        if not first_name:
+            parts = source_name.split()
+            first_name = parts[0]
+            last_name = " ".join(parts[1:]) if len(parts) > 1 else last_name
+        existing_aliases = list(
+            DebaterAlias.objects.filter(
+                source_name=source_name,
+                debater__synthetic=True,
+                debater__first_name=first_name,
+                debater__last_name=last_name,
+            ).select_related("debater")[:2]
+        )
+        if len(existing_aliases) > 1:
+            raise RoundAmendmentError(
+                f"Multiple synthetic aliases already exist for source_name '{source_name}'. "
+                "Specify debater_id explicitly."
+            )
+        if existing_aliases:
+            debater = existing_aliases[0].debater
+        else:
+            school = None
+            school_id = payload.get("school_id")
+            if school_id not in (None, ""):
+                school = School.all_objects.get(pk=int(school_id))
+            debater = Debater.all_objects.create(
+                first_name=first_name,
+                last_name=last_name,
+                school=school,
+                synthetic=True,
+                temporary=False,
+            )
     if not source_name:
         raise RoundAmendmentError("Alias payloads require a source_name or a debater with a name.")
 
@@ -542,6 +609,38 @@ def _resolve_alias(payload):
         alias.normalized_name = normalized_name
         alias.save(update_fields=["normalized_name", "updated_at"])
     return alias
+
+
+def _sync_round_teams_from_metadata(round_obj, metadata_payload):
+    if not isinstance(metadata_payload, dict):
+        return
+    metadata_row = getattr(round_obj, "imported_metadata", None)
+    if metadata_row is None:
+        return
+
+    updated = False
+    for prefix, slots in (("gov", ("gov_1", "gov_2")), ("opp", ("opp_1", "opp_2"))):
+        if not any(slot in metadata_payload for slot in slots):
+            continue
+        aliases = []
+        for slot in slots:
+            alias_field, _ = ROUND_METADATA_SLOT_FIELDS[slot]
+            alias = getattr(metadata_row, alias_field, None)
+            if alias is None:
+                aliases = []
+                break
+            aliases.append(alias)
+        if len(aliases) != 2:
+            continue
+        team = get_or_create_team_for_debaters(aliases[0].debater, aliases[1].debater)
+        if prefix == "gov":
+            round_obj.gov = team
+        else:
+            round_obj.opp = team
+        updated = True
+
+    if updated:
+        round_obj.save(update_fields=["gov", "opp"])
 
 
 def _validate_round_move_conflicts(round_ids, target_tournament_id):
