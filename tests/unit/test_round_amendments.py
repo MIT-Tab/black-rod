@@ -179,6 +179,51 @@ def test_round_amendments_create_update_and_delete_round_with_related_data():
 
 
 @pytest.mark.django_db
+def test_round_amendments_clear_outround_stat_fields():
+    tournament = _create_tournament("Outround Amendment Open")
+    school = tournament.host
+    gov_one = _create_debater(school, "Alice", "Gov")
+    gov_two = _create_debater(school, "Blair", "Gov")
+    opp_one = _create_debater(school, "Casey", "Opp")
+    opp_two = _create_debater(school, "Drew", "Opp")
+
+    summary = apply_round_amendments(
+        {
+            "rounds": {
+                "create": [
+                    {
+                        "tournament_id": tournament.id,
+                        "gov_debater_ids": [gov_one.id, gov_two.id],
+                        "opp_debater_ids": [opp_one.id, opp_two.id],
+                        "round_number": 6,
+                        "stage": Round.Stage.OUTROUND,
+                        "elim_size": 8,
+                        "round_label": "Quarterfinal",
+                        "victor": Round.GOV,
+                        "import_key": "outround-amendment-1",
+                        "stats": [
+                            {"debater_id": gov_one.id, "debater_role": "PM", "speaks": "28.5", "ranks": "1"},
+                            {"debater_id": gov_two.id, "debater_role": "MG", "speaks": "28.0", "ranks": "2"},
+                            {"debater_id": opp_one.id, "debater_role": "LO", "speaks": "27.5", "ranks": "3"},
+                            {"debater_id": opp_two.id, "debater_role": "MO", "speaks": "27.0", "ranks": "4"},
+                        ],
+                    }
+                ]
+            }
+        }
+    )
+
+    assert summary["rounds_created"] == 1
+    round_obj = Round.objects.get(tournament=tournament, import_key="outround-amendment-1")
+    assert round_obj.stage == Round.Stage.OUTROUND
+
+    for stat in round_obj.stats.order_by("id"):
+        assert stat.debater_role is None
+        assert stat.speaks is None
+        assert stat.ranks is None
+
+
+@pytest.mark.django_db
 def test_round_amendments_delete_tournament_import_removes_linked_rounds():
     tournament = _create_tournament("Delete Import Open")
     round_obj, (gov_one, _, _, _) = _create_round_fixture(tournament, import_key="delete-import-round")

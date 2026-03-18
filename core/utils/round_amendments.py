@@ -2,6 +2,7 @@ import json
 from collections import Counter
 
 from django.db import IntegrityError, transaction
+from django.db.models import Q
 
 from core.models import (
     Debater,
@@ -15,6 +16,7 @@ from core.models import (
     Tournament,
     TournamentImport,
 )
+from core.models.round import sanitize_round_stat_values
 from core.utils.elo_runtime_engine.cache import clear_runtime_caches
 from core.utils.synthetic_resolution import resolve_synthetic_entity
 from core.utils.team import get_or_create_team_for_debaters
@@ -36,10 +38,10 @@ ROUND_ACTION_TYPES = {
 
 
 ROUND_METADATA_SLOT_FIELDS = {
-    "gov_1": ("gov_1_alias", "gov_1_role"),
-    "gov_2": ("gov_2_alias", "gov_2_role"),
-    "opp_1": ("opp_1_alias", "opp_1_role"),
-    "opp_2": ("opp_2_alias", "opp_2_role"),
+    "gov_1": "gov_1_alias",
+    "gov_2": "gov_2_alias",
+    "opp_1": "opp_1_alias",
+    "opp_2": "opp_2_alias",
 }
 
 
@@ -417,7 +419,7 @@ def _replace_round_stats(round_obj, stats_payload, *, metadata_row=None):
             metadata_source = metadata_row or getattr(round_obj, "imported_metadata", None)
             if metadata_source is None:
                 raise RoundAmendmentError("Round stat slot_ref requires imported metadata on the round.")
-            alias_field, _ = ROUND_METADATA_SLOT_FIELDS[slot_ref]
+            alias_field = ROUND_METADATA_SLOT_FIELDS[slot_ref]
             alias = getattr(metadata_source, alias_field, None)
             if alias is None:
                 raise RoundAmendmentError(
@@ -432,13 +434,20 @@ def _replace_round_stats(round_obj, stats_payload, *, metadata_row=None):
                 f"Duplicate round stat payload for debater_id={debater_id}, score_index={score_index}."
             )
         seen_keys.add(unique_key)
+        stat_values = sanitize_round_stat_values(
+            round_obj,
+            speaks=entry.get("speaks"),
+            ranks=entry.get("ranks"),
+            debater_role=(str(entry.get("debater_role") or "").strip() or None),
+        )
         stat_rows.append(
             RoundStats(
                 round=round_obj,
                 debater=Debater.all_objects.get(pk=debater_id),
-                speaks=entry.get("speaks"),
-                ranks=entry.get("ranks"),
-                debater_role=(str(entry.get("debater_role") or "").strip() or None),
+                stage=stat_values["stage"],
+                speaks=stat_values["speaks"],
+                ranks=stat_values["ranks"],
+                debater_role=stat_values["debater_role"],
                 score_index=score_index,
                 source_status=str(entry.get("source_status") or ""),
                 metadata=_coerce_dict(entry.get("metadata"), field_name="stat metadata"),
@@ -456,23 +465,21 @@ def _apply_imported_metadata(round_obj, payload):
         raise RoundAmendmentError("Imported round metadata must be an object or null.")
 
     metadata_row, _ = ImportedRoundMetadata.objects.get_or_create(round=round_obj)
+    legacy_slot_roles = {}
 
-    for payload_key, (alias_field, role_field) in ROUND_METADATA_SLOT_FIELDS.items():
+    for payload_key, alias_field in ROUND_METADATA_SLOT_FIELDS.items():
         if payload_key not in payload:
             continue
         slot_payload = payload.get(payload_key)
         if slot_payload is None:
             setattr(metadata_row, alias_field, None)
-            setattr(metadata_row, role_field, None)
             continue
         if not isinstance(slot_payload, dict):
             raise RoundAmendmentError(f"'{payload_key}' metadata must be an object or null.")
         setattr(metadata_row, alias_field, _resolve_alias(slot_payload))
-        setattr(
-            metadata_row,
-            role_field,
-            str(slot_payload.get("role") or "").strip() or None,
-        )
+        role = str(slot_payload.get("role") or "").strip() or None
+        if role:
+            legacy_slot_roles[payload_key] = role
 
     if "raw_result_code" in payload:
         metadata_row.raw_result_code = str(payload.get("raw_result_code") or "")
@@ -538,7 +545,31 @@ def _apply_imported_metadata(round_obj, payload):
             )
         if judge_rows:
             ImportedRoundJudge.objects.bulk_create(judge_rows)
+    if legacy_slot_roles:
+        _backfill_legacy_metadata_roles(round_obj, metadata_row, legacy_slot_roles)
     return metadata_row
+
+
+def _backfill_legacy_metadata_roles(round_obj, metadata_row, slot_roles):
+    if round_obj.stage == Round.Stage.OUTROUND:
+        return
+
+    for slot, role in slot_roles.items():
+        alias_field = ROUND_METADATA_SLOT_FIELDS[slot]
+        alias = getattr(metadata_row, alias_field, None)
+        if alias is None:
+            continue
+        matching_stats = RoundStats.objects.filter(
+            round=round_obj,
+            debater_id=alias.debater_id,
+        )
+        if matching_stats.exclude(
+            Q(debater_role__isnull=True) | Q(debater_role="")
+        ).exists():
+            continue
+        matching_stats.filter(
+            Q(debater_role__isnull=True) | Q(debater_role="")
+        ).update(debater_role=role)
 
 
 def _resolve_alias(payload):
@@ -624,7 +655,7 @@ def _sync_round_teams_from_metadata(round_obj, metadata_payload):
             continue
         aliases = []
         for slot in slots:
-            alias_field, _ = ROUND_METADATA_SLOT_FIELDS[slot]
+            alias_field = ROUND_METADATA_SLOT_FIELDS[slot]
             alias = getattr(metadata_row, alias_field, None)
             if alias is None:
                 aliases = []

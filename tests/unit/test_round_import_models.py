@@ -1,7 +1,6 @@
 from datetime import date
 
 import pytest
-from django.core.exceptions import ValidationError
 from django.db import IntegrityError, connection, transaction
 from django.db.migrations.executor import MigrationExecutor
 
@@ -11,6 +10,7 @@ from core.models import (
     ImportedRoundJudge,
     ImportedRoundMetadata,
     Round,
+    RoundStats,
     School,
     Team,
     Tournament,
@@ -79,6 +79,51 @@ def test_round_rejects_small_elim_size():
 
 
 @pytest.mark.django_db
+def test_roundstats_save_tracks_round_stage_for_outrounds():
+    round_row = _create_round()
+    round_row.stage = Round.Stage.OUTROUND
+    round_row.elim_size = 8
+    round_row.save(update_fields=["stage", "elim_size"])
+    debater = round_row.gov.debaters.order_by("id").first()
+
+    stat = RoundStats.objects.create(
+        round=round_row,
+        debater=debater,
+        speaks="28.5",
+        ranks="1",
+        debater_role="PM",
+    )
+
+    assert stat.stage == Round.Stage.OUTROUND
+    assert stat.debater_role is None
+    assert stat.speaks is None
+    assert stat.ranks is None
+
+
+@pytest.mark.django_db
+def test_round_stage_change_syncs_existing_roundstats():
+    round_row = _create_round()
+    debater = round_row.gov.debaters.order_by("id").first()
+    stat = RoundStats.objects.create(
+        round=round_row,
+        debater=debater,
+        speaks="27.5",
+        ranks="1",
+        debater_role="PM",
+    )
+
+    round_row.stage = Round.Stage.OUTROUND
+    round_row.elim_size = 8
+    round_row.save(update_fields=["stage", "elim_size"])
+    stat.refresh_from_db()
+
+    assert stat.stage == Round.Stage.OUTROUND
+    assert stat.debater_role is None
+    assert stat.speaks is None
+    assert stat.ranks is None
+
+
+@pytest.mark.django_db
 def test_debater_alias_requires_debater():
     with pytest.raises(IntegrityError):
         DebaterAlias.objects.create(
@@ -116,19 +161,6 @@ def test_imported_round_judge_allows_only_one_chair_per_round():
                 original_name="Chair Two",
                 is_chair=True,
             )
-
-
-@pytest.mark.django_db
-def test_imported_round_metadata_rejects_wrong_side_roles():
-    round_row = _create_round()
-    metadata = ImportedRoundMetadata(
-        round=round_row,
-        gov_1_role=ImportedRoundMetadata.SpeakerRole.LO,
-        opp_1_role=ImportedRoundMetadata.SpeakerRole.PM,
-    )
-
-    with pytest.raises(ValidationError):
-        metadata.full_clean()
 
 
 @pytest.mark.django_db(transaction=True)
@@ -229,12 +261,16 @@ def test_outround_speaker_position_migration_clears_only_outrounds():
     prelim_stat = RoundStatsModel.objects.create(
         round=prelim_round,
         debater=debater,
+        speaks="27.5",
+        ranks="1",
         debater_role="PM",
     )
     outround_stat = RoundStatsModel.objects.create(
         round=outround,
         debater=debater,
         score_index=2,
+        speaks="28.0",
+        ranks="2",
         debater_role="LO",
     )
 
@@ -243,12 +279,17 @@ def test_outround_speaker_position_migration_clears_only_outrounds():
     new_apps = executor.loader.project_state(migrate_to).apps
     MigratedRoundStats = new_apps.get_model("core", "RoundStats")
 
-    assert (
-        MigratedRoundStats.objects.get(pk=prelim_stat.pk).debater_role == "PM"
-    )
-    assert (
-        MigratedRoundStats.objects.get(pk=outround_stat.pk).debater_role is None
-    )
+    migrated_prelim_stat = MigratedRoundStats.objects.get(pk=prelim_stat.pk)
+    migrated_outround_stat = MigratedRoundStats.objects.get(pk=outround_stat.pk)
+
+    assert migrated_prelim_stat.stage == "prelim"
+    assert migrated_prelim_stat.debater_role == "PM"
+    assert str(migrated_prelim_stat.speaks) == "27.5000"
+    assert str(migrated_prelim_stat.ranks) == "1.0000"
+    assert migrated_outround_stat.stage == "outround"
+    assert migrated_outround_stat.debater_role is None
+    assert migrated_outround_stat.speaks is None
+    assert migrated_outround_stat.ranks is None
 
 
 @pytest.mark.django_db(transaction=True)
@@ -298,7 +339,19 @@ def test_outround_speaker_position_rule_blocks_future_positions():
             RoundStatsModel.objects.create(
                 round=outround,
                 debater=debater,
+                stage="outround",
                 debater_role="PM",
+            )
+
+    with pytest.raises(IntegrityError):
+        with transaction.atomic():
+            RoundStatsModel.objects.create(
+                round=outround,
+                debater=debater,
+                score_index=2,
+                stage="outround",
+                speaks="28.5",
+                ranks="1",
             )
 
     prelim_round = RoundModel.objects.create(
@@ -313,13 +366,103 @@ def test_outround_speaker_position_rule_blocks_future_positions():
         round=prelim_round,
         debater=debater,
         score_index=2,
-        debater_role="PM",
+        stage="prelim",
+        speaks="27.0",
+        ranks="2",
     )
 
     with pytest.raises(IntegrityError):
         with transaction.atomic():
-            prelim_round.stage = "outround"
-            prelim_round.elim_size = 8
-            prelim_round.save(update_fields=["stage", "elim_size"])
+            prelim_stat.stage = "outround"
+            prelim_stat.save(update_fields=["stage"])
 
-    assert RoundStatsModel.objects.get(pk=prelim_stat.pk).debater_role == "PM"
+    refreshed_prelim_stat = RoundStatsModel.objects.get(pk=prelim_stat.pk)
+    assert refreshed_prelim_stat.stage == "prelim"
+    assert refreshed_prelim_stat.debater_role is None
+    assert str(refreshed_prelim_stat.speaks) == "27.0000"
+    assert str(refreshed_prelim_stat.ranks) == "2.0000"
+
+
+@pytest.mark.django_db(transaction=True)
+def test_imported_metadata_role_migration_backfills_only_blank_roundstats():
+    migrate_from = [("core", "0062_schedulerworkspace_schedulingrun")]
+    migrate_to = [("core", "0063_outround_roundstats_no_speaker_positions")]
+
+    executor = MigrationExecutor(connection)
+    executor.migrate(migrate_from)
+    old_apps = executor.loader.project_state(migrate_from).apps
+
+    SchoolModel = old_apps.get_model("core", "School")
+    TeamModel = old_apps.get_model("core", "Team")
+    DebaterModel = old_apps.get_model("core", "Debater")
+    DebaterAliasModel = old_apps.get_model("core", "DebaterAlias")
+    TournamentModel = old_apps.get_model("core", "Tournament")
+    RoundModel = old_apps.get_model("core", "Round")
+    RoundStatsModel = old_apps.get_model("core", "RoundStats")
+    ImportedRoundMetadataModel = old_apps.get_model("core", "ImportedRoundMetadata")
+
+    school = SchoolModel.objects.create(name="Role Migration Host", short_name="RMH")
+    tournament = TournamentModel.objects.create(
+        name="Role Migration Invitational",
+        manual_name="Role Migration Invitational",
+        host=school,
+        date=date(2024, 2, 10),
+        season="2024",
+        num_rounds=5,
+    )
+    gov_team = TeamModel.objects.create(name="Role Gov", short_name="RG")
+    opp_team = TeamModel.objects.create(name="Role Opp", short_name="RO")
+    blank_debater = DebaterModel.objects.create(first_name="Blank", last_name="Role", school=school)
+    mismatch_debater = DebaterModel.objects.create(first_name="Mismatch", last_name="Role", school=school)
+    gov_team.debaters.add(blank_debater)
+    opp_team.debaters.add(mismatch_debater)
+
+    round_row = RoundModel.objects.create(
+        tournament=tournament,
+        gov=gov_team,
+        opp=opp_team,
+        round_number=1,
+        stage="prelim",
+        victor=Round.UNKNOWN,
+    )
+    blank_alias = DebaterAliasModel.objects.create(
+        debater=blank_debater,
+        source_name="Blank Role",
+        normalized_name="blank role",
+    )
+    mismatch_alias = DebaterAliasModel.objects.create(
+        debater=mismatch_debater,
+        source_name="Mismatch Role",
+        normalized_name="mismatch role",
+    )
+    blank_stat = RoundStatsModel.objects.create(
+        round=round_row,
+        debater=blank_debater,
+        debater_role=None,
+    )
+    mismatch_stat = RoundStatsModel.objects.create(
+        round=round_row,
+        debater=mismatch_debater,
+        score_index=2,
+        debater_role="MO",
+    )
+    metadata_row = ImportedRoundMetadataModel.objects.create(
+        round=round_row,
+        gov_1_alias=blank_alias,
+        gov_1_role="PM",
+        opp_1_alias=mismatch_alias,
+        opp_1_role="LO",
+    )
+
+    executor = MigrationExecutor(connection)
+    executor.migrate(migrate_to)
+    new_apps = executor.loader.project_state(migrate_to).apps
+    MigratedRoundStats = new_apps.get_model("core", "RoundStats")
+    MigratedImportedRoundMetadata = new_apps.get_model("core", "ImportedRoundMetadata")
+
+    assert MigratedRoundStats.objects.get(pk=blank_stat.pk).stage == "prelim"
+    assert MigratedRoundStats.objects.get(pk=blank_stat.pk).debater_role == "PM"
+    assert MigratedRoundStats.objects.get(pk=mismatch_stat.pk).stage == "prelim"
+    assert MigratedRoundStats.objects.get(pk=mismatch_stat.pk).debater_role == "MO"
+    migrated_metadata = MigratedImportedRoundMetadata.objects.get(pk=metadata_row.pk)
+    assert not hasattr(migrated_metadata, "gov_1_role")

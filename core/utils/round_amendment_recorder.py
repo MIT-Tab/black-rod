@@ -8,7 +8,8 @@ from uuid import uuid4
 
 from django.conf import settings
 
-from core.models import ImportedRoundMetadata
+from core.models import ImportedRoundMetadata, SyntheticResolutionLog
+from core.models.round import sanitize_round_stat_values
 
 
 class RoundAmendmentRecordingError(ValueError):
@@ -49,7 +50,70 @@ def record_round_amendment_action(action):
     if not round_amendment_recording_enabled():
         return None
 
-    payload = _json_safe(deepcopy(action))
+    document, file_path, directory = _load_round_amendment_document()
+    document.setdefault("actions", []).append(_json_safe(deepcopy(action)))
+    _write_round_amendment_document(document, file_path=file_path, directory=directory)
+    return file_path
+
+
+def backfill_synthetic_resolution_actions_from_logs(source="synthetic_resolution_suggestions"):
+    if not round_amendment_recording_enabled():
+        return {
+            "recorded": 0,
+            "skipped": 0,
+            "file_path": None,
+        }
+
+    document, file_path, directory = _load_round_amendment_document()
+    actions = document.setdefault("actions", [])
+    existing_signatures = {
+        _synthetic_resolution_signature(action)
+        for action in actions
+        if _synthetic_resolution_signature(action) is not None
+    }
+
+    recorded = 0
+    skipped = 0
+    queryset = SyntheticResolutionLog.objects.filter(
+        source_context__source=str(source or "").strip(),
+    ).order_by("created_at", "id")
+
+    for log in queryset:
+        action = build_synthetic_resolution_action(
+            entity_type=log.entity_type,
+            synthetic_id=log.synthetic_id,
+            target_id=log.resolved_to_id,
+            reason=log.reason,
+        )
+        signature = _synthetic_resolution_signature(action)
+        if signature in existing_signatures:
+            skipped += 1
+            continue
+        actions.append(_json_safe(deepcopy(action)))
+        existing_signatures.add(signature)
+        recorded += 1
+
+    if recorded:
+        _write_round_amendment_document(document, file_path=file_path, directory=directory)
+
+    return {
+        "recorded": recorded,
+        "skipped": skipped,
+        "file_path": file_path,
+    }
+
+
+def build_synthetic_resolution_action(*, entity_type, synthetic_id, target_id, reason=""):
+    return {
+        "type": "resolve_synthetic",
+        "entity_type": str(entity_type or "").strip().lower(),
+        "synthetic_id": int(synthetic_id),
+        "target_id": int(target_id),
+        "reason": str(reason or ""),
+    }
+
+
+def _load_round_amendment_document():
     file_path = round_amendment_recording_path()
     directory = os.path.dirname(file_path)
     if directory:
@@ -76,26 +140,33 @@ def record_round_amendment_action(action):
                 "Existing amendment file must contain an 'actions' list."
             )
         document = existing
+    return document, file_path, directory
 
-    document.setdefault("actions", []).append(payload)
+
+def _write_round_amendment_document(document, *, file_path, directory):
     document["last_updated_at"] = datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
-
     with NamedTemporaryFile("w", encoding="utf-8", delete=False, dir=directory or ".") as handle:
         json.dump(document, handle, indent=2, sort_keys=False)
         handle.write("\n")
         temp_name = handle.name
     os.replace(temp_name, file_path)
-    return file_path
 
 
-def build_synthetic_resolution_action(*, entity_type, synthetic_id, target_id, reason=""):
-    return {
-        "type": "resolve_synthetic",
-        "entity_type": str(entity_type or "").strip().lower(),
-        "synthetic_id": int(synthetic_id),
-        "target_id": int(target_id),
-        "reason": str(reason or ""),
-    }
+def _synthetic_resolution_signature(action):
+    if not isinstance(action, dict):
+        return None
+    if action.get("type") != "resolve_synthetic":
+        return None
+    try:
+        return (
+            "resolve_synthetic",
+            str(action.get("entity_type") or "").strip().lower(),
+            int(action.get("synthetic_id")),
+            int(action.get("target_id")),
+            str(action.get("reason") or ""),
+        )
+    except (TypeError, ValueError):
+        return None
 
 
 def build_round_delete_action(round_obj):
@@ -142,14 +213,22 @@ def build_round_upsert_action(round_obj, *, action_type):
         "stats": [
             {
                 "debater_id": int(stat.debater_id),
-                "speaks": _json_safe(stat.speaks),
-                "ranks": _json_safe(stat.ranks),
-                "debater_role": str(stat.debater_role or ""),
+                "speaks": _json_safe(stat_values["speaks"]),
+                "ranks": _json_safe(stat_values["ranks"]),
+                "debater_role": str(stat_values["debater_role"] or ""),
                 "score_index": int(stat.score_index or 1),
                 "source_status": str(stat.source_status or ""),
                 "metadata": deepcopy(stat.metadata or {}),
             }
             for stat in round_obj.stats.select_related("debater").order_by("score_index", "id")
+            for stat_values in [
+                sanitize_round_stat_values(
+                    round_obj,
+                    speaks=stat.speaks,
+                    ranks=stat.ranks,
+                    debater_role=stat.debater_role,
+                )
+            ]
         ],
     }
 
@@ -178,18 +257,17 @@ def _serialize_imported_metadata(round_obj):
         "judges": [],
     }
     slot_map = {
-        "gov_1": (imported_metadata.gov_1_alias, imported_metadata.gov_1_role),
-        "gov_2": (imported_metadata.gov_2_alias, imported_metadata.gov_2_role),
-        "opp_1": (imported_metadata.opp_1_alias, imported_metadata.opp_1_role),
-        "opp_2": (imported_metadata.opp_2_alias, imported_metadata.opp_2_role),
+        "gov_1": imported_metadata.gov_1_alias,
+        "gov_2": imported_metadata.gov_2_alias,
+        "opp_1": imported_metadata.opp_1_alias,
+        "opp_2": imported_metadata.opp_2_alias,
     }
-    for key, (alias, role) in slot_map.items():
-        if alias is None and not role:
+    for key, alias in slot_map.items():
+        if alias is None:
             continue
         payload[key] = {
-            "debater_id": int(alias.debater_id) if alias is not None else None,
-            "source_name": str(alias.source_name or "") if alias is not None else "",
-            "role": str(role or ""),
+            "debater_id": int(alias.debater_id),
+            "source_name": str(alias.source_name or ""),
         }
 
     for judge in imported_metadata.judges.select_related("debater_alias").order_by("id"):

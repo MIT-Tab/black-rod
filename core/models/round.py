@@ -91,8 +91,48 @@ class Round(models.Model):
             ),
         ]
 
+    def save(self, *args, **kwargs):
+        previous_stage = None
+        if self.pk:
+            previous_stage = (
+                type(self).objects.filter(pk=self.pk).values_list("stage", flat=True).first()
+            )
+
+        super().save(*args, **kwargs)
+
+        if previous_stage is None or previous_stage == self.stage:
+            return
+
+        stat_updates = {"stage": self.stage}
+        if self.stage == self.Stage.OUTROUND:
+            stat_updates.update(
+                speaks=None,
+                ranks=None,
+                debater_role=None,
+            )
+        self.stats.update(**stat_updates)
+
     def get_absolute_url(self):
         return reverse("core:round_detail", kwargs={"pk": self.id})
+
+
+def sanitize_round_stat_values(round_or_stage, *, speaks=None, ranks=None, debater_role=None):
+    stage = str(getattr(round_or_stage, "stage", round_or_stage) or "").strip()
+    if not stage:
+        stage = Round.Stage.PRELIM
+    if stage == Round.Stage.OUTROUND:
+        return {
+            "stage": stage,
+            "speaks": None,
+            "ranks": None,
+            "debater_role": None,
+        }
+    return {
+        "stage": stage,
+        "speaks": speaks,
+        "ranks": ranks,
+        "debater_role": debater_role,
+    }
 
 
 class RoundStats(models.Model):
@@ -102,6 +142,11 @@ class RoundStats(models.Model):
 
     round = models.ForeignKey(Round, on_delete=models.CASCADE, related_name="stats")
 
+    stage = models.CharField(
+        max_length=16,
+        choices=Round.Stage.choices,
+        default=Round.Stage.PRELIM,
+    )
     speaks = models.DecimalField(max_digits=6, decimal_places=4, null=True, blank=True)
     ranks = models.DecimalField(max_digits=6, decimal_places=4, null=True, blank=True)
     debater_role = models.CharField(max_length=4, null=True, blank=True)
@@ -115,4 +160,32 @@ class RoundStats(models.Model):
                 fields=["round", "debater", "score_index"],
                 name="unique_round_stats_score_index",
             ),
+            models.CheckConstraint(
+                check=(
+                    ~models.Q(stage=Round.Stage.OUTROUND)
+                    | (
+                        models.Q(speaks__isnull=True)
+                        & models.Q(ranks__isnull=True)
+                        & (
+                            models.Q(debater_role__isnull=True)
+                            | models.Q(debater_role="")
+                        )
+                    )
+                ),
+                name="roundstats_outround_requires_blank_scores",
+            ),
         ]
+
+    def save(self, *args, **kwargs):
+        stage_source = self.round if self.round_id else self.stage
+        stat_values = sanitize_round_stat_values(
+            stage_source,
+            speaks=self.speaks,
+            ranks=self.ranks,
+            debater_role=self.debater_role,
+        )
+        self.stage = stat_values["stage"]
+        self.speaks = stat_values["speaks"]
+        self.ranks = stat_values["ranks"]
+        self.debater_role = stat_values["debater_role"]
+        super().save(*args, **kwargs)

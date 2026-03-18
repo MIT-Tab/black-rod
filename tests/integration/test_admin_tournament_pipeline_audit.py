@@ -110,9 +110,9 @@ class TournamentPipelineAuditViewTest(TestCase):
         RoundStats.objects.create(
             round=round_obj,
             debater=gov.debaters.order_by("id").first(),
-            debater_role="PM",
-            speaks=Decimal("27.5"),
-            ranks=Decimal("1.0"),
+            debater_role="PM" if stage != Round.Stage.OUTROUND else None,
+            speaks=Decimal("27.5") if stage != Round.Stage.OUTROUND else None,
+            ranks=Decimal("1.0") if stage != Round.Stage.OUTROUND else None,
             metadata={"speaker_name": "Source PM"},
         )
         return round_obj
@@ -315,12 +315,13 @@ class TournamentPipelineAuditViewTest(TestCase):
             stat.debater_id: stat
             for stat in original_round.stats.select_related("debater").all()
         }
-        self.assertEqual(stats[pm.id].debater_role, "MG")
+        self.assertIsNone(stats[pm.id].debater_role)
         self.assertEqual(stats[pm.id].metadata["speaker_name"], pm.name)
-        self.assertEqual(str(stats[pm.id].speaks), "28.5000")
-        self.assertEqual(stats[mg.id].debater_role, "PM")
+        self.assertIsNone(stats[pm.id].speaks)
+        self.assertIsNone(stats[pm.id].ranks)
+        self.assertIsNone(stats[mg.id].debater_role)
         self.assertEqual(stats[mg.id].metadata["speaker_name"], "Morgan Gov")
-        self.assertEqual(stats[lo.id].debater_role, "LO")
+        self.assertIsNone(stats[lo.id].debater_role)
         self.assertEqual(stats[lo.id].metadata["speaker_name"], "Lee Opp")
         self.assertIsNone(stats[mo.id].debater_role)
         self.assertEqual(stats[mo.id].metadata["speaker_name"], mo.name)
@@ -330,10 +331,6 @@ class TournamentPipelineAuditViewTest(TestCase):
         self.assertEqual(imported_metadata.gov_2_alias.source_name, "Morgan Gov")
         self.assertEqual(imported_metadata.opp_1_alias.source_name, "Lee Opp")
         self.assertEqual(imported_metadata.opp_2_alias.source_name, mo.name)
-        self.assertEqual(imported_metadata.gov_1_role, "MG")
-        self.assertEqual(imported_metadata.gov_2_role, "PM")
-        self.assertEqual(imported_metadata.opp_1_role, "LO")
-        self.assertIsNone(imported_metadata.opp_2_role)
 
     def test_round_create_defaults_blank_canonical_name_from_stage_data(self):
         gov_1, gov_2 = list(self.team_a.debaters.order_by("id"))
@@ -432,6 +429,10 @@ class TournamentPipelineAuditViewTest(TestCase):
         self.assertEqual(round_obj.round_label, "Semifinal")
         self.assertEqual(round_obj.metadata["round_label"], "Semifinal")
         self.assertEqual(round_obj.elim_size, 4)
+        for stat in round_obj.stats.all():
+            self.assertIsNone(stat.debater_role)
+            self.assertIsNone(stat.speaks)
+            self.assertIsNone(stat.ranks)
 
     def test_round_create_records_amendment_json_in_development(self):
         gov_1, gov_2 = list(self.team_a.debaters.order_by("id"))
@@ -485,6 +486,62 @@ class TournamentPipelineAuditViewTest(TestCase):
             self.assertEqual(recorded["actions"][0]["tournament_id"], self.tournament.id)
             self.assertEqual(recorded["actions"][0]["gov_debater_ids"], [gov_1.id, gov_2.id])
             self.assertTrue(recorded["actions"][0]["import_key"].startswith("manual-amendment-"))
+
+    def test_outround_create_records_blank_stats_in_development(self):
+        gov_1, gov_2 = list(self.team_c.debaters.order_by("id"))
+        opp_1, opp_2 = list(self.team_d.debaters.order_by("id"))
+
+        self.client.force_login(self.superuser)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            amendment_path = os.path.join(temp_dir, "round-amendments.local.json")
+            with override_settings(ENV="development", ROUND_AMENDMENTS_FILE=amendment_path):
+                response = self.client.post(
+                    reverse(
+                        "core:tournament_audit_round_create",
+                        kwargs={"tournament_id": self.tournament.id},
+                    ),
+                    {
+                        "canonical_round_name": "Quarterfinal",
+                        "source_round_name": "Quarterfinal Source",
+                        "stage": Round.Stage.OUTROUND,
+                        "outround_stage": 8,
+                        "round_number": 3,
+                        "victor": Round.GOV,
+                        "is_rated": "on",
+                        "weight": "1.0",
+                        "gov_1_debater": gov_1.id,
+                        "gov_1_source_name": "",
+                        "gov_1_role": "PM",
+                        "gov_1_speaks": "28.5",
+                        "gov_1_ranks": "1",
+                        "gov_2_debater": gov_2.id,
+                        "gov_2_source_name": "",
+                        "gov_2_role": "MG",
+                        "gov_2_speaks": "28.0",
+                        "gov_2_ranks": "2",
+                        "opp_1_debater": opp_1.id,
+                        "opp_1_source_name": "",
+                        "opp_1_role": "LO",
+                        "opp_1_speaks": "27.5",
+                        "opp_1_ranks": "3",
+                        "opp_2_debater": opp_2.id,
+                        "opp_2_source_name": "",
+                        "opp_2_role": "MO",
+                        "opp_2_speaks": "27.0",
+                        "opp_2_ranks": "4",
+                    },
+                )
+
+            self.assertEqual(response.status_code, 302)
+            with open(amendment_path, "r", encoding="utf-8") as handle:
+                recorded = json.load(handle)
+
+        stats = recorded["actions"][0]["stats"]
+        self.assertEqual(len(stats), 4)
+        for stat in stats:
+            self.assertEqual(stat["debater_role"], "")
+            self.assertNotIn("speaks", stat)
+            self.assertNotIn("ranks", stat)
 
     def test_round_delete_view_deletes_round_and_records_amendment_in_development(self):
         round_obj = self._create_round(

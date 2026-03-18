@@ -1,4 +1,3 @@
-from django.core.exceptions import ValidationError
 from django.db import models
 
 from .debater_alias import DebaterAlias
@@ -98,30 +97,6 @@ class ImportedRoundMetadata(models.Model):
         null=True,
         blank=True,
     )
-    gov_1_role = models.CharField(
-        max_length=2,
-        choices=SpeakerRole.choices,
-        null=True,
-        blank=True,
-    )
-    gov_2_role = models.CharField(
-        max_length=2,
-        choices=SpeakerRole.choices,
-        null=True,
-        blank=True,
-    )
-    opp_1_role = models.CharField(
-        max_length=2,
-        choices=SpeakerRole.choices,
-        null=True,
-        blank=True,
-    )
-    opp_2_role = models.CharField(
-        max_length=2,
-        choices=SpeakerRole.choices,
-        null=True,
-        blank=True,
-    )
     raw_result_code = models.CharField(max_length=32, blank=True)
     raw_outcome_text = models.TextField(blank=True)
     sources = models.ManyToManyField(
@@ -148,36 +123,7 @@ class ImportedRoundMetadata(models.Model):
                 ),
                 name="imported_round_metadata_distinct_opp_aliases",
             ),
-            models.CheckConstraint(
-                check=(
-                    models.Q(gov_1_role__isnull=True)
-                    | models.Q(gov_2_role__isnull=True)
-                    | ~models.Q(gov_1_role=models.F("gov_2_role"))
-                ),
-                name="imported_round_metadata_distinct_gov_roles",
-            ),
-            models.CheckConstraint(
-                check=(
-                    models.Q(opp_1_role__isnull=True)
-                    | models.Q(opp_2_role__isnull=True)
-                    | ~models.Q(opp_1_role=models.F("opp_2_role"))
-                ),
-                name="imported_round_metadata_distinct_opp_roles",
-            ),
         ]
-
-    def clean(self):
-        super().clean()
-        errors = {}
-        gov_roles = {self.gov_1_role, self.gov_2_role} - {None, ""}
-        opp_roles = {self.opp_1_role, self.opp_2_role} - {None, ""}
-
-        if gov_roles - {self.SpeakerRole.PM, self.SpeakerRole.MG}:
-            errors["gov_1_role"] = "Gov roles must be PM or MG."
-        if opp_roles - {self.SpeakerRole.LO, self.SpeakerRole.MO}:
-            errors["opp_1_role"] = "Opp roles must be LO or MO."
-        if errors:
-            raise ValidationError(errors)
 
     def __str__(self):
         return f"Imported metadata for round {self.round_id}"

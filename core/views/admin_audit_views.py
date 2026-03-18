@@ -21,6 +21,7 @@ from core.models import (
     Tournament,
     TournamentImport,
 )
+from core.models.round import sanitize_round_stat_values
 from core.utils.elo_runtime_engine.cache import clear_runtime_caches
 from core.utils.round_amendment_recorder import (
     build_round_delete_action,
@@ -615,13 +616,20 @@ class TournamentAuditRoundEditView(SuperuserRequiredMixin, TemplateView):
                 cleaned_data,
                 slot,
             )
+            stat_values = sanitize_round_stat_values(
+                round_obj,
+                speaks=cleaned_data.get(slot["speaks_field"]),
+                ranks=cleaned_data.get(slot["ranks_field"]),
+                debater_role=role or None,
+            )
             stat_rows.append(
                 RoundStats(
                     round=round_obj,
                     debater=debater,
-                    speaks=cleaned_data.get(slot["speaks_field"]),
-                    ranks=cleaned_data.get(slot["ranks_field"]),
-                    debater_role=role or None,
+                    stage=stat_values["stage"],
+                    speaks=stat_values["speaks"],
+                    ranks=stat_values["ranks"],
+                    debater_role=stat_values["debater_role"],
                     score_index=1,
                     source_status=str(role_data.get("source_status") or ""),
                     metadata=stat_metadata,
@@ -652,10 +660,6 @@ class TournamentAuditRoundEditView(SuperuserRequiredMixin, TemplateView):
             cleaned_data["opp_2_debater"],
             self._resolved_slot_source_name(cleaned_data, ROUND_BALLOT_SLOTS[3]),
         )
-        imported_metadata.gov_1_role = str(cleaned_data.get("gov_1_role") or "").strip() or None
-        imported_metadata.gov_2_role = str(cleaned_data.get("gov_2_role") or "").strip() or None
-        imported_metadata.opp_1_role = str(cleaned_data.get("opp_1_role") or "").strip() or None
-        imported_metadata.opp_2_role = str(cleaned_data.get("opp_2_role") or "").strip() or None
         imported_metadata.save()
 
     @staticmethod

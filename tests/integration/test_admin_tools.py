@@ -12,6 +12,9 @@ from django.urls import reverse
 from unittest.mock import patch
 
 from core.models import Debater, Round, School, SyntheticResolutionLog, Team, Tournament
+from core.utils.round_amendment_recorder import (
+    backfill_synthetic_resolution_actions_from_logs,
+)
 from core.views.admin_views import MergeSuggestionsView
 from core.views.elo_cache import get_cached_elo_state, set_cached_elo_state
 
@@ -142,7 +145,7 @@ class AdminToolsViewTest(TestCase):
         self.assertIn(second.id, suggestion_ids)
         self.assertNotIn(synthetic.id, suggestion_ids)
 
-    def test_synthetic_resolution_suggestions_page_lists_synthetic_and_canonical_pair(self):
+    def test_synthetic_resolution_suggestions_page_waits_for_run(self):
         self.client.force_login(self.superuser)
         synthetic = Debater.all_objects.create(
             first_name="Casey",
@@ -159,13 +162,67 @@ class AdminToolsViewTest(TestCase):
 
         response = self.client.get(
             reverse("core:synthetic_resolution_suggestions"),
-            {"refresh": "1"},
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Synthetic Debater Resolution Suggestions")
+        self.assertContains(response, "Synthetic Resolution Suggestions")
+        self.assertContains(response, "No suggestions have been loaded yet")
+        self.assertNotContains(response, synthetic.name)
+        self.assertNotContains(response, canonical.name)
+
+    def test_synthetic_resolution_suggestions_page_lists_scoped_debater_pair(self):
+        self.client.force_login(self.superuser)
+        synthetic = Debater.all_objects.create(
+            first_name="Casey",
+            last_name="Browne",
+            school=self.school,
+            temporary=True,
+            synthetic=True,
+        )
+        canonical = Debater.objects.create(
+            first_name="Casey",
+            last_name="Brown",
+            school=self.school,
+        )
+
+        response = self.client.get(
+            reverse("core:synthetic_resolution_suggestions"),
+            {
+                "run": "1",
+                "synthetic_debaters": [str(synthetic.id)],
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Debater Suggestions")
         self.assertContains(response, synthetic.name)
         self.assertContains(response, canonical.name)
+
+    def test_synthetic_resolution_suggestions_page_lists_scoped_school_pair(self):
+        self.client.force_login(self.superuser)
+        synthetic_school = School.all_objects.create(
+            name="Resolver Univ",
+            short_name="RU",
+            temporary=True,
+            synthetic=True,
+        )
+        canonical_school = School.objects.create(
+            name="Resolver University Main",
+            short_name="RU",
+        )
+
+        response = self.client.get(
+            reverse("core:synthetic_resolution_suggestions"),
+            {
+                "run": "1",
+                "synthetic_schools": [str(synthetic_school.id)],
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "School Suggestions")
+        self.assertContains(response, synthetic_school.name)
+        self.assertContains(response, canonical_school.name)
 
     def test_synthetic_resolution_suggestions_post_resolves_debater(self):
         self.client.force_login(self.superuser)
@@ -206,6 +263,153 @@ class AdminToolsViewTest(TestCase):
                 synthetic_id=synthetic.id,
                 resolved_to_id=canonical.id,
             ).exists()
+        )
+
+    @override_settings(ENV="development")
+    def test_synthetic_resolution_suggestions_post_records_round_amendment(self):
+        self.client.force_login(self.superuser)
+        synthetic = Debater.all_objects.create(
+            first_name="Log",
+            last_name="Me",
+            school=self.school,
+            temporary=True,
+            synthetic=True,
+        )
+        canonical = Debater.objects.create(
+            first_name="Keep",
+            last_name="Me",
+            school=self.school,
+        )
+
+        with tempfile.NamedTemporaryFile("w+", suffix=".json", delete=False) as handle:
+            json.dump({"actions": []}, handle)
+            temp_path = handle.name
+
+        try:
+            with override_settings(ROUND_AMENDMENTS_FILE=temp_path):
+                response = self.client.post(
+                    reverse("core:synthetic_resolution_suggestions"),
+                    {
+                        "synthetic_debater": str(synthetic.id),
+                        "canonical_debater": str(canonical.id),
+                    },
+                )
+
+            self.assertEqual(response.status_code, 200)
+            with open(temp_path, "r", encoding="utf-8") as handle:
+                document = json.load(handle)
+        finally:
+            os.unlink(temp_path)
+
+        self.assertEqual(len(document["actions"]), 1)
+        self.assertEqual(
+            document["actions"][0],
+            {
+                "type": "resolve_synthetic",
+                "entity_type": "debater",
+                "synthetic_id": synthetic.id,
+                "target_id": canonical.id,
+                "reason": "Suggested synthetic debater resolution",
+            },
+        )
+
+    def test_synthetic_resolution_suggestions_post_resolves_school(self):
+        self.client.force_login(self.superuser)
+        synthetic_school = School.all_objects.create(
+            name="Synthetic College",
+            short_name="SC",
+            temporary=True,
+            synthetic=True,
+        )
+        canonical_school = School.objects.create(
+            name="Synthetic College University",
+            short_name="SC",
+        )
+
+        response = self.client.post(
+            reverse("core:synthetic_resolution_suggestions"),
+            {
+                "entity_type": "school",
+                "synthetic_id": str(synthetic_school.id),
+                "target_id": str(canonical_school.id),
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertJSONEqual(
+            response.content,
+            {
+                "success": True,
+                "message": f"Resolved synthetic school {synthetic_school.name} into {canonical_school.name}.",
+            },
+        )
+        self.assertFalse(School.all_objects.filter(pk=synthetic_school.pk).exists())
+        self.assertTrue(School.all_objects.filter(pk=canonical_school.pk).exists())
+        self.assertTrue(
+            SyntheticResolutionLog.objects.filter(
+                entity_type=SyntheticResolutionLog.EntityType.SCHOOL,
+                synthetic_id=synthetic_school.id,
+                resolved_to_id=canonical_school.id,
+            ).exists()
+        )
+
+    @override_settings(ENV="development")
+    def test_backfill_synthetic_resolution_actions_from_logs_adds_missing_actions(self):
+        SyntheticResolutionLog.objects.create(
+            entity_type=SyntheticResolutionLog.EntityType.DEBATER,
+            synthetic_id=501,
+            synthetic_name="Synthetic Debater",
+            resolved_to_id=77,
+            resolved_to_name="Canonical Debater",
+            actor=self.superuser,
+            reason="Suggested synthetic debater resolution",
+            source_context={"source": "synthetic_resolution_suggestions"},
+        )
+        SyntheticResolutionLog.objects.create(
+            entity_type=SyntheticResolutionLog.EntityType.SCHOOL,
+            synthetic_id=601,
+            synthetic_name="Synthetic School",
+            resolved_to_id=88,
+            resolved_to_name="Canonical School",
+            actor=self.superuser,
+            reason="Suggested synthetic school resolution",
+            source_context={"source": "synthetic_resolution_suggestions"},
+        )
+
+        existing_action = {
+            "type": "resolve_synthetic",
+            "entity_type": "debater",
+            "synthetic_id": 501,
+            "target_id": 77,
+            "reason": "Suggested synthetic debater resolution",
+        }
+
+        with tempfile.NamedTemporaryFile("w+", suffix=".json", delete=False) as handle:
+            json.dump({"actions": [existing_action]}, handle)
+            temp_path = handle.name
+
+        try:
+            with override_settings(ROUND_AMENDMENTS_FILE=temp_path):
+                summary = backfill_synthetic_resolution_actions_from_logs()
+
+            with open(temp_path, "r", encoding="utf-8") as handle:
+                document = json.load(handle)
+        finally:
+            os.unlink(temp_path)
+
+        self.assertEqual(summary["recorded"], 1)
+        self.assertEqual(summary["skipped"], 1)
+        self.assertEqual(len(document["actions"]), 2)
+        self.assertEqual(document["actions"][0], existing_action)
+        self.assertEqual(
+            document["actions"][1],
+            {
+                "type": "resolve_synthetic",
+                "entity_type": "school",
+                "synthetic_id": 601,
+                "target_id": 88,
+                "reason": "Suggested synthetic school resolution",
+            },
         )
 
     def test_elo_cache_invalidation_clears_cached_dashboard_state(self):

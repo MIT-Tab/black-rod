@@ -170,7 +170,6 @@ class AdminTestCase(TestCase):
         ImportedRoundMetadata.objects.create(
             round=round_obj,
             gov_1_alias=alias,
-            gov_1_role=ImportedRoundMetadata.SpeakerRole.PM,
             raw_result_code="2-1",
             raw_outcome_text="Government won on a split decision.",
         )

@@ -589,10 +589,10 @@ class ImportedRoundMetadataInline(admin.StackedInline):
         "sources",
     )
     fields = (
-        ("gov_1_alias", "gov_1_role"),
-        ("gov_2_alias", "gov_2_role"),
-        ("opp_1_alias", "opp_1_role"),
-        ("opp_2_alias", "opp_2_role"),
+        "gov_1_alias",
+        "gov_2_alias",
+        "opp_1_alias",
+        "opp_2_alias",
         "raw_result_code",
         "raw_outcome_text",
         "sources",

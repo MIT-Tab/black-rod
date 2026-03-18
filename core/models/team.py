@@ -12,15 +12,38 @@ class Team(models.Model):
 
     debaters = models.ManyToManyField(Debater, related_name="teams")
 
-    def update_name(self):
-        debaters = list(self.debaters.select_related("school").all())
+    def _naming_debaters(self):
+        debater_ids = list(
+            self.debaters.through.objects.filter(team_id=self.id)
+            .order_by("id")
+            .values_list("debater_id", flat=True)
+        )
+        if not debater_ids:
+            return []
+
+        debaters_by_id = {
+            debater.id: debater
+            for debater in Debater.all_objects.filter(id__in=debater_ids).select_related("school")
+        }
+        return [debaters_by_id[debater_id] for debater_id in debater_ids if debater_id in debaters_by_id]
+
+    def _native_team_label(self, school_attr="name"):
+        debaters = self._naming_debaters()
         if not debaters:
-            return
+            return ""
 
         first = debaters[0]
         last = debaters[-1]
-        first_school = first.school.name if first.school else "Unaffiliated"
-        last_school = last.school.name if last.school else "Unaffiliated"
+        first_school = (
+            getattr(first.school, school_attr, "") or getattr(first.school, "name", "")
+            if first.school
+            else "Unaffiliated"
+        )
+        last_school = (
+            getattr(last.school, school_attr, "") or getattr(last.school, "name", "")
+            if last.school
+            else "Unaffiliated"
+        )
 
         if first.school_id and first.school_id == last.school_id:
             school_name = first_school
@@ -33,7 +56,19 @@ class Team(models.Model):
             (debater.last_name[:1] or debater.first_name[:1] or "?")
             for debater in debaters
         )
-        self.name = f"{school_name} {initials}".strip()
+        return f"{school_name} {initials}".strip()
+
+    def build_native_name(self):
+        return self._native_team_label()
+
+    def build_native_short_name(self):
+        return self._native_team_label(school_attr="short_name")
+
+    def update_name(self):
+        name = self.build_native_name()
+        if not name:
+            return
+        self.name = name
 
     @property
     def debaters_display(self):

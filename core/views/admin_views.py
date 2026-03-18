@@ -1,7 +1,9 @@
 import os
 import re
+from hashlib import md5
 from collections import defaultdict
 from difflib import SequenceMatcher
+from urllib.parse import urlencode
 
 import requests
 from bs4 import BeautifulSoup
@@ -22,11 +24,15 @@ from core.forms import RoundAmendmentUploadForm
 from core.models import (
     DebaterAliasGroup,
     MergeDebaterRequest,
+    Debater,
+    RoundStats,
     School,
     SOTY,
-    TOTY,
-    Debater,
+    SpeakerResult,
     Team,
+    TeamResult,
+    TOTY,
+    Video,
 )
 from core.utils.rankings import redo_rankings, update_noty, update_soty, update_toty
 from core.utils.elo_runtime_engine.cache import clear_runtime_caches
@@ -818,32 +824,125 @@ class MergeSuggestionsView(UserPassesTestMixin, TemplateView):
 class SyntheticResolutionSuggestionsView(MergeSuggestionsView):
     template_name = "admin/synthetic_resolution_suggestions.html"
     cache_key = "synthetic_resolution_suggestions_list"
+    cache_version_key = "synthetic_resolution_suggestions_version"
+    max_debater_suggestions = 100
+    max_school_suggestions = 60
+    default_synthetic_debater_limit = 250
+    default_synthetic_school_limit = 150
+    default_canonical_debater_limit = 2500
+    school_stop_words = {
+        "college",
+        "campus",
+        "institute",
+        "of",
+        "school",
+        "the",
+        "university",
+    }
+
+    def get_context_data(self, **kwargs):
+        context = TemplateView.get_context_data(self, **kwargs)
+        selected_debater_ids = self._parse_selected_ids("synthetic_debaters")
+        selected_school_ids = self._parse_selected_ids("synthetic_schools")
+        ran = self.request.GET.get("run") == "1"
+
+        selected_debaters = self._load_selected_debaters(selected_debater_ids)
+        selected_schools = self._load_selected_schools(selected_school_ids)
+
+        context.update(
+            {
+                "ran": ran,
+                "cached": False,
+                "debater_suggestions": [],
+                "school_suggestions": [],
+                "suggestion_total": 0,
+                "selected_debaters": selected_debaters,
+                "selected_schools": selected_schools,
+                "refresh_query": self._build_refresh_query(
+                    selected_debater_ids=selected_debater_ids,
+                    selected_school_ids=selected_school_ids,
+                ),
+            }
+        )
+
+        if not ran:
+            return context
+
+        force_refresh = self.request.GET.get("refresh") == "1"
+        cache_key = self._get_suggestions_cache_key(
+            selected_debater_ids=selected_debater_ids,
+            selected_school_ids=selected_school_ids,
+        )
+
+        if not force_refresh:
+            cached_payload = cache.get(cache_key)
+            if cached_payload is not None:
+                context.update(cached_payload)
+                context["cached"] = True
+                context["suggestion_total"] = len(context["debater_suggestions"]) + len(
+                    context["school_suggestions"]
+                )
+                return context
+
+        payload = {
+            "debater_suggestions": self._build_debater_suggestions(
+                selected_debater_ids=selected_debater_ids,
+                selected_school_ids=selected_school_ids,
+            ),
+            "school_suggestions": self._build_school_suggestions(
+                selected_school_ids=selected_school_ids,
+            ),
+        }
+        payload["suggestion_total"] = len(payload["debater_suggestions"]) + len(
+            payload["school_suggestions"]
+        )
+        cache.set(cache_key, payload, 300)
+        context.update(payload)
+        return context
 
     def post(self, request, *args, **kwargs):
-        synthetic_debater_id = request.POST.get("synthetic_debater")
-        canonical_debater_id = request.POST.get("canonical_debater")
-        reason = str(request.POST.get("reason") or "").strip() or "Suggested synthetic debater resolution"
+        entity_type = str(request.POST.get("entity_type") or "debater").strip().lower()
+        synthetic_id = request.POST.get("synthetic_id") or request.POST.get("synthetic_debater")
+        target_id = request.POST.get("target_id") or request.POST.get("canonical_debater")
+        reason = str(request.POST.get("reason") or "").strip()
 
-        if not synthetic_debater_id or not canonical_debater_id:
-            return JsonResponse({"success": False, "error": "Missing debater selection."})
+        if entity_type == "debater":
+            reason = reason or "Suggested synthetic debater resolution"
+        elif entity_type == "school":
+            reason = reason or "Suggested synthetic school resolution"
+        else:
+            return JsonResponse({"success": False, "error": "Unsupported synthetic entity type."})
+
+        if not synthetic_id or not target_id:
+            return JsonResponse({"success": False, "error": "Missing resolution selection."})
 
         try:
-            synthetic_debater = Debater.all_objects.select_related("school").get(
-                pk=synthetic_debater_id,
-                synthetic=True,
-            )
-            canonical_debater = Debater.objects.select_related("school").get(pk=canonical_debater_id)
-        except Debater.DoesNotExist:
-            return JsonResponse({"success": False, "error": "Unable to find one of the selected debaters."})
+            synthetic_id = int(synthetic_id)
+            target_id = int(target_id)
+        except (TypeError, ValueError):
+            return JsonResponse({"success": False, "error": "Invalid resolution selection."})
 
-        if synthetic_debater.pk == canonical_debater.pk:
-            return JsonResponse({"success": False, "error": "Synthetic and canonical debaters must be different."})
+        if synthetic_id == target_id:
+            return JsonResponse(
+                {"success": False, "error": "Synthetic and canonical records must be different."}
+            )
+
+        try:
+            resolution_message = self._build_resolution_message(
+                entity_type=entity_type,
+                synthetic_id=synthetic_id,
+                target_id=target_id,
+            )
+        except (Debater.DoesNotExist, School.DoesNotExist):
+            return JsonResponse(
+                {"success": False, "error": "Unable to find one of the selected records."}
+            )
 
         try:
             resolve_synthetic_entity(
-                entity_type="debater",
-                synthetic_id=synthetic_debater.pk,
-                target_id=canonical_debater.pk,
+                entity_type=entity_type,
+                synthetic_id=synthetic_id,
+                target_id=target_id,
                 actor=request.user,
                 reason=reason,
                 source_context={"source": "synthetic_resolution_suggestions"},
@@ -851,120 +950,417 @@ class SyntheticResolutionSuggestionsView(MergeSuggestionsView):
         except Exception as exc:
             return JsonResponse({"success": False, "error": str(exc)})
 
-        cache.delete(self.cache_key)
-
-        return JsonResponse(
-            {
-                "success": True,
-                "message": f"Resolved synthetic debater {synthetic_debater.name} into {canonical_debater.name}.",
-            }
-        )
-
-    def _build_suggestions(self):
-        synthetic_debaters = list(
-            Debater.all_objects.filter(alias_group__isnull=True, synthetic=True)
-            .exclude(first_name__isnull=True)
-            .exclude(first_name="")
-            .exclude(last_name__isnull=True)
-            .exclude(last_name="")
-            .select_related("school")
-            .annotate(
-                first_normalized=Lower("first_name"),
-                last_normalized=Lower("last_name"),
+        recording_warning = None
+        try:
+            record_round_amendment_action(
+                build_synthetic_resolution_action(
+                    entity_type=entity_type,
+                    synthetic_id=synthetic_id,
+                    target_id=target_id,
+                    reason=reason,
+                )
             )
-            .order_by("-id")[:1000]
+        except Exception as exc:
+            recording_warning = str(exc)
+
+        self._bump_cache_version()
+
+        payload = {
+            "success": True,
+            "message": resolution_message,
+        }
+        if recording_warning:
+            payload["warning"] = (
+                "Synthetic entity resolved, but amendment recording failed: "
+                f"{recording_warning}"
+            )
+        return JsonResponse(payload)
+
+    def _parse_selected_ids(self, param_name):
+        ids = []
+        seen_ids = set()
+        for raw_value in self.request.GET.getlist(param_name):
+            try:
+                parsed = int(raw_value)
+            except (TypeError, ValueError):
+                continue
+            if parsed in seen_ids:
+                continue
+            seen_ids.add(parsed)
+            ids.append(parsed)
+        return ids
+
+    @staticmethod
+    def _ordered_records(records, requested_ids):
+        records_by_id = {record.id: record for record in records}
+        return [records_by_id[record_id] for record_id in requested_ids if record_id in records_by_id]
+
+    def _load_selected_debaters(self, selected_debater_ids):
+        if not selected_debater_ids:
+            return []
+        records = Debater.all_objects.filter(
+            pk__in=selected_debater_ids,
+            synthetic=True,
+        ).select_related("school")
+        return self._ordered_records(records, selected_debater_ids)
+
+    def _load_selected_schools(self, selected_school_ids):
+        if not selected_school_ids:
+            return []
+        records = School.all_objects.filter(
+            pk__in=selected_school_ids,
+            synthetic=True,
         )
-        canonical_debaters = list(
+        return self._ordered_records(records, selected_school_ids)
+
+    def _build_refresh_query(self, selected_debater_ids, selected_school_ids):
+        params = [("run", "1"), ("refresh", "1")]
+        params.extend(("synthetic_debaters", debater_id) for debater_id in selected_debater_ids)
+        params.extend(("synthetic_schools", school_id) for school_id in selected_school_ids)
+        return urlencode(params, doseq=True)
+
+    def _get_suggestions_cache_key(self, selected_debater_ids, selected_school_ids):
+        version = int(cache.get(self.cache_version_key) or 1)
+        key_material = "|".join(
+            [
+                str(version),
+                ",".join(str(value) for value in selected_debater_ids),
+                ",".join(str(value) for value in selected_school_ids),
+            ]
+        )
+        return f"{self.cache_key}:{md5(key_material.encode('utf-8')).hexdigest()}"
+
+    def _bump_cache_version(self):
+        current_version = int(cache.get(self.cache_version_key) or 1)
+        cache.set(self.cache_version_key, current_version + 1, None)
+
+    def _build_resolution_message(self, entity_type, synthetic_id, target_id):
+        if entity_type == "debater":
+            synthetic = Debater.all_objects.get(pk=synthetic_id, synthetic=True)
+            canonical = Debater.objects.get(pk=target_id)
+            return f"Resolved synthetic debater {synthetic.name} into {canonical.name}."
+        if entity_type == "school":
+            synthetic = School.all_objects.get(pk=synthetic_id, synthetic=True)
+            canonical = School.objects.get(pk=target_id, synthetic=False)
+            return f"Resolved synthetic school {synthetic.name} into {canonical.name}."
+        raise ValueError("Unsupported synthetic entity type.")
+
+    @staticmethod
+    def _normalize_text(value):
+        cleaned = re.sub(r"[^a-z0-9]+", " ", str(value or "").lower())
+        return " ".join(cleaned.split())
+
+    def _normalize_school_text(self, value):
+        normalized = self._normalize_text(value)
+        tokens = [token for token in normalized.split() if token not in self.school_stop_words]
+        compact = " ".join(tokens) or normalized
+        return normalized, compact
+
+    def _prepare_debater_name(self, debater):
+        first = self._normalize_text(debater.first_name)
+        last = self._normalize_text(debater.last_name)
+        full = " ".join(part for part in [first, last] if part)
+        return first, last, full
+
+    def _candidate_debater_queryset(self, synthetic_debaters, selected_debater_ids):
+        queryset = (
             Debater.objects.filter(alias_group__isnull=True, synthetic=False)
             .exclude(first_name__isnull=True)
             .exclude(first_name="")
             .exclude(last_name__isnull=True)
             .exclude(last_name="")
             .select_related("school")
-            .annotate(
-                first_normalized=Lower("first_name"),
-                last_normalized=Lower("last_name"),
-            )
-            .order_by("-id")[:2000]
+            .order_by("-id")
         )
 
-        canonical_name_groups = defaultdict(list)
-        canonical_first_letter_groups = defaultdict(list)
+        if selected_debater_ids and len(synthetic_debaters) <= 20:
+            last_prefix_filters = Q()
+            school_ids = set()
+            for synthetic_debater in synthetic_debaters:
+                _, last_norm, _ = self._prepare_debater_name(synthetic_debater)
+                if last_norm:
+                    last_prefix_filters |= Q(last_name__istartswith=last_norm[:4])
+                if synthetic_debater.school_id:
+                    school_ids.add(synthetic_debater.school_id)
+            if school_ids:
+                last_prefix_filters |= Q(school_id__in=school_ids)
+            if last_prefix_filters:
+                queryset = queryset.filter(last_prefix_filters)
+        else:
+            queryset = queryset[: self.default_canonical_debater_limit]
+
+        return list(queryset)
+
+    def _build_debater_suggestions(self, selected_debater_ids, selected_school_ids):
+        synthetic_filters = Q(alias_group__isnull=True, synthetic=True)
+        synthetic_filters &= ~Q(first_name__isnull=True)
+        synthetic_filters &= ~Q(first_name="")
+        synthetic_filters &= ~Q(last_name__isnull=True)
+        synthetic_filters &= ~Q(last_name="")
+
+        if selected_debater_ids or selected_school_ids:
+            scoped_filters = Q()
+            if selected_debater_ids:
+                scoped_filters |= Q(pk__in=selected_debater_ids)
+            if selected_school_ids:
+                scoped_filters |= Q(school_id__in=selected_school_ids)
+            synthetic_filters &= scoped_filters
+
+        synthetic_queryset = (
+            Debater.all_objects.filter(synthetic_filters)
+            .select_related("school")
+            .order_by("-id")
+        )
+        if not selected_debater_ids and not selected_school_ids:
+            synthetic_queryset = synthetic_queryset[: self.default_synthetic_debater_limit]
+        synthetic_debaters = list(synthetic_queryset)
+        if not synthetic_debaters:
+            return []
+
+        canonical_debaters = self._candidate_debater_queryset(
+            synthetic_debaters=synthetic_debaters,
+            selected_debater_ids=selected_debater_ids,
+        )
+        if not canonical_debaters:
+            return []
+
+        canonical_exact_name_groups = defaultdict(list)
+        canonical_initial_last_groups = defaultdict(list)
+        canonical_prefix_groups = defaultdict(list)
+        canonical_school_initial_groups = defaultdict(list)
+        canonical_by_id = {}
         for debater in canonical_debaters:
-            key = (debater.first_normalized, debater.last_normalized)
-            canonical_name_groups[key].append(debater)
-            if debater.first_normalized:
-                canonical_first_letter_groups[debater.first_normalized[0]].append(debater)
+            first_norm, last_norm, _ = self._prepare_debater_name(debater)
+            debater.first_normalized = first_norm
+            debater.last_normalized = last_norm
+            canonical_by_id[debater.id] = debater
+            canonical_exact_name_groups[(first_norm, last_norm)].append(debater.id)
+            canonical_initial_last_groups[(first_norm[:1], last_norm[:4])].append(debater.id)
+            canonical_prefix_groups[(first_norm[:3], last_norm[:4])].append(debater.id)
+            canonical_school_initial_groups[(debater.school_id, first_norm[:1])].append(debater.id)
 
-        pairs_to_check = []
-        seen_pairs = set()
+        candidate_pairs = {}
         for synthetic_debater in synthetic_debaters:
-            exact_matches = canonical_name_groups.get(
-                (synthetic_debater.first_normalized, synthetic_debater.last_normalized),
-                [],
-            )
-            for canonical_debater in exact_matches:
-                pair_key = (synthetic_debater.id, canonical_debater.id)
-                if pair_key in seen_pairs:
-                    continue
-                seen_pairs.add(pair_key)
-                pairs_to_check.append((synthetic_debater, canonical_debater, 1.0))
+            first_norm, last_norm, full_norm = self._prepare_debater_name(synthetic_debater)
+            synthetic_debater.first_normalized = first_norm
+            synthetic_debater.last_normalized = last_norm
 
-            first_letter = (synthetic_debater.first_normalized or "")[:1]
-            fuzzy_candidates = canonical_first_letter_groups.get(first_letter, [])
-            if len(fuzzy_candidates) > 150:
-                fuzzy_candidates = fuzzy_candidates[:150]
-
-            for canonical_debater in fuzzy_candidates:
-                pair_key = (synthetic_debater.id, canonical_debater.id)
-                if pair_key in seen_pairs:
-                    continue
-                name_similarity = self._calculate_name_similarity(
-                    synthetic_debater,
-                    canonical_debater,
+            candidate_ids = []
+            candidate_ids.extend(canonical_exact_name_groups.get((first_norm, last_norm), []))
+            candidate_ids.extend(canonical_initial_last_groups.get((first_norm[:1], last_norm[:4]), []))
+            candidate_ids.extend(canonical_prefix_groups.get((first_norm[:3], last_norm[:4]), []))
+            if synthetic_debater.school_id:
+                candidate_ids.extend(
+                    canonical_school_initial_groups.get((synthetic_debater.school_id, first_norm[:1]), [])
                 )
-                if name_similarity < 0.75:
+
+            seen_candidate_ids = set()
+            ranked_candidates = []
+            for candidate_id in candidate_ids:
+                if candidate_id in seen_candidate_ids:
                     continue
-                seen_pairs.add(pair_key)
-                pairs_to_check.append((synthetic_debater, canonical_debater, name_similarity))
-
-        debater_ids_to_count = set()
-        for synthetic_debater, canonical_debater, _ in pairs_to_check:
-            debater_ids_to_count.add(synthetic_debater.id)
-            debater_ids_to_count.add(canonical_debater.id)
-
-        debaters_with_counts = {}
-        if debater_ids_to_count:
-            debaters_with_counts = {
-                d.id: d
-                for d in self._annotate_debaters_with_counts(
-                    Debater.all_objects.filter(id__in=debater_ids_to_count)
+                seen_candidate_ids.add(candidate_id)
+                canonical_debater = canonical_by_id.get(candidate_id)
+                if canonical_debater is None:
+                    continue
+                canonical_full_norm = " ".join(
+                    part
+                    for part in [canonical_debater.first_normalized, canonical_debater.last_normalized]
+                    if part
                 )
-            }
-            self._set_total_results(debaters_with_counts.values())
+                name_similarity = SequenceMatcher(None, full_norm, canonical_full_norm).ratio()
+                if name_similarity < 0.76 and not (
+                    synthetic_debater.school_id == canonical_debater.school_id and name_similarity >= 0.68
+                ):
+                    continue
+                preliminary_score = (
+                    name_similarity * 100
+                    + min(max(synthetic_debater.id, canonical_debater.id) / 200, 50)
+                    + (30 if synthetic_debater.school_id == canonical_debater.school_id else 0)
+                )
+                ranked_candidates.append((preliminary_score, name_similarity, canonical_debater))
+
+            ranked_candidates.sort(key=lambda item: item[0], reverse=True)
+            for _, name_similarity, canonical_debater in ranked_candidates[:5]:
+                pair_key = (synthetic_debater.id, canonical_debater.id)
+                candidate_pairs[pair_key] = {
+                    "synthetic_debater": synthetic_debater,
+                    "canonical_debater": canonical_debater,
+                    "name_similarity": name_similarity,
+                }
+
+        if not candidate_pairs:
+            return []
+
+        ranked_pairs = sorted(
+            candidate_pairs.values(),
+            key=lambda pair: (
+                pair["name_similarity"],
+                pair["synthetic_debater"].school_id == pair["canonical_debater"].school_id,
+                max(pair["synthetic_debater"].id, pair["canonical_debater"].id),
+            ),
+            reverse=True,
+        )[: self.max_debater_suggestions * 4]
+
+        debaters_to_count = {}
+        for pair in ranked_pairs:
+            debaters_to_count[pair["synthetic_debater"].id] = pair["synthetic_debater"]
+            debaters_to_count[pair["canonical_debater"].id] = pair["canonical_debater"]
+        self._attach_total_results(debaters_to_count.values())
 
         suggestions = []
-        for synthetic_debater, canonical_debater, name_similarity in pairs_to_check:
-            synthetic_with_counts = debaters_with_counts.get(synthetic_debater.id, synthetic_debater)
-            canonical_with_counts = debaters_with_counts.get(canonical_debater.id, canonical_debater)
-
-            if not hasattr(synthetic_with_counts, "total_results"):
-                synthetic_with_counts.total_results = 0
-            if not hasattr(canonical_with_counts, "total_results"):
-                canonical_with_counts.total_results = 0
-
-            suggestion = self._create_suggestion(
-                synthetic_with_counts,
-                canonical_with_counts,
-                name_similarity,
+        for pair in ranked_pairs:
+            suggestion = self._create_debater_suggestion(
+                pair["synthetic_debater"],
+                pair["canonical_debater"],
+                pair["name_similarity"],
             )
             if suggestion:
                 suggestions.append(suggestion)
 
-        suggestions.sort(key=lambda x: x["score"], reverse=True)
-        return suggestions[:self.max_suggestions]
+        suggestions.sort(key=lambda suggestion: suggestion["score"], reverse=True)
+        return suggestions[: self.max_debater_suggestions]
 
-    def _create_suggestion(self, synthetic_debater, canonical_debater, name_similarity):
+    def _build_school_suggestions(self, selected_school_ids):
+        school_queryset = School.all_objects.filter(synthetic=True).order_by("-id")
+        if selected_school_ids:
+            school_queryset = school_queryset.filter(pk__in=selected_school_ids)
+        else:
+            school_queryset = school_queryset[: self.default_synthetic_school_limit]
+        synthetic_schools = list(school_queryset)
+        if not synthetic_schools:
+            return []
+
+        canonical_schools = list(School.objects.filter(synthetic=False).order_by("name", "id"))
+        if not canonical_schools:
+            return []
+
+        canonical_by_id = {}
+        canonical_name_groups = defaultdict(list)
+        canonical_compact_groups = defaultdict(list)
+        canonical_short_groups = defaultdict(list)
+        canonical_prefix_groups = defaultdict(list)
+
+        for school in canonical_schools:
+            name_normalized, compact_name = self._normalize_school_text(school.name)
+            short_normalized, compact_short = self._normalize_school_text(school.short_name)
+            school.name_normalized = name_normalized
+            school.compact_name = compact_name
+            school.short_normalized = short_normalized
+            school.compact_short = compact_short
+            canonical_by_id[school.id] = school
+            canonical_name_groups[name_normalized].append(school.id)
+            canonical_compact_groups[compact_name].append(school.id)
+            if short_normalized:
+                canonical_short_groups[short_normalized].append(school.id)
+            if compact_name:
+                canonical_prefix_groups[compact_name[:5]].append(school.id)
+
+        suggestions = []
+        for synthetic_school in synthetic_schools:
+            name_normalized, compact_name = self._normalize_school_text(synthetic_school.name)
+            short_normalized, compact_short = self._normalize_school_text(synthetic_school.short_name)
+
+            candidate_ids = []
+            candidate_ids.extend(canonical_name_groups.get(name_normalized, []))
+            candidate_ids.extend(canonical_compact_groups.get(compact_name, []))
+            candidate_ids.extend(canonical_prefix_groups.get(compact_name[:5], []))
+            if short_normalized:
+                candidate_ids.extend(canonical_short_groups.get(short_normalized, []))
+            if compact_short:
+                candidate_ids.extend(canonical_short_groups.get(compact_short, []))
+
+            ranked_candidates = []
+            seen_candidate_ids = set()
+            for candidate_id in candidate_ids:
+                if candidate_id in seen_candidate_ids:
+                    continue
+                seen_candidate_ids.add(candidate_id)
+                canonical_school = canonical_by_id.get(candidate_id)
+                if canonical_school is None:
+                    continue
+
+                name_similarity = SequenceMatcher(
+                    None,
+                    compact_name or name_normalized,
+                    canonical_school.compact_name or canonical_school.name_normalized,
+                ).ratio()
+                short_similarity = 0
+                if short_normalized and canonical_school.short_normalized:
+                    short_similarity = SequenceMatcher(
+                        None,
+                        compact_short or short_normalized,
+                        canonical_school.compact_short or canonical_school.short_normalized,
+                    ).ratio()
+
+                best_similarity = max(name_similarity, short_similarity)
+                same_short_name = bool(
+                    short_normalized and short_normalized == canonical_school.short_normalized
+                )
+                if best_similarity < 0.72 and not same_short_name:
+                    continue
+
+                score = best_similarity * 100
+                if compact_name == canonical_school.compact_name:
+                    score += 25
+                if same_short_name:
+                    score += 30
+
+                ranked_candidates.append((score, best_similarity, same_short_name, canonical_school))
+
+            ranked_candidates.sort(key=lambda item: item[0], reverse=True)
+            for score, best_similarity, same_short_name, canonical_school in ranked_candidates[:3]:
+                suggestions.append(
+                    {
+                        "synthetic_school": synthetic_school,
+                        "canonical_school": canonical_school,
+                        "name_similarity": best_similarity,
+                        "same_short_name": same_short_name,
+                        "score": score,
+                    }
+                )
+
+        suggestions.sort(key=lambda suggestion: suggestion["score"], reverse=True)
+        return suggestions[: self.max_school_suggestions]
+
+    def _attach_total_results(self, debaters):
+        debaters = list(debaters)
+        debater_ids = [debater.id for debater in debaters]
+        if not debater_ids:
+            return
+
+        totals = defaultdict(int)
+
+        for row in SpeakerResult.objects.filter(debater_id__in=debater_ids).values("debater_id").annotate(
+            total=Count("id")
+        ):
+            totals[row["debater_id"]] += row["total"]
+
+        for row in RoundStats.objects.filter(debater_id__in=debater_ids).values("debater_id").annotate(
+            total=Count("id")
+        ):
+            totals[row["debater_id"]] += row["total"]
+
+        for row in TeamResult.objects.filter(team__debaters__id__in=debater_ids).values(
+            "team__debaters"
+        ).annotate(total=Count("id", distinct=True)):
+            totals[row["team__debaters"]] += row["total"]
+
+        for video_field in ("pm_id", "lo_id", "mg_id", "mo_id"):
+            for row in Video.objects.filter(**{f"{video_field}__in": debater_ids}).values(video_field).annotate(
+                total=Count("id")
+            ):
+                totals[row[video_field]] += row["total"]
+
+        for debater in debaters:
+            debater.total_results = totals.get(debater.id, 0)
+
+    def _create_debater_suggestion(self, synthetic_debater, canonical_debater, name_similarity):
+        if not hasattr(synthetic_debater, "total_results"):
+            synthetic_debater.total_results = 0
+        if not hasattr(canonical_debater, "total_results"):
+            canonical_debater.total_results = 0
+
         score = self._calculate_merge_score(synthetic_debater, canonical_debater, name_similarity)
         if score <= 0:
             return None

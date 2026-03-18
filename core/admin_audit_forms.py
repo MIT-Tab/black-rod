@@ -4,7 +4,7 @@ from dal import autocomplete
 from django import forms
 from django.core.exceptions import ObjectDoesNotExist
 
-from core.models import Debater, ImportedRoundMetadata, Round
+from core.models import Debater, Round
 
 
 ROUND_BALLOT_SLOTS = (
@@ -13,7 +13,6 @@ ROUND_BALLOT_SLOTS = (
         "side": "gov",
         "member_index": 0,
         "alias_field": "gov_1_alias",
-        "import_role_field": "gov_1_role",
         "debater_field": "gov_1_debater",
         "source_name_field": "gov_1_source_name",
         "role_field": "gov_1_role",
@@ -25,7 +24,6 @@ ROUND_BALLOT_SLOTS = (
         "side": "gov",
         "member_index": 1,
         "alias_field": "gov_2_alias",
-        "import_role_field": "gov_2_role",
         "debater_field": "gov_2_debater",
         "source_name_field": "gov_2_source_name",
         "role_field": "gov_2_role",
@@ -37,7 +35,6 @@ ROUND_BALLOT_SLOTS = (
         "side": "opp",
         "member_index": 0,
         "alias_field": "opp_1_alias",
-        "import_role_field": "opp_1_role",
         "debater_field": "opp_1_debater",
         "source_name_field": "opp_1_source_name",
         "role_field": "opp_1_role",
@@ -49,7 +46,6 @@ ROUND_BALLOT_SLOTS = (
         "side": "opp",
         "member_index": 1,
         "alias_field": "opp_2_alias",
-        "import_role_field": "opp_2_role",
         "debater_field": "opp_2_debater",
         "source_name_field": "opp_2_source_name",
         "role_field": "opp_2_role",
@@ -72,13 +68,13 @@ class TournamentRoundBallotForm(forms.Form):
     OUTROUND_STAGE_LABELS = dict(OUTROUND_STAGE_CHOICES)
     GOV_ROLE_CHOICES = (
         ("", "---------"),
-        (ImportedRoundMetadata.SpeakerRole.PM, "PM"),
-        (ImportedRoundMetadata.SpeakerRole.MG, "MG"),
+        ("PM", "PM"),
+        ("MG", "MG"),
     )
     OPP_ROLE_CHOICES = (
         ("", "---------"),
-        (ImportedRoundMetadata.SpeakerRole.LO, "LO"),
-        (ImportedRoundMetadata.SpeakerRole.MO, "MO"),
+        ("LO", "LO"),
+        ("MO", "MO"),
     )
 
     canonical_round_name = forms.CharField(max_length=32, required=False)
@@ -296,7 +292,7 @@ class TournamentRoundBallotForm(forms.Form):
                 or (debater.name if debater else "")
             )
             initial[slot["role_field"]] = str(
-                getattr(imported_metadata, slot["import_role_field"], "") or debater_data.get("role") or ""
+                debater_data.get("role") or ""
             ).strip()
             initial[slot["speaks_field"]] = debater_data.get("speaks")
             initial[slot["ranks_field"]] = debater_data.get("ranks")
