@@ -76,6 +76,11 @@
                                        class="btn btn-outline-dark btn-sm">Synthetic Suggestions</a>
                                     <span class="text-muted ml-2">Review suggested synthetic debater to canonical debater resolutions</span>
                                 </li>
+                                <li class="list-group-item">
+                                    <a href="{% url 'core:synthetic_cleanup' %}"
+                                       class="btn btn-outline-dark btn-sm">Synthetic Cleanup</a>
+                                    <span class="text-muted ml-2">Delete synthetic schools, debaters, or teams that have no remaining references anywhere else in the DB</span>
+                                </li>
                             </ul>
                         </div>
                         <div class="col-md-6">

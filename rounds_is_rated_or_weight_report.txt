@@ -1,0 +1,85 @@
+DB report for rounds matching:
+  COALESCE(is_rated, 0) != 1 OR COALESCE(weight, 1.0) != 1.0
+
+Database checked:
+  /home/joey/black-rod/apda/db.sqlite3
+
+Generated:
+  2026-03-18
+
+Summary
+- Total rounds in DB: 35971
+- Matching rounds: 25
+- `is_rated != true`: 25
+- `weight != 1.0`: 0
+- Both conditions at once: 0
+
+What these matching rows have in common
+- Every matching row has `weight = 1.0`.
+- Every matching row is a `prelim`.
+- Every matching row has a normal decision (`victor` is gov or opp), not a bye/forfeit/all-drop/all-win.
+- Every matching row has 4 `RoundStats` rows, with 4 speaks and 4 ranks populated.
+- Every matching row is `import_origin = manual` and has a blank `import_key`.
+- Every matching row has the same metadata pattern:
+  `{"record_origin": "trusted_pre_import_manual_round", "preserved_by_round_import_migration": true}`
+
+Tournament context
+
+1. Providence College (Brown)
+- Tournament ID: 862
+- Season: 2019
+- Date: 2019-09-13
+- `qual_type`: 0
+- Matching rounds: 10 of 81 total rounds in the tournament
+- Matching round numbers: 1, 2, 3, 4, 5
+- Distribution by round number: R1=1, R2=1, R3=3, R4=3, R5=2
+- These look like ordinary debate results with complete stats, but they were manually kept unrated.
+- No explicit reason is stored in round metadata beyond the preservation/migration markers above.
+
+2. American ProAms
+- Tournament ID: 877
+- Season: 2019
+- Date: 2019-11-01
+- `qual_type`: 7
+- Matching rounds: 15 of 258 total rounds in the tournament
+- Matching round numbers: 1, 2, 3, 4, 5
+- Distribution by round number: R1=1, R2=2, R3=4, R4=5, R5=3
+- The team names include mixed-school pairings such as `University of Chicago / Penn HC`, which is consistent with this being a ProAms event.
+- In application code, ProAm tournaments are already excluded from the ELO ingestion path, so these rows are effectively double-excluded there: by tournament type and by `is_rated = false`.
+
+Important interpretation
+- There are no live DB rows using non-default round weights.
+- The only live DB reason these rows match the query is `is_rated = false`.
+- Removing `weight` looks safe from a data-usage standpoint.
+- Removing `is_rated` would be a behavior change for at least the 10 Providence College (Brown) rows, because that tournament is not marked as ProAm by `qual_type` or name.
+
+Matching rounds
+
+Providence College (Brown)
+- 457 | 2019-09-13 | R1 | winner=opp | gov=Amherst BR | opp=Brown SS
+- 475 | 2019-09-13 | R2 | winner=gov | gov=Harvard DO | opp=Rutgers UM
+- 483 | 2019-09-13 | R3 | winner=opp | gov=Boston University / Wellesley WO | opp=Harvard QG
+- 486 | 2019-09-13 | R3 | winner=opp | gov=Brown SS | opp=Harvard DO
+- 494 | 2019-09-13 | R3 | winner=opp | gov=Brown TG | opp=Amherst BR
+- 496 | 2019-09-13 | R4 | winner=gov | gov=Harvard DO | opp=Harvard HL
+- 497 | 2019-09-13 | R4 | winner=gov | gov=Harvard BK | opp=Harvard QG
+- 499 | 2019-09-13 | R4 | winner=gov | gov=Harvard RP | opp=Brown SS
+- 509 | 2019-09-13 | R5 | winner=opp | gov=Harvard BK | opp=Harvard DO
+- 513 | 2019-09-13 | R5 | winner=gov | gov=Harvard QG | opp=Rutgers UM
+
+American ProAms
+- 232 | 2019-11-01 | R1 | winner=gov | gov=Penn MW | opp=George Washington HG
+- 290 | 2019-11-01 | R2 | winner=opp | gov=George Washington VR | opp=Penn KT
+- 296 | 2019-11-01 | R2 | winner=opp | gov=Temple SE | opp=University of Virginia TL
+- 324 | 2019-11-01 | R3 | winner=gov | gov=Johns Hopkins YC | opp=Columbia CK
+- 326 | 2019-11-01 | R3 | winner=gov | gov=University of Chicago / Penn HC | opp=Swarthmore TA
+- 334 | 2019-11-01 | R3 | winner=opp | gov=Georgetown HR | opp=University of Virginia AH
+- 339 | 2019-11-01 | R3 | winner=opp | gov=University of Virginia GM | opp=Swarthmore DJ
+- 367 | 2019-11-01 | R4 | winner=gov | gov=Swarthmore PZ | opp=Johns Hopkins YC
+- 369 | 2019-11-01 | R4 | winner=opp | gov=University of Virginia ME | opp=University of Chicago / Penn HC
+- 370 | 2019-11-01 | R4 | winner=gov | gov=University of Virginia TL | opp=Maryland LB
+- 371 | 2019-11-01 | R4 | winner=opp | gov=Georgetown SH | opp=George Washington KL
+- 372 | 2019-11-01 | R4 | winner=gov | gov=Penn KT | opp=Georgetown WD
+- 412 | 2019-11-01 | R5 | winner=gov | gov=Penn MW | opp=University of Virginia TL
+- 413 | 2019-11-01 | R5 | winner=gov | gov=George Washington KL | opp=University of Chicago / Penn HC
+- 414 | 2019-11-01 | R5 | winner=opp | gov=Swarthmore PZ | opp=Penn KT

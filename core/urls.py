@@ -274,6 +274,11 @@ urlpatterns = [
     path("core/elo/", elo_views.elo_dashboard, name="elo_dashboard"),
     path("core/admin-tools/", admin_views.AdminToolsView.as_view(), name="admin_tools"),
     path(
+        "core/admin/synthetic-cleanup/",
+        admin_views.SyntheticCleanupView.as_view(),
+        name="synthetic_cleanup",
+    ),
+    path(
         "core/admin/scheduling/",
         scheduling_views.SchedulingDashboardView.as_view(),
         name="scheduling_dashboard",

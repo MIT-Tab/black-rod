@@ -1,4 +1,6 @@
 import json
+from pathlib import Path
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.contrib.messages import get_messages
@@ -7,6 +9,7 @@ from django.test import Client, TestCase
 from django.urls import reverse
 
 from core.models import SchedulerWorkspace, SchedulingRun
+from core.views.scheduling_views import SchedulingDashboardView
 
 
 SCHOOLS_CSV = """\
@@ -90,6 +93,78 @@ class SchedulingDashboardViewTest(TestCase):
         self.assertIn("9/19-9/20", workspace.dates_csv)
         messages = [message.message for message in get_messages(response.wsgi_request)]
         self.assertTrue(any("Scheduler CSVs saved." in message for message in messages))
+
+    def test_uploading_schools_first_saves_without_dates_validation(self):
+        self.client.force_login(self.superuser)
+        workspace = SchedulerWorkspace.get_solo()
+
+        with patch.object(
+            SchedulingDashboardView,
+            "sample_directory",
+            Path("/tmp/black-rod-no-bootstrap"),
+        ):
+            response = self.client.post(
+                reverse("core:scheduling_dashboard"),
+                {
+                    "action": "upload_csv",
+                    "workspace_version": workspace.version,
+                    "schools_csv": SimpleUploadedFile(
+                        "schools.csv",
+                        SCHOOLS_CSV.encode("utf-8"),
+                        content_type="text/csv",
+                    ),
+                },
+                follow=True,
+            )
+
+        self.assertEqual(response.status_code, 200)
+        workspace.refresh_from_db()
+        self.assertEqual(workspace.schools_filename, "schools.csv")
+        self.assertEqual(workspace.dates_filename, "")
+        messages = [message.message for message in get_messages(response.wsgi_request)]
+        self.assertTrue(
+            any(
+                "Schools CSV saved. Upload the dates CSV to finish validation."
+                in message
+                for message in messages
+            )
+        )
+
+    def test_uploading_dates_first_saves_without_schools_validation(self):
+        self.client.force_login(self.superuser)
+        workspace = SchedulerWorkspace.get_solo()
+
+        with patch.object(
+            SchedulingDashboardView,
+            "sample_directory",
+            Path("/tmp/black-rod-no-bootstrap"),
+        ):
+            response = self.client.post(
+                reverse("core:scheduling_dashboard"),
+                {
+                    "action": "upload_csv",
+                    "workspace_version": workspace.version,
+                    "dates_csv": SimpleUploadedFile(
+                        "dates.csv",
+                        DATES_CSV.encode("utf-8"),
+                        content_type="text/csv",
+                    ),
+                },
+                follow=True,
+            )
+
+        self.assertEqual(response.status_code, 200)
+        workspace.refresh_from_db()
+        self.assertEqual(workspace.schools_filename, "")
+        self.assertEqual(workspace.dates_filename, "dates.csv")
+        messages = [message.message for message in get_messages(response.wsgi_request)]
+        self.assertTrue(
+            any(
+                "Dates CSV saved. Upload the schools CSV to finish validation."
+                in message
+                for message in messages
+            )
+        )
 
     def test_stale_save_is_rejected(self):
         self.client.force_login(self.superuser)

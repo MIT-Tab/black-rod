@@ -11,7 +11,7 @@ from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 from unittest.mock import patch
 
-from core.models import Debater, Round, School, SyntheticResolutionLog, Team, Tournament
+from core.models import Debater, Round, School, SchoolLookup, SyntheticResolutionLog, Team, Tournament
 from core.utils.round_amendment_recorder import (
     backfill_synthetic_resolution_actions_from_logs,
 )
@@ -50,6 +50,111 @@ class AdminToolsViewTest(TestCase):
         self.assertContains(response, 'id="target_search"', html=False)
         self.assertContains(response, reverse("core:round_amendments_upload"))
         self.assertContains(response, "Round Amendments")
+        self.assertContains(response, reverse("core:synthetic_cleanup"))
+        self.assertContains(response, "Synthetic Cleanup")
+
+    def test_synthetic_cleanup_lists_only_unreferenced_synthetic_entities(self):
+        self.client.force_login(self.superuser)
+
+        unused_school = School.all_objects.create(
+            name="Unused Synthetic School",
+            short_name="USS",
+            synthetic=True,
+        )
+        used_school = School.all_objects.create(
+            name="Used Synthetic School",
+            short_name="USS2",
+            synthetic=True,
+        )
+        SchoolLookup.objects.create(
+            server_name="used-synthetic-school",
+            school=used_school,
+        )
+
+        unused_debater = Debater.all_objects.create(
+            first_name="Unused",
+            last_name="Synthetic",
+            school=self.school,
+            synthetic=True,
+        )
+        used_debater = Debater.all_objects.create(
+            first_name="Used",
+            last_name="Synthetic",
+            school=self.school,
+            synthetic=True,
+        )
+        linked_team = Team.objects.create(name="Linked Team", short_name="LT", synthetic=True)
+        linked_team.debaters.add(used_debater)
+
+        unused_team = Team.objects.create(name="Unused Synthetic Team", short_name="UST", synthetic=True)
+        used_team = Team.objects.create(name="Used Synthetic Team", short_name="UST2", synthetic=True)
+        used_team.debaters.add(
+            Debater.all_objects.create(
+                first_name="Synthetic",
+                last_name="Member",
+                school=self.school,
+                synthetic=True,
+            )
+        )
+
+        response = self.client.get(reverse("core:synthetic_cleanup"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, unused_school.name)
+        self.assertContains(response, unused_debater.name)
+        self.assertContains(response, unused_team.name)
+        self.assertNotContains(response, used_school.name)
+        self.assertNotContains(response, used_debater.name)
+        self.assertNotContains(response, used_team.name)
+
+    def test_synthetic_cleanup_deletes_selected_entities_and_rechecks_references(self):
+        self.client.force_login(self.superuser)
+
+        unused_school = School.all_objects.create(
+            name="Delete Synthetic School",
+            short_name="DSS",
+            synthetic=True,
+        )
+        unused_debater = Debater.all_objects.create(
+            first_name="Delete",
+            last_name="Synthetic",
+            school=self.school,
+            synthetic=True,
+        )
+        unused_team = Team.objects.create(name="Delete Synthetic Team", short_name="DST", synthetic=True)
+
+        referenced_team = Team.objects.create(name="Referenced Synthetic Team", short_name="RST", synthetic=True)
+        referenced_team.debaters.add(
+            Debater.all_objects.create(
+                first_name="Still",
+                last_name="Linked",
+                school=self.school,
+                synthetic=True,
+            )
+        )
+
+        response = self.client.post(
+            reverse("core:synthetic_cleanup"),
+            {
+                "selected_ids": [
+                    f"school:{unused_school.id}",
+                    f"debater:{unused_debater.id}",
+                    f"team:{unused_team.id}",
+                    f"team:{referenced_team.id}",
+                ]
+            },
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(School.all_objects.filter(pk=unused_school.pk).exists())
+        self.assertFalse(Debater.all_objects.filter(pk=unused_debater.pk).exists())
+        self.assertFalse(Team.objects.filter(pk=unused_team.pk).exists())
+        self.assertTrue(Team.objects.filter(pk=referenced_team.pk).exists())
+
+        messages = [message.message for message in get_messages(response.wsgi_request)]
+        self.assertIn("Deleted 3 unreferenced synthetic entities.", messages)
+        self.assertTrue(any(message.startswith("Skipped 1 selection") for message in messages))
 
     def test_round_amendment_upload_creates_round(self):
         self.client.force_login(self.superuser)

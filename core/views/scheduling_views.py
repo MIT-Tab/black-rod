@@ -194,39 +194,51 @@ class SchedulingDashboardView(UserPassesTestMixin, TemplateView):
             dates_csv_text = self._decode_uploaded_file(form.cleaned_data["dates_csv"])
             dates_filename = form.cleaned_data["dates_csv"].name
 
-        try:
-            summary = summarize_scheduler_inputs(schools_csv_text, dates_csv_text)
-        except SchedulerDataError as exc:
-            form.add_error(None, str(exc))
-            messages.error(request, "The uploaded CSV files could not be validated.")
-            return self.render_to_response(
-                self.get_context_data(
-                    settings_form=settings_form,
-                    upload_form=form,
-                )
-            )
-
         self.workspace.schools_csv = schools_csv_text
         self.workspace.dates_csv = dates_csv_text
         self.workspace.schools_filename = schools_filename
         self.workspace.dates_filename = dates_filename
         self.workspace.updated_by = request.user
         self.workspace.version += 1
-        self.workspace.save(
-            update_fields=[
-                "schools_csv",
-                "dates_csv",
-                "schools_filename",
-                "dates_filename",
-                "updated_by",
-                "version",
-                "updated_at",
-            ]
-        )
+
+        update_fields = [
+            "schools_csv",
+            "dates_csv",
+            "schools_filename",
+            "dates_filename",
+            "updated_by",
+            "version",
+            "updated_at",
+        ]
+        has_both_csvs = bool(schools_csv_text.strip() and dates_csv_text.strip())
+
+        if has_both_csvs:
+            try:
+                summary = summarize_scheduler_inputs(schools_csv_text, dates_csv_text)
+            except SchedulerDataError as exc:
+                form.add_error(None, str(exc))
+                messages.error(request, "The uploaded CSV files could not be validated.")
+                return self.render_to_response(
+                    self.get_context_data(
+                        settings_form=settings_form,
+                        upload_form=form,
+                    )
+                )
+
+            self.workspace.save(update_fields=update_fields)
+            messages.success(
+                request,
+                "Scheduler CSVs saved. "
+                f"{summary['school_count']} schools and {summary['date_count']} dates are ready.",
+            )
+            return redirect("core:scheduling_dashboard")
+
+        self.workspace.save(update_fields=update_fields)
+        waiting_for = "dates" if not dates_csv_text.strip() else "schools"
+        uploaded_label = "Schools" if form.cleaned_data.get("schools_csv") else "Dates"
         messages.success(
             request,
-            "Scheduler CSVs saved. "
-            f"{summary['school_count']} schools and {summary['date_count']} dates are ready.",
+            f"{uploaded_label} CSV saved. Upload the {waiting_for} CSV to finish validation.",
         )
         return redirect("core:scheduling_dashboard")
 

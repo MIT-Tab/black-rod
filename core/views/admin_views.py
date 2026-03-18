@@ -46,6 +46,13 @@ from core.utils.round_amendment_recorder import (
     record_round_amendment_action,
     round_amendment_recording_context,
 )
+from core.utils.synthetic_cleanup import (
+    get_synthetic_entity,
+    parse_selection_token,
+    synthetic_cleanup_sections,
+    synthetic_entity_is_unreferenced,
+    synthetic_entity_reference_summary,
+)
 from core.utils.synthetic_resolution import resolve_synthetic_entity
 from core.views.elo_cache import invalidate_cached_elo_state
 
@@ -61,6 +68,62 @@ class AdminToolsView(UserPassesTestMixin, TemplateView):
         context["round_amendment_form"] = kwargs.get("round_amendment_form") or RoundAmendmentUploadForm()
         context["round_amendment_recording"] = round_amendment_recording_context()
         return context
+
+
+class SyntheticCleanupView(UserPassesTestMixin, TemplateView):
+    template_name = "admin/synthetic_cleanup.html"
+
+    def test_func(self):
+        return self.request.user.is_superuser
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        sections = synthetic_cleanup_sections()
+        context["sections"] = sections
+        context["total_count"] = sum(section["count"] for section in sections)
+        return context
+
+    def post(self, request, *args, **kwargs):
+        selections = request.POST.getlist("selected_ids")
+        if not selections:
+            messages.info(request, "Select at least one synthetic entity to delete.")
+            return redirect("core:synthetic_cleanup")
+
+        deleted = []
+        skipped = []
+
+        for token in selections:
+            entity_type, object_id = parse_selection_token(token)
+            obj = get_synthetic_entity(entity_type, object_id)
+            if obj is None:
+                skipped.append(f"{token} (missing)")
+                continue
+
+            if not synthetic_entity_is_unreferenced(obj):
+                reference_labels = ", ".join(
+                    f"{item['label']} ({item['count']})"
+                    for item in synthetic_entity_reference_summary(obj)
+                )
+                skipped.append(f"{entity_type}:{obj.pk} ({reference_labels})")
+                continue
+
+            obj.delete()
+            deleted.append(f"{entity_type}:{object_id}")
+
+        if deleted:
+            messages.success(request, f"Deleted {len(deleted)} unreferenced synthetic entit{'y' if len(deleted) == 1 else 'ies'}.")
+        if skipped:
+            messages.warning(
+                request,
+                "Skipped %d selection%s because they were missing or are now referenced: %s"
+                % (
+                    len(skipped),
+                    "" if len(skipped) == 1 else "s",
+                    "; ".join(skipped[:5]),
+                ),
+            )
+
+        return redirect("core:synthetic_cleanup")
 
 
 class SyntheticResolutionView(UserPassesTestMixin, TemplateView):

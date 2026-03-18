@@ -63,3 +63,9 @@ apda/db.pre_strip_other.sqlite3
 .gitignore
 core/management/commands/black-rod.code-workspace
 docs/round-amendments-local-playbook.md
+apda/round-amendments.fake-school-dummy-round-cleanup-20260318.json
+apda/round-amendments.local.json
+apda/round-amendments.local.json.bak-20260318-2
+apda/round-amendments.local.json.bak-20260318-posttest
+apda/round-amendments.synthetic-school-import-cleanup-20260318.json
+core/fixtures/fixtures.json
