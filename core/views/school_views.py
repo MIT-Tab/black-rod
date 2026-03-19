@@ -173,3 +173,11 @@ class SchoolAutocomplete(autocomplete.Select2QuerySetView):
                 qs = qs.filter(name_query)
 
         return qs.order_by("name", "id")
+
+
+class ClaimSchoolAutocomplete(SchoolAutocomplete):
+    def _synthetic_filter(self):
+        synthetic_filter = super()._synthetic_filter()
+        if synthetic_filter is None:
+            return False
+        return synthetic_filter

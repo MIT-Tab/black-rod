@@ -1,6 +1,6 @@
 from crispy_forms.helper import FormHelper
 from crispy_forms.layout import Column, Div, Layout, Row, Submit
-from dal import autocomplete
+from dal import autocomplete, forward
 from django import forms
 from django.conf import settings
 from django.core.validators import URLValidator
@@ -104,7 +104,9 @@ class DebaterForm(forms.ModelForm):
         include_temporary_schools = kwargs.pop("include_temporary_schools", False)
         super().__init__(*args, **kwargs)
         self.fields["school"].queryset = (
-            School.all_objects.all() if include_temporary_schools else School.objects.all()
+            School.all_objects.all()
+            if include_temporary_schools
+            else School.objects.all()
         )
         self.fields["existing_debater"].queryset = Debater.objects.all()
 
@@ -182,17 +184,19 @@ class ResourceForm(forms.ModelForm):
         )
 
         widgets = {
-            "authors": autocomplete.ModelSelect2Multiple(url="core:debater_autocomplete"),
-            "description": forms.Textarea(attrs={'rows': 5}),
-            "usage_permissions": forms.Textarea(attrs={'rows': 4}),
+            "authors": autocomplete.ModelSelect2Multiple(
+                url="core:debater_autocomplete"
+            ),
+            "description": forms.Textarea(attrs={"rows": 5}),
+            "usage_permissions": forms.Textarea(attrs={"rows": 4}),
             "tags": autocomplete.TaggitSelect2("core:resource_tag_autocomplete"),
         }
-        
+
         labels = {
             "viewing_permission": "Viewing Permission",
             "content_link": "Content Link",
         }
-        
+
         help_texts = {
             "viewing_permission": "Public means discoverable by Google search. Requires Login uses the same permission as viewing videos.",
             "authors": "At least one author is required. Only people with claimed debater profiles can be authors.",
@@ -200,16 +204,18 @@ class ResourceForm(forms.ModelForm):
         }
 
     def __init__(self, *args, **kwargs):
-        self.user = kwargs.pop('user', None)
+        self.user = kwargs.pop("user", None)
         super().__init__(*args, **kwargs)
 
         # If user is not a superuser, restrict tag creation
         if self.user and not self.user.is_superuser:
-            self.fields['tags'].widget = autocomplete.TaggitSelect2("core:resource_tag_autocomplete_no_create")
-            
+            self.fields["tags"].widget = autocomplete.TaggitSelect2(
+                "core:resource_tag_autocomplete_no_create"
+            )
+
             # Set initial authors to user's claimed debaters if creating new resource
             if not self.instance.pk and self.user.claimed_debaters.exists():
-                self.fields['authors'].initial = self.user.claimed_debaters.all()
+                self.fields["authors"].initial = self.user.claimed_debaters.all()
 
         self.helper = FormHelper()
         self.helper.layout = Layout(
@@ -230,13 +236,13 @@ class ResourceForm(forms.ModelForm):
             ),
             Submit("save", "Save"),
         )
-    
+
     def clean_authors(self):
         """Ensure at least one author is selected and non-superusers include themselves."""
-        authors = self.cleaned_data.get('authors')
+        authors = self.cleaned_data.get("authors")
         if not authors or authors.count() == 0:
             raise forms.ValidationError("At least one author is required.")
-        
+
         # If user is not a superuser, ensure they are an author
         if self.user and not self.user.is_superuser:
             user_debaters = self.user.claimed_debaters.all()
@@ -246,9 +252,9 @@ class ResourceForm(forms.ModelForm):
                     raise forms.ValidationError(
                         "You must include yourself as an author. Please select one of your claimed debater profiles."
                     )
-        
+
         return authors
-        authors = self.cleaned_data.get('authors')
+        authors = self.cleaned_data.get("authors")
         if not authors or authors.count() == 0:
             raise forms.ValidationError("At least one author is required.")
         return authors
@@ -322,9 +328,7 @@ class RoundAmendmentUploadForm(forms.Form):
     amendment_file = forms.FileField(
         label="Round amendment JSON",
         help_text="Upload a JSON file with synthetic resolutions, round edits, or tournament import moves/deletes.",
-        widget=forms.ClearableFileInput(
-            attrs={"accept": ".json,application/json"}
-        ),
+        widget=forms.ClearableFileInput(attrs={"accept": ".json,application/json"}),
     )
 
     def clean_amendment_file(self):
@@ -347,7 +351,9 @@ class TournamentImportMoveForm(forms.Form):
         super().__init__(*args, **kwargs)
         queryset = Tournament.objects.all().order_by("-date", "id")
         if current_tournament is not None:
-            queryset = queryset.exclude(pk=getattr(current_tournament, "pk", current_tournament))
+            queryset = queryset.exclude(
+                pk=getattr(current_tournament, "pk", current_tournament)
+            )
         self.fields["target_tournament"].queryset = queryset
 
 
@@ -356,7 +362,9 @@ class TournamentResultsImportOptionsForm(forms.Form):
         required=False,
         label="Mit-Tab Tournament Import URL (Optional)",
         help_text="If provided, selected categories below are imported from this Mit-Tab tournament.",
-        widget=forms.URLInput(attrs={"placeholder": "https://nu-tab.com/tournament/123"}),
+        widget=forms.URLInput(
+            attrs={"placeholder": "https://nu-tab.com/tournament/123"}
+        ),
     )
     import_varsity_teams = forms.BooleanField(required=False, initial=False)
     import_varsity_speakers = forms.BooleanField(required=False, initial=False)
@@ -400,6 +408,7 @@ class TournamentResultsImportOptionsForm(forms.Form):
 
         return cleaned_data
 
+
 class TeamResultForm(forms.Form):
     debater_one = forms.ModelChoiceField(
         label="Debater One",
@@ -419,15 +428,23 @@ class TeamResultForm(forms.Form):
     counts_for_points = forms.BooleanField(
         label="Counts for points", required=False, initial=True
     )
-    
+
     # Hidden fields for tracking new debaters by tournament ID
-    debater_one_tournament_id = forms.CharField(widget=forms.HiddenInput(), required=False)
-    debater_two_tournament_id = forms.CharField(widget=forms.HiddenInput(), required=False)
+    debater_one_tournament_id = forms.CharField(
+        widget=forms.HiddenInput(), required=False
+    )
+    debater_two_tournament_id = forms.CharField(
+        widget=forms.HiddenInput(), required=False
+    )
 
     def __init__(self, *args, **kwargs):
         include_temporary_debaters = kwargs.pop("include_temporary_debaters", False)
         super().__init__(*args, **kwargs)
-        queryset = Debater.all_objects.all() if include_temporary_debaters else Debater.objects.all()
+        queryset = (
+            Debater.all_objects.all()
+            if include_temporary_debaters
+            else Debater.objects.all()
+        )
         self.fields["debater_one"].queryset = queryset
         self.fields["debater_two"].queryset = queryset
 
@@ -444,19 +461,23 @@ class SpeakerResultForm(forms.Form):
     counts_for_points = forms.BooleanField(
         label="Counts for points", required=False, initial=True
     )
-    
+
     # Hidden field for tracking new speakers by tournament ID
     tournament_id = forms.CharField(widget=forms.HiddenInput(), required=False)
 
     def __init__(self, *args, **kwargs):
         include_temporary_debaters = kwargs.pop("include_temporary_debaters", False)
         super().__init__(*args, **kwargs)
-        queryset = Debater.all_objects.all() if include_temporary_debaters else Debater.objects.all()
+        queryset = (
+            Debater.all_objects.all()
+            if include_temporary_debaters
+            else Debater.objects.all()
+        )
         self.fields["speaker"].queryset = queryset
 
 
 class DebaterCreationFormsetBase(forms.BaseFormSet):
-    required_fields = ['first_name', 'last_name', 'school']
+    required_fields = ["first_name", "last_name", "school"]
 
     def clean(self):
         if not self.forms:
@@ -464,25 +485,29 @@ class DebaterCreationFormsetBase(forms.BaseFormSet):
 
         seen_signatures = set()
         for form in self.forms:
-            if not form.cleaned_data or form.cleaned_data.get('DELETE'):
+            if not form.cleaned_data or form.cleaned_data.get("DELETE"):
                 continue
 
-            existing_debater = form.cleaned_data.get('existing_debater')
+            existing_debater = form.cleaned_data.get("existing_debater")
             if existing_debater:
-                form.cleaned_data['_existing_match'] = existing_debater
-                form.cleaned_data['_skip_creation'] = True
+                form.cleaned_data["_existing_match"] = existing_debater
+                form.cleaned_data["_skip_creation"] = True
                 continue
 
-            first_name = form.cleaned_data.get('first_name', '').strip()
-            last_name = form.cleaned_data.get('last_name', '').strip()
-            school = form.cleaned_data.get('school')
+            first_name = form.cleaned_data.get("first_name", "").strip()
+            last_name = form.cleaned_data.get("last_name", "").strip()
+            school = form.cleaned_data.get("school")
 
             if not (first_name and last_name and school):
                 continue
 
-            signature = (first_name.lower(), last_name.lower(), getattr(school, 'pk', None))
+            signature = (
+                first_name.lower(),
+                last_name.lower(),
+                getattr(school, "pk", None),
+            )
             if signature in seen_signatures:
-                form.cleaned_data['_skip_creation'] = True
+                form.cleaned_data["_skip_creation"] = True
                 continue
             seen_signatures.add(signature)
 
@@ -492,13 +517,12 @@ class DebaterCreationFormsetBase(forms.BaseFormSet):
                 school=school,
             ).first()
             if existing_match:
-                form.cleaned_data['_existing_match'] = existing_match
-                form.cleaned_data['_skip_creation'] = True
+                form.cleaned_data["_existing_match"] = existing_match
+                form.cleaned_data["_skip_creation"] = True
 
 
 class SchoolCreationFormsetBase(forms.BaseFormSet):
-    required_fields = ['name']
-
+    required_fields = ["name"]
 
     def clean(self):
         if not self.forms:
@@ -506,58 +530,67 @@ class SchoolCreationFormsetBase(forms.BaseFormSet):
 
         school_names = []
         for form in self.forms:
-            if not form.cleaned_data or form.cleaned_data.get('DELETE'):
+            if not form.cleaned_data or form.cleaned_data.get("DELETE"):
                 continue
-            name = form.cleaned_data.get('name', '').strip()
+            name = form.cleaned_data.get("name", "").strip()
             if name:
                 school_names.append(name)
 
-        existing_schools_by_name = {
-            s.name: s for s in School.objects.filter(name__in=school_names)
-        } if school_names else {}
+        existing_schools_by_name = (
+            {s.name: s for s in School.objects.filter(name__in=school_names)}
+            if school_names
+            else {}
+        )
 
         for form in self.forms:
-            if not form.cleaned_data or form.cleaned_data.get('DELETE'):
+            if not form.cleaned_data or form.cleaned_data.get("DELETE"):
                 continue
 
-            name = form.cleaned_data.get('name', '').strip()
-            existing_school = form.cleaned_data.get('existing_school')
+            name = form.cleaned_data.get("name", "").strip()
+            existing_school = form.cleaned_data.get("existing_school")
 
             # If linking to existing school, skip creating new one but keep data
             if existing_school:
-                form.cleaned_data['_existing_match'] = existing_school
-                form.cleaned_data['_skip_creation'] = True
+                form.cleaned_data["_existing_match"] = existing_school
+                form.cleaned_data["_skip_creation"] = True
             elif name and name in existing_schools_by_name:
-                form.cleaned_data['_existing_match'] = existing_schools_by_name[name]
-                form.cleaned_data['_skip_creation'] = True
+                form.cleaned_data["_existing_match"] = existing_schools_by_name[name]
+                form.cleaned_data["_skip_creation"] = True
 
-            if form.cleaned_data.get('_skip_creation') and hasattr(form, '_errors'):
+            if form.cleaned_data.get("_skip_creation") and hasattr(form, "_errors"):
                 # Allow linking or deduped rows to bypass unique-name validation
-                form._errors.pop('name', None)
+                form._errors.pop("name", None)
+
 
 IMPORT_FORMSET_PARAMS = {
-    'extra': 0,
-    'can_delete': True,
-    'can_order': True,
-    'max_num': 150,
+    "extra": 0,
+    "can_delete": True,
+    "can_order": True,
+    "max_num": 150,
 }
 
 CREATION_FORMSET_PARAMS = {
-    'extra': 0,
-    'can_delete': True,
-    'can_order': False,
-    'max_num': 500,
+    "extra": 0,
+    "can_delete": True,
+    "can_order": False,
+    "max_num": 500,
 }
 
 VarsityTeamResultFormset = formset_factory(TeamResultForm, **IMPORT_FORMSET_PARAMS)
 NoviceTeamResultFormset = formset_factory(TeamResultForm, **IMPORT_FORMSET_PARAMS)
 UnplacedTeamResultFormset = formset_factory(TeamResultForm, **IMPORT_FORMSET_PARAMS)
 
-VarsitySpeakerResultFormset = formset_factory(SpeakerResultForm, **IMPORT_FORMSET_PARAMS)
+VarsitySpeakerResultFormset = formset_factory(
+    SpeakerResultForm, **IMPORT_FORMSET_PARAMS
+)
 NoviceSpeakerResultFormset = formset_factory(SpeakerResultForm, **IMPORT_FORMSET_PARAMS)
 
-DebaterCreationFormset = formset_factory(DebaterForm, formset=DebaterCreationFormsetBase, **CREATION_FORMSET_PARAMS)
-SchoolCreationFormset = formset_factory(SchoolForm, formset=SchoolCreationFormsetBase, **CREATION_FORMSET_PARAMS)
+DebaterCreationFormset = formset_factory(
+    DebaterForm, formset=DebaterCreationFormsetBase, **CREATION_FORMSET_PARAMS
+)
+SchoolCreationFormset = formset_factory(
+    SchoolForm, formset=SchoolCreationFormsetBase, **CREATION_FORMSET_PARAMS
+)
 
 
 class DebaterImportFormsetBase(BaseModelFormSet):
@@ -726,7 +759,11 @@ class MergeDebaterRequestForm(forms.Form):
         label="Debater A",
         queryset=Debater.objects.none(),
         required=True,
-        widget=forms.Select(attrs={"class": "form-control"}),
+        widget=autocomplete.ModelSelect2(
+            url="core:merge_debater_autocomplete",
+            forward=[forward.Field("school_one", "school")],
+            attrs={"data-placeholder": "Search for a debater"},
+        ),
     )
     school_two = forms.ModelChoiceField(
         label="Debater B School",
@@ -738,7 +775,11 @@ class MergeDebaterRequestForm(forms.Form):
         label="Debater B",
         queryset=Debater.objects.none(),
         required=True,
-        widget=forms.Select(attrs={"class": "form-control"}),
+        widget=autocomplete.ModelSelect2(
+            url="core:merge_debater_autocomplete",
+            forward=[forward.Field("school_two", "school")],
+            attrs={"data-placeholder": "Search for a debater"},
+        ),
     )
     keep_debater = forms.ChoiceField(
         label="Keep Record For",
@@ -761,44 +802,35 @@ class MergeDebaterRequestForm(forms.Form):
             str(settings.CURRENT_SEASON),
             str(int(settings.CURRENT_SEASON) - 1),
         }
+        eligible_debaters = Q(
+            debaters__latest_season__in=self.allowed_seasons,
+            debaters__temporary=False,
+            debaters__synthetic=False,
+        )
 
         # Superusers can select from any school
         if self.user.is_superuser:
             admin_schools = (
-                School.objects.filter(
-                    debaters__latest_season__in=self.allowed_seasons
-                )
-                .distinct()
-                .order_by("name")
+                School.objects.filter(eligible_debaters).distinct().order_by("name")
             )
             active_schools = admin_schools
         else:
             admin_schools = (
                 School.objects.filter(admins__user=self.user)
+                .filter(eligible_debaters)
                 .distinct()
                 .order_by("name")
             )
             active_schools = (
-                School.objects.filter(
-                    debaters__latest_season__in=self.allowed_seasons
-                )
-                .distinct()
-                .order_by("name")
+                School.objects.filter(eligible_debaters).distinct().order_by("name")
             )
 
         self.fields["school_one"].queryset = admin_schools
         self.fields["school_two"].queryset = active_schools
 
-        for field_name in ("school_one", "debater_one", "school_two", "debater_two"):
+        for field_name in ("school_one", "school_two"):
             widget = self.fields[field_name].widget
             widget.attrs.setdefault("class", "form-control")
-            current_value = ""
-            if self.is_bound:
-                current_value = self.data.get(field_name, "")
-            else:
-                initial = self.initial.get(field_name)
-                current_value = str(initial) if initial is not None else ""
-            widget.attrs["data-selected"] = current_value
 
         self.fields["keep_debater"].widget.attrs.setdefault("class", "form-check-input")
         self.fields["keep_debater"].widget.option_inherits_attrs = True
@@ -818,10 +850,14 @@ class MergeDebaterRequestForm(forms.Form):
             self.fields[debater_field].queryset = Debater.objects.none()
             return
 
-        queryset = Debater.objects.filter(
-            school_id=school_id,
-            latest_season__in=self.allowed_seasons,
-        ).order_by("last_name", "first_name")
+        queryset = (
+            Debater.objects.filter(
+                school_id=school_id,
+                latest_season__in=self.allowed_seasons,
+            )
+            .select_related("school")
+            .order_by("last_name", "first_name")
+        )
 
         self.fields[debater_field].queryset = queryset
 
@@ -882,7 +918,9 @@ class MergeDebaterRequestForm(forms.Form):
         # Superusers can merge any debaters, regular users must administer at least one school
         if not self.user.is_superuser:
             admin_school_ids = set(
-                SchoolAdmin.objects.filter(user=self.user).values_list("school_id", flat=True)
+                SchoolAdmin.objects.filter(user=self.user).values_list(
+                    "school_id", flat=True
+                )
             )
 
             if (
@@ -923,8 +961,8 @@ class MergeDebaterRequestForm(forms.Form):
 class ClaimDebaterRequestForm(forms.Form):
     school = forms.ModelChoiceField(
         label="Select School",
-        queryset=School.objects.all(),
-        widget=autocomplete.ModelSelect2(url="core:school_autocomplete"),
+        queryset=School.objects.filter(synthetic=False),
+        widget=autocomplete.ModelSelect2(url="core:claim_school_autocomplete"),
         help_text="First, select the school you debated for",
     )
 
@@ -932,8 +970,7 @@ class ClaimDebaterRequestForm(forms.Form):
         label="Select Debater to Claim",
         queryset=Debater.objects.all(),
         widget=autocomplete.ModelSelect2(
-            url="core:debater_autocomplete",
-            forward=['school']
+            url="core:debater_autocomplete", forward=["school"]
         ),
         help_text="Then search for and select your debater profile",
     )
@@ -947,8 +984,8 @@ class ClaimDebaterRequestForm(forms.Form):
 
     def clean(self):
         cleaned_data = super().clean()
-        school = cleaned_data.get('school')
-        debater = cleaned_data.get('debater')
+        school = cleaned_data.get("school")
+        debater = cleaned_data.get("debater")
 
         # Verify the debater belongs to the selected school
         if school and debater and debater.school != school:
@@ -972,8 +1009,7 @@ class ClaimDebaterRequestForm(forms.Form):
 
         # Check if there's already a pending request for this debater
         existing_pending = ClaimDebaterRequest.objects.filter(
-            debater=debater,
-            status=ClaimDebaterRequest.STATUS_PENDING
+            debater=debater, status=ClaimDebaterRequest.STATUS_PENDING
         ).exists()
 
         if existing_pending:
@@ -985,7 +1021,7 @@ class ClaimDebaterRequestForm(forms.Form):
         user_pending = ClaimDebaterRequest.objects.filter(
             requested_by=self.user,
             debater=debater,
-            status=ClaimDebaterRequest.STATUS_PENDING
+            status=ClaimDebaterRequest.STATUS_PENDING,
         ).exists()
 
         if user_pending:
@@ -1014,13 +1050,15 @@ class DebaterProfileEditForm(forms.ModelForm):
         label="Where are you located?",
         choices=list(Debater.REGION_CHOICES),
         help_text="Let tournaments know your general region for outreach planning.",
-        widget=forms.SelectMultiple(attrs={'class': 'form-control select2-multi'}),
+        widget=forms.SelectMultiple(attrs={"class": "form-control select2-multi"}),
     )
     paradigm = forms.URLField(
         required=False,
         label="Paradigm (Google Doc Link)",
         help_text="Link to your Google Doc paradigm. Make sure sharing is enabled so others can view it.",
-        widget=forms.URLInput(attrs={'placeholder': 'https://docs.google.com/document/d/...'})
+        widget=forms.URLInput(
+            attrs={"placeholder": "https://docs.google.com/document/d/..."}
+        ),
     )
     elo_manual_opt = forms.ChoiceField(
         required=False,
@@ -1032,20 +1070,20 @@ class DebaterProfileEditForm(forms.ModelForm):
     class Meta:
         model = Debater
         fields = [
-            'first_name',
-            'last_name',
-            'status',
-            'first_season',
-            'latest_season',
-            'elo_manual_opt',
-            'paradigm',
-            'dino_to_contact_opt_in',
-            'dino_judge_contact_opt_in',
-            'region',
+            "first_name",
+            "last_name",
+            "status",
+            "first_season",
+            "latest_season",
+            "elo_manual_opt",
+            "paradigm",
+            "dino_to_contact_opt_in",
+            "dino_judge_contact_opt_in",
+            "region",
         ]
         labels = {
-            'first_name': 'First Name',
-            'last_name': 'Last Name',
+            "first_name": "First Name",
+            "last_name": "Last Name",
         }
 
     def __init__(self, *args, **kwargs):
@@ -1055,49 +1093,53 @@ class DebaterProfileEditForm(forms.ModelForm):
         self.show_region_field = self._should_show_region_field()
 
         # Status select setup
-        self.fields['status'].label = "Status"
-        self.fields['status'].choices = Debater.STATUS
-        self.fields['status'].widget.attrs.setdefault('class', 'form-control')
-        self.fields['status'].widget.attrs['data-dino-value'] = str(Debater.DINO)
+        self.fields["status"].label = "Status"
+        self.fields["status"].choices = Debater.STATUS
+        self.fields["status"].widget.attrs.setdefault("class", "form-control")
+        self.fields["status"].widget.attrs["data-dino-value"] = str(Debater.DINO)
 
         # Season dropdowns
         current_year = int(settings.CURRENT_SEASON)
         first_initial = self.instance.first_season or ""
         latest_initial = self.instance.latest_season or ""
 
-        self.fields['first_season'] = forms.ChoiceField(
+        self.fields["first_season"] = forms.ChoiceField(
             required=False,
             label="First Season",
-            choices=self._season_choices(current_year, self.SEASON_LOWEST_YEAR, first_initial),
+            choices=self._season_choices(
+                current_year, self.SEASON_LOWEST_YEAR, first_initial
+            ),
             initial=first_initial,
-            widget=forms.Select(attrs={'class': 'form-control'}),
+            widget=forms.Select(attrs={"class": "form-control"}),
         )
 
-        self.fields['latest_season'] = forms.ChoiceField(
+        self.fields["latest_season"] = forms.ChoiceField(
             required=False,
             label="Latest Season",
-            choices=self._season_choices(current_year, self.SEASON_LOWEST_YEAR, latest_initial),
+            choices=self._season_choices(
+                current_year, self.SEASON_LOWEST_YEAR, latest_initial
+            ),
             initial=latest_initial,
-            widget=forms.Select(attrs={'class': 'form-control'}),
+            widget=forms.Select(attrs={"class": "form-control"}),
         )
 
         # Text inputs should use consistent styling
-        for field_name in ('first_name', 'last_name', 'paradigm', 'elo_manual_opt'):
+        for field_name in ("first_name", "last_name", "paradigm", "elo_manual_opt"):
             if field_name in self.fields:
-                self.fields[field_name].widget.attrs.setdefault('class', 'form-control')
+                self.fields[field_name].widget.attrs.setdefault("class", "form-control")
 
         # TO opt-in always gets form-check-input
-        self.fields['dino_to_contact_opt_in'].widget.attrs['class'] = 'form-check-input'
+        self.fields["dino_to_contact_opt_in"].widget.attrs["class"] = "form-check-input"
 
         # Judge opt-in gets form-check-input and dino-only data attribute
-        judge_field = self.fields['dino_judge_contact_opt_in']
-        judge_field.widget.attrs['class'] = 'form-check-input'
-        judge_field.widget.attrs['data-dino-only'] = 'true'
+        judge_field = self.fields["dino_judge_contact_opt_in"]
+        judge_field.widget.attrs["class"] = "form-check-input"
+        judge_field.widget.attrs["data-dino-only"] = "true"
 
-        region_field = self.fields['region']
-        region_field.widget.attrs.setdefault('class', 'form-control')
-        region_field.widget.attrs['class'] += ' select2-multi'
-        region_field.widget.attrs.setdefault('data-placeholder', 'Select regions')
+        region_field = self.fields["region"]
+        region_field.widget.attrs.setdefault("class", "form-control")
+        region_field.widget.attrs["class"] += " select2-multi"
+        region_field.widget.attrs.setdefault("data-placeholder", "Select regions")
         region_field.choices = list(Debater.REGION_CHOICES)
         region_field.initial = self.instance.region_list
 
@@ -1110,12 +1152,14 @@ class DebaterProfileEditForm(forms.ModelForm):
             next_year = str(year_int + 1)[-2:]
             return f"{year_int}-{next_year}"
 
-        choices = [('', 'Select season')]
+        choices = [("", "Select season")]
         for year in range(start_year, min_year - 1, -1):
             year_str = str(year)
             choices.append((year_str, format_label(year_str)))
 
-        if include_value and include_value not in {choice[0] for choice in choices if choice[0]}:
+        if include_value and include_value not in {
+            choice[0] for choice in choices if choice[0]
+        }:
             choices.append((include_value, format_label(include_value)))
 
         return choices
@@ -1124,10 +1168,10 @@ class DebaterProfileEditForm(forms.ModelForm):
         """Judge contact field is only for dinos"""
         status_source = None
         if self.is_bound:
-            status_source = self.data.get(self.add_prefix('status'))
-        elif 'status' in self.initial:
-            status_source = self.initial['status']
-        elif hasattr(self.instance, 'status'):
+            status_source = self.data.get(self.add_prefix("status"))
+        elif "status" in self.initial:
+            status_source = self.initial["status"]
+        elif hasattr(self.instance, "status"):
             status_source = self.instance.status
 
         try:
@@ -1146,16 +1190,18 @@ class DebaterProfileEditForm(forms.ModelForm):
             value = False
 
         if isinstance(value, str):
-            return value.lower() in {'true', '1', 'on', 'yes'}
+            return value.lower() in {"true", "1", "on", "yes"}
         return bool(value)
 
     def _should_show_region_field(self):
-        return self._get_boolean_value('dino_to_contact_opt_in') or self._get_boolean_value('dino_judge_contact_opt_in')
+        return self._get_boolean_value(
+            "dino_to_contact_opt_in"
+        ) or self._get_boolean_value("dino_judge_contact_opt_in")
 
     def clean_paradigm(self):
-        paradigm = self.cleaned_data.get('paradigm')
+        paradigm = self.cleaned_data.get("paradigm")
 
-        if paradigm and 'docs.google.com' not in paradigm:
+        if paradigm and "docs.google.com" not in paradigm:
             raise forms.ValidationError(
                 "Paradigm must be a Google Docs link. Please ensure it's a link to a Google Doc."
             )
@@ -1164,17 +1210,19 @@ class DebaterProfileEditForm(forms.ModelForm):
 
     def clean(self):
         cleaned_data = super().clean()
-        first_season = cleaned_data.get('first_season') or ''
-        latest_season = cleaned_data.get('latest_season') or ''
+        first_season = cleaned_data.get("first_season") or ""
+        latest_season = cleaned_data.get("latest_season") or ""
 
         if first_season and latest_season:
             try:
                 if int(first_season) > int(latest_season):
-                    raise forms.ValidationError("First season cannot be after latest season.")
+                    raise forms.ValidationError(
+                        "First season cannot be after latest season."
+                    )
             except ValueError:
                 raise forms.ValidationError("Season values must be valid years.")
 
-        status = cleaned_data.get('status')
+        status = cleaned_data.get("status")
         try:
             status_value = int(status)
         except (TypeError, ValueError):
@@ -1182,15 +1230,15 @@ class DebaterProfileEditForm(forms.ModelForm):
 
         # Only clear judge opt-in for non-dinos; TO opt-in is available for all
         if status_value != Debater.DINO:
-            cleaned_data['dino_judge_contact_opt_in'] = False
+            cleaned_data["dino_judge_contact_opt_in"] = False
 
-        cleaned_data['status'] = status_value
+        cleaned_data["status"] = status_value
 
-        cleaned_data['region'] = cleaned_data.get('region') or []
+        cleaned_data["region"] = cleaned_data.get("region") or []
 
-        to_outreach = cleaned_data.get('dino_to_contact_opt_in')
-        judge_outreach = cleaned_data.get('dino_judge_contact_opt_in')
+        to_outreach = cleaned_data.get("dino_to_contact_opt_in")
+        judge_outreach = cleaned_data.get("dino_judge_contact_opt_in")
         if not (to_outreach or judge_outreach):
-            cleaned_data['region'] = []
+            cleaned_data["region"] = []
 
         return cleaned_data

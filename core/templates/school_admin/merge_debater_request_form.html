@@ -35,6 +35,7 @@
 
                 <form method="post" novalidate>
                     {% csrf_token %}
+                    {{ form.media }}
                     <div class="row">
                         <div class="col-md-6">
                             <h5 class="mt-2">Debater A</h5>
@@ -109,9 +110,32 @@
                                 <th scope="col" class="text-center">Videos</th>
                             </tr>
                         </thead>
-                        <tbody id="selected-debater-summary">
+                        <tbody>
                             <tr>
-                                <td colspan="7" class="text-muted text-center">Select debaters to see a quick summary.</td>
+                                <td>Debater A</td>
+                                {% if debater_one %}
+                                    <td>{{ debater_one.name }}</td>
+                                    <td>{% if debater_one.school %}{{ debater_one.school.name }}{% endif %}</td>
+                                    <td class="text-center font-weight-semibold">{{ debater_one_counts.team_results }}</td>
+                                    <td class="text-center font-weight-semibold">{{ debater_one_counts.speaker_results }}</td>
+                                    <td class="text-center font-weight-semibold">{{ debater_one_counts.round_stats }}</td>
+                                    <td class="text-center font-weight-semibold">{{ debater_one_counts.videos }}</td>
+                                {% else %}
+                                    <td colspan="6" class="text-muted">Select a debater</td>
+                                {% endif %}
+                            </tr>
+                            <tr>
+                                <td>Debater B</td>
+                                {% if debater_two %}
+                                    <td>{{ debater_two.name }}</td>
+                                    <td>{% if debater_two.school %}{{ debater_two.school.name }}{% endif %}</td>
+                                    <td class="text-center font-weight-semibold">{{ debater_two_counts.team_results }}</td>
+                                    <td class="text-center font-weight-semibold">{{ debater_two_counts.speaker_results }}</td>
+                                    <td class="text-center font-weight-semibold">{{ debater_two_counts.round_stats }}</td>
+                                    <td class="text-center font-weight-semibold">{{ debater_two_counts.videos }}</td>
+                                {% else %}
+                                    <td colspan="6" class="text-muted">Select a debater</td>
+                                {% endif %}
                             </tr>
                         </tbody>
                     </table>
@@ -205,124 +229,4 @@
         </div>
     </div>
 </div>
-
-{{ school_one_debaters|json_script:"school-one-debaters-data" }}
-{{ school_two_debaters|json_script:"school-two-debaters-data" }}
-{{ debater_data_map|json_script:"debater-data-map" }}
-
-<script>
-    (function() {
-        const schoolOneData = JSON.parse(document.getElementById('school-one-debaters-data').textContent || '[]');
-        const schoolTwoData = JSON.parse(document.getElementById('school-two-debaters-data').textContent || '[]');
-        const debaterSummaryMap = JSON.parse(document.getElementById('debater-data-map').textContent || '{}');
-
-        const groupBySchool = (data) => {
-            return data.reduce((acc, item) => {
-                (acc[item.school_id] = acc[item.school_id] || []).push(item);
-                return acc;
-            }, {});
-        };
-
-        const schoolOneMap = groupBySchool(schoolOneData);
-        const schoolTwoMap = groupBySchool(schoolTwoData);
-
-        const schoolOneSelect = document.getElementById('{{ form.school_one.id_for_label }}');
-        const debaterOneSelect = document.getElementById('{{ form.debater_one.id_for_label }}');
-        const schoolTwoSelect = document.getElementById('{{ form.school_two.id_for_label }}');
-        const debaterTwoSelect = document.getElementById('{{ form.debater_two.id_for_label }}');
-        const summaryBody = document.getElementById('selected-debater-summary');
-
-        const addOptions = (select, entries, placeholder) => {
-            const currentValue = select.dataset.selected || select.value;
-            while (select.firstChild) {
-                select.removeChild(select.firstChild);
-            }
-            const defaultOption = document.createElement('option');
-            defaultOption.value = '';
-            defaultOption.textContent = placeholder;
-            select.appendChild(defaultOption);
-
-            entries.forEach((entry) => {
-                const option = document.createElement('option');
-                option.value = entry.id;
-                option.textContent = entry.name;
-                if (String(entry.id) === currentValue) {
-                    option.selected = true;
-                }
-                select.appendChild(option);
-            });
-            if (!select.value && currentValue) {
-                select.value = currentValue;
-            }
-        };
-
-        const handleSchoolChange = (schoolSelect, debaterSelect, mapping, placeholder) => {
-            const schoolId = schoolSelect.value ? Number(schoolSelect.value) : null;
-            const entries = schoolId && mapping[schoolId] ? mapping[schoolId] : [];
-            addOptions(debaterSelect, entries, placeholder);
-            schoolSelect.dataset.selected = schoolSelect.value || '';
-            debaterSelect.dataset.selected = debaterSelect.value || '';
-            updateSummary();
-        };
-
-        const buildSummaryRow = (label, selectElement) => {
-            const debaterId = selectElement && selectElement.value ? selectElement.value : '';
-            const data = debaterSummaryMap[debaterId];
-            if (!debaterId || !data) {
-                return `<tr><td>${label}</td><td colspan="6" class="text-muted">Select a debater</td></tr>`;
-            }
-            const counts = data.counts || {};
-            const metrics = [
-                counts.team_results ?? 0,
-                counts.speaker_results ?? 0,
-                counts.round_stats ?? 0,
-                counts.videos ?? 0,
-            ];
-            return `
-                <tr>
-                    <td>${label}</td>
-                    <td>${data.name || ''}</td>
-                    <td>${data.school || ''}</td>
-                    ${metrics.map((value) => `<td class="text-center font-weight-semibold">${value}</td>`).join('')}
-                </tr>
-            `;
-        };
-
-        const updateSummary = () => {
-            if (!summaryBody) {
-                return;
-            }
-            summaryBody.innerHTML = [
-                buildSummaryRow('Debater A', debaterOneSelect),
-                buildSummaryRow('Debater B', debaterTwoSelect),
-            ].join('');
-        };
-
-        if (schoolOneSelect && debaterOneSelect) {
-            schoolOneSelect.addEventListener('change', () => {
-                handleSchoolChange(schoolOneSelect, debaterOneSelect, schoolOneMap, 'Select a debater');
-            });
-            debaterOneSelect.addEventListener('change', updateSummary);
-            if (schoolOneSelect.dataset.selected || schoolOneSelect.value) {
-                handleSchoolChange(schoolOneSelect, debaterOneSelect, schoolOneMap, 'Select a debater');
-            }
-        }
-
-        if (schoolTwoSelect && debaterTwoSelect) {
-            schoolTwoSelect.addEventListener('change', () => {
-                handleSchoolChange(schoolTwoSelect, debaterTwoSelect, schoolTwoMap, 'Select a debater');
-            });
-            debaterTwoSelect.addEventListener('change', updateSummary);
-            if (schoolTwoSelect.dataset.selected || schoolTwoSelect.value) {
-                handleSchoolChange(schoolTwoSelect, debaterTwoSelect, schoolTwoMap, 'Select a debater');
-            }
-        }
-
-        document.querySelectorAll('input[name="{{ form.keep_debater.html_name }}"]').forEach((input) => {
-            input.classList.add('form-check-input');
-        });
-
-        updateSummary();
-    })();
-</script>
 {% endblock content %}

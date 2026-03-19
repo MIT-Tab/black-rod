@@ -61,6 +61,11 @@ urlpatterns = [
         name="school_autocomplete",
     ),
     path(
+        "core/schools/autocomplete/claim",
+        school_views.ClaimSchoolAutocomplete.as_view(),
+        name="claim_school_autocomplete",
+    ),
+    path(
         "core/debaters/", debater_views.DebaterListView.as_view(), name="debater_list"
     ),
     path(
@@ -442,6 +447,11 @@ urlpatterns = [
         "core/claim-debater/request/",
         claim_debater_views.ClaimDebaterRequestCreateView.as_view(),
         name="claim_debater_request_create",
+    ),
+    path(
+        "core/debaters/autocomplete/merge",
+        merge_debater_views.MergeDebaterAutocompleteView.as_view(),
+        name="merge_debater_autocomplete",
     ),
     path(
         "core/claim-debater/review/",

@@ -1,3 +1,5 @@
+import json
+
 import pytest
 from django.conf import settings
 from django.urls import reverse
@@ -57,6 +59,75 @@ def test_school_admin_can_submit_merge_request(client):
     assert req.primary_school_name == debater_a.school.name
     assert req.secondary_name == debater_b.name
     assert req.secondary_school_name == debater_b.school.name
+
+
+@pytest.mark.django_db
+def test_merge_request_page_does_not_preload_all_debaters(client):
+    user = User.objects.create_user(username="admin", password="pass")
+    school = School.objects.create(name="Request School")
+    SchoolAdmin.objects.create(user=user, school=school)
+
+    debater = Debater.objects.create(
+        first_name="Unique",
+        last_name="VisibleOnSearchOnly",
+        school=school,
+        first_season=settings.CURRENT_SEASON,
+        latest_season=settings.CURRENT_SEASON,
+    )
+
+    client.force_login(user)
+    response = client.get(reverse("core:merge_debater_request_create"))
+
+    assert response.status_code == 200
+    assert debater.name not in response.content.decode()
+
+
+@pytest.mark.django_db
+def test_merge_debater_autocomplete_excludes_synthetic_and_old_debaters(client):
+    user = User.objects.create_user(username="admin", password="pass")
+    school = School.objects.create(name="Request School")
+    SchoolAdmin.objects.create(user=user, school=school)
+
+    active = Debater.objects.create(
+        first_name="Merge",
+        last_name="Candidate",
+        school=school,
+        first_season=settings.CURRENT_SEASON,
+        latest_season=settings.CURRENT_SEASON,
+    )
+    Debater.all_objects.create(
+        first_name="Merge",
+        last_name="Synthetic",
+        school=school,
+        first_season=settings.CURRENT_SEASON,
+        latest_season=settings.CURRENT_SEASON,
+        temporary=True,
+        synthetic=True,
+    )
+    Debater.objects.create(
+        first_name="Merge",
+        last_name="Archived",
+        school=school,
+        first_season=str(int(settings.CURRENT_SEASON) - 2),
+        latest_season=str(int(settings.CURRENT_SEASON) - 2),
+    )
+
+    client.force_login(user)
+    response = client.get(
+        reverse("core:merge_debater_autocomplete"),
+        {
+            "q": "Merge",
+            "forward": json.dumps({"school": school.pk}),
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    labels = [item["text"] for item in payload["results"]]
+
+    assert any(str(active.id) in label for label in labels)
+    assert not any("Synthetic" in label for label in labels)
+    assert not any("Archived" in label for label in labels)
 
 
 @pytest.mark.django_db
