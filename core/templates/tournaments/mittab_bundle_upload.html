@@ -1,0 +1,44 @@
+{% extends "base/base.html" %}
+{% load crispy_forms_tags %}
+
+{% block content %}
+<div class="row mt-lg-5 mb-lg-5 mr-lg-2 ml-lg-2 m-1">
+    <div class="col-lg-8 offset-lg-2">
+        <div class="card">
+            <div class="card-body">
+                <h4 class="card-title mb-3">Upload Mit-Tab Bundle: {{ tournament.name }}</h4>
+
+                <p class="text-muted">
+                    Upload a tournament-scoped JSON bundle exported from Mit-Tab. Results must already be imported for this tournament before the round bundle can be ingested.
+                </p>
+
+                {% if not results_ready %}
+                    <div class="alert alert-warning">
+                        Results have not been imported for this tournament yet. Import results first, then upload the Mit-Tab bundle.
+                    </div>
+                {% endif %}
+
+                <form method="post" enctype="multipart/form-data" novalidate>
+                    {% csrf_token %}
+                    <input type="hidden" name="tournament" value="{{ tournament.id }}">
+
+                    {% if form.non_field_errors %}
+                        <div class="alert alert-danger">
+                            {% for error in form.non_field_errors %}
+                                <div>{{ error }}</div>
+                            {% endfor %}
+                        </div>
+                    {% endif %}
+
+                    {{ form.bundle_file|as_crispy_field }}
+
+                    <div class="mt-4">
+                        <button type="submit" class="btn btn-primary" {% if not results_ready %}disabled{% endif %}>Upload Bundle</button>
+                        <a href="{% url 'core:tournament_detail' pk=tournament.id %}" class="btn btn-outline-secondary">Cancel</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock content %}

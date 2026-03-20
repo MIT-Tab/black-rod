@@ -339,6 +339,21 @@ class RoundAmendmentUploadForm(forms.Form):
         return uploaded
 
 
+class MittabBundleImportForm(forms.Form):
+    bundle_file = forms.FileField(
+        label="Mit-Tab bundle JSON",
+        help_text="Upload a JSON bundle exported from Mit-Tab for this tournament.",
+        widget=forms.ClearableFileInput(attrs={"accept": ".json,application/json"}),
+    )
+
+    def clean_bundle_file(self):
+        uploaded = self.cleaned_data["bundle_file"]
+        name = str(getattr(uploaded, "name", "") or "").lower()
+        if name and not name.endswith(".json"):
+            raise forms.ValidationError("Please upload a .json Mit-Tab bundle file.")
+        return uploaded
+
+
 class TournamentImportMoveForm(forms.Form):
     tournament_import_id = forms.IntegerField(widget=forms.HiddenInput())
     target_tournament = forms.ModelChoiceField(

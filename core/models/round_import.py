@@ -19,6 +19,7 @@ class TournamentImport(models.Model):
     class ImportType(models.TextChoices):
         FILE_BACKUP = "file_backup", "File Backup"
         FORUM_POST = "forum_post", "Forum Post"
+        MITTAB_BUNDLE = "mittab_bundle", "Mit-Tab Bundle"
         DB_INFERENCE = "db_inference", "Inferred From DB"
         OTHER = "other", "Other"
 

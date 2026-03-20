@@ -9,6 +9,10 @@
 {% endblock title %}
 {% block extra_buttons %}
     {% if 'core.change_tournament' in perms %}
+        {% if request.user.is_superuser %}
+            <a href="{% url 'core:tournament_mittab_bundle_upload' %}?tournament={{ object.id }}"
+               class="btn btn-sm mr-1 btn-outline-primary float-right">Upload Mit-Tab Bundle</a>
+        {% endif %}
         <a href="{% url 'core:tournament_dataentry_setup' %}?tournament={{ object.id }}"
            class="btn btn-sm mr-1 btn-primary float-right">Enter Results</a>
     {% endif %}
