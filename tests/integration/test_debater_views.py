@@ -256,6 +256,57 @@ class DebaterViewsTest(TestCase):
         self.assertNotContains(response, "Partner Breakdown")
         self.assertNotContains(response, "conic-gradient(")
 
+    def test_debater_detail_hides_view_tab_card_by_default(self):
+        self.client.force_login(self.user)
+
+        partner = self._create_debater("Pat Partner")
+        opp_one = self._create_debater("Opp A")
+        opp_two = self._create_debater("Opp B")
+        team = self._create_team("Partnership", self.debater, partner)
+        opponent = self._create_team("Opposition", opp_one, opp_two)
+
+        Round.objects.create(
+            gov=team,
+            opp=opponent,
+            tournament=self.tournament,
+            round_number=1,
+            victor=Round.GOV,
+        )
+
+        response = self.client.get(
+            reverse("core:debater_detail", kwargs={"pk": self.debater.pk}),
+            {"all": "1"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, "View Tab Card")
+
+    @override_settings(ENABLE_DEBATER_PROFILE_TAB_CARDS=True)
+    def test_debater_detail_shows_view_tab_card_when_feature_enabled(self):
+        self.client.force_login(self.user)
+
+        partner = self._create_debater("Pat Partner")
+        opp_one = self._create_debater("Opp A")
+        opp_two = self._create_debater("Opp B")
+        team = self._create_team("Partnership", self.debater, partner)
+        opponent = self._create_team("Opposition", opp_one, opp_two)
+
+        Round.objects.create(
+            gov=team,
+            opp=opponent,
+            tournament=self.tournament,
+            round_number=1,
+            victor=Round.GOV,
+        )
+
+        response = self.client.get(
+            reverse("core:debater_detail", kwargs={"pk": self.debater.pk}),
+            {"all": "1"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "View Tab Card")
+
     def test_debater_detail_excludes_synthetic_partners_and_teams(self):
         real_partner = self._create_debater("Real Partner")
         synthetic_partner = self._create_debater("Synthetic Partner", synthetic=True)

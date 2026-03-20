@@ -201,6 +201,11 @@ class DebaterDetailView(CustomDetailView):
 
     def get_context_data(self, *args, **kwargs):
         context = super().get_context_data(*args, **kwargs)
+        debater_profile_tab_cards_enabled = getattr(
+            settings,
+            "ENABLE_DEBATER_PROFILE_TAB_CARDS",
+            False,
+        )
 
         tournaments = [
             result.tournament
@@ -272,7 +277,11 @@ class DebaterDetailView(CustomDetailView):
                     "team": team,
                     "data": [("team", result) for result in team_results]
                     + [("speaker", result) for result in speaker_results],
-                    "tab_card": get_tab_card_data(team, tournament),
+                    "tab_card": (
+                        get_tab_card_data(team, tournament)
+                        if debater_profile_tab_cards_enabled
+                        else None
+                    ),
                 }
             )
 
