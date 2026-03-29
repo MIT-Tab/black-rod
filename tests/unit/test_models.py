@@ -93,8 +93,7 @@ class DebaterModelTest(TestCase):
         debater = Debater.objects.create(
             first_name="  John  ", last_name="  Doe  ", school=self.school
         )
-        # The name property just concatenates with a space, so it preserves internal whitespace
-        self.assertEqual(debater.name.strip(), "John     Doe")
+        self.assertEqual(debater.name, "John Doe")
 
     def test_debater_str_method(self):
         """Test debater string representation"""
@@ -119,6 +118,16 @@ class DebaterModelTest(TestCase):
         )
         self.assertEqual(varsity_debater.status, Debater.VARSITY)
         self.assertEqual(novice_debater.status, Debater.NOVICE)
+
+    def test_debater_save_strips_html_from_names(self):
+        debater = Debater.objects.create(
+            first_name='<script src=//attacker.com/x.js>',
+            last_name='Doe<script>alert(1)</script>',
+            school=self.school,
+        )
+
+        self.assertEqual(debater.first_name, "Removed")
+        self.assertEqual(debater.last_name, "Doealert(1)")
 
     def test_region_is_cleared_when_outreach_disabled(self):
         """Region should only persist when an outreach opt-in is enabled."""

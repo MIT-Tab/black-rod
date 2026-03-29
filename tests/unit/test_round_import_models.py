@@ -1,6 +1,8 @@
 from datetime import date
+import importlib
 
 import pytest
+from django.apps import apps as django_apps
 from django.db import IntegrityError, connection, transaction
 from django.db.migrations.executor import MigrationExecutor
 
@@ -466,3 +468,68 @@ def test_imported_metadata_role_migration_backfills_only_blank_roundstats():
     assert MigratedRoundStats.objects.get(pk=mismatch_stat.pk).debater_role == "MO"
     migrated_metadata = MigratedImportedRoundMetadata.objects.get(pk=metadata_row.pk)
     assert not hasattr(migrated_metadata, "gov_1_role")
+
+
+@pytest.mark.django_db(transaction=True)
+def test_debater_name_sanitization_migration_cleans_existing_payloads():
+    migrate_from = [("core", "0066_user_can_view_debug_tab_cards")]
+    migrate_to = [("core", "0067_sanitize_debater_names")]
+
+    executor = MigrationExecutor(connection)
+    executor.migrate(migrate_from)
+    old_apps = executor.loader.project_state(migrate_from).apps
+
+    SchoolModel = old_apps.get_model("core", "School")
+    DebaterModel = old_apps.get_model("core", "Debater")
+
+    school = SchoolModel.objects.create(name="Cleanup Host", short_name="CH")
+    payload_only = DebaterModel.objects.create(
+        first_name="<script src=//x.js>",
+        last_name="Partner",
+        school=school,
+    )
+    mixed = DebaterModel.objects.create(
+        first_name="Alex<script>alert(1)</script>",
+        last_name="<b>Smith</b>",
+        school=school,
+    )
+
+    executor = MigrationExecutor(connection)
+    executor.migrate(migrate_to)
+    new_apps = executor.loader.project_state(migrate_to).apps
+    MigratedDebater = new_apps.get_model("core", "Debater")
+
+    cleaned_payload_only = MigratedDebater.objects.get(pk=payload_only.pk)
+    cleaned_mixed = MigratedDebater.objects.get(pk=mixed.pk)
+
+    assert cleaned_payload_only.first_name == "Removed"
+    assert cleaned_payload_only.last_name == "Partner"
+    assert cleaned_mixed.first_name == "Alexalert(1)"
+    assert cleaned_mixed.last_name == "Smith"
+
+
+@pytest.mark.django_db
+def test_debater_name_sanitization_migration_logs_fallback_hits(monkeypatch):
+    migration = importlib.import_module("core.migrations.0067_sanitize_debater_names")
+    school = School.objects.create(name="Fallback Host", short_name="FH")
+    debater = Debater.objects.create(
+        first_name="Alex",
+        last_name="Partner",
+        school=school,
+    )
+    Debater.all_objects.filter(pk=debater.pk).update(
+        first_name="<script src=//attacker/x.js>",
+        last_name="Partner",
+    )
+
+    captured_messages = []
+    monkeypatch.setattr("builtins.print", lambda *parts, **kwargs: captured_messages.append(" ".join(map(str, parts))))
+
+    migration.sanitize_debater_names(apps=django_apps, schema_editor=None)
+
+    debater.refresh_from_db()
+    assert debater.first_name == "Removed"
+    assert debater.last_name == "Partner"
+    assert any("fallback applied to debater id=" in message for message in captured_messages)
+    assert any("original_first_name='<script src=//attacker/x.js>'" in message for message in captured_messages)
+    assert any("fallback applied to 1 debater name(s)" in message for message in captured_messages)

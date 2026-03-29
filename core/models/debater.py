@@ -3,6 +3,7 @@ import json
 from django.conf import settings
 from django.db import models
 from django.shortcuts import reverse
+from django.utils.html import strip_tags
 
 from .debater_alias_group import DebaterAliasGroup
 from .school import School
@@ -11,6 +12,11 @@ from .school import School
 class ActiveDebaterManager(models.Manager):
     def get_queryset(self):
         return super().get_queryset().filter(temporary=False, synthetic=False)
+
+
+def sanitize_debater_name_part(value, fallback=""):
+    cleaned = strip_tags(str(value or "")).strip()
+    return cleaned or fallback
 
 
 class Debater(models.Model):
@@ -100,6 +106,20 @@ class Debater(models.Model):
     all_objects = models.Manager()
 
     def save(self, *args, **kwargs):
+        original_first_name = self.first_name
+        original_last_name = self.last_name
+        self.first_name = sanitize_debater_name_part(self.first_name, fallback="Removed")
+        self.last_name = sanitize_debater_name_part(self.last_name)
+
+        update_fields = kwargs.get("update_fields")
+        if update_fields is not None:
+            update_fields = set(update_fields)
+            if self.first_name != original_first_name:
+                update_fields.add("first_name")
+            if self.last_name != original_last_name:
+                update_fields.add("last_name")
+            kwargs["update_fields"] = update_fields
+
         if not self.pk:
             current_season = settings.CURRENT_SEASON
             if not self.first_season:

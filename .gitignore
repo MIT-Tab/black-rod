@@ -70,3 +70,6 @@ apda/round-amendments.local.json.bak-20260318-posttest
 apda/round-amendments.synthetic-school-import-cleanup-20260318.json
 core/fixtures/fixtures.json
 core/fixtures/fixtures2.json
+bin/scrape_tabbycat.py
+.gitignore
+bin/tabbycat_manifest_to_round_amendments.py

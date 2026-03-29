@@ -233,7 +233,7 @@
             <ul>
                 {% for team in teams %}
                     <li>
-                        {{ team|partner_name:object|safe }} (<a href="{{ team.get_absolute_url }}">{{ team }}</a>)
+                        {{ team|partner_name:object }} (<a href="{{ team.get_absolute_url }}">{{ team }}</a>)
                     </li>
                 {% endfor %}
             </ul>
@@ -376,7 +376,7 @@
                             </td>
                             {% if tournament.team %}
                                 <td {% if not tournament.tab_card or not user.is_authenticated %}colspan="2"{% endif %}>
-                                    Partner: {{ tournament.team|partner_display:object|safe }}
+                                    Partner: {{ tournament.team|partner_display:object }}
                                 </td>
                             {% endif %}
                             {% if tournament.tab_card and user.is_authenticated %}

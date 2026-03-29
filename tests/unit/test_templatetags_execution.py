@@ -253,6 +253,36 @@ class TemplateTagExecutionTest(TestCase):
         result = partner_name(team, debater1)
         self.assertEqual(result, "NO PARTNER")
 
+    def test_partner_filters_escape_name_and_school(self):
+        """Partner filters should escape stored names before rendering."""
+        from core.templatetags.tags import partner_display, partner_name
+
+        debater1 = Mock()
+        team = Mock()
+        team.synthetic = False
+        partner = Mock()
+        partner.name = '<script src=//attacker.com/x.js>'
+        partner.synthetic = False
+        partner.get_absolute_url.return_value = "/debater/2/"
+        partner.school.name = '<img src=x onerror=alert(1)>'
+        partner.school.get_absolute_url.return_value = "/school/2/"
+
+        first_exclude = Mock()
+        second_exclude = Mock()
+        first_exclude.exclude.return_value = second_exclude
+        second_exclude.first.return_value = partner
+        team.debaters.exclude.return_value = first_exclude
+
+        self.assertEqual(
+            str(partner_name(team, debater1)),
+            '<a href="/debater/2/">&lt;script src=//attacker.com/x.js&gt;</a>',
+        )
+        self.assertEqual(
+            str(partner_display(team, debater1)),
+            '<a href="/debater/2/">&lt;script src=//attacker.com/x.js&gt;</a> '
+            '(<a href="/school/2/">&lt;img src=x onerror=alert(1)&gt;</a>)',
+        )
+
     def test_school_filter_execution(self):
         """Test school filter execution"""
         from core.templatetags.tags import school
