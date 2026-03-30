@@ -91,6 +91,30 @@ class SchoolViewsTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Test School")
 
+    def test_synthetic_school_hidden_from_list(self):
+        synthetic_school = School.all_objects.create(
+            name="Synthetic School",
+            synthetic=True,
+        )
+
+        response = self.client.get(reverse("core:school_list"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Test School")
+        self.assertNotContains(response, synthetic_school.name)
+
+    def test_synthetic_school_detail_returns_404(self):
+        synthetic_school = School.all_objects.create(
+            name="Synthetic School",
+            synthetic=True,
+        )
+
+        response = self.client.get(
+            reverse("core:school_detail", kwargs={"pk": synthetic_school.pk}) + "?season=2024"
+        )
+
+        self.assertEqual(response.status_code, 404)
+
     def test_nonexistent_school_404(self):
         """Test that non-existent school returns 404"""
         response = self.client.get(

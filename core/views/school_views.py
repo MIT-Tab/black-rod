@@ -56,6 +56,9 @@ class SchoolListView(CustomListView):
         }
     ]
 
+    def get_queryset(self):
+        return School.objects.filter(synthetic=False)
+
 
 class SchoolDetailView(CustomDetailView):
     public_view = True
@@ -78,6 +81,10 @@ class SchoolDetailView(CustomDetailView):
             "include_pk": True,
         },
     ]
+
+    def get_object(self, queryset=None):
+        queryset = School.objects.filter(synthetic=False)
+        return super().get_object(queryset=queryset)
 
     def get(self, request, *args, **kwargs):
         season = self.request.GET.get("season", "")
