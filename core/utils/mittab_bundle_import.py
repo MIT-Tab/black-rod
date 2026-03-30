@@ -240,6 +240,12 @@ class _MittabBundleImporter:
         if len(exact_matches) == 1:
             return exact_matches[0]
         if len(exact_matches) > 1:
+            disambiguated = self._resolve_minus_one_competitor_match(
+                debater_payload,
+                exact_matches,
+            )
+            if disambiguated is not None:
+                return disambiguated
             raise MittabBundleImportError(
                 f"Bundle debater '{name}' matched multiple existing debaters. Add ids before importing."
             )
@@ -277,6 +283,29 @@ class _MittabBundleImporter:
         if existing is not None:
             return existing
         return School.all_objects.create(name=name, short_name=name[:64], temporary=True)
+
+    def _resolve_minus_one_competitor_match(self, debater_payload, exact_matches):
+        if int(debater_payload.get("id") or 0) != -1:
+            return None
+
+        school = self._resolve_debater_school(debater_payload)
+        if school is not None:
+            school_matches = [debater for debater in exact_matches if debater.school_id == school.id]
+            if len(school_matches) == 1:
+                return school_matches[0]
+
+        tournament_matches = list(
+            Debater.all_objects.filter(
+                pk__in=[debater.id for debater in exact_matches],
+                teams__team_results__tournament=self.tournament,
+            )
+            .distinct()
+            .order_by("id")
+        )
+        if len(tournament_matches) == 1:
+            return tournament_matches[0]
+
+        return None
 
     def _resolve_judges(self, judge_payloads, import_key):
         if judge_payloads in (None, ""):

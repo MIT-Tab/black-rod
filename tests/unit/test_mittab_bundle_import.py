@@ -162,6 +162,76 @@ def test_import_rejects_ambiguous_exact_name_match_for_competitor():
     assert "matched multiple existing debaters" in str(excinfo.value)
 
 
+def test_import_resolves_minus_one_exact_name_match_by_school():
+    tournament = _make_tournament()
+    matching_school = School.objects.create(name="Fallback School", short_name="FS")
+    other_school = School.objects.create(name="Other School", short_name="OS")
+    matched = Debater.objects.create(first_name="Gov", last_name="One", school=matching_school)
+    Debater.objects.create(first_name="Gov", last_name="One", school=other_school)
+
+    document = _bundle_document(
+        schools=[{"id": 1, "apda_id": matching_school.id, "name": "Fallback School"}],
+        debaters=[
+            {"id": -1, "apda_id": None, "name": matched.name, "novice_status": "varsity", "school_id": 1},
+            {"id": 102, "apda_id": None, "name": "Gov Two", "novice_status": "varsity", "school_id": 1},
+            {"id": 201, "apda_id": None, "name": "Opp One", "novice_status": "varsity", "school_id": 1},
+            {"id": 202, "apda_id": None, "name": "Opp Two", "novice_status": "varsity", "school_id": 1},
+        ],
+        rounds=[
+            _round_payload().copy()
+            | {
+                "gov": {
+                    "debater_ids": [-1, 102],
+                    "source_names": [matched.name, "Gov Two"],
+                }
+            }
+        ],
+    )
+
+    import_mittab_bundle(_make_loaded_bundle(document), tournament)
+
+    created_round = Round.objects.get(tournament=tournament, import_key="prelim:1")
+    gov_debaters = list(created_round.gov.debaters.order_by("id"))
+    assert matched in gov_debaters
+
+
+def test_import_resolves_minus_one_exact_name_match_by_existing_tournament_result():
+    tournament = _make_tournament()
+    host = tournament.host
+    other_school = School.objects.create(name="Other School", short_name="OS")
+    matched = Debater.objects.create(first_name="Gov", last_name="One", school=host)
+    Debater.objects.create(first_name="Gov", last_name="One", school=other_school)
+    result_team = Team.objects.create(name="Existing Tournament Team", short_name="ETT")
+    partner = Debater.objects.create(first_name="Partner", last_name="Prime", school=host)
+    result_team.debaters.set([matched, partner])
+    TeamResult.objects.create(tournament=tournament, team=result_team, place=-1)
+
+    document = _bundle_document(
+        schools=[{"id": 1, "apda_id": None, "name": "Unmatched School"}],
+        debaters=[
+            {"id": -1, "apda_id": None, "name": matched.name, "novice_status": "varsity", "school_id": 1},
+            {"id": 102, "apda_id": None, "name": "Gov Two", "novice_status": "varsity", "school_id": 1},
+            {"id": 201, "apda_id": None, "name": "Opp One", "novice_status": "varsity", "school_id": 1},
+            {"id": 202, "apda_id": None, "name": "Opp Two", "novice_status": "varsity", "school_id": 1},
+        ],
+        rounds=[
+            _round_payload().copy()
+            | {
+                "gov": {
+                    "debater_ids": [-1, 102],
+                    "source_names": [matched.name, "Gov Two"],
+                }
+            }
+        ],
+    )
+
+    import_mittab_bundle(_make_loaded_bundle(document), tournament)
+
+    created_round = Round.objects.get(tournament=tournament, import_key="prelim:1")
+    gov_debaters = list(created_round.gov.debaters.order_by("id"))
+    assert matched in gov_debaters
+
+
 def test_reupload_replaces_prior_bundle_rounds_missing_from_new_file():
     tournament = _make_tournament()
 
