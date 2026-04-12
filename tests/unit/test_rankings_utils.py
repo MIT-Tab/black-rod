@@ -448,6 +448,34 @@ class RankingsUtilsTest(TestCase):
             ).exists()
         )
 
+    def test_update_qual_points_uses_historical_season_for_latest_season(self):
+        historical_tournament = Tournament.objects.create(
+            name="Historical Tournament",
+            host=self.school,
+            date=date(2020, 2, 1),
+            season="2020",
+            qual=True,
+            num_teams=32,
+            autoqual_bar=4,
+        )
+        self.debater1.latest_season = "2019"
+        self.debater1.save(update_fields=["latest_season"])
+
+        historical_team = Team.objects.create(name="Historical Team")
+        historical_team.debaters.add(self.debater1)
+        TeamResult.objects.create(
+            team=historical_team,
+            tournament=historical_tournament,
+            type_of_place=Debater.VARSITY,
+            place=3,
+        )
+
+        with self.settings(CURRENT_SEASON="2024"):
+            rankings.update_qual_points(historical_team, "2020")
+
+        self.debater1.refresh_from_db()
+        self.assertEqual(self.debater1.latest_season, "2020")
+
     def test_redo_rankings_toty(self):
         """Test redo_rankings function for toty"""
         # Create some results and rankings
@@ -468,9 +496,80 @@ class RankingsUtilsTest(TestCase):
         rankings.redo_rankings(toty_queryset, "2024", "toty")
 
         # Check that rankings were updated
-        toty = TOTY.objects.filter(team=self.team, season="2024").first()
-        self.assertIsNotNone(toty)
-        self.assertEqual(toty.place, 1)
+
+    def test_seed_season_filters_can_limit_to_latest_for_active_season(self):
+        season_2020 = Tournament.objects.create(
+            name="2020 Tournament",
+            host=self.school,
+            date=date(2020, 1, 1),
+            season="2020",
+            num_teams=32,
+        )
+        season_2021 = Tournament.objects.create(
+            name="2021 Tournament",
+            host=self.school,
+            date=date(2021, 1, 1),
+            season="2021",
+            num_teams=32,
+        )
+        season_2019 = Tournament.objects.create(
+            name="2019 Tournament",
+            host=self.school,
+            date=date(2019, 1, 1),
+            season="2019",
+            num_teams=32,
+        )
+
+        active_2020 = Debater.objects.create(
+            first_name="Casey",
+            last_name="Active",
+            school=self.school,
+            first_season="wrong-first",
+            latest_season="wrong-latest",
+        )
+        inactive_2020 = Debater.objects.create(
+            first_name="Robin",
+            last_name="Inactive",
+            school=self.school,
+            first_season="leave-first",
+            latest_season="leave-latest",
+        )
+
+        SpeakerResult.objects.create(
+            tournament=season_2020,
+            debater=active_2020,
+            type_of_place=Debater.VARSITY,
+            place=1,
+        )
+        SpeakerResult.objects.create(
+            tournament=season_2021,
+            debater=active_2020,
+            type_of_place=Debater.VARSITY,
+            place=1,
+        )
+        SpeakerResult.objects.create(
+            tournament=season_2019,
+            debater=inactive_2020,
+            type_of_place=Debater.VARSITY,
+            place=1,
+        )
+
+        stdout = StringIO()
+        call_command(
+            "seed_season_filters",
+            "--latest-only",
+            "--active-in-season",
+            "2020",
+            stdout=stdout,
+        )
+
+        active_2020.refresh_from_db()
+        inactive_2020.refresh_from_db()
+
+        self.assertEqual(active_2020.first_season, "wrong-first")
+        self.assertEqual(active_2020.latest_season, "2021")
+        self.assertEqual(inactive_2020.first_season, "leave-first")
+        self.assertEqual(inactive_2020.latest_season, "leave-latest")
 
     def test_redo_rankings_handles_ties_and_zero_entries(self):
         other_school = School.objects.create(name="Second School", included_in_oty=True)

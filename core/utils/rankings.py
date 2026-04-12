@@ -287,6 +287,7 @@ def update_noty(debater, season=settings.CURRENT_SEASON):
 
 
 def update_qual_points(team, season=settings.CURRENT_SEASON):
+    season_token = str(season).split("-")[0]
     if team.team_results.count() == 0:
         if season == settings.CURRENT_SEASON:
             team.delete()
@@ -315,9 +316,12 @@ def update_qual_points(team, season=settings.CURRENT_SEASON):
         qual = None
         if all_results.exists():
             latest_season = debater.latest_season
-            current_season = int(settings.CURRENT_SEASON)
-            if latest_season is None or int(latest_season) < current_season:
-                debater.latest_season = settings.CURRENT_SEASON
+            target_season = int(season_token)
+            latest_season_token = (
+                str(latest_season).split("-")[0] if latest_season is not None else None
+            )
+            if latest_season_token is None or int(latest_season_token) < target_season:
+                debater.latest_season = season_token
                 debater.save()
 
         for result in scoring_results:
