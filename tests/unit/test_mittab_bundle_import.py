@@ -139,11 +139,15 @@ def test_import_reuses_unique_exact_name_match():
     assert matched in gov_debaters
 
 
-def test_import_rejects_ambiguous_exact_name_match_for_competitor():
+def test_import_prefers_competitor_with_existing_tournament_result():
     tournament = _make_tournament()
     school = School.objects.create(name="Fallback School", short_name="FS")
-    Debater.objects.create(first_name="Gov", last_name="One", school=school)
-    Debater.objects.create(first_name="Gov", last_name="One", school=None)
+    matched = Debater.objects.create(first_name="Gov", last_name="One", school=school)
+    other = Debater.objects.create(first_name="Gov", last_name="One", school=None)
+    result_team = Team.objects.create(name="Existing Tournament Team", short_name="ETT")
+    partner = Debater.objects.create(first_name="Partner", last_name="Prime", school=school)
+    result_team.debaters.set([matched, partner])
+    TeamResult.objects.create(tournament=tournament, team=result_team, place=-1)
 
     document = _bundle_document(
         schools=[{"id": 1, "apda_id": school.id, "name": "Fallback School"}],
@@ -156,36 +160,35 @@ def test_import_rejects_ambiguous_exact_name_match_for_competitor():
         rounds=[_round_payload()],
     )
 
-    with pytest.raises(MittabBundleImportError) as excinfo:
-        import_mittab_bundle(_make_loaded_bundle(document), tournament)
+    import_mittab_bundle(_make_loaded_bundle(document), tournament)
 
-    assert "matched multiple existing debaters" in str(excinfo.value)
+    created_round = Round.objects.get(tournament=tournament, import_key="prelim:1")
+    gov_debaters = list(created_round.gov.debaters.order_by("id"))
+    assert matched in gov_debaters
+    assert other not in gov_debaters
 
 
-def test_import_resolves_minus_one_exact_name_match_by_school():
+def test_import_filters_out_synthetic_competitor_matches():
     tournament = _make_tournament()
-    matching_school = School.objects.create(name="Fallback School", short_name="FS")
-    other_school = School.objects.create(name="Other School", short_name="OS")
-    matched = Debater.objects.create(first_name="Gov", last_name="One", school=matching_school)
-    Debater.objects.create(first_name="Gov", last_name="One", school=other_school)
+    school = School.objects.create(name="Fallback School", short_name="FS")
+    synthetic = Debater.all_objects.create(
+        first_name="Gov",
+        last_name="One",
+        school=school,
+        synthetic=True,
+        temporary=False,
+    )
+    matched = Debater.objects.create(first_name="Gov", last_name="One", school=school)
 
     document = _bundle_document(
-        schools=[{"id": 1, "apda_id": matching_school.id, "name": "Fallback School"}],
+        schools=[{"id": 1, "apda_id": school.id, "name": "Fallback School"}],
         debaters=[
-            {"id": -1, "apda_id": None, "name": matched.name, "novice_status": "varsity", "school_id": 1},
+            {"id": 101, "apda_id": None, "name": matched.name, "novice_status": "varsity", "school_id": 1},
             {"id": 102, "apda_id": None, "name": "Gov Two", "novice_status": "varsity", "school_id": 1},
             {"id": 201, "apda_id": None, "name": "Opp One", "novice_status": "varsity", "school_id": 1},
             {"id": 202, "apda_id": None, "name": "Opp Two", "novice_status": "varsity", "school_id": 1},
         ],
-        rounds=[
-            _round_payload().copy()
-            | {
-                "gov": {
-                    "debater_ids": [-1, 102],
-                    "source_names": [matched.name, "Gov Two"],
-                }
-            }
-        ],
+        rounds=[_round_payload()],
     )
 
     import_mittab_bundle(_make_loaded_bundle(document), tournament)
@@ -193,6 +196,7 @@ def test_import_resolves_minus_one_exact_name_match_by_school():
     created_round = Round.objects.get(tournament=tournament, import_key="prelim:1")
     gov_debaters = list(created_round.gov.debaters.order_by("id"))
     assert matched in gov_debaters
+    assert synthetic not in gov_debaters
 
 
 def test_import_resolves_minus_one_exact_name_match_by_existing_tournament_result():
