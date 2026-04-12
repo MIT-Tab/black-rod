@@ -253,23 +253,25 @@ def seed_temporary_debaters(
         if not (first_name and last_name):
             continue
         existing = (
-            Debater.objects.filter(
+            Debater.all_objects.filter(
                 first_name__iexact=first_name,
                 last_name__iexact=last_name,
                 school=school,
-            ).first()
-            if school
-            else None
+                synthetic=False,
+            )
+            .order_by("temporary", "id")
+            .first()
         )
         if existing:
             if tournament_id:
                 handler.link_tournament_debater(tournament_id, existing)
             continue
-        debater, _ = Debater.all_objects.get_or_create(
+        debater = Debater.all_objects.create(
             first_name=first_name,
             last_name=last_name,
             school=school,
-            defaults={"status": Debater.NOVICE, "temporary": True},
+            status=Debater.NOVICE,
+            temporary=True,
         )
         debaters.append(debater)
         if tournament_id:
