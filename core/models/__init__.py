@@ -28,6 +28,7 @@ from .tags import ResourceTag, TaggedResource
 from .merge_request import MergeDebaterRequest
 from .claim_request import ClaimDebaterRequest
 from .debater_alias_group import DebaterAliasGroup
+from .generated_code import GeneratedCode
 from .synthetic_resolution_log import SyntheticResolutionLog
 
 __all__ = [
@@ -67,5 +68,6 @@ __all__ = [
     "MergeDebaterRequest",
     "ClaimDebaterRequest",
     "DebaterAliasGroup",
+    "GeneratedCode",
     "SyntheticResolutionLog",
 ]

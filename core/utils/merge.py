@@ -765,7 +765,7 @@ def _recompute_coty(school, season):
     season = str(season)
     coty = COTY.objects.filter(season=season, school=school).first()
 
-    if not school.included_in_oty:
+    if _is_online_season(season) or not school.included_in_oty:
         if coty:
             coty.delete()
             _update_standing_place(COTY, season)

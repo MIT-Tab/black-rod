@@ -288,6 +288,7 @@ def update_noty(debater, season=settings.CURRENT_SEASON):
 
 def update_qual_points(team, season=settings.CURRENT_SEASON):
     season_token = str(season).split("-")[0]
+    is_online_season = season_token in {str(value).split("-")[0] for value in settings.ONLINE_SEASONS}
     if team.team_results.count() == 0:
         if season == settings.CURRENT_SEASON:
             team.delete()
@@ -367,7 +368,7 @@ def update_qual_points(team, season=settings.CURRENT_SEASON):
         qual_points.points = points
         qual_points.save()
 
-        if season in settings.ONLINE_SEASONS:
+        if is_online_season:
             continue
 
         if points >= settings.QUAL_BAR:
@@ -382,6 +383,13 @@ def update_qual_points(team, season=settings.CURRENT_SEASON):
                 QUAL.objects.create(
                     debater=debater, season=season, qual_type=QUAL.POINTS
                 )
+
+    if is_online_season:
+        for debater in team.debaters.all():
+            school = getattr(debater, "school", None)
+            if school is not None:
+                COTY.objects.filter(season=season, school=school).delete()
+        return
 
     for debater in team.debaters.all():
         if not _school_included_in_oty(debater):
@@ -453,6 +461,8 @@ def redo_rankings(rankings, season=settings.CURRENT_SEASON, cache_type="toty"):
 
 
 def update_online_quals(team, season=settings.CURRENT_SEASON):
+    season_token = str(season).split("-")[0]
+    is_online_season = season_token in {str(value).split("-")[0] for value in settings.ONLINE_SEASONS}
     if team.team_results.count() == 0 and team.govs.count() == 0 and team.opps.count():
         team.delete()
         return
@@ -504,7 +514,7 @@ def update_online_quals(team, season=settings.CURRENT_SEASON):
         online_qual.points = points
         online_qual.save()
 
-        if season not in settings.ONLINE_SEASONS:
+        if not is_online_season:
             continue
 
         if points >= settings.ONLINE_QUAL_BAR:
@@ -521,34 +531,9 @@ def update_online_quals(team, season=settings.CURRENT_SEASON):
                 )
 
     for debater in team.debaters.all():
-        if not _school_included_in_oty(debater):
-            continue
-
-        coty = COTY.objects.filter(season=season).filter(school=debater.school).first()
-
-        if not coty:
-            coty = COTY.objects.create(season=season, school=debater.school)
-
-        relevant_qual_points = (
-            QualPoints.objects.filter(season=season)
-            .filter(debater__school=debater.school)
-            .all()
-        )
-
-        relevant_qual_points = sum([min(60, q.points) for q in relevant_qual_points])
-
-        qualled_debaters = [
-            q.debater
-            for q in QUAL.objects.filter(season=season)
-            .filter(debater__school=debater.school)
-            .all()
-        ]
-        qualled_debaters = len(list(set(qualled_debaters)))
-
-        relevant_qual_points += qualled_debaters * 6
-
-        coty.points = relevant_qual_points
-        coty.save()
+        school = getattr(debater, "school", None)
+        if school is not None:
+            COTY.objects.filter(season=season, school=school).delete()
 
     return True
 

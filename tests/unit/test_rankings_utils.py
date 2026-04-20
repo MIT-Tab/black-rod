@@ -17,6 +17,7 @@ from core.models.standings.soty import SOTY
 from core.models.standings.qual import QUAL
 from core.models.standings.toty import TOTY, TOTYReaff
 from core.models.standings.online_qual import OnlineQUAL
+from core.utils import merge
 from core.utils import rankings
 
 
@@ -448,6 +449,28 @@ class RankingsUtilsTest(TestCase):
             ).exists()
         )
 
+    def test_update_qual_points_does_not_create_coty_for_online_season(self):
+        online_tournament = Tournament.objects.create(
+            name="Online Qual Tournament",
+            host=self.school,
+            date=date(2024, 2, 1),
+            season="2024",
+            qual=True,
+            num_teams=32,
+            autoqual_bar=4,
+        )
+        TeamResult.objects.create(
+            team=self.team,
+            tournament=online_tournament,
+            type_of_place=Debater.VARSITY,
+            place=3,
+        )
+
+        with self.settings(ONLINE_SEASONS=("2024",)):
+            rankings.update_qual_points(self.team, "2024")
+
+        self.assertFalse(COTY.objects.filter(season="2024", school=self.school).exists())
+
     def test_update_qual_points_uses_historical_season_for_latest_season(self):
         historical_tournament = Tournament.objects.create(
             name="Historical Tournament",
@@ -669,6 +692,36 @@ class RankingsUtilsTest(TestCase):
                 debater__in=self.team.debaters.all(), season="2024"
             ).exists()
         )
+
+    def test_update_online_quals_removes_existing_coty_for_online_season(self):
+        COTY.objects.create(season="2024", school=self.school, points=12, place=1)
+        online_tournament = Tournament.objects.create(
+            name="Online Tournament",
+            host=self.school,
+            date=date(2024, 3, 1),
+            season="2024",
+            online_qual_points=True,
+            num_teams=16,
+        )
+        TeamResult.objects.create(
+            team=self.team,
+            tournament=online_tournament,
+            type_of_place=Debater.VARSITY,
+            place=1,
+        )
+
+        with self.settings(ONLINE_SEASONS=("2024",), ONLINE_QUAL_BAR=10):
+            rankings.update_online_quals(self.team, "2024")
+
+        self.assertFalse(COTY.objects.filter(season="2024", school=self.school).exists())
+
+    def test_recompute_coty_skips_online_season(self):
+        COTY.objects.create(season="2024", school=self.school, points=12, place=1)
+
+        with self.settings(ONLINE_SEASONS=("2024",)):
+            merge._recompute_coty(self.school, "2024")
+
+        self.assertFalse(COTY.objects.filter(season="2024", school=self.school).exists())
 
     def test_update_toty_no_debaters(self):
         """Test update_toty with team having no debaters"""

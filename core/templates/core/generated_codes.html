@@ -1,0 +1,29 @@
+{% extends "base/base.html" %}
+
+{% block title %}
+    Generate Code
+{% endblock title %}
+
+{% block content %}
+    <div class="row justify-content-center mt-4">
+        <div class="col-md-6 col-lg-5">
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <h1 class="h3 mb-3">Generate Code</h1>
+                    <p class="text-muted">
+                        Press the button to create a new unique code tied to your account.
+                    </p>
+                    <form method="post">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-primary">Generate Code</button>
+                    </form>
+                    {% if generated_code %}
+                        <hr>
+                        <p class="mb-2 text-muted">Latest code</p>
+                        <code class="d-block p-3 bg-light rounded">{{ generated_code }}</code>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock content %}
