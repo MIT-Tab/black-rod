@@ -139,6 +139,47 @@ class TeamViewsTest(TestCase):
         )
         self.assertEqual(response.status_code, 200)
 
+    def test_team_detail_api_preserves_null_round_stats(self):
+        """Team detail API should not crash when a round stat has missing scores."""
+        opponent = Team.objects.create(name="Opponent Team")
+        opponent_debater1 = Debater.objects.create(
+            first_name="Opp",
+            last_name="One",
+            school=self.school,
+        )
+        opponent_debater2 = Debater.objects.create(
+            first_name="Opp",
+            last_name="Two",
+            school=self.school,
+        )
+        opponent.debaters.add(opponent_debater1, opponent_debater2)
+
+        round_obj = Round.objects.create(
+            tournament=self.tournament,
+            gov=self.team,
+            opp=opponent,
+            round_number=1,
+            stage=Round.Stage.OUTROUND,
+            victor=Round.GOV,
+        )
+        RoundStats.objects.create(
+            round=round_obj,
+            debater=self.debater1,
+            speaks=None,
+            ranks=None,
+            debater_role=None,
+        )
+
+        response = self.client.get(reverse("api:team_detail", args=[self.team.pk]))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        stats = payload["tournaments"][0]["tab_card"][0]["stats"]
+        self.assertEqual(len(stats), 1)
+        self.assertIsNone(stats[0]["speaks"])
+        self.assertIsNone(stats[0]["ranks"])
+        self.assertEqual(stats[0]["role"], "")
+
     def test_team_detail_hides_synthetic_debaters(self):
         synthetic_debater = Debater.objects.create(
             first_name="Synthetic",

@@ -402,8 +402,8 @@ def _serialize_round_stat(stat, request):
     return {
         "debater": serialize_debater(stat.debater, request),
         "role": (stat.debater_role or "").upper(),
-        "speaks": float(stat.speaks),
-        "ranks": float(stat.ranks),
+        "speaks": float(stat.speaks) if stat.speaks is not None else None,
+        "ranks": float(stat.ranks) if stat.ranks is not None else None,
     }
 
 
