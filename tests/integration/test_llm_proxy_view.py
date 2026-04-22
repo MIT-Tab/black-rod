@@ -10,6 +10,7 @@ from django.conf import settings
 from django.urls import reverse
 from core.models.school import School
 from core.models.debater import Debater
+from core.models.team import Team
 
 
 class LLMProxyViewTest(TestCase):
@@ -27,6 +28,8 @@ class LLMProxyViewTest(TestCase):
             school=self.school,
             latest_season=str(self.current_year)
         )
+        self.team = Team.objects.create(name="Test Team")
+        self.team.debaters.add(self.debater)
     
     def test_missing_endpoint_parameter(self):
         """Test that missing endpoint parameter returns error"""
@@ -171,6 +174,22 @@ class LLMProxyViewTest(TestCase):
         self.assertIn('school', parsed_json)
         self.assertIn('debaters', parsed_json)
         self.assertEqual(parsed_json['school']['name'], "Test University")
+
+    def test_team_detail_endpoint_renders_lazy_api_response(self):
+        """Proxy should render DRF responses before reading their content."""
+        response = self.client.get(f'/llm/?endpoint=/api/teams/{self.team.id}/detail/')
+
+        self.assertEqual(response.status_code, 200)
+
+        content = response.content.decode('utf-8')
+        pre_start = content.find('<pre>') + 5
+        pre_end = content.find('</pre>')
+        json_content = content[pre_start:pre_end]
+        unescaped_json = html.unescape(json_content)
+
+        payload = json.loads(unescaped_json)
+        self.assertEqual(payload["team"]["id"], self.team.id)
+        self.assertEqual(payload["team"]["name"], "Test Team")
     
     def test_xss_protection_in_endpoint(self):
         """Test that XSS attempts in endpoint parameter are escaped"""

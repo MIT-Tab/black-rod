@@ -2157,6 +2157,9 @@ class LLMProxyView(View):
             # Resolve the URL and call the view
             resolved = resolve(endpoint.split('?')[0])
             response = resolved.func(internal_request, *resolved.args, **resolved.kwargs)
+
+            if hasattr(response, "render") and callable(response.render):
+                response = response.render()
             
             # Check if response is successful
             if response.status_code != 200:
