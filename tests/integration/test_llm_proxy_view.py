@@ -5,6 +5,11 @@ Integration tests for the LLM proxy view.
 
 import html
 import json
+from types import SimpleNamespace
+from unittest.mock import patch
+
+from django.http import HttpResponse
+from django.template.response import ContentNotRenderedError
 from django.test import TestCase, Client, override_settings
 from django.conf import settings
 from django.urls import reverse
@@ -137,6 +142,21 @@ class LLMProxyViewTest(TestCase):
         # Verify it's valid JSON
         parsed_json = json.loads(unescaped_json)
         self.assertIn('season', parsed_json)
+
+    def test_endpoint_with_format_api_query_parameter(self):
+        """Proxy should still emit JSON-wrapped HTML for browsable API query params."""
+        response = self.client.get(
+            f'/llm/?endpoint=/api/teams/{self.team.id}/detail/?format=api'
+        )
+
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode('utf-8')
+        pre_start = content.find('<pre>') + 5
+        pre_end = content.find('</pre>')
+        json_content = content[pre_start:pre_end]
+        payload = json.loads(html.unescape(json_content))
+        self.assertEqual(payload["team"]["id"], self.team.id)
+        self.assertEqual(payload["team"]["name"], "Test Team")
     
     def test_html_title_includes_endpoint(self):
         """Test that HTML title includes the requested endpoint"""
@@ -190,6 +210,57 @@ class LLMProxyViewTest(TestCase):
         payload = json.loads(unescaped_json)
         self.assertEqual(payload["team"]["id"], self.team.id)
         self.assertEqual(payload["team"]["name"], "Test Team")
+
+    def test_llm_proxy_uses_drf_response_data_without_rendered_content(self):
+        """Proxy should prefer DRF response.data over lazy response.content."""
+
+        class FakeLazyResponse:
+            status_code = 200
+            data = {"ok": True, "endpoint": "mocked"}
+
+            @property
+            def content(self):
+                raise ContentNotRenderedError(
+                    "The response content must be rendered before it can be accessed."
+                )
+
+        fake_match = SimpleNamespace(
+            func=lambda *_args, **_kwargs: FakeLazyResponse(),
+            args=(),
+            kwargs={},
+        )
+
+        with patch("api.views.resolve", return_value=fake_match):
+            response = self.client.get('/llm/?endpoint=/api/teams/1/detail/')
+
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode('utf-8')
+        pre_start = content.find('<pre>') + 5
+        pre_end = content.find('</pre>')
+        json_content = content[pre_start:pre_end]
+        payload = json.loads(html.unescape(json_content))
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["endpoint"], "mocked")
+
+    def test_llm_proxy_handles_non_json_success_response(self):
+        """Non-JSON 200 responses should return a handled proxy error page."""
+        fake_match = SimpleNamespace(
+            func=lambda *_args, **_kwargs: HttpResponse(
+                "<html>not json</html>",
+                content_type="text/html",
+                status=200,
+            ),
+            args=(),
+            kwargs={},
+        )
+
+        with patch("api.views.resolve", return_value=fake_match):
+            response = self.client.get('/llm/?endpoint=/api/teams/1/detail/')
+
+        self.assertEqual(response.status_code, 502)
+        content = response.content.decode("utf-8")
+        self.assertIn("Unable to fetch endpoint", content)
+        self.assertIn("it was not JSON", content)
     
     def test_xss_protection_in_endpoint(self):
         """Test that XSS attempts in endpoint parameter are escaped"""

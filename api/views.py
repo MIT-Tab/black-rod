@@ -418,6 +418,33 @@ def _llm_proxy_url(request, endpoint_path):
     return request.build_absolute_uri(f"{proxy_path}?endpoint={endpoint_path}")
 
 
+class LLMProxyPayloadError(Exception):
+    """Raised when an internal endpoint returns a successful non-JSON payload."""
+
+
+def _extract_json_payload(response):
+    if hasattr(response, "data"):
+        return response.data
+
+    if hasattr(response, "render") and callable(response.render):
+        rendered_response = response.render()
+        if rendered_response is not None:
+            response = rendered_response
+
+    raw_content = response.content.decode(
+        getattr(response, "charset", "utf-8") or "utf-8",
+        errors="replace",
+    )
+
+    try:
+        return json.loads(raw_content)
+    except json.JSONDecodeError as exc:
+        content_type = response.get("Content-Type", "")
+        raise LLMProxyPayloadError(
+            f"Endpoint returned non-JSON content with Content-Type {content_type or 'unknown'}."
+        ) from exc
+
+
 def _serialize_tab_card(team, tournament, request):
     tab_card_rows = get_tab_card_data(team, tournament)
     serialized = []
@@ -2157,9 +2184,6 @@ class LLMProxyView(View):
             # Resolve the URL and call the view
             resolved = resolve(endpoint.split('?')[0])
             response = resolved.func(internal_request, *resolved.args, **resolved.kwargs)
-
-            if hasattr(response, "render") and callable(response.render):
-                response = response.render()
             
             # Check if response is successful
             if response.status_code != 200:
@@ -2180,7 +2204,7 @@ class LLMProxyView(View):
                 )
             
             # Parse the JSON response
-            json_data = json.loads(response.content)
+            json_data = _extract_json_payload(response)
             
             # Pretty-print the JSON with indent=2
             pretty_json = json.dumps(json_data, indent=2, ensure_ascii=False)
@@ -2212,6 +2236,23 @@ class LLMProxyView(View):
                 f'</body></html>',
                 content_type='text/html',
                 status=404
+            )
+        except LLMProxyPayloadError as exc:
+            LOGGER.warning(
+                "LLM proxy received a non-JSON success response for %s: %s",
+                endpoint,
+                exc,
+            )
+            escaped_endpoint = html.escape(endpoint)
+            escaped_reason = html.escape(str(exc))
+            return HttpResponse(
+                f'<!DOCTYPE html><html><head><title>Unable to fetch endpoint</title></head><body>'
+                f'<h1>Unable to fetch endpoint</h1>'
+                f'<p>The endpoint {escaped_endpoint} returned a successful response, but it was not JSON.</p>'
+                f'<p>{escaped_reason}</p>'
+                f'</body></html>',
+                content_type='text/html',
+                status=502
             )
         except Exception:
             LOGGER.exception("LLM proxy encountered an unexpected error for %s", endpoint)
