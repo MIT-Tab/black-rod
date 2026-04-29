@@ -1036,6 +1036,9 @@ class TournamentDataEntryView(PermissionRequiredMixin, View):
             existing_school = cleaned.get("existing_school")
             school_instance = form.instance
 
+            if self._is_blank_school_row(cleaned, existing_school, delete_flag, source_id):
+                continue
+
             if not source_id and not existing_school:
                 existing_by_name = self._get_existing_school_by_name(cleaned)
                 if existing_by_name:
@@ -1065,6 +1068,19 @@ class TournamentDataEntryView(PermissionRequiredMixin, View):
 
         self._delete_orphan_schools(pending_deletes)
         return resolution
+
+    def _is_blank_school_row(
+        self,
+        cleaned: dict,
+        existing_school: School | None,
+        delete_flag: bool,
+        source_id: int | None,
+    ) -> bool:
+        if existing_school or delete_flag or source_id:
+            return False
+        name = (cleaned.get("name") or "").strip()
+        server_name = (cleaned.get("server_name") or "").strip()
+        return not (name or server_name)
 
     def resolve_debaters(
         self, formset, school_resolution: Dict[int, School]

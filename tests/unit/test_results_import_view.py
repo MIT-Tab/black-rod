@@ -3,6 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 from django.conf import settings
+from django.db import IntegrityError
 from django.test import RequestFactory
 
 from core.models.debater import Debater
@@ -10,6 +11,7 @@ from core.models.school import School, SchoolLookup
 from core.models.team import Team
 from core.models.tournament import Tournament
 from core.views.results_import_views import (
+    SchoolImportFormset,
     TournamentDataEntryView,
     build_api_initial,
     build_speaker_initial,
@@ -327,3 +329,64 @@ def test_forms_valid_rejects_api_mode_post_without_school_debater_management_for
     assert "schools" in formsets
     assert "debaters" in formsets
     assert not view.forms_valid(formsets, use_api=True)
+
+
+@pytest.mark.django_db
+def test_resolve_schools_skips_blank_import_rows():
+    School.all_objects.create(name="", short_name="", temporary=False)
+    formset = SchoolImportFormset(
+        data={
+            "schools-TOTAL_FORMS": "1",
+            "schools-INITIAL_FORMS": "0",
+            "schools-MIN_NUM_FORMS": "0",
+            "schools-MAX_NUM_FORMS": "500",
+            "schools-0-name": "",
+            "schools-0-short_name": "",
+            "schools-0-existing_school": "",
+            "schools-0-server_name": "",
+            "schools-0-included_in_oty": "on",
+        },
+        queryset=School.objects.none(),
+        prefix="schools",
+        form_kwargs={"allow_blank_name": True},
+    )
+
+    assert formset.is_valid(), formset.errors
+
+    view = TournamentDataEntryView()
+    try:
+        resolution = view.resolve_schools(formset)
+    except IntegrityError as exc:  # pragma: no cover - documents prior failure mode
+        pytest.fail(f"blank school rows should be ignored, but save hit IntegrityError: {exc}")
+
+    assert resolution == {}
+    assert School.all_objects.filter(name="").count() == 1
+
+
+@pytest.mark.django_db
+def test_resolve_schools_uses_server_name_fallback_for_blank_name():
+    formset = SchoolImportFormset(
+        data={
+            "schools-TOTAL_FORMS": "1",
+            "schools-INITIAL_FORMS": "0",
+            "schools-MIN_NUM_FORMS": "0",
+            "schools-MAX_NUM_FORMS": "500",
+            "schools-0-name": "",
+            "schools-0-short_name": "",
+            "schools-0-existing_school": "",
+            "schools-0-server_name": "Hopkins",
+            "schools-0-included_in_oty": "on",
+        },
+        queryset=School.objects.none(),
+        prefix="schools",
+        form_kwargs={"allow_blank_name": True},
+    )
+
+    assert formset.is_valid(), formset.errors
+
+    view = TournamentDataEntryView()
+    resolution = view.resolve_schools(formset)
+
+    school = School.objects.get(name="Hopkins")
+    assert school.short_name == "Hopkins"
+    assert resolution == {school.pk: school}
