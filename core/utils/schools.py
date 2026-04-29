@@ -3,8 +3,9 @@ from core.models.debater import Debater
 
 def get_debaters_for_season(school, season):
     debaters = list(
-        Debater.objects.filter(
+        Debater.all_objects.filter(
             school=school,
+            synthetic=False,
             first_season__lte=season,
             latest_season__gte=season
         )

@@ -115,6 +115,37 @@ class SchoolViewsTest(TestCase):
 
         self.assertEqual(response.status_code, 404)
 
+    def test_temporary_school_detail_is_visible(self):
+        temporary_school = School.all_objects.create(
+            name="Temporary School",
+            temporary=True,
+        )
+
+        response = self.client.get(
+            reverse("core:school_detail", kwargs={"pk": temporary_school.pk}) + "?season=2024"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Temporary School")
+
+    def test_school_detail_includes_temporary_debaters_for_season(self):
+        temporary_debater = Debater.all_objects.create(
+            first_name="Temp",
+            last_name="Member",
+            school=self.school,
+            temporary=True,
+            first_season="2024",
+            latest_season="2024",
+        )
+
+        response = self.client.get(
+            reverse("core:school_detail", kwargs={"pk": self.school.pk}) + "?season=2024"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        debater_ids = {debater.id for debater in response.context["debaters"]}
+        self.assertIn(temporary_debater.id, debater_ids)
+
     def test_nonexistent_school_404(self):
         """Test that non-existent school returns 404"""
         response = self.client.get(

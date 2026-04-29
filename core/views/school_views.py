@@ -57,7 +57,7 @@ class SchoolListView(CustomListView):
     ]
 
     def get_queryset(self):
-        return School.objects.filter(synthetic=False)
+        return School.all_objects.filter(synthetic=False)
 
 
 class SchoolDetailView(CustomDetailView):
@@ -83,7 +83,7 @@ class SchoolDetailView(CustomDetailView):
     ]
 
     def get_object(self, queryset=None):
-        queryset = School.objects.filter(synthetic=False)
+        queryset = School.all_objects.filter(synthetic=False)
         return super().get_object(queryset=queryset)
 
     def get(self, request, *args, **kwargs):

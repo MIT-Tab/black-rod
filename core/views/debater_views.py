@@ -197,7 +197,9 @@ class DebaterDetailView(CustomDetailView):
     ]
 
     def get_queryset(self):
-        return Debater.objects.select_related("school", "alias_group")
+        return Debater.all_objects.filter(synthetic=False).select_related(
+            "school", "alias_group"
+        )
 
     def get_context_data(self, *args, **kwargs):
         context = super().get_context_data(*args, **kwargs)

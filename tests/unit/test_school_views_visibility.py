@@ -22,6 +22,19 @@ def test_school_list_view_excludes_synthetic_schools():
 
 
 @pytest.mark.django_db
+def test_school_list_view_includes_temporary_schools():
+    temporary_school = School.all_objects.create(name="Temporary School", temporary=True)
+
+    request = RequestFactory().get("/core/schools/")
+    view = SchoolListView()
+    view.setup(request)
+
+    queryset = list(view.get_queryset())
+
+    assert temporary_school in queryset
+
+
+@pytest.mark.django_db
 def test_school_detail_view_404s_for_synthetic_school():
     synthetic_school = School.all_objects.create(name="Synthetic School", synthetic=True)
 
@@ -31,3 +44,14 @@ def test_school_detail_view_404s_for_synthetic_school():
 
     with pytest.raises(Http404):
         view.get_object()
+
+
+@pytest.mark.django_db
+def test_school_detail_view_allows_temporary_school():
+    temporary_school = School.all_objects.create(name="Temporary School", temporary=True)
+
+    request = RequestFactory().get(f"/core/schools/{temporary_school.pk}?season=2024")
+    view = SchoolDetailView()
+    view.setup(request, pk=temporary_school.pk)
+
+    assert view.get_object() == temporary_school
