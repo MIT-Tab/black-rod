@@ -126,9 +126,11 @@ class DebaterViewsTest(TestCase):
         )
 
         self.assertEqual(list_response.status_code, 200)
-        self.assertContains(list_response, temporary_debater.name)
+        self.assertContains(list_response, temporary_debater.first_name)
+        self.assertContains(list_response, temporary_debater.last_name)
         self.assertEqual(detail_response.status_code, 200)
-        self.assertContains(detail_response, temporary_debater.name)
+        self.assertContains(detail_response, temporary_debater.first_name)
+        self.assertContains(detail_response, temporary_debater.last_name)
 
     def test_debater_filter_by_school(self):
         """Test filtering debaters by school"""

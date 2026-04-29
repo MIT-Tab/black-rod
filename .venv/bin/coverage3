@@ -1,6 +1,0 @@
-#!/home/runner/work/black-rod/black-rod/.venv/bin/python
-import sys
-from coverage.cmdline import main_deprecated
-if __name__ == '__main__':
-    sys.argv[0] = sys.argv[0].removesuffix('.exe')
-    sys.exit(main_deprecated())

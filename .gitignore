@@ -10,6 +10,7 @@ gitflow/
 
 # Virtual Env
 venv/
+.venv/
 
 # Django Files
 *db.sqlite3*
