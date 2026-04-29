@@ -479,7 +479,8 @@ def update_rankings(
     for team in teams_to_update:
         update_toty(team)
         update_qual_points(team)
-        update_online_quals(team)
+        if tournament.season in settings.ONLINE_SEASONS:
+            update_online_quals(team)
     for debater in speakers_to_update:
         update_soty(debater)
     for debater in novices_to_update:

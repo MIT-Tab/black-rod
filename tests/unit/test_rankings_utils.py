@@ -715,6 +715,27 @@ class RankingsUtilsTest(TestCase):
 
         self.assertFalse(COTY.objects.filter(season="2024", school=self.school).exists())
 
+    def test_update_online_quals_keeps_existing_coty_for_non_online_season(self):
+        COTY.objects.create(season="2024", school=self.school, points=12, place=1)
+        tournament = Tournament.objects.create(
+            name="In-Person Tournament",
+            host=self.school,
+            date=date(2024, 3, 1),
+            season="2024",
+            num_teams=16,
+        )
+        TeamResult.objects.create(
+            team=self.team,
+            tournament=tournament,
+            type_of_place=Debater.VARSITY,
+            place=1,
+        )
+
+        with self.settings(ONLINE_SEASONS=("2020", "2021"), ONLINE_QUAL_BAR=10):
+            rankings.update_online_quals(self.team, "2024")
+
+        self.assertTrue(COTY.objects.filter(season="2024", school=self.school).exists())
+
     def test_recompute_coty_skips_online_season(self):
         COTY.objects.create(season="2024", school=self.school, points=12, place=1)
 

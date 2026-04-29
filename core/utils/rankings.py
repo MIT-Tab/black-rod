@@ -530,10 +530,11 @@ def update_online_quals(team, season=settings.CURRENT_SEASON):
                     debater=debater, season=season, qual_type=QUAL.POINTS
                 )
 
-    for debater in team.debaters.all():
-        school = getattr(debater, "school", None)
-        if school is not None:
-            COTY.objects.filter(season=season, school=school).delete()
+    if is_online_season:
+        for debater in team.debaters.all():
+            school = getattr(debater, "school", None)
+            if school is not None:
+                COTY.objects.filter(season=season, school=school).delete()
 
     return True
 

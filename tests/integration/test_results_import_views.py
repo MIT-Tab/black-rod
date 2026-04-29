@@ -249,6 +249,39 @@ def test_update_rankings_noop_for_other_season(monkeypatch):
     assert called["toty"] is False
 
 
+def test_update_rankings_skips_online_quals_for_non_online_season(monkeypatch):
+    school = School.objects.create(name="Primary", included_in_oty=True)
+    tournament = Tournament.objects.create(
+        name="Nationals",
+        host=school,
+        date=date(2024, 4, 1),
+        season=settings.CURRENT_SEASON,
+        num_teams=16,
+    )
+    team = Team.objects.create(name="Qualified Team")
+    team.debaters.add(
+        Debater.objects.create(first_name="Qual", last_name="One", school=school),
+        Debater.objects.create(first_name="Qual", last_name="Two", school=school),
+    )
+
+    called = {"online": False}
+
+    monkeypatch.setattr(riv, "update_toty", lambda *args, **kwargs: None)
+    monkeypatch.setattr(riv, "update_qual_points", lambda *args, **kwargs: None)
+    monkeypatch.setattr(riv, "update_soty", lambda *args, **kwargs: None)
+    monkeypatch.setattr(riv, "update_noty", lambda *args, **kwargs: None)
+    monkeypatch.setattr(riv, "redo_rankings", lambda *args, **kwargs: None)
+
+    def mark_online(*args, **kwargs):  # pylint: disable=unused-argument
+        called["online"] = True
+
+    monkeypatch.setattr(riv, "update_online_quals", mark_online)
+
+    riv.update_rankings(tournament, [team], [], [])
+
+    assert called["online"] is False
+
+
 def test_done_rebuilds_results_and_triggers_rankings(monkeypatch):
     school = School.objects.create(name="Primary", included_in_oty=True)
     tournament = Tournament.objects.create(
