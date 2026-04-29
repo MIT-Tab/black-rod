@@ -103,6 +103,23 @@ class SchoolViewsTest(TestCase):
         self.assertContains(response, "Test School")
         self.assertNotContains(response, synthetic_school.name)
 
+    def test_temporary_school_is_visible_in_public_views(self):
+        temporary_school = School.all_objects.create(
+            name="Temporary School",
+            temporary=True,
+        )
+
+        list_response = self.client.get(reverse("core:school_list"))
+        detail_response = self.client.get(
+            reverse("core:school_detail", kwargs={"pk": temporary_school.pk})
+            + "?season=2024"
+        )
+
+        self.assertEqual(list_response.status_code, 200)
+        self.assertContains(list_response, temporary_school.name)
+        self.assertEqual(detail_response.status_code, 200)
+        self.assertContains(detail_response, temporary_school.name)
+
     def test_synthetic_school_detail_returns_404(self):
         synthetic_school = School.all_objects.create(
             name="Synthetic School",

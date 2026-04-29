@@ -111,6 +111,25 @@ class DebaterViewsTest(TestCase):
         self._assert_shows_debater_name(response)
         self.assertNotContains(response, "Synthetic Debater")
 
+    def test_temporary_debater_is_visible_in_public_views(self):
+        temporary_debater = Debater.all_objects.create(
+            first_name="Temporary",
+            last_name="Debater",
+            school=self.school,
+            temporary=True,
+        )
+
+        list_response = self.client.get(reverse("core:debater_list"))
+        detail_response = self.client.get(
+            reverse("core:debater_detail", kwargs={"pk": temporary_debater.pk}),
+            {"all": "1"},
+        )
+
+        self.assertEqual(list_response.status_code, 200)
+        self.assertContains(list_response, temporary_debater.name)
+        self.assertEqual(detail_response.status_code, 200)
+        self.assertContains(detail_response, temporary_debater.name)
+
     def test_debater_filter_by_school(self):
         """Test filtering debaters by school"""
         # Create another school and debater

@@ -1,0 +1,7 @@
+menu_generator
+menu_generator/templatetags
+menu_generator/tests
+menu_generator/tests/test_apps
+menu_generator/tests/test_apps/app1
+menu_generator/tests/test_apps/app2
+menu_generator/tests/test_apps/app3

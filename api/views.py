@@ -172,14 +172,17 @@ class ActiveSchoolListAPIView(APIView):
         current_year = int(settings.CURRENT_SEASON)
         cutoff_season = str(current_year - 2)
 
-        schools = School.objects.filter(
+        schools = _public_school_queryset().filter(
             debaters__latest_season__gte=cutoff_season
         ).annotate(
             active_debater_count=Count(
-                'debaters',
-                filter=Q(debaters__latest_season__gte=cutoff_season)
+                "debaters",
+                filter=Q(
+                    debaters__latest_season__gte=cutoff_season,
+                    debaters__synthetic=False,
+                ),
             )
-        ).order_by('-active_debater_count', 'name')[:25]
+        ).order_by("-active_debater_count", "name")[:25]
 
         data = {
             "count": len(schools),
@@ -214,7 +217,7 @@ class AllSchoolListAPIView(APIView):
         if cached_data is not None:
             return Response(cached_data)
 
-        schools = School.objects.all().order_by('name')
+        schools = _public_school_queryset().order_by("name")
 
         data = {
             "count": schools.count(),
@@ -250,7 +253,7 @@ class SchoolDebatersAPIView(APIView):
             return Response(cached_data)
 
         try:
-            school = School.objects.get(id=school_id)
+            school = _public_school_queryset().get(id=school_id)
         except School.DoesNotExist as exc:
             raise Http404("School not found") from exc
 
@@ -258,10 +261,10 @@ class SchoolDebatersAPIView(APIView):
         cutoff_year = current_year - 5
         cutoff_season = str(cutoff_year)
 
-        debaters = Debater.objects.filter(
+        debaters = _public_debater_queryset("school").filter(
             school=school,
-            latest_season__gte=cutoff_season
-        ).select_related('school').order_by('last_name', 'first_name')
+            latest_season__gte=cutoff_season,
+        ).order_by("last_name", "first_name")
 
         data = {
             "school": serialize_school(school, request),
@@ -361,6 +364,17 @@ def _format_season_display(season):
         return f"{season}-{str(int(season) + 1)[2:]}"
     except (TypeError, ValueError):
         return str(season)
+
+
+def _public_school_queryset():
+    return School.all_objects.filter(synthetic=False)
+
+
+def _public_debater_queryset(*related_fields):
+    queryset = Debater.all_objects.filter(synthetic=False)
+    if related_fields:
+        queryset = queryset.select_related(*related_fields)
+    return queryset
 
 
 def _resolve_season(request):
@@ -890,7 +904,7 @@ def _collect_replay_standings(season, request):
         .prefetch_related(
             Prefetch(
                 "team__debaters",
-                queryset=Debater.objects.select_related("school"),
+                queryset=_public_debater_queryset("school"),
             ),
             team_results_prefetch,
             toty_reaff_prefetch,
@@ -1170,7 +1184,7 @@ class SeasonStandingsAPIView(APIView):
                 .prefetch_related(
                     Prefetch(
                         "team__debaters",
-                        queryset=Debater.objects.select_related("school"),
+                        queryset=_public_debater_queryset("school"),
                     )
                 )
                 .order_by("-points", "place")
@@ -1731,7 +1745,7 @@ class TeamDetailAPIView(APIView):
                 Team.objects.prefetch_related(
                     Prefetch(
                         "debaters",
-                        queryset=Debater.objects.select_related("school"),
+                        queryset=_public_debater_queryset("school"),
                     )
                 ).get(pk=pk)
             )
@@ -1829,7 +1843,7 @@ class TournamentDetailAPIView(APIView):
                 .prefetch_related(
                     Prefetch(
                         "debaters",
-                        queryset=Debater.objects.select_related("school"),
+                        queryset=_public_debater_queryset("school"),
                     )
                 )
             )
@@ -1881,7 +1895,7 @@ class SchoolDetailAPIView(APIView):
 
     def get(self, request, pk):
         try:
-            school = School.objects.get(pk=pk)
+            school = _public_school_queryset().get(pk=pk)
         except School.DoesNotExist as exc:
             raise Http404("School not found") from exc
 
@@ -1942,7 +1956,7 @@ class DebaterDetailAPIView(APIView):
     def get(self, request, pk):
         try:
             debater = (
-                Debater.objects.select_related("school", "alias_group")
+                _public_debater_queryset("school", "alias_group")
                 .get(pk=pk)
             )
         except Debater.DoesNotExist as exc:
@@ -1964,7 +1978,7 @@ class DebaterDetailAPIView(APIView):
             .prefetch_related(
                 Prefetch(
                     "team__debaters",
-                    queryset=Debater.objects.select_related("school"),
+                    queryset=_public_debater_queryset("school"),
                 )
             )
             .order_by("place", "season")
@@ -2008,7 +2022,7 @@ class DebaterDetailAPIView(APIView):
             .prefetch_related(
                 Prefetch(
                     "debaters",
-                    queryset=Debater.objects.select_related("school"),
+                    queryset=_public_debater_queryset("school"),
                 )
             )
         )

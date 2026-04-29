@@ -152,6 +152,26 @@ class APIActiveSchoolListViewTest(TestCase):
         school_names = [s['name'] for s in data3['schools']]
         self.assertIn("New School", school_names)
 
+    def test_temporary_school_with_recent_debater_is_returned(self):
+        temporary_school = School.all_objects.create(
+            name="Temporary Active University",
+            temporary=True,
+        )
+        Debater.all_objects.create(
+            first_name="Temp",
+            last_name="Member",
+            school=temporary_school,
+            latest_season=str(self.current_year),
+            temporary=True,
+        )
+        cache.clear()
+
+        response = self.client.get('/api/schools/')
+        data = json.loads(response.content)
+
+        school_names = [s['name'] for s in data['schools']]
+        self.assertIn(temporary_school.name, school_names)
+
 
 class APIAllSchoolListViewTest(TestCase):
     """Test the all schools API endpoint"""
@@ -229,6 +249,19 @@ class APIAllSchoolListViewTest(TestCase):
         self.assertEqual(data3['count'], 4)
         school_names = [s['name'] for s in data3['schools']]
         self.assertIn("AAA New School", school_names)
+
+    def test_temporary_school_is_included(self):
+        temporary_school = School.all_objects.create(
+            name="Temporary School",
+            temporary=True,
+        )
+        cache.clear()
+
+        response = self.client.get('/api/schools/all/')
+        data = json.loads(response.content)
+
+        school_names = [s['name'] for s in data['schools']]
+        self.assertIn(temporary_school.name, school_names)
 
 
 class APISchoolDebatersViewTest(TestCase):
@@ -367,6 +400,28 @@ class APISchoolDebatersViewTest(TestCase):
         # Should only have Harvard debaters
         for debater in data['debaters']:
             self.assertEqual(debater['school_id'], self.school.id)
+
+    def test_temporary_school_and_debater_are_included(self):
+        temporary_school = School.all_objects.create(
+            name="Temporary Harvard",
+            temporary=True,
+        )
+        temporary_debater = Debater.all_objects.create(
+            first_name="Temporary",
+            last_name="Member",
+            school=temporary_school,
+            latest_season=str(self.current_year),
+            temporary=True,
+        )
+        cache.clear()
+
+        response = self.client.get(f'/api/debaters/{temporary_school.id}/')
+        self.assertEqual(response.status_code, 200)
+        data = json.loads(response.content)
+
+        self.assertEqual(data['school']['id'], temporary_school.id)
+        self.assertEqual(data['count'], 1)
+        self.assertEqual(data['debaters'][0]['id'], temporary_debater.id)
 
 
 class APIScheduleViewTest(TestCase):

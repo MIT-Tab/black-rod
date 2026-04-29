@@ -19,6 +19,10 @@ from core.utils.rankings import get_qualled_debaters
 from core.utils.schools import get_debaters_for_season
 
 
+def _public_school_queryset():
+    return School.all_objects.filter(synthetic=False)
+
+
 class SchoolFilter(FilterSet):
     class Meta:
         model = School
@@ -57,7 +61,7 @@ class SchoolListView(CustomListView):
     ]
 
     def get_queryset(self):
-        return School.objects.filter(synthetic=False)
+        return _public_school_queryset()
 
 
 class SchoolDetailView(CustomDetailView):
@@ -83,7 +87,7 @@ class SchoolDetailView(CustomDetailView):
     ]
 
     def get_object(self, queryset=None):
-        queryset = School.objects.filter(synthetic=False)
+        queryset = _public_school_queryset()
         return super().get_object(queryset=queryset)
 
     def get(self, request, *args, **kwargs):
@@ -162,9 +166,11 @@ class SchoolAutocomplete(autocomplete.Select2QuerySetView):
 
     def get_queryset(self):
         base_manager = (
-            School.all_objects if self.request.user.has_perm("core.change_tournament") else School.objects
+            School.all_objects
+            if self.request.user.has_perm("core.change_tournament")
+            else _public_school_queryset()
         )
-        qs = base_manager.all()
+        qs = base_manager.all() if hasattr(base_manager, "all") else base_manager
         synthetic_filter = self._synthetic_filter()
         if synthetic_filter is not None:
             qs = qs.filter(synthetic=synthetic_filter)

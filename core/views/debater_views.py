@@ -170,6 +170,11 @@ class DebaterListView(CustomListView):
         }
     ]
 
+    def get_queryset(self):
+        return Debater.all_objects.filter(synthetic=False).select_related(
+            "school", "alias_group"
+        )
+
 
 def num_distinct_tournaments(team):
     return len(list({result.tournament.id for result in team.team_results.all()}))
@@ -197,7 +202,9 @@ class DebaterDetailView(CustomDetailView):
     ]
 
     def get_queryset(self):
-        return Debater.objects.select_related("school", "alias_group")
+        return Debater.all_objects.filter(synthetic=False).select_related(
+            "school", "alias_group"
+        )
 
     def get_context_data(self, *args, **kwargs):
         context = super().get_context_data(*args, **kwargs)
@@ -374,9 +381,11 @@ class DebaterAutocomplete(autocomplete.Select2QuerySetView):
 
     def get_queryset(self):
         base_manager = (
-            Debater.all_objects if self.request.user.has_perm("core.change_tournament") else Debater.objects
+            Debater.all_objects
+            if self.request.user.has_perm("core.change_tournament")
+            else Debater.all_objects.filter(synthetic=False)
         )
-        qs = base_manager.all()
+        qs = base_manager.all() if hasattr(base_manager, "all") else base_manager
 
         if self.q:
             query_text = str(self.q).strip()
