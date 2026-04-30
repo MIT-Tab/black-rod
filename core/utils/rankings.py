@@ -12,6 +12,8 @@ from core.models.standings.online_qual import OnlineQUAL
 from core.models.standings.qual import QUAL
 from core.models.standings.soty import SOTY
 from core.models.standings.toty import TOTY, TOTYReaff
+from core.models.team import Team
+from core.models.tournament import Tournament
 
 
 def _school_included_in_oty(debater):
@@ -286,11 +288,11 @@ def update_noty(debater, season=settings.CURRENT_SEASON):
     return noty
 
 
-def update_qual_points(team, season=settings.CURRENT_SEASON):
+def update_qual_points(team, season=settings.CURRENT_SEASON, delete_empty_team=True):
     season_token = str(season).split("-")[0]
     is_online_season = season_token in {str(value).split("-")[0] for value in settings.ONLINE_SEASONS}
     if team.team_results.count() == 0:
-        if season == settings.CURRENT_SEASON:
+        if delete_empty_team and season == settings.CURRENT_SEASON:
             team.delete()
         return
 
@@ -308,7 +310,7 @@ def update_qual_points(team, season=settings.CURRENT_SEASON):
                 QualPoints.objects.filter(
                     season=season, debater__school=debater.school
                 ).delete()
-                COTY.objects.filter(school=debater.school).delete()
+                COTY.objects.filter(season=season, school=debater.school).delete()
             continue
 
         if season == settings.CURRENT_SEASON:
@@ -326,7 +328,11 @@ def update_qual_points(team, season=settings.CURRENT_SEASON):
                 debater.save()
 
         for result in scoring_results:
-            if result.place != -1 and result.place <= result.tournament.autoqual_bar:
+            if (
+                result.tournament.qual_type != Tournament.NATIONALS
+                and result.place != -1
+                and result.place <= result.tournament.autoqual_bar
+            ):
                 qual, created = QUAL.objects.get_or_create(
                     season=season,
                     debater=debater,
@@ -460,11 +466,41 @@ def redo_rankings(rankings, season=settings.CURRENT_SEASON, cache_type="toty"):
     client.get(reverse("core:index") + f"?season={season}")
 
 
-def update_online_quals(team, season=settings.CURRENT_SEASON):
+def rebuild_coty_related_rankings(season=settings.CURRENT_SEASON):
+    """
+    Recompute season-wide COTY/qual state.
+
+    COTY is not safely incremental because update_qual_points deletes and rebuilds
+    season qual state per debater. After any tournament import, we need a full
+    rebuild to avoid leaving COTY rows or qual point totals in a partial state.
+    """
+    season = str(season)
+    for team in Team.objects.all():
+        update_qual_points(team, season=season, delete_empty_team=False)
+        update_online_quals(team, season=season, delete_empty_team=False)
+
+    redo_rankings(
+        COTY.objects.filter(season=season),
+        season=season,
+        cache_type="coty",
+    )
+    redo_rankings(
+        OnlineQUAL.objects.filter(season=season),
+        season=season,
+        cache_type="online_quals",
+    )
+
+
+def update_online_quals(team, season=settings.CURRENT_SEASON, delete_empty_team=True):
     season_token = str(season).split("-")[0]
     is_online_season = season_token in {str(value).split("-")[0] for value in settings.ONLINE_SEASONS}
-    if team.team_results.count() == 0 and team.govs.count() == 0 and team.opps.count():
-        team.delete()
+    if (
+        team.team_results.count() == 0
+        and team.govs.count() == 0
+        and team.opps.count() == 0
+    ):
+        if delete_empty_team:
+            team.delete()
         return
 
     if team.debaters.count() == 0:
@@ -530,10 +566,11 @@ def update_online_quals(team, season=settings.CURRENT_SEASON):
                     debater=debater, season=season, qual_type=QUAL.POINTS
                 )
 
-    for debater in team.debaters.all():
-        school = getattr(debater, "school", None)
-        if school is not None:
-            COTY.objects.filter(season=season, school=school).delete()
+    if is_online_season:
+        for debater in team.debaters.all():
+            school = getattr(debater, "school", None)
+            if school is not None:
+                COTY.objects.filter(season=season, school=school).delete()
 
     return True
 

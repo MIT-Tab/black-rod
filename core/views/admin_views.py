@@ -35,7 +35,13 @@ from core.models import (
     TOTY,
     Video,
 )
-from core.utils.rankings import redo_rankings, update_noty, update_soty, update_toty
+from core.utils.rankings import (
+    rebuild_coty_related_rankings,
+    redo_rankings,
+    update_noty,
+    update_soty,
+    update_toty,
+)
 from core.utils.elo_runtime_engine.cache import clear_runtime_caches
 from core.utils.round_amendments import (
     RoundAmendmentError,
@@ -548,6 +554,7 @@ class RankingsRecomputeView(UserPassesTestMixin, TemplateView):
         context["seasons"] = settings.SEASONS
         context["ranking_types"] = [
             ("toty", "TOTY"),
+            ("coty", "COTY / Quals"),
             ("soty", "SOTY"),
             ("noty", "NOTY"),
         ]
@@ -564,6 +571,7 @@ class RankingsRecomputeView(UserPassesTestMixin, TemplateView):
         try:
             ranking_funcs = {
                 "toty": lambda: self._update_toty_rankings(season),
+                "coty": lambda: self._update_coty_rankings(season),
                 "soty": lambda: self._update_soty_rankings(season),
                 "noty": lambda: self._update_noty_rankings(season),
             }
@@ -589,6 +597,9 @@ class RankingsRecomputeView(UserPassesTestMixin, TemplateView):
         redo_rankings(
             TOTY.objects.filter(season=season), season=season, cache_type="toty"
         )
+
+    def _update_coty_rankings(self, season):
+        rebuild_coty_related_rankings(season=season)
 
     def _update_soty_rankings(self, season):
         for debater in Debater.objects.all():

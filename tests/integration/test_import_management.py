@@ -159,8 +159,7 @@ class ImportManagementMutationTests(TestCase):
     @patch.multiple(
         import_management,
         update_toty=lambda *args, **kwargs: None,
-        update_qual_points=lambda *args, **kwargs: None,
-        update_online_quals=lambda *args, **kwargs: None,
+        rebuild_coty_related_rankings=lambda *args, **kwargs: None,
         redo_rankings=lambda *args, **kwargs: None,
     )
     def test_create_team_awards_resets_results(self):

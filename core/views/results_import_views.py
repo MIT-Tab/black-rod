@@ -33,19 +33,16 @@ from core.models.debater import Debater
 from core.models.results.speaker import SpeakerResult
 from core.models.results.team import TeamResult
 from core.models.school import School, SchoolLookup
-from core.models.standings.coty import COTY
 from core.models.standings.noty import NOTY
-from core.models.standings.online_qual import OnlineQUAL
 from core.models.standings.qual import QUAL
 from core.models.standings.soty import SOTY
 from core.models.standings.toty import TOTY
 from core.models.tournament import Tournament
 from core.utils.api_data import APIDataHandler
 from core.utils.rankings import (
+    rebuild_coty_related_rankings,
     redo_rankings,
     update_noty,
-    update_online_quals,
-    update_qual_points,
     update_soty,
     update_toty,
 )
@@ -478,19 +475,17 @@ def update_rankings(
 
     for team in teams_to_update:
         update_toty(team)
-        update_qual_points(team)
-        update_online_quals(team)
     for debater in speakers_to_update:
         update_soty(debater)
     for debater in novices_to_update:
         update_noty(debater)
 
+    rebuild_coty_related_rankings(season=tournament.season)
+
     rankings_to_update = [
         (TOTY, "toty"),
         (SOTY, "soty"),
         (NOTY, "noty"),
-        (COTY, "coty"),
-        (OnlineQUAL, "online_quals"),
     ]
     for model, cache_type in rankings_to_update:
         redo_rankings(

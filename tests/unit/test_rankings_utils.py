@@ -10,6 +10,7 @@ from django.test import TestCase
 
 from core.models import School, Tournament, Debater, Team
 from core.models.debater import QualPoints
+from core.models.round import Round
 from core.models.results.team import TeamResult
 from core.models.results.speaker import SpeakerResult
 from core.models.standings.coty import COTY
@@ -714,6 +715,121 @@ class RankingsUtilsTest(TestCase):
             rankings.update_online_quals(self.team, "2024")
 
         self.assertFalse(COTY.objects.filter(season="2024", school=self.school).exists())
+
+    def test_rebuild_coty_related_rankings_preserves_offline_coty_and_quals(self):
+        self.tournament.autoqual_bar = 4
+        self.tournament.save(update_fields=["autoqual_bar"])
+        TeamResult.objects.create(
+            team=self.team,
+            tournament=self.tournament,
+            type_of_place=Debater.VARSITY,
+            place=3,
+        )
+        rankings.update_qual_points(self.team, "2024")
+
+        before_points = list(
+            QualPoints.objects.filter(season="2024").values_list("debater_id", "points")
+        )
+        before_quals = list(
+            QUAL.objects.filter(season="2024").values_list("debater_id", "qual_type")
+        )
+        before_coty = COTY.objects.get(season="2024", school=self.school).points
+
+        nationals_host = School.objects.create(
+            name="Nationals Host",
+            included_in_oty=True,
+        )
+        nationals = Tournament.objects.create(
+            name="Nationals",
+            host=nationals_host,
+            date=date(2024, 4, 1),
+            season="2024",
+            qual_type=Tournament.NATIONALS,
+            num_teams=64,
+        )
+        TeamResult.objects.create(
+            team=self.team,
+            tournament=nationals,
+            type_of_place=Debater.VARSITY,
+            place=10,
+        )
+
+        rankings.rebuild_coty_related_rankings(season="2024")
+
+        self.assertEqual(
+            list(
+                QualPoints.objects.filter(season="2024").values_list(
+                    "debater_id", "points"
+                )
+            ),
+            before_points,
+        )
+        self.assertEqual(
+            list(
+                QUAL.objects.filter(season="2024").values_list(
+                    "debater_id", "qual_type"
+                )
+            ),
+            before_quals,
+        )
+        self.assertEqual(
+            COTY.objects.get(season="2024", school=self.school).points,
+            before_coty,
+        )
+
+    def test_rebuild_coty_related_rankings_preserves_round_only_teams(self):
+        gov = Team.objects.create(name="Round Gov")
+        gov.debaters.add(self.debater1, self.debater2)
+        opp_debater_one = Debater.objects.create(
+            first_name="Opp", last_name="One", school=self.school
+        )
+        opp_debater_two = Debater.objects.create(
+            first_name="Opp", last_name="Two", school=self.school
+        )
+        opp = Team.objects.create(name="Round Opp")
+        opp.debaters.add(opp_debater_one, opp_debater_two)
+        round_obj = Round.objects.create(
+            tournament=self.tournament,
+            gov=gov,
+            opp=opp,
+            round_number=1,
+        )
+
+        rankings.rebuild_coty_related_rankings(season="2024")
+
+        self.assertTrue(Team.objects.filter(id=gov.id).exists())
+        self.assertTrue(Team.objects.filter(id=opp.id).exists())
+        self.assertTrue(Round.objects.filter(id=round_obj.id).exists())
+
+    def test_update_qual_points_does_not_autoqual_nationals(self):
+        nationals = Tournament.objects.create(
+            name="Nationals",
+            host=self.school,
+            date=date(2024, 4, 1),
+            season="2024",
+            qual_type=Tournament.NATIONALS,
+            num_teams=64,
+            autoqual_bar=16,
+        )
+        TeamResult.objects.create(
+            team=self.team,
+            tournament=nationals,
+            type_of_place=Debater.VARSITY,
+            place=1,
+        )
+
+        rankings.update_qual_points(self.team, "2024")
+
+        self.assertFalse(
+            QUAL.objects.filter(
+                debater__in=self.team.debaters.all(), season="2024"
+            ).exists()
+        )
+        self.assertFalse(
+            QualPoints.objects.filter(
+                debater__in=self.team.debaters.all(), season="2024"
+            ).exists()
+        )
 
     def test_recompute_coty_skips_online_season(self):
         COTY.objects.create(season="2024", school=self.school, points=12, place=1)

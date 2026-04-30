@@ -52,6 +52,36 @@ class AdminToolsViewTest(TestCase):
         self.assertContains(response, reverse("core:synthetic_cleanup"))
         self.assertContains(response, "Synthetic Cleanup")
 
+    @patch("core.views.admin_views.rebuild_coty_related_rankings")
+    def test_rankings_recompute_supports_coty_and_quals(
+        self,
+        mock_rebuild_coty_related_rankings,
+    ):
+        self.client.force_login(self.superuser)
+        team = Team.objects.create(name="Qual Team", short_name="QT")
+        debater_one = Debater.objects.create(
+            first_name="Qual",
+            last_name="One",
+            school=self.school,
+        )
+        debater_two = Debater.objects.create(
+            first_name="Qual",
+            last_name="Two",
+            school=self.school,
+        )
+        team.debaters.add(debater_one, debater_two)
+
+        response = self.client.post(
+            reverse("core:rankings_recompute"),
+            {"season": "2024", "ranking_type": "coty"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = json.loads(response.content)
+        self.assertTrue(payload["success"])
+        self.assertIn("COTY", response.content.decode().upper())
+        mock_rebuild_coty_related_rankings.assert_called_once_with(season="2024")
+
     def test_synthetic_cleanup_lists_direct_and_isolated_synthetic_entities(self):
         self.client.force_login(self.superuser)
 

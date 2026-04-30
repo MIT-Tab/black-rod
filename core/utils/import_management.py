@@ -8,17 +8,14 @@ from core.models.results.speaker import SpeakerResult
 from core.models.results.team import TeamResult
 from core.models.round import Round, RoundStats
 from core.models.school import School, SchoolLookup
-from core.models.standings.coty import COTY
 from core.models.standings.noty import NOTY
-from core.models.standings.online_qual import OnlineQUAL
 from core.models.standings.soty import SOTY
 from core.models.standings.toty import TOTY
 from core.models.team import Team
 from core.utils.rankings import (
+    rebuild_coty_related_rankings,
     redo_rankings,
     update_noty,
-    update_online_quals,
-    update_qual_points,
     update_soty,
     update_toty,
 )
@@ -247,23 +244,10 @@ def create_team_awards(team_completed_actions, team_awards, type_of_result, tour
 
     for team in teams_changed:
         update_toty(team)
-        update_qual_points(team)
-
-        if tournament.season in settings.ONLINE_SEASONS:
-            update_online_quals(team)
+    rebuild_coty_related_rankings(season=tournament.season)
 
     redo_rankings(
         TOTY.objects.filter(season=settings.CURRENT_SEASON),
         season=settings.CURRENT_SEASON,
         cache_type="toty",
-    )
-    redo_rankings(
-        COTY.objects.filter(season=settings.CURRENT_SEASON),
-        season=settings.CURRENT_SEASON,
-        cache_type="coty",
-    )
-    redo_rankings(
-        OnlineQUAL.objects.filter(season=settings.CURRENT_SEASON),
-        season=settings.CURRENT_SEASON,
-        cache_type="online_quals",
     )

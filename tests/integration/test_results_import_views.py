@@ -4,7 +4,6 @@ from types import SimpleNamespace
 
 import pytest
 from django.conf import settings
-from django.http import HttpResponse
 from django.test import RequestFactory
 
 from core.models import School, Debater, Team, Tournament
@@ -25,28 +24,19 @@ def make_request(method="get", path="/wizard/?tournament=1"):
     return request
 
 
-def test_dispatch_clears_stale_tournament_session_data(monkeypatch):
-    request = make_request(path="/wizard/?tournament=2")
-    request.session.update(
-        {
-            "tournament_id": 1,
-            "tournament_api_url": "https://old/",
-            "tournament_debater_mapping": {"1": 11},
-            "other": "keep",
-        }
+def test_setup_view_get_tournament_uses_request_parameter():
+    school = School.objects.create(name="Host", included_in_oty=True)
+    tournament = Tournament.objects.create(
+        name="Invitational",
+        host=school,
+        date=date(2024, 1, 1),
+        season=settings.CURRENT_SEASON,
     )
 
-    def fake_super(self, request, *args, **kwargs):  # pylint: disable=unused-argument
-        return HttpResponse("ok")
+    view = riv.TournamentDataEntrySetupView()
+    view.request = make_request(path=f"/setup/?tournament={tournament.id}")
 
-    monkeypatch.setattr(riv.SessionWizardView, "dispatch", fake_super)
-
-    view = riv.TournamentDataEntryWizardView()
-    view.request = request
-    response = view.dispatch(request)
-
-    assert response.content == b"ok"
-    assert request.session == {"other": "keep", "tournament_id": 2}
+    assert view.get_tournament() == tournament
 
 
 def test_get_form_initial_uses_database_seed_for_results():
@@ -114,15 +104,11 @@ def test_get_form_initial_uses_database_seed_for_results():
         place=1,
     )
 
-    view = riv.TournamentDataEntryWizardView()
-    request = make_request(path=f"/wizard/?tournament={tournament.id}")
-    view.request = request
-
-    varsity_results = view._get_db_initial("2", tournament)
-    varsity_speakers = view._get_db_initial("3", tournament)
-    novice_results = view._get_db_initial("4", tournament)
-    novice_speakers = view._get_db_initial("5", tournament)
-    unplaced_results = view._get_db_initial("6", tournament)
+    varsity_results = riv.get_db_initial("varsity_teams", tournament)
+    varsity_speakers = riv.get_db_initial("varsity_speakers", tournament)
+    novice_results = riv.get_db_initial("novice_teams", tournament)
+    novice_speakers = riv.get_db_initial("novice_speakers", tournament)
+    unplaced_results = riv.get_db_initial("unplaced_teams", tournament)
 
     assert varsity_results[0]["debater_one"] == varsity_one
     assert varsity_results[0]["ghost_points"] is True
@@ -137,92 +123,69 @@ def test_get_form_initial_uses_database_seed_for_results():
 
 
 def test_process_step_creates_entities_from_api(monkeypatch):
-    schools_created = []
-    debaters_created = []
+    school_links = []
     linked_debaters = []
 
     class DummyHandler:
-        def create_schools_from_data(self, data):
-            schools_created.extend(data)
+        def get_new_schools_from_api(self):
+            return [{"name": "New School", "included_in_oty": False}]
 
-        def create_debaters_from_data(self, data):
-            debaters_created.extend(data)
+        def link_tournament_school(self, server_name, school):
+            school_links.append((server_name, school))
+
+        def get_new_debaters_from_api(self):
+            return [
+                {
+                    "first_name": "Deb",
+                    "last_name": "Ater",
+                    "school_name": "New School",
+                    "tournament_id": 10,
+                },
+                {"first_name": "", "last_name": "", "school_name": "New School"},
+            ]
 
         def link_tournament_debater(self, tournament_id, debater):
             linked_debaters.append((tournament_id, debater))
 
-    monkeypatch.setattr(riv.TournamentDataEntryWizardView, "has_api_data", lambda self: True)
-    monkeypatch.setattr(riv.SessionWizardView, "process_step", lambda self, form: "ok")
+    handler = DummyHandler()
 
-    view = riv.TournamentDataEntryWizardView()
-    view.request = make_request(method="post")
-    view.steps = SimpleNamespace(current="0")
-    view._api_handler = DummyHandler()
+    schools_by_server = riv.seed_temporary_schools(handler)
+    debaters = riv.seed_temporary_debaters(handler, schools_by_server)
 
-    form = SimpleNamespace(
-        cleaned_data=[
-            {"name": "New School", "included_in_oty": False},
-            {"name": ""},
-        ]
-    )
-
-    assert view.process_step(form) == "ok"
-    assert schools_created == [{"name": "New School", "included_in_oty": False}]
-
-    view.steps.current = "1"
-    school_obj = object()
-    existing = SimpleNamespace(id=99)
-    form.cleaned_data = [
-        {"first_name": "Deb", "last_name": "Ater", "school": school_obj, "tournament_id": 10},
-        {"first_name": "", "last_name": "", "school": None},
-        {
-            "first_name": "Existing",
-            "last_name": "Debater",
-            "school": school_obj,
-            "tournament_id": 11,
-            "existing_debater": existing,
-        },
-    ]
-
-    assert view.process_step(form) == "ok"
-    assert debaters_created == [
-        {"first_name": "Deb", "last_name": "Ater", "school": school_obj, "tournament_id": 10}
-    ]
-    assert linked_debaters == [(11, existing)]
+    school = School.all_objects.get(name="New School")
+    assert schools_by_server == {"New School": school}
+    assert school.temporary is True
+    assert school.included_in_oty is False
+    assert school_links == [("New School", school)]
+    assert len(debaters) == 1
+    assert debaters[0].first_name == "Deb"
+    assert linked_debaters == [(10, debaters[0])]
 
 
 def test_get_form_prefills_api_initial(monkeypatch):
-    monkeypatch.setattr(riv.TournamentDataEntryWizardView, "has_api_data", lambda self: True)
+    debater_one = Debater.objects.create(first_name="Api", last_name="One")
+    debater_two = Debater.objects.create(first_name="Api", last_name="Two")
 
-    class FakeForm:
-        form_kwargs = {}
+    handler = SimpleNamespace(
+        get_teams_from_api=lambda endpoint: [
+            {"debater_one": debater_one, "debater_two": debater_two}
+        ],
+        get_speakers_from_api=lambda endpoint: [],
+    )
 
-        def __init__(self, initial=None, prefix="0", **kwargs):
-            self.initial = initial
-            self.prefix = prefix
-            if kwargs:
-                self.form_kwargs = kwargs
+    initial = riv.build_api_initial(handler, {"varsity_teams"})
 
-    def fake_super_get_form(self, step=None, data=None, files=None):
-        return FakeForm(initial=None, prefix="0")
-
-    monkeypatch.setattr(riv.SessionWizardView, "get_form", fake_super_get_form)
-
-    view = riv.TournamentDataEntryWizardView()
-    view.request = make_request()
-    view._api_handler = SimpleNamespace(get_new_schools_from_api=lambda: [{"name": "API School", "included_in_oty": True}])
-
-    form = view.get_form(step="0")
-
-    assert isinstance(form, FakeForm)
-    assert form.initial == [{"name": "API School", "included_in_oty": True}]
+    assert initial["varsity_teams"] == [
+        {
+            "debater_one": debater_one,
+            "debater_two": debater_two,
+            "counts_for_points": True,
+            "ORDER": 1,
+        }
+    ]
 
 
 def test_update_rankings_noop_for_other_season(monkeypatch):
-    view = riv.TournamentDataEntryWizardView()
-    request = make_request(path="/wizard/?tournament=1")
-    view.request = request
-
     team = Team.objects.create(name="Skip Team")
     team.debaters.add(
         Debater.objects.create(first_name="Skip", last_name="One", school=School.objects.create(name="S")),
@@ -244,9 +207,47 @@ def test_update_rankings_noop_for_other_season(monkeypatch):
         season="1999",
     )
 
-    view._update_rankings(tournament, [team], [], [])
+    riv.update_rankings(tournament, [team], [], [])
 
     assert called["toty"] is False
+
+
+def test_update_rankings_rebuilds_coty_related_rankings(monkeypatch):
+    school = School.objects.create(name="Host", included_in_oty=True)
+    team = Team.objects.create(name="Touched Team")
+    team.debaters.add(
+        Debater.objects.create(first_name="Touch", last_name="One", school=school),
+        Debater.objects.create(first_name="Touch", last_name="Two", school=school),
+    )
+
+    calls = {"toty": [], "soty": [], "noty": [], "coty": []}
+    monkeypatch.setattr(
+        riv, "update_toty", lambda team, season=settings.CURRENT_SEASON: calls["toty"].append(team)
+    )
+    monkeypatch.setattr(
+        riv,
+        "rebuild_coty_related_rankings",
+        lambda season=settings.CURRENT_SEASON: calls["coty"].append(season),
+    )
+    monkeypatch.setattr(
+        riv, "update_soty", lambda debater, season=settings.CURRENT_SEASON: calls["soty"].append(debater)
+    )
+    monkeypatch.setattr(
+        riv, "update_noty", lambda debater, season=settings.CURRENT_SEASON: calls["noty"].append(debater)
+    )
+    monkeypatch.setattr(riv, "redo_rankings", lambda *args, **kwargs: None)
+
+    tournament = Tournament.objects.create(
+        name="Current",
+        host=school,
+        date=date(2024, 1, 1),
+        season=settings.CURRENT_SEASON,
+    )
+
+    riv.update_rankings(tournament, [team], [], [])
+
+    assert calls["toty"] == [team]
+    assert calls["coty"] == [settings.CURRENT_SEASON]
 
 
 def test_done_rebuilds_results_and_triggers_rankings(monkeypatch):
@@ -292,10 +293,10 @@ def test_done_rebuilds_results_and_triggers_rankings(monkeypatch):
     )
     QUAL.objects.create(season=tournament.season, debater=varsity_one, qual_type=QUAL.POINTS, tournament=tournament)
 
-    team_calls = {"toty": [], "qual": [], "online": []}
+    team_calls = {"toty": []}
     speaker_calls = {"soty": [], "noty": []}
+    coty_rebuild_calls = []
     redo_calls = []
-    cleared = {"done": False}
 
     def fake_team_lookup(debater_one, debater_two):
         pair = {debater_one.id, debater_two.id}
@@ -308,39 +309,60 @@ def test_done_rebuilds_results_and_triggers_rankings(monkeypatch):
     monkeypatch.setattr(riv, "get_or_create_team_for_debaters", fake_team_lookup)
 
     monkeypatch.setattr(riv, "update_toty", lambda team, season=settings.CURRENT_SEASON: team_calls["toty"].append(team))
-    monkeypatch.setattr(riv, "update_qual_points", lambda team, season=settings.CURRENT_SEASON: team_calls["qual"].append(team))
-    monkeypatch.setattr(riv, "update_online_quals", lambda team, season=settings.CURRENT_SEASON: team_calls["online"].append(team))
+    monkeypatch.setattr(
+        riv,
+        "rebuild_coty_related_rankings",
+        lambda season=settings.CURRENT_SEASON: coty_rebuild_calls.append(season),
+    )
     monkeypatch.setattr(riv, "update_soty", lambda debater, season=settings.CURRENT_SEASON: speaker_calls["soty"].append(debater))
     monkeypatch.setattr(riv, "update_noty", lambda debater, season=settings.CURRENT_SEASON: speaker_calls["noty"].append(debater))
     monkeypatch.setattr(riv, "redo_rankings", lambda qs, season, cache_type: redo_calls.append(cache_type))
+    monkeypatch.setattr(riv, "reindex_debaters", lambda *args, **kwargs: None)
 
     request = make_request(method="post", path=f"/wizard/?tournament={tournament.id}")
-    view = riv.TournamentDataEntryWizardView()
+    view = riv.TournamentDataEntryView()
     view.request = request
-    view._tournament = tournament
 
-    form_dict = {
-        "2": SimpleNamespace(cleaned_data=[{"debater_one": varsity_one, "debater_two": varsity_two, "ghost_points": True, "ORDER": 1}]),
-        "4": SimpleNamespace(cleaned_data=[{"debater_one": novice_one, "debater_two": novice_two, "ORDER": 1}]),
-        "6": SimpleNamespace(cleaned_data=[{"debater_one": varsity_one, "debater_two": novice_one}]),
-        "3": SimpleNamespace(cleaned_data=[{"speaker": varsity_one, "tie": True, "ORDER": 1}]),
-        "5": SimpleNamespace(cleaned_data=[{"speaker": novice_one, "tie": False, "ORDER": 1}]),
+    formsets = {
+        "varsity_teams": SimpleNamespace(
+            cleaned_data=[
+                {
+                    "debater_one": varsity_one,
+                    "debater_two": varsity_two,
+                    "ghost_points": True,
+                    "ORDER": 1,
+                }
+            ]
+        ),
+        "novice_teams": SimpleNamespace(
+            cleaned_data=[
+                {"debater_one": novice_one, "debater_two": novice_two, "ORDER": 1}
+            ]
+        ),
+        "unplaced_teams": SimpleNamespace(
+            cleaned_data=[{"debater_one": varsity_one, "debater_two": novice_one}]
+        ),
+        "varsity_speakers": SimpleNamespace(
+            cleaned_data=[{"speaker": varsity_one, "tie": True, "ORDER": 1}]
+        ),
+        "novice_speakers": SimpleNamespace(
+            cleaned_data=[{"speaker": novice_one, "tie": False, "ORDER": 1}]
+        ),
     }
 
-    response = view.done([], form_dict)
+    view.persist_results(tournament, formsets, use_api=False)
 
-    assert response.status_code == 302
     assert TeamResult.objects.filter(tournament=tournament).count() == 3
     assert SpeakerResult.objects.filter(tournament=tournament).count() == 2
     assert QUAL.objects.filter(tournament=tournament).count() == 0
 
     assert set(team_calls["toty"]) == {varsity_team, novice_team, unplaced_team}
-    assert set(team_calls["qual"]) == {varsity_team, novice_team, unplaced_team}
-    assert set(team_calls["online"]) == {varsity_team, novice_team, unplaced_team}
+    assert coty_rebuild_calls == [settings.CURRENT_SEASON]
     assert set(speaker_calls["soty"]) == {varsity_one}
     assert set(speaker_calls["noty"]) == {novice_one}
-    assert {"toty", "soty", "noty", "coty", "online_quals"}.issubset(set(redo_calls))
-    assert cleared["done"] is True
+    assert {"toty", "soty", "noty"}.issubset(set(redo_calls))
+    assert "coty" not in redo_calls
+    assert "online_quals" not in redo_calls
 
 
 def test_get_new_team_form_renders_requested_form(monkeypatch):
@@ -382,8 +404,8 @@ def test_get_new_team_form_sets_order_for_speaker(monkeypatch):
     assert payload["html"] == {"ORDER": 2}
 
 
-def test_get_tournament_falls_back_to_session():
-    """Test that _get_tournament can retrieve tournament from session when GET param is missing"""
+def test_get_tournament_uses_post_parameter():
+    """Test that get_tournament can retrieve tournament from POST data."""
     school = School.objects.create(name="Test School", included_in_oty=True)
     tournament = Tournament.objects.create(
         name="Test Tournament",
@@ -393,11 +415,12 @@ def test_get_tournament_falls_back_to_session():
     )
 
     request = make_request(method="post", path="/wizard/")
-    request.session["tournament_id"] = tournament.id
+    request.POST = request.POST.copy()
+    request.POST["tournament"] = str(tournament.id)
 
-    view = riv.TournamentDataEntryWizardView()
+    view = riv.TournamentDataEntryView()
     view.request = request
 
-    retrieved_tournament = view._get_tournament()
+    retrieved_tournament = view.get_tournament()
     assert retrieved_tournament.id == tournament.id
     assert retrieved_tournament.name == "Test School"
