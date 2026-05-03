@@ -9,7 +9,7 @@ from urllib.parse import unquote_plus
 
 from django.conf import settings
 from django.core.cache import cache
-from django.db.models import Count, Prefetch, Q
+from django.db.models import Count, F, Max, Prefetch, Q
 from django.http import Http404, HttpResponse
 from django.test import RequestFactory
 from django.urls import resolve, reverse, Resolver404
@@ -194,7 +194,7 @@ class ActiveSchoolListAPIView(APIView):
 @extend_schema_view(
     get=extend_schema(
         summary="List all schools",
-        description="Return an alphabetical list of every school in the database.",
+        description="Return every school in the database, ordered by most recent debater activity.",
         responses=SchoolListResponseSerializer,
     )
 )
@@ -208,16 +208,25 @@ class AllSchoolListAPIView(APIView):
     """
 
     def get(self, request):
-        cache_key = 'api:all_schools'
+        cache_key = 'api:all_schools:recent_competition_date'
         cached_data = cache.get(cache_key)
 
         if cached_data is not None:
             return Response(cached_data)
 
-        schools = School.objects.all().order_by('name')
+        schools = list(
+            School.objects.annotate(
+                latest_competed_at=Max('debaters__teams__team_results__tournament__date'),
+                latest_competed_season=Max('debaters__latest_season'),
+            ).order_by(
+                F('latest_competed_at').desc(nulls_last=True),
+                F('latest_competed_season').desc(nulls_last=True),
+                'name',
+            )
+        )
 
         data = {
-            "count": schools.count(),
+            "count": len(schools),
             "schools": [serialize_school(school, request) for school in schools]
         }
         cache.set(cache_key, data, 300)
@@ -243,7 +252,7 @@ class SchoolDebatersAPIView(APIView):
     """
 
     def get(self, request, school_id):
-        cache_key = f'api:school_debaters:{school_id}'
+        cache_key = f'api:school_debaters:{school_id}:recent_competition_date'
         cached_data = cache.get(cache_key)
 
         if cached_data is not None:
@@ -261,11 +270,19 @@ class SchoolDebatersAPIView(APIView):
         debaters = Debater.objects.filter(
             school=school,
             latest_season__gte=cutoff_season
-        ).select_related('school').order_by('last_name', 'first_name')
+        ).select_related('school').annotate(
+            latest_competed_at=Max('teams__team_results__tournament__date')
+        ).order_by(
+            F('latest_competed_at').desc(nulls_last=True),
+            '-latest_season',
+            'last_name',
+            'first_name',
+        )
+        debaters = list(debaters)
 
         data = {
             "school": serialize_school(school, request),
-            "count": debaters.count(),
+            "count": len(debaters),
             "debaters": [serialize_debater(debater, request) for debater in debaters]
         }
 

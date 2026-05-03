@@ -8,8 +8,12 @@ from datetime import date
 from django.test import TestCase, Client
 from django.conf import settings
 from django.core.cache import cache
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from core.models.school import School
 from core.models.debater import Debater
+from core.models.results.team import TeamResult
+from core.models.team import Team
 from core.models.tournament import Tournament
 
 
@@ -166,13 +170,37 @@ class APIAllSchoolListViewTest(TestCase):
         self.school2 = School.objects.create(name="MIT")
         self.school3 = School.objects.create(name="Yale University")
         
-        # Only one has recent debaters
-        Debater.objects.create(
-            first_name="Active",
+        # Schools should be ordered by most recent activity, with inactive schools last.
+        harvard_debater = Debater.objects.create(
+            first_name="Older",
             last_name="Student",
             school=self.school1,
             latest_season=str(self.current_year)
         )
+        mit_debater = Debater.objects.create(
+            first_name="Active",
+            last_name="Student",
+            school=self.school2,
+            latest_season=str(self.current_year)
+        )
+        harvard_team = Team.objects.create(name="Harvard Team")
+        harvard_team.debaters.add(harvard_debater)
+        mit_team = Team.objects.create(name="MIT Team")
+        mit_team.debaters.add(mit_debater)
+        harvard_tournament = Tournament.objects.create(
+            name="October Invitational",
+            host=self.school1,
+            date=date(self.current_year, 10, 1),
+            season=str(self.current_year),
+        )
+        mit_tournament = Tournament.objects.create(
+            name="November Invitational",
+            host=self.school2,
+            date=date(self.current_year, 11, 1),
+            season=str(self.current_year),
+        )
+        TeamResult.objects.create(tournament=harvard_tournament, team=harvard_team, place=-1)
+        TeamResult.objects.create(tournament=mit_tournament, team=mit_team, place=-1)
     
     def test_all_schools_returned(self):
         """Test that all schools are returned regardless of activity"""
@@ -184,15 +212,42 @@ class APIAllSchoolListViewTest(TestCase):
         self.assertEqual(data['count'], 3)
         self.assertEqual(len(data['schools']), 3)
     
-    def test_schools_ordered_by_name(self):
-        """Test that schools are ordered alphabetically"""
+    def test_schools_ordered_by_recent_competition(self):
+        """Test that schools are ordered by most recent debater activity"""
         response = self.client.get('/api/schools/all/')
         data = json.loads(response.content)
         
         schools = data['schools']
-        self.assertEqual(schools[0]['name'], "Harvard University")
-        self.assertEqual(schools[1]['name'], "MIT")
+        self.assertEqual(schools[0]['name'], "MIT")
+        self.assertEqual(schools[1]['name'], "Harvard University")
         self.assertEqual(schools[2]['name'], "Yale University")
+
+    def test_schools_recent_competition_sort_is_not_n_plus_one(self):
+        """Test that recency sorting does not add queries per school"""
+        for i in range(10):
+            school = School.objects.create(name=f"Extra School {i:02d}")
+            debater = Debater.objects.create(
+                first_name="Extra",
+                last_name=f"Student-{i}",
+                school=school,
+                latest_season=str(self.current_year - (i % 3)),
+            )
+            team = Team.objects.create(name=f"Extra Team {i:02d}")
+            team.debaters.add(debater)
+            tournament = Tournament.objects.create(
+                name=f"Extra Tournament {i:02d}",
+                host=school,
+                date=date(self.current_year - (i % 3), 9, i + 1),
+                season=str(self.current_year - (i % 3)),
+            )
+            TeamResult.objects.create(tournament=tournament, team=team, place=-1)
+
+        cache.clear()
+        with CaptureQueriesContext(connection) as ctx:
+            response = self.client.get('/api/schools/all/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertLessEqual(len(ctx), 1)
     
     def test_schools_have_required_fields(self):
         """Test that each school has id and name"""
@@ -236,6 +291,7 @@ class APISchoolDebatersViewTest(TestCase):
     
     def setUp(self):
         self.client = Client()
+        cache.clear()
         self.school = School.objects.create(name="Harvard University")
         
         # Get current year from settings
@@ -258,8 +314,8 @@ class APISchoolDebatersViewTest(TestCase):
             last_name="Graduate",
             school=self.school,
             status=Debater.NOVICE,
-            first_season=str(self.current_year - 5),
-            latest_season=str(self.current_year - 3)
+            first_season=str(self.current_year - 1),
+            latest_season=str(self.current_year)
         )
         
         # Active 6 years ago (should be excluded)
@@ -281,6 +337,24 @@ class APISchoolDebatersViewTest(TestCase):
             first_season=str(self.current_year - 6),
             latest_season=str(self.current_year - 5)
         )
+        self._create_participation(self.debater1, date(self.current_year, 11, 1), "Current")
+        self._create_participation(self.debater2, date(self.current_year, 9, 1), "Earlier")
+        self._create_participation(
+            self.debater4,
+            date(self.current_year - 5, 10, 1),
+            "Boundary",
+        )
+
+    def _create_participation(self, debater, tournament_date, suffix):
+        team = Team.objects.create(name=f"{debater.name} {suffix}")
+        team.debaters.add(debater)
+        tournament = Tournament.objects.create(
+            name=f"{suffix} Tournament",
+            host=self.school,
+            date=tournament_date,
+            season=str(tournament_date.year),
+        )
+        TeamResult.objects.create(tournament=tournament, team=team, place=-1)
     
     def test_school_debaters_returns_active_debaters(self):
         """Test that endpoint returns only debaters active in last 5 years"""
@@ -316,16 +390,37 @@ class APISchoolDebatersViewTest(TestCase):
             self.assertIn('school_id', debater)
             self.assertIn('school_name', debater)
     
-    def test_debaters_ordered_by_name(self):
-        """Test that debaters are ordered by last name then first name"""
+    def test_debaters_ordered_by_recent_competition(self):
+        """Test that debaters are ordered by latest tournament date, then season and name"""
         response = self.client.get(f'/api/debaters/{self.school.id}/')
         data = json.loads(response.content)
         
         debaters = data['debaters']
-        # Should be: Boundary Case, Active Current, Recent Graduate
-        self.assertEqual(debaters[0]['last_name'], "Case")
-        self.assertEqual(debaters[1]['last_name'], "Current")
-        self.assertEqual(debaters[2]['last_name'], "Graduate")
+        self.assertEqual(debaters[0]['last_name'], "Current")
+        self.assertEqual(debaters[1]['last_name'], "Graduate")
+        self.assertEqual(debaters[2]['last_name'], "Case")
+
+    def test_debaters_recent_competition_sort_is_not_n_plus_one(self):
+        """Test that recency sorting does not add queries per debater"""
+        for i in range(10):
+            debater = Debater.objects.create(
+                first_name="Extra",
+                last_name=f"Student-{i:02d}",
+                school=self.school,
+                latest_season=str(self.current_year - (i % 5)),
+            )
+            self._create_participation(
+                debater,
+                date(self.current_year - (i % 5), 8, i + 1),
+                f"Extra {i:02d}",
+            )
+
+        cache.clear()
+        with CaptureQueriesContext(connection) as ctx:
+            response = self.client.get(f'/api/debaters/{self.school.id}/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertLessEqual(len(ctx), 2)
     
     def test_nonexistent_school_returns_404(self):
         """Test that requesting debaters for non-existent school returns 404"""
