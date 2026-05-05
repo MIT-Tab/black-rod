@@ -276,10 +276,6 @@ nav {
     overflow: visible !important;
 }
 
-.tab-pane.table-responsive {
-    overflow: visible !important;
-}
-
 .dropdown-menu {
     z-index: 1050 !important;
 }
@@ -287,6 +283,97 @@ nav {
 .outreach-available {
     color: #0d7d3e;
     font-weight: 500;
+}
+
+.standings-scroll {
+    overflow-x: auto;
+}
+
+@media (max-width: 991.98px) {
+    .container-fluid:has(.standings-scroll) {
+        padding-left: 0;
+        padding-right: 0;
+    }
+
+    .card:has(.standings-scroll) {
+        margin-left: 0 !important;
+        margin-right: 0 !important;
+        border-radius: 0 !important;
+        border-left: none !important;
+        border-right: none !important;
+
+        > .card-body {
+            padding-left: 0.35rem;
+            padding-right: 0.35rem;
+        }
+    }
+
+    .standings-scroll > .table {
+        font-size: 1.05rem;
+        margin-bottom: 0;
+
+        th,
+        td {
+            padding: 0.9rem 0.4rem;
+            line-height: 1.5;
+        }
+
+        // Marker / detail columns stay compact horizontally so the row still
+        // fits without scroll, but inherit the taller row padding.
+        th:nth-child(n+5),
+        td:nth-child(n+5) {
+            font-size: 0.78rem;
+            padding-left: 0.2rem;
+            padding-right: 0.2rem;
+        }
+
+        > tbody:not(.collapse) > tr > td:first-child {
+            font-weight: 700;
+            font-size: 1.2rem;
+        }
+
+        thead th {
+            font-weight: 700;
+        }
+
+        // Stack score above tournament name in marker cells. Cell stays narrow
+        // (only as wide as the tournament name) while the score above can grow.
+        td:nth-child(n+5) > a {
+            display: block;
+            margin-top: 0.15rem;
+            font-size: 0.88rem;
+        }
+
+        a {
+            word-break: break-word;
+        }
+    }
+}
+
+@media (max-width: 575.98px) {
+    .standings-scroll > .table {
+        font-size: 0.98rem;
+
+        th,
+        td {
+            padding: 0.75rem 0.3rem;
+        }
+
+        th:nth-child(n+5),
+        td:nth-child(n+5) {
+            font-size: 0.72rem;
+            padding-left: 0.15rem;
+            padding-right: 0.15rem;
+        }
+
+        td:nth-child(n+5) > a {
+            font-size: 0.82rem;
+        }
+
+        > tbody:not(.collapse) > tr > td:first-child {
+            font-size: 1.1rem;
+        }
+    }
 }
 
 

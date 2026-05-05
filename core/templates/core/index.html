@@ -46,7 +46,7 @@
                 </ul>
             </h5>
             <div class="tab-content" id="results">
-                <div class="tab-pane fade table-responsive {% if default == 'toty' %}active show{% endif %}"
+                <div class="tab-pane fade {% if default == 'toty' %}active show{% endif %}"
                      id="toty"
                      role="tabpanel">
                     {% cache None toty current_season %}
@@ -78,26 +78,27 @@
                             </ul>
                         </div>
                     </h5>
-                    <table class="table table-hover">
+                    <div class="table-responsive standings-scroll">
+                        <table class="table table-hover">
                         <thead>
                             <th scope="col" width="5%">#</th>
                             <th scope="col">School</th>
                             <th scope="col">Debaters</th>
                             <th scope="col">Points</th>
                             <th scope="col">
-                                <center>1</center>
+                                1
                             </th>
                             <th scope="col">
-                                <center>2</center>
+                                2
                             </th>
                             <th scope="col">
-                                <center>3</center>
+                                3
                             </th>
                             <th scope="col">
-                                <center>4</center>
+                                4
                             </th>
                             <th scope="col">
-                                <center>5</center>
+                                5
                             </th>
                         </thead>
                         <tbody>
@@ -114,27 +115,27 @@
                                     <td>{{ team.points|number }}</td>
                                     <td>
                                         {% if not team.marker_one == 0 %}
-                                            {{ team.marker_one|number }} (<a href="{{ team.tournament_one.get_absolute_url }}">{{ team.tournament_one.display }}</a>)
+                                            {{ team.marker_one|number }} <a href="{{ team.tournament_one.get_absolute_url }}">{{ team.tournament_one.display }}</a>
                                         {% endif %}
                                     </td>
                                     <td>
                                         {% if not team.marker_two == 0 %}
-                                            {{ team.marker_two|number }} (<a href="{{ team.tournament_two.get_absolute_url }}">{{ team.tournament_two.display }}</a>)
+                                            {{ team.marker_two|number }} <a href="{{ team.tournament_two.get_absolute_url }}">{{ team.tournament_two.display }}</a>
                                         {% endif %}
                                     </td>
                                     <td>
                                         {% if not team.marker_three == 0 %}
-                                            {{ team.marker_three|number }} (<a href="{{ team.tournament_three.get_absolute_url }}">{{ team.tournament_three.display }}</a>)
+                                            {{ team.marker_three|number }} <a href="{{ team.tournament_three.get_absolute_url }}">{{ team.tournament_three.display }}</a>
                                         {% endif %}
                                     </td>
                                     <td>
                                         {% if not team.marker_four == 0 %}
-                                            {{ team.marker_four|number }} (<a href="{{ team.tournament_four.get_absolute_url }}">{{ team.tournament_four.display }}</a>)
+                                            {{ team.marker_four|number }} <a href="{{ team.tournament_four.get_absolute_url }}">{{ team.tournament_four.display }}</a>
                                         {% endif %}
                                     </td>
                                     <td>
                                         {% if not team.marker_five == 0 %}
-                                            {{ team.marker_five|number }} (<a href="{{ team.tournament_five.get_absolute_url }}">{{ team.tournament_five.display }}</a>)
+                                            {{ team.marker_five|number }} <a href="{{ team.tournament_five.get_absolute_url }}">{{ team.tournament_five.display }}</a>
                                         {% endif %}
                                     </td>
                                 </tr>
@@ -147,9 +148,10 @@
                             {% endfor %}
                         </tbody>
                     </table>
+                    </div>
                 {% endcache %}
             </div>
-            <div class="tab-pane fade table-responsive {% if default == 'soty' %}active show{% endif %}"
+            <div class="tab-pane fade {% if default == 'soty' %}active show{% endif %}"
                  id="soty"
                  role="tabpanel">
                 {% cache None soty current_season %}
@@ -175,6 +177,7 @@
                         </li>
                     </ul>
                 </h5>
+                <div class="table-responsive standings-scroll">
                 <table class="table table-hover">
                     <thead>
                         <th scope="col">#</th>
@@ -182,22 +185,22 @@
                         <th scope="col">School</th>
                         <th scope="col">Points</th>
                         <th scop="col">
-                            <center>1</center>
+                            1
                         </th>
                         <th scop="col">
-                            <center>2</center>
+                            2
                         </th>
                         <th scop="col">
-                            <center>3</center>
+                            3
                         </th>
                         <th scop="col">
-                            <center>4</center>
+                            4
                         </th>
                         <th scop="col">
-                            <center>5</center>
+                            5
                         </th>
                         <th scop="col">
-                            <center>6</center>
+                            6
                         </th>
                     </thead>
                     <tbody>
@@ -216,32 +219,32 @@
                                 <td>{{ speaker.points|number }}</td>
                                 <td>
                                     {% if not speaker.marker_one == 0 %}
-                                        {{ speaker.marker_one|number }} (<a href="{{ speaker.tournament_one.get_absolute_url }}">{{ speaker.tournament_one.display }}</a>)
+                                        {{ speaker.marker_one|number }} <a href="{{ speaker.tournament_one.get_absolute_url }}">{{ speaker.tournament_one.display }}</a>
                                     {% endif %}
                                 </td>
                                 <td>
                                     {% if not speaker.marker_two == 0 %}
-                                        {{ speaker.marker_two|number }} (<a href="{{ speaker.tournament_two.get_absolute_url }}">{{ speaker.tournament_two.display }}</a>)
+                                        {{ speaker.marker_two|number }} <a href="{{ speaker.tournament_two.get_absolute_url }}">{{ speaker.tournament_two.display }}</a>
                                     {% endif %}
                                 </td>
                                 <td>
                                     {% if not speaker.marker_three == 0 %}
-                                        {{ speaker.marker_three|number }} (<a href="{{ speaker.tournament_three.get_absolute_url }}">{{ speaker.tournament_three.display }}</a>)
+                                        {{ speaker.marker_three|number }} <a href="{{ speaker.tournament_three.get_absolute_url }}">{{ speaker.tournament_three.display }}</a>
                                     {% endif %}
                                 </td>
                                 <td>
                                     {% if not speaker.marker_four == 0 %}
-                                        {{ speaker.marker_four|number }} (<a href="{{ speaker.tournament_four.get_absolute_url }}">{{ speaker.tournament_four.display }}</a>)
+                                        {{ speaker.marker_four|number }} <a href="{{ speaker.tournament_four.get_absolute_url }}">{{ speaker.tournament_four.display }}</a>
                                     {% endif %}
                                 </td>
                                 <td>
                                     {% if not speaker.marker_five == 0 %}
-                                        {{ speaker.marker_five|number }} (<a href="{{ speaker.tournament_five.get_absolute_url }}">{{ speaker.tournament_five.display }}</a>)
+                                        {{ speaker.marker_five|number }} <a href="{{ speaker.tournament_five.get_absolute_url }}">{{ speaker.tournament_five.display }}</a>
                                     {% endif %}
                                 </td>
                                 <td>
                                     {% if not speaker.marker_six == 0 %}
-                                        {{ speaker.marker_six|number }} (<a href="{{ speaker.tournament_six.get_absolute_url }}">{{ speaker.tournament_six.display }}</a>)
+                                        {{ speaker.marker_six|number }} <a href="{{ speaker.tournament_six.get_absolute_url }}">{{ speaker.tournament_six.display }}</a>
                                     {% endif %}
                                 </td>
                             </tr>
@@ -254,9 +257,10 @@
                         {% endfor %}
                     </tbody>
                 </table>
+                </div>
             {% endcache %}
         </div>
-        <div class="tab-pane fade table-responsive {% if default == 'coty' %}active show{% endif %}"
+        <div class="tab-pane fade {% if default == 'coty' %}active show{% endif %}"
              id="coty"
              role="tabpanel">
             {% cache None coty current_season %}
@@ -283,6 +287,7 @@
                     </li>
                 </ul>
             </h5>
+            <div class="table-responsive standings-scroll">
             <table class="table table-hover">
                 <thead>
                     <th scope="col" width="10%">#</th>
@@ -334,9 +339,10 @@
                     </tr>
                 {% endfor %}
         </table>
+        </div>
     {% endcache %}
 </div>
-<div class="tab-pane fade table-responsive {% if default == 'noty' %}active show{% endif %}"
+<div class="tab-pane fade {% if default == 'noty' %}active show{% endif %}"
      id="noty"
      role="tabpanel">
     {% cache None noty current_season %}
@@ -362,6 +368,7 @@
             </li>
         </ul>
     </h5>
+    <div class="table-responsive standings-scroll">
     <table class="table table-hover">
         <thead>
             <th scope="col">#</th>
@@ -369,19 +376,19 @@
             <th scope="col">School</th>
             <th scope="col">Points</th>
             <th scope="col">
-                <center>1</center>
+                1
             </th>
             <th scope="col">
-                <center>2</center>
+                2
             </th>
             <th scope="col">
-                <center>3</center>
+                3
             </th>
             <th scope="col">
-                <center>4</center>
+                4
             </th>
             <th scope="col">
-                <center>5</center>
+                5
             </th>
         </thead>
         <tbody>
@@ -400,27 +407,27 @@
                     <td>{{ speaker.points|number }}</td>
                     <td>
                         {% if not speaker.marker_one == 0 %}
-                            {{ speaker.marker_one|number }} (<a href="{{ speaker.tournament_one.get_absolute_url }}">{{ speaker.tournament_one.display }}</a>)
+                            {{ speaker.marker_one|number }} <a href="{{ speaker.tournament_one.get_absolute_url }}">{{ speaker.tournament_one.display }}</a>
                         {% endif %}
                     </td>
                     <td>
                         {% if not speaker.marker_two == 0 %}
-                            {{ speaker.marker_two|number }} (<a href="{{ speaker.tournament_two.get_absolute_url }}">{{ speaker.tournament_two.display }}</a>)
+                            {{ speaker.marker_two|number }} <a href="{{ speaker.tournament_two.get_absolute_url }}">{{ speaker.tournament_two.display }}</a>
                         {% endif %}
                     </td>
                     <td>
                         {% if not speaker.marker_three == 0 %}
-                            {{ speaker.marker_three|number }} (<a href="{{ speaker.tournament_three.get_absolute_url }}">{{ speaker.tournament_three.display }}</a>)
+                            {{ speaker.marker_three|number }} <a href="{{ speaker.tournament_three.get_absolute_url }}">{{ speaker.tournament_three.display }}</a>
                         {% endif %}
                     </td>
                     <td>
                         {% if not speaker.marker_four == 0 %}
-                            {{ speaker.marker_four|number }} (<a href="{{ speaker.tournament_four.get_absolute_url }}">{{ speaker.tournament_four.display }}</a>)
+                            {{ speaker.marker_four|number }} <a href="{{ speaker.tournament_four.get_absolute_url }}">{{ speaker.tournament_four.display }}</a>
                         {% endif %}
                     </td>
                     <td>
                         {% if not speaker.marker_five == 0 %}
-                            {{ speaker.marker_five|number }} (<a href="{{ speaker.tournament_five.get_absolute_url }}">{{ speaker.tournament_five.display }}</a>)
+                            {{ speaker.marker_five|number }} <a href="{{ speaker.tournament_five.get_absolute_url }}">{{ speaker.tournament_five.display }}</a>
                         {% endif %}
                     </td>
                 </tr>
@@ -433,9 +440,10 @@
             {% endfor %}
         </tbody>
     </table>
+    </div>
 {% endcache %}
 </div>
-<div class="tab-pane fade table-responsive {% if default == 'online_quals' %}active show{% endif %}"
+<div class="tab-pane fade {% if default == 'online_quals' %}active show{% endif %}"
      id="online_quals"
      role="tabpanel">
     {% cache None online_quals current_season %}
@@ -461,6 +469,7 @@
             </li>
         </ul>
     </h5>
+    <div class="table-responsive standings-scroll">
     <table class="table table-hover">
         <thead>
             <th scope="col">#</th>
@@ -469,22 +478,22 @@
             <th scope="col">Points</th>
             <th scope="col">Qualled</th>
             <th scop="col">
-                <center>1</center>
+                1
             </th>
             <th scop="col">
-                <center>2</center>
+                2
             </th>
             <th scop="col">
-                <center>3</center>
+                3
             </th>
             <th scop="col">
-                <center>4</center>
+                4
             </th>
             <th scop="col">
-                <center>5</center>
+                5
             </th>
             <th scop="col">
-                <center>6</center>
+                6
             </th>
         </thead>
         <tbody>
@@ -506,32 +515,32 @@
                     </td>
                     <td>
                         {% if not speaker.marker_one == 0 %}
-                            {{ speaker.marker_one|number }} (<a href="{{ speaker.tournament_one.get_absolute_url }}">{{ speaker.tournament_one.display }}</a>)
+                            {{ speaker.marker_one|number }} <a href="{{ speaker.tournament_one.get_absolute_url }}">{{ speaker.tournament_one.display }}</a>
                         {% endif %}
                     </td>
                     <td>
                         {% if not speaker.marker_two == 0 %}
-                            {{ speaker.marker_two|number }} (<a href="{{ speaker.tournament_two.get_absolute_url }}">{{ speaker.tournament_two.display }}</a>)
+                            {{ speaker.marker_two|number }} <a href="{{ speaker.tournament_two.get_absolute_url }}">{{ speaker.tournament_two.display }}</a>
                         {% endif %}
                     </td>
                     <td>
                         {% if not speaker.marker_three == 0 %}
-                            {{ speaker.marker_three|number }} (<a href="{{ speaker.tournament_three.get_absolute_url }}">{{ speaker.tournament_three.display }}</a>)
+                            {{ speaker.marker_three|number }} <a href="{{ speaker.tournament_three.get_absolute_url }}">{{ speaker.tournament_three.display }}</a>
                         {% endif %}
                     </td>
                     <td>
                         {% if not speaker.marker_four == 0 %}
-                            {{ speaker.marker_four|number }} (<a href="{{ speaker.tournament_four.get_absolute_url }}">{{ speaker.tournament_four.display }}</a>)
+                            {{ speaker.marker_four|number }} <a href="{{ speaker.tournament_four.get_absolute_url }}">{{ speaker.tournament_four.display }}</a>
                         {% endif %}
                     </td>
                     <td>
                         {% if not speaker.marker_five == 0 %}
-                            {{ speaker.marker_five|number }} (<a href="{{ speaker.tournament_five.get_absolute_url }}">{{ speaker.tournament_five.display }}</a>)
+                            {{ speaker.marker_five|number }} <a href="{{ speaker.tournament_five.get_absolute_url }}">{{ speaker.tournament_five.display }}</a>
                         {% endif %}
                     </td>
                     <td>
                         {% if not speaker.marker_six == 0 %}
-                            {{ speaker.marker_six|number }} (<a href="{{ speaker.tournament_six.get_absolute_url }}">{{ speaker.tournament_six.display }}</a>)
+                            {{ speaker.marker_six|number }} <a href="{{ speaker.tournament_six.get_absolute_url }}">{{ speaker.tournament_six.display }}</a>
                         {% endif %}
                     </td>
                 </tr>
@@ -544,6 +553,7 @@
             {% endfor %}
         </tbody>
     </table>
+    </div>
 {% endcache %}
 </div>
 </div>

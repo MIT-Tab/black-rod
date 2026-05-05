@@ -65,7 +65,7 @@ function teamSearch() {
 $(document).ready(() => {
   $("#expandAll").on("click", (e) => {
     e.preventDefault();
-    $(".collapse").toggleClass("show");
+    $("#coty .collapse").toggleClass("show");
   });
 
   $(".clickable").on("click", function clickHandler(e) {

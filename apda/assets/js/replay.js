@@ -152,7 +152,7 @@ const buildMarkerCellContent = (marker) => {
       ? `<a href="${tournament.url}">${tournamentName}</a>`
       : tournamentName;
   return `${formatPoints(marker.points)}${
-    tournamentName ? ` (${tournamentLink})` : ""
+    tournamentName ? ` ${tournamentLink}` : ""
   }`;
 };
 
