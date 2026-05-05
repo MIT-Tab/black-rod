@@ -1,5 +1,4 @@
 from django.db import models
-from django.shortcuts import reverse
 
 from .debater import Debater
 from .team import Team
@@ -109,9 +108,6 @@ class Round(models.Model):
                 debater_role=None,
             )
         self.stats.update(**stat_updates)
-
-    def get_absolute_url(self):
-        return reverse("core:round_detail", kwargs={"pk": self.id})
 
 
 def sanitize_round_stat_values(round_or_stage, *, speaks=None, ranks=None, debater_role=None):

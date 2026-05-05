@@ -424,12 +424,6 @@ def _serialize_round_stat(stat, request):
     }
 
 
-def _absolute_round_url(round_obj, request):
-    if not request:
-        return round_obj.get_absolute_url()
-    return request.build_absolute_uri(round_obj.get_absolute_url())
-
-
 def _llm_proxy_url(request, endpoint_path):
     proxy_path = reverse("llm_proxy")
     return request.build_absolute_uri(f"{proxy_path}?endpoint={endpoint_path}")
@@ -475,7 +469,6 @@ def _serialize_tab_card(team, tournament, request):
             {
                 "round_id": round_obj.id,
                 "round_number": round_obj.round_number,
-                "round_url": _absolute_round_url(round_obj, request),
                 "opponent": serialize_team(opponent, request, include_debaters=False),
                 "opponent_side": "OPP" if round_obj.gov_id == team.id else "GOV",
                 "result": _round_result(round_obj, team),

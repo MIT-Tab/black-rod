@@ -119,7 +119,7 @@
                                 {% for round in tab_card %}
                                     <tr>
                                         <td>
-                                            <a href="{{ round.round.get_absolute_url }}">{{ round.round.round_number }}</a>
+                                            {{ round.round.round_number }}
                                         </td>
                                         <td>
                                             <a href="{{ round.round|opponent_url:team }}">{{ round.round|opponent:team }}</a> ({{ round.round|opponent_side:team }})
