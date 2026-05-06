@@ -31,6 +31,7 @@ from core.models.school import School
 from core.models.standings.coty import COTY
 from core.models.standings.noty import NOTY
 from core.models.standings.online_qual import OnlineQUAL
+from core.models.standings.qual import QUAL
 from core.models.standings.soty import SOTY
 from core.models.standings.toty import TOTY, TOTYReaff
 from core.models.team import Team
@@ -70,7 +71,7 @@ from .schema_serializers import (
 # ----------------------------------------------------------------------
 
 MARKER_LABELS = ["one", "two", "three", "four", "five", "six"]
-REPLAY_MARKER_LIMITS = {"toty": 5, "soty": 6}
+REPLAY_MARKER_LIMITS = {"toty": 5, "soty": 6, "coty": 0}
 LLM_PROXY_ALLOWED_PREFIXES = ("/api/", "/.well-known/")
 LLM_PROXY_ALLOWED_PATHS = {"/ai-plugin.json", "/openapi.json"}
 LOGGER = logging.getLogger(__name__)
@@ -829,6 +830,198 @@ def _speaker_replay_markers(entry, season, request):
     return _sort_markers(markers)
 
 
+def _coty_qual_label(qual_type):
+    labels = dict(QUAL.QUAL_TYPES)
+    if qual_type == Tournament.POINTS:
+        return labels.get(QUAL.POINTS, "Points")
+    return labels.get(qual_type, dict(Tournament.QUAL_TYPES).get(qual_type, "Qual"))
+
+
+def _coty_marker_sort_key(marker):
+    marker_order = {"qual_points": 0, "qual_bonus": 1}
+    return (
+        marker.get("earned_on") or "",
+        marker.get("tournament", {}).get("id") or 0,
+        marker.get("result_id") or 0,
+        marker.get("debater", {}).get("id") or 0,
+        marker_order.get(marker.get("marker_type"), 99),
+    )
+
+
+def _sort_coty_markers(markers):
+    return sorted(markers, key=_coty_marker_sort_key)
+
+
+def _coty_replay_marker(
+    *,
+    marker_type,
+    points,
+    result,
+    debater,
+    request,
+    raw_points=None,
+    qualification=None,
+):
+    tournament = result.tournament
+    marker = {
+        "points": round(float(points), 4),
+        "marker_type": marker_type,
+        "place": result.place,
+        "ghost_points": result.ghost_points,
+        "earned_on": tournament.date.isoformat() if tournament.date else None,
+        "tournament": _lite_tournament(tournament, request),
+        "result_id": result.id,
+        "debater": _lite_debater(debater, request),
+    }
+    if raw_points is not None:
+        marker["raw_points"] = round(float(raw_points), 4)
+    if qualification:
+        marker["qualification"] = qualification
+    return marker
+
+
+def _collect_coty_replay_standings(season, request):
+    """
+    Derive COTY replay state from raw results without touching persisted rankings.
+
+    Normal COTY rebuilds intentionally mutate QUAL, QualPoints, COTY, and cache state.
+    Replay cannot use that path because snapshots need qualification bonuses on the
+    date they became live and because API reads must not repair or rewrite rankings.
+    """
+    if str(season) in {str(value) for value in settings.ONLINE_SEASONS}:
+        return [], []
+
+    team_debaters_prefetch = Prefetch(
+        "team__debaters",
+        queryset=Debater.objects.filter(
+            school__isnull=False,
+            school__included_in_oty=True,
+        ).select_related("school"),
+        to_attr="coty_replay_debaters",
+    )
+    results = (
+        TeamResult.objects.filter(
+            tournament__season=season,
+            type_of_place=Debater.VARSITY,
+            counts_for_points=True,
+        )
+        .select_related("team", "tournament")
+        .prefetch_related(team_debaters_prefetch)
+        .order_by("tournament__date", "tournament_id", "id")
+    )
+
+    debater_state = {}
+    school_markers = defaultdict(list)
+    schools = {}
+    qual_bar = float(settings.QUAL_BAR)
+
+    for result in results:
+        tournament = result.tournament
+        if not tournament:
+            continue
+
+        debaters = getattr(result.team, "coty_replay_debaters", [])
+        for debater in debaters:
+            school = debater.school
+            if not school:
+                continue
+
+            schools[school.id] = school
+            state = debater_state.setdefault(
+                debater.id,
+                {
+                    "school_id": school.id,
+                    "raw_points": 0.0,
+                    "capped_points": 0.0,
+                    "qualled": False,
+                },
+            )
+
+            raw_points = tournament.get_qual_points(
+                result.place, ghost_points=result.ghost_points
+            )
+            if raw_points > 0:
+                capped_room = max(0.0, 60.0 - state["capped_points"])
+                capped_delta = min(float(raw_points), capped_room)
+                state["raw_points"] += float(raw_points)
+                if capped_delta > 0:
+                    state["capped_points"] += capped_delta
+                    school_markers[school.id].append(
+                        _coty_replay_marker(
+                            marker_type="qual_points",
+                            points=capped_delta,
+                            raw_points=raw_points,
+                            result=result,
+                            debater=debater,
+                            request=request,
+                        )
+                    )
+
+            autoqual = (
+                tournament.qual_type != Tournament.NATIONALS
+                and result.place != -1
+                and tournament.autoqual_bar > 0
+                and result.place <= tournament.autoqual_bar
+            )
+            points_qual = state["raw_points"] >= qual_bar
+
+            if not state["qualled"] and (autoqual or points_qual):
+                state["qualled"] = True
+                qualification_type = (
+                    tournament.qual_type if autoqual else Tournament.POINTS
+                )
+                school_markers[school.id].append(
+                    _coty_replay_marker(
+                        marker_type="qual_bonus",
+                        points=6,
+                        result=result,
+                        debater=debater,
+                        request=request,
+                        qualification={
+                            "type": qualification_type,
+                            "label": _coty_qual_label(qualification_type),
+                        },
+                    )
+                )
+
+    rows = []
+    timeline_dates = set()
+    for school_id, markers in school_markers.items():
+        sorted_markers = _sort_coty_markers(markers)
+        points = round(sum(_marker_points(marker) for marker in sorted_markers), 4)
+        if points <= 0:
+            continue
+        for marker in sorted_markers:
+            earned_on = marker.get("earned_on")
+            if earned_on:
+                timeline_dates.add(earned_on)
+        school = schools.get(school_id)
+        if not school:
+            continue
+        rows.append(
+            {
+                "season": str(season),
+                "season_display": _format_season_display(season),
+                "place_display": "",
+                "points": points,
+                "place": 0,
+                "tied": False,
+                "school": _lite_school(school, request),
+                "markers": [],
+                "all_markers": sorted_markers,
+                "_sort_name": school.name.lower(),
+            }
+        )
+
+    rows.sort(key=lambda row: (-row["points"], row["_sort_name"]))
+    _assign_places(rows)
+    for row in rows:
+        row["place_display"] = row["place"]
+        row.pop("_sort_name", None)
+
+    return rows, sorted(timeline_dates)
+
+
 def _collect_replay_standings(season, request):
     team_results_prefetch = Prefetch(
         "team__team_results",
@@ -946,6 +1139,10 @@ def _collect_replay_standings(season, request):
             if earned_on:
                 timeline_dates.add(earned_on)
 
+    coty_rows, coty_dates = _collect_coty_replay_standings(season, request)
+    standings["coty"] = coty_rows
+    timeline_dates.update(coty_dates)
+
     return standings, sorted(timeline_dates)
 
 
@@ -1027,7 +1224,9 @@ def _build_partial_rows(entries, through_iso, marker_limit, entity_attr):
         if not available_markers:
             continue
 
-        ranked_markers = _sort_markers_for_partial(available_markers)[:marker_limit]
+        ranked_markers = _sort_markers_for_partial(available_markers)
+        if marker_limit:
+            ranked_markers = ranked_markers[:marker_limit]
         cleaned_markers = [_normalize_marker(marker) for marker in ranked_markers]
         total_points = round(sum(marker["points"] for marker in cleaned_markers), 4)
 
@@ -1316,14 +1515,14 @@ class SeasonStandingsAPIView(APIView):
 @extend_schema_view(
     get=extend_schema(
         summary="Standings replay dataset",
-        description="Return TOTY/SOTY standings plus every tournament marker for replay visualizations.",
+        description="Return TOTY/SOTY/COTY standings plus every tournament marker for replay visualizations.",
         parameters=[SEASON_QUERY_PARAM, BOARD_PARAM, LIMIT_PARAM],
         responses=SeasonStandingsReplayResponseSerializer,
     )
 )
 class SeasonStandingsReplayAPIView(APIView):
     """
-    Return TOTY/SOTY standings along with all season markers for replay visualizations.
+    Return TOTY/SOTY/COTY standings along with all season markers for replay visualizations.
     """
 
     cache_timeout = 300
@@ -1414,6 +1613,12 @@ class StandingsThroughDateAPIView(APIView):
                     through_iso,
                     REPLAY_MARKER_LIMITS["soty"],
                     "debater",
+                ),
+                "coty": _build_partial_rows(
+                    standings.get("coty", []),
+                    through_iso,
+                    REPLAY_MARKER_LIMITS["coty"],
+                    "school",
                 ),
             }
 

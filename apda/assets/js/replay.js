@@ -156,12 +156,223 @@ const buildMarkerCellContent = (marker) => {
   }`;
 };
 
-const renderRows = (tbody, rows, emptyMessage, markerSlots, highlightDate) => {
+const buildCotyRecentContent = (markers) => {
+  const grouped = new Map();
+  (markers || []).forEach((marker) => {
+    const { tournament } = marker;
+    const key = tournament ? tournament.id : "none";
+    let current = grouped.get(key);
+    if (!current) {
+      current = {
+        tournament,
+        rawPoints: 0,
+        qualBonus: 0,
+        qualLabel: null,
+      };
+      grouped.set(key, current);
+    }
+    if (marker.marker_type === "qual_bonus") {
+      current.qualBonus += Number(marker.points || 0);
+      const label = marker.qualification && marker.qualification.label;
+      if (label && label !== "Points") {
+        current.qualLabel = label;
+      } else if (!current.qualLabel) {
+        current.qualLabel = "Qual";
+      }
+    } else if (marker.marker_type === "qual_points") {
+      current.rawPoints += Number(
+        marker.raw_points !== undefined
+          ? marker.raw_points
+          : marker.points || 0,
+      );
+    } else {
+      current.rawPoints += Number(marker.points || 0);
+    }
+  });
+
+  return Array.from(grouped.values())
+    .map((entry) => {
+      const { tournament } = entry;
+      const tournamentName = tournament
+        ? escapeHtml(tournament.display || tournament.name || "")
+        : "";
+      const tournamentLink =
+        tournament && tournament.url
+          ? `<a href="${tournament.url}">${tournamentName}</a>`
+          : tournamentName;
+      const parts = [];
+      if (entry.rawPoints > 0) {
+        parts.push(
+          `+${formatPoints(entry.rawPoints)}${
+            tournamentName ? ` ${tournamentLink}` : ""
+          }`,
+        );
+      }
+      if (entry.qualBonus > 0) {
+        parts.push(
+          `+${formatPoints(entry.qualBonus)} ${escapeHtml(
+            entry.qualLabel || "Qual",
+          )}`,
+        );
+      }
+      return parts.join(" ");
+    })
+    .filter((html) => html.length > 0)
+    .join("<br>");
+};
+
+const buildCotyDebaterBreakdown = (markers, highlightDate) => {
+  const debaters = new Map();
+  (markers || []).forEach((marker) => {
+    if (!marker.debater || marker.debater.id === undefined) {
+      return;
+    }
+    const key = marker.debater.id;
+    const current = debaters.get(key) || {
+      debater: marker.debater,
+      rawPoints: 0,
+      contribution: 0,
+      qualled: false,
+      markers: [],
+      recentMarkers: [],
+    };
+    if (marker.marker_type === "qual_points") {
+      current.rawPoints += Number(marker.raw_points ?? marker.points ?? 0);
+    }
+    current.contribution += Number(marker.points || 0);
+    if (marker.marker_type === "qual_bonus") {
+      current.qualled = true;
+    }
+    current.markers.push(marker);
+    if (
+      marker.earned_on &&
+      highlightDate &&
+      marker.earned_on === highlightDate
+    ) {
+      current.recentMarkers.push(marker);
+    }
+    debaters.set(key, current);
+  });
+
+  return Array.from(debaters.values()).sort((a, b) => {
+    if (b.contribution !== a.contribution) {
+      return b.contribution - a.contribution;
+    }
+    if (b.rawPoints !== a.rawPoints) {
+      return b.rawPoints - a.rawPoints;
+    }
+    return (a.debater.name || "").localeCompare(b.debater.name || "");
+  });
+};
+
+const buildCotyDebaterCell = (entry) => {
+  const name = escapeHtml(entry.debater.name);
+  const link = entry.debater.url
+    ? `<a href="${entry.debater.url}">${name}</a>`
+    : name;
+  if (entry.qualled) {
+    return `<b>${link} *</b>`;
+  }
+  return link;
+};
+
+const cotyDebaterSignature = (entry) => {
+  const markerSig = (entry.markers || [])
+    .map(
+      (marker) =>
+        `${marker.result_id || (marker.tournament && marker.tournament.id) || ""}:${
+          marker.marker_type || ""
+        }:${marker.points}`,
+    )
+    .join("|");
+  return `${Math.round((entry.rawPoints || 0) * 1000) / 1000}|${
+    Math.round((entry.contribution || 0) * 1000) / 1000
+  }|${entry.qualled ? 1 : 0}|${markerSig}`;
+};
+
+const renderCotyRows = (
+  target,
+  row,
+  highlightDate,
+  collapsedSchools,
+  debaterPrev,
+  debaterNext,
+) => {
+  const placePrefix = row.tied ? "T-" : "";
+  const markers = row.markers || [];
+  const debaters = buildCotyDebaterBreakdown(markers, highlightDate);
+  const schoolId = row.school && row.school.id;
+  const isCollapsed =
+    schoolId !== undefined &&
+    schoolId !== null &&
+    collapsedSchools &&
+    collapsedSchools.has(schoolId);
+  const summaryRow = document.createElement("tr");
+  if (row.isNew) {
+    summaryRow.classList.add("replay-row-enter");
+  }
+  const toggleAttr =
+    schoolId !== undefined && schoolId !== null
+      ? ` data-coty-toggle="${schoolId}"`
+      : "";
+  summaryRow.innerHTML = [
+    `<td>${placePrefix}${row.displayPlace}</td>`,
+    `<td>${buildSchoolCell(row.school)}</td>`,
+    `<td>${formatPoints(row.points)}</td>`,
+    `<td colspan="3"><a href="#" class="replay-coty-toggle"${toggleAttr}>Click to expand / collapse</a></td>`,
+  ].join("");
+  target.appendChild(summaryRow);
+
+  debaters.forEach((entry, index) => {
+    const tr = document.createElement("tr");
+    if (schoolId !== undefined && schoolId !== null) {
+      tr.setAttribute("data-coty-school-id", String(schoolId));
+    }
+    if (isCollapsed) {
+      tr.classList.add("replay-coty-row-collapsed");
+    }
+    const debaterId = entry.debater && entry.debater.id;
+    if (debaterId !== undefined && debaterId !== null && debaterNext) {
+      const signature = cotyDebaterSignature(entry);
+      const previousSig = debaterPrev ? debaterPrev.get(debaterId) : undefined;
+      if (previousSig === undefined || previousSig !== signature) {
+        tr.classList.add("replay-row-enter");
+      }
+      debaterNext.set(debaterId, signature);
+    }
+    const recent = buildCotyRecentContent(entry.recentMarkers);
+    const recentClass = recent ? ' class="replay-marker-highlight"' : "";
+    const cells = [];
+    if (index === 0) {
+      cells.push(`<td colspan="3" rowspan="${debaters.length}"></td>`);
+    }
+    cells.push(
+      `<td class="short-row">${buildCotyDebaterCell(entry)}</td>`,
+      `<td class="short-row">${formatPoints(entry.rawPoints)} (${formatPoints(
+        entry.contribution,
+      )})</td>`,
+      `<td class="short-row"${recentClass}>${recent}</td>`,
+    );
+    tr.innerHTML = cells.join("");
+    target.appendChild(tr);
+  });
+};
+
+const renderRows = (
+  tbody,
+  rows,
+  emptyMessage,
+  markerSlots,
+  highlightDate,
+  collapsedSchools,
+  debaterPrev,
+  debaterNext,
+) => {
   const target = tbody;
   target.innerHTML = "";
   if (!rows.length) {
     const emptyRow = document.createElement("tr");
-    const colspan = 4 + markerSlots;
+    const colspan = markerSlots ? 4 + markerSlots : 6;
     emptyRow.innerHTML = `<td colspan="${colspan}" class="shaded text-center py-4">${escapeHtml(
       emptyMessage,
     )}</td>`;
@@ -180,6 +391,17 @@ const renderRows = (tbody, rows, emptyMessage, markerSlots, highlightDate) => {
       row.type === "team" && row.team && row.team.debaters
         ? row.team.debaters
         : null;
+    if (row.type === "school") {
+      renderCotyRows(
+        target,
+        row,
+        highlightDate,
+        collapsedSchools,
+        debaterPrev,
+        debaterNext,
+      );
+      return;
+    }
     const markerCells = Array.from({ length: markerSlots }).map((_, index) => {
       const marker = markers[index];
       const highlight =
@@ -205,6 +427,26 @@ const renderRows = (tbody, rows, emptyMessage, markerSlots, highlightDate) => {
   });
 };
 
+const entryNameForType = (entry, type) => {
+  if (type === "team") {
+    return (entry.team && entry.team.name) || "";
+  }
+  if (type === "school") {
+    return (entry.school && entry.school.name) || "";
+  }
+  return (entry.debater && entry.debater.name) || "";
+};
+
+const entryKeyForType = (entry, type) => {
+  if (type === "team") {
+    return entry.team && entry.team.id;
+  }
+  if (type === "school") {
+    return entry.school && entry.school.id;
+  }
+  return entry.debater && entry.debater.id;
+};
+
 const computeRows = (entries, isoDate, markerLimit, type) => {
   if (!isoDate) {
     return [];
@@ -219,23 +461,30 @@ const computeRows = (entries, isoDate, markerLimit, type) => {
       return;
     }
 
-    const bestMarkers = sortMarkersForRanking(availableMarkers).slice(
-      0,
-      markerLimit,
-    );
+    const sortedMarkers =
+      type === "school"
+        ? availableMarkers.slice().sort((a, b) => {
+            const aDate = a.earned_on || "";
+            const bDate = b.earned_on || "";
+            if (aDate !== bDate) {
+              return aDate.localeCompare(bDate);
+            }
+            if ((a.result_id || 0) !== (b.result_id || 0)) {
+              return (a.result_id || 0) - (b.result_id || 0);
+            }
+            return (a.debater?.id || 0) - (b.debater?.id || 0);
+          })
+        : sortMarkersForRanking(availableMarkers);
+    const bestMarkers = markerLimit
+      ? sortedMarkers.slice(0, markerLimit)
+      : sortedMarkers;
     const totalPoints = bestMarkers.reduce(
       (sum, marker) => sum + marker.points,
       0,
     );
 
-    const entityName =
-      type === "team"
-        ? (entry.team && entry.team.name) || ""
-        : (entry.debater && entry.debater.name) || "";
-    const entityKey =
-      type === "team"
-        ? (entry.team && entry.team.id)
-        : (entry.debater && entry.debater.id);
+    const entityName = entryNameForType(entry, type);
+    const entityKey = entryKeyForType(entry, type);
 
     rows.push({
       type,
@@ -319,6 +568,7 @@ const initReplayPage = () => {
   const errorAlert = document.getElementById("replay-error");
   const totyBody = document.getElementById("replay-toty-body");
   const sotyBody = document.getElementById("replay-soty-body");
+  const cotyBody = document.getElementById("replay-coty-body");
   const speedSelects = Array.from(
     document.querySelectorAll(".replay-speed-select"),
   );
@@ -333,16 +583,18 @@ const initReplayPage = () => {
     data: null,
     timeline: [],
     timelineMs: [],
-    markerLimits: { toty: 5, soty: 6 },
+    markerLimits: { toty: 5, soty: 6, coty: 0 },
     sliderRange: null,
     currentValue: null,
     playing: false,
     playTimer: null,
     playIntervalMs: SPEED_PRESETS[DEFAULT_SPEED_KEY],
-    previousRows: { toty: new Map(), soty: new Map() },
-    renderedRows: { toty: null, soty: null },
-    lastHighlight: { toty: null, soty: null },
+    previousRows: { toty: new Map(), soty: new Map(), coty: new Map() },
+    renderedRows: { toty: null, soty: null, coty: null },
+    lastHighlight: { toty: null, soty: null, coty: null },
     speedKey: DEFAULT_SPEED_KEY,
+    cotyCollapsed: new Set(),
+    previousCotyDebaters: new Map(),
   };
 
   const updatePlayInterval = () => {
@@ -412,7 +664,10 @@ const initReplayPage = () => {
         return;
       }
       const signature = rowSignature(row);
-      if (!previous.has(row.entityKey) || previous.get(row.entityKey) !== signature) {
+      if (
+        !previous.has(row.entityKey) ||
+        previous.get(row.entityKey) !== signature
+      ) {
         row.isNew = true;
       }
       nextMap.set(row.entityKey, signature);
@@ -437,12 +692,20 @@ const initReplayPage = () => {
       state.markerLimits.soty,
       "debater",
     );
+    const cotyRows = computeRows(
+      standings.coty || [],
+      isoDate,
+      state.markerLimits.coty,
+      "school",
+    );
 
     markNewRows("toty", totyRows);
     markNewRows("soty", sotyRows);
+    markNewRows("coty", cotyRows);
 
     const totyRowsChanged = rowsHaveChanged(state.renderedRows.toty, totyRows);
     const sotyRowsChanged = rowsHaveChanged(state.renderedRows.soty, sotyRows);
+    const cotyRowsChanged = rowsHaveChanged(state.renderedRows.coty, cotyRows);
 
     if (totyRowsChanged || state.lastHighlight.toty !== isoDate) {
       renderRows(
@@ -465,6 +728,22 @@ const initReplayPage = () => {
       );
       state.renderedRows.soty = snapshotRows(sotyRows);
       state.lastHighlight.soty = isoDate;
+    }
+    if (cotyBody && (cotyRowsChanged || state.lastHighlight.coty !== isoDate)) {
+      const nextCotyDebaters = new Map();
+      renderRows(
+        cotyBody,
+        cotyRows,
+        "There are no COTY results yet for this date.",
+        state.markerLimits.coty,
+        isoDate,
+        state.cotyCollapsed,
+        state.previousCotyDebaters,
+        nextCotyDebaters,
+      );
+      state.previousCotyDebaters = nextCotyDebaters;
+      state.renderedRows.coty = snapshotRows(cotyRows);
+      state.lastHighlight.coty = isoDate;
     }
   };
 
@@ -565,6 +844,60 @@ const initReplayPage = () => {
     select.addEventListener("change", handleSpeedChange);
   });
 
+  if (cotyBody) {
+    cotyBody.addEventListener("click", (event) => {
+      const toggle = event.target.closest("[data-coty-toggle]");
+      if (!toggle || !cotyBody.contains(toggle)) {
+        return;
+      }
+      event.preventDefault();
+      const rawId = toggle.getAttribute("data-coty-toggle");
+      const schoolId = Number(rawId);
+      if (Number.isNaN(schoolId)) {
+        return;
+      }
+      const willCollapse = !state.cotyCollapsed.has(schoolId);
+      if (willCollapse) {
+        state.cotyCollapsed.add(schoolId);
+      } else {
+        state.cotyCollapsed.delete(schoolId);
+      }
+      cotyBody
+        .querySelectorAll(`[data-coty-school-id="${schoolId}"]`)
+        .forEach((tr) => {
+          tr.classList.toggle("replay-coty-row-collapsed", willCollapse);
+        });
+    });
+  }
+
+  const expandAllBtn = document.getElementById("replay-coty-expand-all");
+  if (expandAllBtn && cotyBody) {
+    expandAllBtn.addEventListener("click", (event) => {
+      event.preventDefault();
+      const schoolIds = new Set();
+      cotyBody.querySelectorAll("[data-coty-school-id]").forEach((tr) => {
+        const id = Number(tr.getAttribute("data-coty-school-id"));
+        if (!Number.isNaN(id)) {
+          schoolIds.add(id);
+        }
+      });
+      if (!schoolIds.size) {
+        return;
+      }
+      const anyExpanded = Array.from(schoolIds).some(
+        (id) => !state.cotyCollapsed.has(id),
+      );
+      if (anyExpanded) {
+        schoolIds.forEach((id) => state.cotyCollapsed.add(id));
+      } else {
+        schoolIds.forEach((id) => state.cotyCollapsed.delete(id));
+      }
+      cotyBody.querySelectorAll("[data-coty-school-id]").forEach((tr) => {
+        tr.classList.toggle("replay-coty-row-collapsed", anyExpanded);
+      });
+    });
+  }
+
   const apiUrl = root.getAttribute("data-api-url");
   if (!apiUrl) {
     showError("Replay API is not configured.");
@@ -621,6 +954,10 @@ const initReplayPage = () => {
         '<tr><td colspan="9" class="shaded text-center py-4">Unable to load standings.</td></tr>';
       sotyBody.innerHTML =
         '<tr><td colspan="10" class="shaded text-center py-4">Unable to load standings.</td></tr>';
+      if (cotyBody) {
+        cotyBody.innerHTML =
+          '<tr><td colspan="6" class="shaded text-center py-4">Unable to load standings.</td></tr>';
+      }
     });
 };
 

@@ -109,8 +109,21 @@ nav {
 .replay-home-controls {
     display: flex;
     justify-content: flex-end;
-    align-items: stretch;
+    align-items: center;
     flex-wrap: wrap;
+}
+
+.replay-season-picker {
+    padding: 0 !important;
+    margin: 0 !important;
+    height: 38px;
+    box-sizing: border-box;
+    align-items: center;
+}
+
+.replay-season-picker > .nav-item {
+    margin: 0 !important;
+    padding: 0 !important;
 }
 
 .watch-replay-btn {
@@ -118,19 +131,29 @@ nav {
     color: #045fb0 !important;
     background-color: rgba(4, 95, 176, 0.08);
     font-weight: 600;
-    min-height: 44px;
-    height: 44px;
+    box-sizing: border-box;
     display: flex;
     align-items: center;
     padding: 0 1.05rem;
     border-radius: 0.5rem;
     box-shadow: inset 0 0 0 1px rgba(4,95,176,0.25);
+    height: 38px;
 }
 
 .watch-replay-btn:hover {
     background-color: #045fb0;
     color: #fff !important;
     box-shadow: inset 0 0 0 1px rgba(4,95,176,0.5);
+}
+
+.replay-coty-row-collapsed {
+    display: none;
+}
+
+.replay-coty-toggle {
+    cursor: pointer;
+    color: inherit;
+    text-decoration: underline;
 }
 
 .replay-marker-highlight {

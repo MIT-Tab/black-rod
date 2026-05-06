@@ -200,7 +200,7 @@ def standings_replay(request):
         current_season = settings.CURRENT_SEASON
 
     default = request.GET.get("default", "toty")
-    if default not in ["toty", "soty"]:
+    if default not in ["toty", "soty", "coty"]:
         default = "toty"
 
     season_display = next(

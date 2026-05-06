@@ -64,7 +64,13 @@ class LiteTeamSerializer(serializers.Serializer):
 class StandingMarkerSerializer(serializers.Serializer):
     slot = serializers.IntegerField(required=False)
     points = serializers.FloatField()
+    raw_points = serializers.FloatField(required=False)
+    marker_type = serializers.CharField(required=False)
+    qualification = serializers.DictField(required=False)
+    place = serializers.IntegerField(required=False)
+    ghost_points = serializers.BooleanField(required=False)
     tournament = LiteTournamentSerializer(required=False, allow_null=True)
+    debater = LiteDebaterSerializer(required=False, allow_null=True)
     earned_on = serializers.CharField(required=False, allow_null=True)
     result_id = serializers.IntegerField(required=False)
 
@@ -92,7 +98,7 @@ class CotyBreakdownEntrySerializer(serializers.Serializer):
 
 
 class CotyStandingEntrySerializer(StandingEntrySerializer):
-    breakdown = CotyBreakdownEntrySerializer(many=True)
+    breakdown = CotyBreakdownEntrySerializer(many=True, required=False)
 
 
 class StandingsSerializer(serializers.Serializer):
@@ -119,8 +125,9 @@ class ReplayStandingEntrySerializer(StandingEntrySerializer):
 
 
 class ReplayStandingsSerializer(serializers.Serializer):
-    toty = ReplayStandingEntrySerializer(many=True)
-    soty = ReplayStandingEntrySerializer(many=True)
+    toty = ReplayStandingEntrySerializer(many=True, required=False)
+    soty = ReplayStandingEntrySerializer(many=True, required=False)
+    coty = ReplayStandingEntrySerializer(many=True, required=False)
 
 
 class SeasonStandingsReplayResponseSerializer(serializers.Serializer):

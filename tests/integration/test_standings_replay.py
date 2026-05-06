@@ -1,13 +1,16 @@
 from datetime import date
 
 from django.conf import settings
+from django.core.cache import cache
 from django.test import TestCase
 from django.urls import reverse
 
-from core.models.debater import Debater
+from core.models.debater import Debater, QualPoints
 from core.models.results.speaker import SpeakerResult
 from core.models.results.team import TeamResult
 from core.models.school import School
+from core.models.standings.coty import COTY
+from core.models.standings.qual import QUAL
 from core.models.standings.soty import SOTY
 from core.models.standings.toty import TOTY
 from core.models.team import Team
@@ -113,6 +116,7 @@ class StandingsReplayAPITests(TestCase):
         self.assertIn("marker_limits", payload)
         self.assertEqual(payload["marker_limits"]["toty"], 5)
         self.assertEqual(payload["marker_limits"]["soty"], 6)
+        self.assertEqual(payload["marker_limits"]["coty"], 0)
 
         toty_entries = payload["standings"]["toty"]
         self.assertEqual(len(toty_entries), 1)
@@ -131,6 +135,25 @@ class StandingsReplayAPITests(TestCase):
         self.assertEqual(len(soty_markers), 2)
         self.assertEqual(
             {marker["earned_on"] for marker in soty_markers},
+            {
+                self.tournament_one.date.isoformat(),
+                self.tournament_two.date.isoformat(),
+            },
+        )
+
+        coty_entries = payload["standings"]["coty"]
+        self.assertEqual(len(coty_entries), 1)
+        coty_markers = coty_entries[0]["all_markers"]
+        self.assertEqual(
+            {marker["marker_type"] for marker in coty_markers},
+            {"qual_points", "qual_bonus"},
+        )
+        self.assertEqual(
+            len([marker for marker in coty_markers if marker["marker_type"] == "qual_bonus"]),
+            2,
+        )
+        self.assertEqual(
+            {marker["earned_on"] for marker in coty_markers},
             {
                 self.tournament_one.date.isoformat(),
                 self.tournament_two.date.isoformat(),
@@ -163,6 +186,17 @@ class StandingsReplayAPITests(TestCase):
         self.assertAlmostEqual(soty_rows[0]["points"], first_soty_points, places=2)
         self.assertEqual(len(soty_rows[0]["markers"]), 1)
 
+        coty_rows = payload["standings"]["coty"]
+        self.assertEqual(len(coty_rows), 1)
+        first_coty_points = 2 * (
+            self.tournament_one.get_qual_points(1) + 6
+        )
+        self.assertAlmostEqual(coty_rows[0]["points"], first_coty_points, places=2)
+        self.assertEqual(
+            len([marker for marker in coty_rows[0]["markers"] if marker["marker_type"] == "qual_bonus"]),
+            2,
+        )
+
     def test_standings_snapshot_requires_valid_date(self):
         """API returns 400 when through parameter missing or malformed."""
         url = reverse("api:standings_through_date")
@@ -183,6 +217,34 @@ class StandingsReplayAPITests(TestCase):
         payload = response.json()
         self.assertEqual(list(payload["standings"].keys()), ["toty"])
         self.assertEqual(len(payload["standings"]["toty"]), 1)
+
+    def test_coty_replay_is_read_only_for_persisted_rankings(self):
+        cache.clear()
+        url = reverse("api:season_standings_replay")
+        before = {
+            "coty": list(COTY.objects.values_list("id", "points", "place", "tied")),
+            "quals": QUAL.objects.count(),
+            "qual_points": QualPoints.objects.count(),
+        }
+
+        response = self.client.get(f"{url}?season={self.season}&board=coty")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(len(payload["standings"]["coty"]), 1)
+
+        after = {
+            "coty": list(COTY.objects.values_list("id", "points", "place", "tied")),
+            "quals": QUAL.objects.count(),
+            "qual_points": QualPoints.objects.count(),
+        }
+        self.assertEqual(after, before)
+
+    def test_replay_page_accepts_coty_default(self):
+        url = reverse("core:standings_replay")
+        response = self.client.get(f"{url}?season={self.season}&default=coty")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Club of the Year")
+        self.assertContains(response, "replay-coty-body")
 
     def test_team_detail_limit_parameter(self):
         url = reverse("api:team_detail", args=[self.team.id])

@@ -266,6 +266,10 @@
             {% cache None coty current_season %}
             <h5>
                 <a class="btn btn-primary float-left nav-link" href="" id="expandAll">Expand / Collapse All</a>
+                <a class="btn btn-outline-primary watch-replay-btn ml-2"
+                   href="{% url 'core:standings_replay' %}?season={{ current_season }}&default=coty">
+                    Watch the season replay
+                </a>
                 <ul class="nav nav-pills float-right pb-3" id="oty_pills" roll="tablist">
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle active"
