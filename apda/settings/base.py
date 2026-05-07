@@ -36,6 +36,11 @@ else:
     DEBUG = False
 ALLOWED_HOSTS = []
 BASE_URL = "http://50.116.54.146"
+MITTAB_PRIVATE_API_TOKENS = [
+    token.strip()
+    for token in os.environ.get("MITTAB_PRIVATE_API_TOKENS", "").split(",")
+    if token.strip()
+]
 
 
 # Application definition

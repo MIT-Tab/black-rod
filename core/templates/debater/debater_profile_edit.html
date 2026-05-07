@@ -51,6 +51,17 @@
                     </div>
 
                     <div class="form-group">
+                        {{ form.email.label_tag }}
+                        {{ form.email }}
+                        <small class="form-text text-muted">
+                            Used privately by tournament registration forms to prefill your contact email.
+                        </small>
+                        {% for error in form.email.errors %}
+                            <div class="invalid-feedback d-block">{{ error }}</div>
+                        {% endfor %}
+                    </div>
+
+                    <div class="form-group">
                         {{ form.status.label_tag }}
                         {{ form.status }}
                         {% for error in form.status.errors %}

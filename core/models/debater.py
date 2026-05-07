@@ -54,6 +54,12 @@ class Debater(models.Model):
         null=True,
         help_text="User who has claimed this debater profile",
     )
+    email = models.EmailField(
+        max_length=254,
+        blank=True,
+        null=True,
+        help_text="Private contact email for tournament registration prefill.",
+    )
 
     paradigm = models.URLField(
         max_length=500,

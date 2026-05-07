@@ -128,7 +128,13 @@ class ClaimDebaterRequestReviewView(LoginRequiredMixin, UserPassesTestMixin, Tem
 
                 # Assign the debater to the user
                 debater.user = claim_request.requested_by
-                debater.save()
+                update_fields = ["user"]
+                if not debater.email:
+                    inherited_email = (claim_request.requested_by.email or "").strip()
+                    if inherited_email:
+                        debater.email = inherited_email
+                        update_fields.append("email")
+                debater.save(update_fields=update_fields)
 
                 claim_request.status = ClaimDebaterRequest.STATUS_APPROVED
                 messages.success(

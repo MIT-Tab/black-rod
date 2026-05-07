@@ -84,9 +84,17 @@ class SchoolAdmin(ImportExportModelAdmin):
 @admin.register(Debater)
 class DebaterAdmin(ImportExportModelAdmin):
     resource_class = DebaterResource
-    list_display = ("first_name", "last_name", "school", "synthetic", "temporary", "id")
+    list_display = (
+        "first_name",
+        "last_name",
+        "email",
+        "school",
+        "synthetic",
+        "temporary",
+        "id",
+    )
     list_filter = ("synthetic", "temporary", "first_name", "last_name", "school", "id")
-    search_fields = ("first_name", "last_name", "school__name", "id")
+    search_fields = ("first_name", "last_name", "email", "school__name", "id")
     ordering = ("first_name", "last_name", "school")
 
     def get_queryset(self, request):

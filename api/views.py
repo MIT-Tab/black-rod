@@ -13,6 +13,7 @@ from django.db.models import Count, F, Max, Prefetch, Q
 from django.http import Http404, HttpResponse
 from django.test import RequestFactory
 from django.urls import resolve, reverse, Resolver404
+from django.utils.crypto import constant_time_compare
 from django.views import View
 from drf_spectacular.utils import (
     OpenApiParameter,
@@ -20,6 +21,7 @@ from drf_spectacular.utils import (
     extend_schema,
     extend_schema_view,
 )
+from rest_framework import status as http_status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -145,6 +147,81 @@ ENTRY_LIMIT_PARAM = OpenApiParameter(
     description="Maximum number of repeated entries to return (defaults to all).",
     required=False,
 )
+
+
+def _authorized_mittab_request(request):
+    header = request.headers.get("Authorization", "")
+    prefix = "Bearer "
+    if not header.startswith(prefix):
+        return False
+    supplied_token = header[len(prefix):].strip()
+    allowed_tokens = getattr(settings, "MITTAB_PRIVATE_API_TOKENS", [])
+    if not supplied_token or not allowed_tokens:
+        return False
+    return any(
+        constant_time_compare(supplied_token, allowed_token)
+        for allowed_token in allowed_tokens
+    )
+
+
+class PrivateDebaterEmailsAPIView(APIView):
+    """
+    Return private debater contact emails for trusted mit-tab instances.
+
+    Auth is intentionally independent of browser sessions. Mittab-deploy injects a
+    bearer token into each ephemeral mit-tab instance, and black-rod keeps the
+    matching token in MITTAB_PRIVATE_API_TOKENS for manual rotation.
+    """
+
+    authentication_classes = []
+    permission_classes = []
+
+    @extend_schema(exclude=True)
+    def post(self, request):
+        if not _authorized_mittab_request(request):
+            return Response(
+                {"detail": "Invalid or missing credentials."},
+                status=http_status.HTTP_401_UNAUTHORIZED,
+            )
+
+        debater_ids = request.data.get("debater_ids", [])
+        if not isinstance(debater_ids, list):
+            return Response(
+                {"detail": "debater_ids must be a list."},
+                status=http_status.HTTP_400_BAD_REQUEST,
+            )
+
+        normalized_ids = []
+        seen = set()
+        for raw_id in debater_ids:
+            try:
+                debater_id = int(raw_id)
+            except (TypeError, ValueError):
+                return Response(
+                    {"detail": "debater_ids must contain only integers."},
+                    status=http_status.HTTP_400_BAD_REQUEST,
+                )
+            if debater_id in seen:
+                continue
+            seen.add(debater_id)
+            normalized_ids.append(debater_id)
+
+        if len(normalized_ids) > 200:
+            return Response(
+                {"detail": "At most 200 debater ids may be requested."},
+                status=http_status.HTTP_400_BAD_REQUEST,
+            )
+
+        debaters = Debater.objects.filter(id__in=normalized_ids).only("id", "email")
+        email_map = {debater.id: debater.email for debater in debaters}
+        return Response(
+            {
+                "debaters": [
+                    {"id": debater_id, "email": email_map.get(debater_id)}
+                    for debater_id in normalized_ids
+                ]
+            }
+        )
 
 
 @extend_schema_view(

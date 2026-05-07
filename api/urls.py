@@ -14,6 +14,11 @@ urlpatterns = [
     path('schedule/', views.ScheduleAPIView.as_view(), name='schedule'),
     path('schools/', views.ActiveSchoolListAPIView.as_view(), name='active_schools'),
     path('schools/all/', views.AllSchoolListAPIView.as_view(), name='all_schools'),
+    path(
+        'private/debater-emails/',
+        views.PrivateDebaterEmailsAPIView.as_view(),
+        name='private_debater_emails',
+    ),
     path('schools/<int:pk>/detail/', views.SchoolDetailAPIView.as_view(), name='school_detail'),
     path('debaters/<int:school_id>/', views.SchoolDebatersAPIView.as_view(), name='school_debaters'),
     path('debaters/<int:pk>/detail/', views.DebaterDetailAPIView.as_view(), name='debater_detail'),

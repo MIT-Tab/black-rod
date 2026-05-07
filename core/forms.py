@@ -1087,6 +1087,7 @@ class DebaterProfileEditForm(forms.ModelForm):
         fields = [
             "first_name",
             "last_name",
+            "email",
             "status",
             "first_season",
             "latest_season",
@@ -1139,7 +1140,13 @@ class DebaterProfileEditForm(forms.ModelForm):
         )
 
         # Text inputs should use consistent styling
-        for field_name in ("first_name", "last_name", "paradigm", "elo_manual_opt"):
+        for field_name in (
+            "first_name",
+            "last_name",
+            "email",
+            "paradigm",
+            "elo_manual_opt",
+        ):
             if field_name in self.fields:
                 self.fields[field_name].widget.attrs.setdefault("class", "form-control")
 

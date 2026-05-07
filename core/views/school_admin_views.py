@@ -180,6 +180,7 @@ class SchoolAdminDebaterForm(forms.ModelForm):
         fields = (
             'first_name',
             'last_name',
+            'email',
             'status',
             'first_season',
             'latest_season',
