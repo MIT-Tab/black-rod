@@ -300,6 +300,7 @@ NAV_MENU_LEFT = [
         "url": "/asdfa",
         "submenu": [
             {"name": "Videos", "url": "core:video_list", "root": True},
+            {"name": "Motions", "url": "core:motion_list", "root": True},
             {"name": "Schedule", "url": "core:schedule_view", "root": True},
             {"name": "Resource Database", "url": "core:resource_list", "root": True},
             {"name": "Judge Database", "url": "core:judge_list", "root": True},

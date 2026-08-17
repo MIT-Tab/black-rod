@@ -23,8 +23,9 @@ from .team import Team
 from .tournament import Tournament
 from .user import User
 from .video import Video
+from .motion import Motion, MotionUserStatus
 from .resource import Resource
-from .tags import ResourceTag, TaggedResource
+from .tags import MotionTopic, ResourceTag, TaggedMotion, TaggedResource
 from .merge_request import MergeDebaterRequest
 from .claim_request import ClaimDebaterRequest
 from .debater_alias_group import DebaterAliasGroup
@@ -61,9 +62,13 @@ __all__ = [
     "SchedulerWorkspace",
     "SchedulingRun",
     "Video",
+    "Motion",
+    "MotionUserStatus",
     "Resource",
     "ResourceTag",
     "TaggedResource",
+    "MotionTopic",
+    "TaggedMotion",
     "QualBar",
     "MergeDebaterRequest",
     "ClaimDebaterRequest",

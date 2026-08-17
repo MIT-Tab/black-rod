@@ -1,0 +1,21 @@
+{% extends "base/detail.html" %}
+{% block title %}Motion{% endblock title %}
+{% block detail_view %}
+    <p class="lead">{{ object.text }}</p>
+    <dl>
+        <dt>Date set</dt><dd>{{ object.date_set|default:"Unknown" }}</dd>
+        <dt>Tournament</dt><dd>{% if object.tournament %}<a href="{{ object.tournament.get_absolute_url }}">{{ object.tournament }}</a>{% else %}Unknown{% endif %}</dd>
+        <dt>Topics</dt><dd>{% for tag in object.tags.all %}{{ tag.name }}{% if not forloop.last %}, {% endif %}{% empty %}None{% endfor %}</dd>
+    </dl>
+    {% if user.is_authenticated %}
+        <form method="post" action="{% url 'core:motion_status' object.pk %}" class="mt-3">
+            {% csrf_token %}<input type="hidden" name="next" value="{{ request.path }}">
+            <button name="status" value="done" class="btn {% if motion_status == 'done' %}btn-success{% else %}btn-outline-success{% endif %}">Done</button>
+            <button name="status" value="ignore" class="btn {% if motion_status == 'ignore' %}btn-secondary{% else %}btn-outline-secondary{% endif %}">Ignore</button>
+            {% if motion_status %}<button name="status" value="clear" class="btn btn-link">Clear</button>{% endif %}
+        </form>
+    {% endif %}
+{% endblock detail_view %}
+{% block added_information_view %}
+    {% if object.background_slide %}<div class="card"><div class="card-body"><h5>Background slide</h5><p class="mb-0" style="white-space: pre-wrap">{{ object.background_slide }}</p></div></div>{% endif %}
+{% endblock added_information_view %}

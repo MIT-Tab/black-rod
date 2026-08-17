@@ -1,0 +1,9 @@
+{% extends "base/list.html" %}
+{% block table_title %}Motions{% endblock table_title %}
+{% block left_alert %}
+    {% if messages %}{% for message in messages %}<div class="alert alert-info m-2">{{ message }}</div>{% endfor %}{% endif %}
+{% endblock left_alert %}
+{% block search_actions %}
+    <button type="submit" class="btn btn-secondary ml-2" formaction="{% url 'core:motion_random' %}">Random</button>
+    <a class="btn btn-outline-secondary ml-2" href="{% url 'core:motion_list' %}">Clear</a>
+{% endblock search_actions %}

@@ -5,6 +5,7 @@ from django.contrib.auth.admin import UserAdmin
 from django.db.models import Count
 from django.utils.html import format_html
 from import_export.admin import ImportExportModelAdmin
+from taggit.models import Tag, TaggedItem
 
 from core.forms import (
     COTYForm,
@@ -41,6 +42,10 @@ from core.models import (
     TournamentImport,
     User,
     Video,
+    Motion,
+    MotionUserStatus,
+    MotionTopic,
+    TaggedMotion,
     Resource,
     ResourceTag,
     Debater,
@@ -547,6 +552,107 @@ class VideoAdmin(admin.ModelAdmin):
     )
     def get_absolute_url(self, obj):
         return obj.get_absolute_url()
+
+
+@admin.register(Motion)
+class MotionAdmin(admin.ModelAdmin):
+    list_display = ("short_text", "date_set", "tournament", "topic_list", "updated_at")
+    list_filter = ("date_set", "tournament", "tags")
+    search_fields = ("text", "background_slide", "tournament__name", "tags__name")
+    autocomplete_fields = ("tournament",)
+    filter_horizontal = ("tags",)
+    readonly_fields = ("created_at", "updated_at", "get_absolute_url")
+    date_hierarchy = "date_set"
+    ordering = ("-date_set", "-pk")
+    fieldsets = (
+        ("Motion", {"fields": ("text", "background_slide")}),
+        ("Setting details", {"fields": ("date_set", "tournament", "tags")}),
+        ("Metadata", {"fields": ("created_at", "updated_at", "get_absolute_url")}),
+    )
+
+    @admin.display(description="Motion", ordering="text")
+    def short_text(self, obj):
+        return obj.text if len(obj.text) <= 100 else f"{obj.text[:97]}..."
+
+    @admin.display(description="Topics")
+    def topic_list(self, obj):
+        return ", ".join(obj.tags.names())
+
+    @admin.display(description="Public URL")
+    def get_absolute_url(self, obj):
+        return obj.get_absolute_url()
+
+@admin.register(MotionUserStatus)
+class MotionUserStatusAdmin(admin.ModelAdmin):
+    list_display = ("user", "motion", "status", "updated_at")
+    list_filter = ("status", "updated_at")
+    search_fields = ("user__username", "motion__text")
+    autocomplete_fields = ("user", "motion")
+
+
+@admin.register(MotionTopic)
+class MotionTopicAdmin(admin.ModelAdmin):
+    list_display = ("name", "slug", "usage_count")
+    search_fields = ("name", "slug")
+    ordering = ("name",)
+    actions = ("merge_topics",)
+
+    @admin.display(description="Uses")
+    def usage_count(self, obj):
+        return obj.tagged_motion_items.count()
+
+    @admin.action(description="Merge selected motion topics into the first alphabetically")
+    def merge_topics(self, request, queryset):
+        topics = list(queryset.order_by("name"))
+        if len(topics) < 2:
+            self.message_user(request, "Select at least two motion topics.", level="warning")
+            return
+        target = topics[0]
+        for source in topics[1:]:
+            for item in TaggedMotion.objects.filter(tag=source).iterator():
+                TaggedMotion.objects.get_or_create(
+                    tag=target, content_object=item.content_object
+                )
+                item.delete()
+            source.delete()
+        self.message_user(
+            request, f"Merged {len(topics) - 1} topics into '{target.name}'."
+        )
+
+
+admin.site.unregister(Tag)
+
+
+@admin.register(Tag)
+class TopicTagAdmin(admin.ModelAdmin):
+    list_display = ("name", "slug", "usage_count")
+    search_fields = ("name", "slug")
+    ordering = ("name",)
+    actions = ("merge_topics",)
+
+    @admin.display(description="Uses")
+    def usage_count(self, obj):
+        return obj.taggit_taggeditem_items.count()
+
+    @admin.action(description="Merge selected topics into the first alphabetically")
+    def merge_topics(self, request, queryset):
+        topics = list(queryset.order_by("name"))
+        if len(topics) < 2:
+            self.message_user(request, "Select at least two topics.", level="warning")
+            return
+        target = topics[0]
+        merged = 0
+        for source in topics[1:]:
+            for item in TaggedItem.objects.filter(tag=source).iterator():
+                TaggedItem.objects.get_or_create(
+                    tag=target,
+                    content_type=item.content_type,
+                    object_id=item.object_id,
+                )
+                item.delete()
+            source.delete()
+            merged += 1
+        self.message_user(request, f"Merged {merged} topics into '{target.name}'.")
 
 
 @admin.register(Resource)

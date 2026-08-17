@@ -22,6 +22,7 @@ from core.models.standings.qual import QUAL
 from core.models.standings.soty import SOTY
 from core.models.tournament import Tournament
 from core.models.video import Video
+from core.models.motion import Motion
 from core.models.resource import Resource
 
 
@@ -109,6 +110,33 @@ class DebaterForm(forms.ModelForm):
             else School.objects.all()
         )
         self.fields["existing_debater"].queryset = Debater.objects.all()
+
+
+class MotionForm(forms.ModelForm):
+    class Meta:
+        model = Motion
+        fields = ("text", "background_slide", "date_set", "tournament", "tags")
+        widgets = {
+            "background_slide": forms.Textarea(attrs={"rows": 4}),
+            "date_set": forms.DateInput(attrs={"type": "date"}),
+            "tournament": autocomplete.ModelSelect2(
+                url="core:all_tournament_autocomplete"
+            ),
+            "tags": autocomplete.TaggitSelect2("core:motion_topic_autocomplete"),
+        }
+
+
+class MotionImportForm(forms.Form):
+    spreadsheet = forms.FileField(
+        help_text="CSV or XLSX. Required column: motion_text. Optional: background_slide, date_set, tournament, tags."
+    )
+
+    def clean_spreadsheet(self):
+        spreadsheet = self.cleaned_data["spreadsheet"]
+        extension = spreadsheet.name.rsplit(".", 1)[-1].lower()
+        if extension not in {"csv", "xlsx"}:
+            raise forms.ValidationError("Upload a CSV or XLSX spreadsheet.")
+        return spreadsheet
 
 
 class VideoForm(forms.ModelForm):
