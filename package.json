@@ -48,7 +48,7 @@
     "webpack-cli": "^5.1.4"
   },
   "dependencies": {
-    "bootstrap": "4.6.2",
+    "bootstrap": "5.0.0",
     "bootstrap-datepicker": "1.9.0",
     "edmonds-blossom": "^1.0.0",
     "jquery": "^3.7.1",
