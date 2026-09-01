@@ -84,7 +84,8 @@ class PlaceColumn(tables.Column):
 
 class PointsColumn(tables.Column):
     def render(self, record):
-        return f"{number(record.points)}"
+        value = number(record.points)
+        return format(value, "f") if value != "" else ""
 
 
 class SeasonColumn(tables.Column):

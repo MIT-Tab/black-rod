@@ -1,16 +1,25 @@
 from datetime import timedelta
 from dal import autocomplete
 from django.conf import settings
-from django.db.models import Q, Prefetch
+from django.db.models import (
+    Case,
+    Exists,
+    FloatField,
+    OuterRef,
+    Prefetch,
+    Q,
+    Subquery,
+    Value,
+    When,
+)
 from django.core.cache import cache
 from django.http import HttpResponse, QueryDict
-from django.shortcuts import get_object_or_404
 from django.urls import reverse_lazy
 from django.utils import timezone
 from django.utils.decorators import method_decorator
 from django.views.decorators.clickjacking import xframe_options_exempt
 from django.views.generic import TemplateView
-from django_filters import ChoiceFilter, FilterSet
+from django_filters import ChoiceFilter, FilterSet, NumberFilter
 from django_tables2 import Column
 from core.forms import (
     TournamentCreateForm,
@@ -29,6 +38,7 @@ from core.utils.generics import (
     CustomListView,
     CustomTable,
     CustomUpdateView,
+    PointsColumn,
     SeasonColumn,
 )
 from core.utils.rounds import (
@@ -47,6 +57,18 @@ class TournamentFilter(FilterSet):
     # Custom season filter using dropdown choices from settings.SEASONS
     season = ChoiceFilter(
         choices=settings.SEASONS, empty_label="Any Season", label="Season"
+    )
+    num_teams_min = NumberFilter(
+        field_name="num_teams", lookup_expr="gte", label="Minimum number of teams"
+    )
+    num_teams_max = NumberFilter(
+        field_name="num_teams", lookup_expr="lte", label="Maximum number of teams"
+    )
+    points_min = NumberFilter(
+        field_name="points", lookup_expr="gte", label="Minimum points"
+    )
+    points_max = NumberFilter(
+        field_name="points", lookup_expr="lte", label="Maximum points"
     )
 
     class Meta:
@@ -67,6 +89,31 @@ class TournamentTable(CustomTable):
         verbose_name="Season", accessor="season", order_by="season"
     )
 
+    points = PointsColumn(verbose_name="Points", order_by="points")
+    winning_team = Column(
+        verbose_name="Winning team",
+        empty_values=(),
+        order_by=("winner_last_name", "winner_first_name"),
+    )
+    top_speaker = Column(
+        verbose_name="Top speaker",
+        empty_values=(),
+        order_by=("top_speaker_last_name", "top_speaker_first_name"),
+    )
+
+    def render_winning_team(self, record):
+        if not record.list_winners:
+            return "—"
+        names = " and ".join(
+            debater.name for debater in record.list_winners[0].team.debaters.all()
+        )
+        return names or "—"
+
+    def render_top_speaker(self, record):
+        if not record.list_top_speakers:
+            return "—"
+        return record.list_top_speakers[0].debater.name
+
     class Meta:
         model = Tournament
         fields = (
@@ -75,7 +122,9 @@ class TournamentTable(CustomTable):
             "date",
             "season_display",
             "num_teams",
-            "num_novice_debaters",
+            "points",
+            "winning_team",
+            "top_speaker",
         )
 
 
@@ -286,15 +335,69 @@ class TournamentListView(CustomListView):
     def get_queryset(self, *args, **kwargs):
         qs = super().get_queryset(*args, **kwargs)
 
-        ids = []
+        varsity_winners = TeamResult.objects.filter(
+            tournament=OuterRef("pk"),
+            type_of_place=Debater.VARSITY,
+            place=1,
+        )
+        top_speakers = SpeakerResult.objects.filter(
+            tournament=OuterRef("pk"),
+            type_of_place=Debater.VARSITY,
+            place=1,
+        )
 
-        for q in qs:
-            if q.team_results.count() > 0 or q.speaker_results.count() > 0:
-                ids += [q.id]
+        points = Case(
+            When(qual=False, then=Value(0.0)),
+            When(num_teams__lt=8, then=Value(0.0)),
+            When(num_teams__lt=16, then=Value(8.0)),
+            When(num_teams__lt=24, then=Value(12.0)),
+            When(num_teams__lt=32, then=Value(13.0)),
+            When(num_teams__lt=40, then=Value(14.0)),
+            When(num_teams__lt=48, then=Value(15.0)),
+            When(num_teams__lt=56, then=Value(16.0)),
+            When(num_teams__lt=64, then=Value(17.0)),
+            When(num_teams__lt=72, then=Value(18.0)),
+            When(num_teams__lt=80, then=Value(19.0)),
+            default=Value(20.0),
+            output_field=FloatField(),
+        )
 
-        qs = qs.filter(id__in=ids)
-
-        return qs
+        return (
+            qs.annotate(
+                points=points,
+                has_team_results=Exists(TeamResult.objects.filter(tournament=OuterRef("pk"))),
+                has_speaker_results=Exists(SpeakerResult.objects.filter(tournament=OuterRef("pk"))),
+                winner_first_name=Subquery(
+                    varsity_winners.values("team__debaters__first_name")[:1]
+                ),
+                winner_last_name=Subquery(
+                    varsity_winners.values("team__debaters__last_name")[:1]
+                ),
+                top_speaker_first_name=Subquery(
+                    top_speakers.values("debater__first_name")[:1]
+                ),
+                top_speaker_last_name=Subquery(
+                    top_speakers.values("debater__last_name")[:1]
+                ),
+            )
+            .filter(Q(has_team_results=True) | Q(has_speaker_results=True))
+            .prefetch_related(
+                Prefetch(
+                    "team_results",
+                    queryset=TeamResult.objects.filter(
+                        type_of_place=Debater.VARSITY, place=1
+                    ).prefetch_related("team__debaters"),
+                    to_attr="list_winners",
+                ),
+                Prefetch(
+                    "speaker_results",
+                    queryset=SpeakerResult.objects.filter(
+                        type_of_place=Debater.VARSITY, place=1
+                    ).select_related("debater"),
+                    to_attr="list_top_speakers",
+                ),
+            )
+        )
 
 
 class TournamentDetailView(CustomDetailView):

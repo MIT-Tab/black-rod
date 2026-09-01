@@ -1,18 +1,13 @@
-import csv
 from datetime import date
-from io import StringIO
 from types import SimpleNamespace
 
 import pytest
-from django.contrib.auth import get_user_model
 from django.conf import settings
 from django.http import HttpResponse
 from django.test import RequestFactory
 from django.urls import reverse
 
 from core.models import (
-    DebaterAlias,
-    ImportedRoundMetadata,
     School,
     Tournament,
     Debater,
@@ -21,7 +16,6 @@ from core.models import (
 from core.models.results.speaker import SpeakerResult
 from core.models.results.team import TeamResult
 from core.models.round import Round
-from core.models.round import RoundStats
 from core.views import tournament_views as tv
 
 
@@ -94,6 +88,66 @@ def test_tournament_list_view_filters_to_tournaments_with_results(monkeypatch, s
 
     assert list(qs) == [with_results]
     assert without_results not in qs
+
+
+def test_tournament_list_columns_filters_and_sorting(client, monkeypatch, school):
+    tournament = Tournament.objects.create(
+        name="Results Table",
+        manual_name="Results Table",
+        host=school,
+        date=date(2024, 2, 1),
+        season=settings.CURRENT_SEASON,
+        num_teams=32,
+    )
+    first = Debater.objects.create(first_name="Ada", last_name="Alpha", school=school)
+    second = Debater.objects.create(first_name="Bea", last_name="Beta", school=school)
+    winner = Team.objects.create(name="School AB")
+    winner.debaters.set([first, second])
+    TeamResult.objects.create(
+        tournament=tournament,
+        team=winner,
+        type_of_place=Debater.VARSITY,
+        place=1,
+    )
+    SpeakerResult.objects.create(
+        tournament=tournament,
+        debater=second,
+        type_of_place=Debater.VARSITY,
+        place=1,
+    )
+
+    monkeypatch.setattr(
+        tv.CustomListView,
+        "get_queryset",
+        lambda self, *args, **kwargs: Tournament.objects.all(),
+    )
+    request = RequestFactory().get("/tournaments/?num_teams_min=30&points_max=14")
+    request.user = SimpleNamespace(is_authenticated=True, has_perms=lambda perms: True)
+    view = tv.TournamentListView()
+    view.setup(request)
+    queryset = view.get_queryset()
+
+    filtered = tv.TournamentFilter(request.GET, queryset=queryset)
+    assert filtered.form.is_valid()
+    assert filtered.form.cleaned_data["num_teams_min"] == 30
+    assert filtered.form.cleaned_data["points_max"] == 14
+    assert list(filtered.qs) == [tournament]
+    assert queryset.get().points == 14
+
+    table = tv.TournamentTable(queryset)
+    assert table.columns["date"].orderable
+    assert all(column.orderable for column in table.columns)
+    row = table.rows[0]
+    assert str(row.get_cell("winning_team")) == "Ada Alpha and Bea Beta"
+    assert str(row.get_cell("top_speaker")) == "Bea Beta"
+
+    response = client.get(
+        reverse("core:tournament_list"),
+        {"num_teams_min": 30, "points_max": 14},
+    )
+    assert response.status_code == 200
+    assert b"Minimum number of teams" in response.content
+    assert b"Maximum points" in response.content
 
 
 def test_tournament_detail_view_builds_context(monkeypatch, school):

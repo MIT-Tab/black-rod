@@ -104,6 +104,9 @@ def test_points_column_returns_decimal_string():
     value = generics.PointsColumn().render(record)
     assert value == "7.25"
 
+    record.points = Decimal("20.0")
+    assert generics.PointsColumn().render(record) == "20"
+
 
 def test_season_column_prefers_display_methods():
     class RecordWithDisplay:
