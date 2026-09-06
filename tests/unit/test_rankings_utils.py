@@ -5,6 +5,7 @@ Tests for ranking utilities
 
 from datetime import date
 from io import StringIO
+from unittest.mock import patch
 from django.core.management import call_command
 from django.test import TestCase
 
@@ -800,6 +801,51 @@ class RankingsUtilsTest(TestCase):
         self.assertTrue(Team.objects.filter(id=gov.id).exists())
         self.assertTrue(Team.objects.filter(id=opp.id).exists())
         self.assertTrue(Round.objects.filter(id=round_obj.id).exists())
+
+    def test_rebuild_coty_related_rankings_only_processes_relevant_teams(self):
+        TeamResult.objects.create(
+            team=self.team,
+            tournament=self.tournament,
+            type_of_place=Debater.VARSITY,
+            place=1,
+        )
+
+        stale_debater = Debater.objects.create(
+            first_name="Stale", last_name="Debater", school=self.school
+        )
+        stale_team = Team.objects.create(name="Stale current-season team")
+        stale_team.debaters.add(stale_debater)
+        QualPoints.objects.create(debater=stale_debater, season="2024", points=5)
+
+        historical_debater = Debater.objects.create(
+            first_name="Historical", last_name="Debater", school=self.school
+        )
+        historical_team = Team.objects.create(name="Historical team")
+        historical_team.debaters.add(historical_debater)
+        historical_tournament = Tournament.objects.create(
+            name="Historical Tournament",
+            host=self.school,
+            date=date(2023, 1, 1),
+            season="2023",
+        )
+        TeamResult.objects.create(
+            team=historical_team,
+            tournament=historical_tournament,
+            type_of_place=Debater.VARSITY,
+            place=1,
+        )
+
+        with (
+            patch.object(rankings, "update_qual_points") as update_qual_points,
+            patch.object(rankings, "update_online_quals") as update_online_quals,
+            patch.object(rankings, "redo_rankings"),
+        ):
+            rankings.rebuild_coty_related_rankings(season="2024")
+
+        processed_by_qual = {call.args[0].id for call in update_qual_points.call_args_list}
+        processed_online = {call.args[0].id for call in update_online_quals.call_args_list}
+        self.assertEqual(processed_by_qual, {self.team.id, stale_team.id})
+        self.assertEqual(processed_online, processed_by_qual)
 
     def test_update_qual_points_does_not_autoqual_nationals(self):
         nationals = Tournament.objects.create(

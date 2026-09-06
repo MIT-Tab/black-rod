@@ -1,6 +1,7 @@
 from django.conf import settings
 from django.core.cache import cache
 from django.core.cache.utils import make_template_fragment_key
+from django.db.models import Exists, OuterRef, Q
 from django.shortcuts import reverse
 from django.test import Client
 
@@ -475,7 +476,29 @@ def rebuild_coty_related_rankings(season=settings.CURRENT_SEASON):
     rebuild to avoid leaving COTY rows or qual point totals in a partial state.
     """
     season = str(season)
-    for team in Team.objects.all():
+    teams = Team.objects.annotate(
+        has_results=Exists(
+            TeamResult.objects.filter(team=OuterRef("pk"), tournament__season=season)
+        ),
+        has_qual_points=Exists(
+            QualPoints.objects.filter(
+                debater__teams=OuterRef("pk"), season=season
+            )
+        ),
+        has_quals=Exists(
+            QUAL.objects.filter(debater__teams=OuterRef("pk"), season=season)
+        ),
+        has_online_quals=Exists(
+            OnlineQUAL.objects.filter(debater__teams=OuterRef("pk"), season=season)
+        ),
+    ).filter(
+        Q(has_results=True)
+        | Q(has_qual_points=True)
+        | Q(has_quals=True)
+        | Q(has_online_quals=True)
+    )
+    teams = teams.prefetch_related("debaters")
+    for team in teams:
         update_qual_points(team, season=season, delete_empty_team=False)
         update_online_quals(team, season=season, delete_empty_team=False)
 
