@@ -173,10 +173,13 @@ elif os.environ.get("ENV") == "production":
         }
     }
     import sentry_sdk
+    from django.core.exceptions import DisallowedHost
     from sentry_sdk.integrations.django import DjangoIntegration
 
     sentry_sdk.init(
-        dsn=os.environ.get("SENTRY_DSN", ""), integrations=[DjangoIntegration()]
+        dsn=os.environ.get("SENTRY_DSN", ""),
+        integrations=[DjangoIntegration()],
+        ignore_errors=[DisallowedHost],
     )
     ALLOWED_HOSTS = ["50.116.54.146", "results.apda.online"]
     CSRF_TRUSTED_ORIGINS = ["https://results.apda.online"]

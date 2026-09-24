@@ -1,5 +1,6 @@
 # pylint: disable=unused-wildcard-import,wildcard-import,unused-import,abstract-class-instantiated
 import sentry_sdk
+from django.core.exceptions import DisallowedHost
 from sentry_sdk.integrations.django import DjangoIntegration
 
 from .base import *
@@ -30,4 +31,5 @@ CACHES = {
 sentry_sdk.init(
     dsn="https://6c6eb92f6b7248a9a37e4b255eab4962@sentry.io/1811674",
     integrations=[DjangoIntegration()],
+    ignore_errors=[DisallowedHost],
 )
