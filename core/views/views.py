@@ -14,6 +14,7 @@ from core.models import (
     Round, RoundStats,
 )
 from core.utils.rounds import visible_canonical_rounds
+from core.live_results import build_live_standings, cached_live_standings
 
 
 class FilteredSearchView(SearchView):
@@ -189,6 +190,23 @@ def index(request):
             "online_quals": online_quals,
             "online_seasons": online_seasons,
             "online_qual_bar": online_qual_bar,
+            # Read-only peek so the index never waits on remote tournaments.
+            "live_season": settings.CURRENT_SEASON,
+            "live_sources": (cached_live_standings() or {}).get("active_sources", []),
+        },
+    )
+
+
+def live_standings(request):
+    """Render cached standings with ephemeral Nu-Tab results overlaid."""
+    payload = build_live_standings(settings.CURRENT_SEASON)
+    return render(
+        request,
+        "core/live.html",
+        {
+            "current_season": settings.CURRENT_SEASON,
+            "boards": payload["boards"],
+            "active_sources": payload["active_sources"],
         },
     )
 

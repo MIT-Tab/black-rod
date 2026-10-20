@@ -34,6 +34,7 @@ urlpatterns = [
     path(".well-known/ai-plugin.json", plugin_views.ai_plugin_manifest, name="ai_plugin_manifest"),
     path(".well-known/openapi.json", plugin_views.PluginSchemaView.as_view(), name="openapi_schema"),
     path("", views.index, name="index"),
+    path("live", views.live_standings, name="live_standings"),
     path(
         "core/generated-codes/",
         generated_code_views.GeneratedCodeView.as_view(),
