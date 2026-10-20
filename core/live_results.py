@@ -1,4 +1,3 @@
-from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, wait
 from datetime import date, timedelta
 import logging
@@ -23,7 +22,10 @@ LOCK_SECONDS = 60
 FETCH_BUDGET_SECONDS = 15
 # Tournaments are deduplicated against reviewed imports within this window.
 IMPORT_MATCH_DAYS = 7
-MARKER_LIMITS = {"toty": 5, "soty": 6, "noty": 5, "coty": None}
+MARKER_LIMITS = {"toty": 5, "soty": 6, "noty": 5}
+QUAL_POINT_CAP = 60.0
+QUAL_BONUS = 6.0
+AUTOQUAL_LABELS = dict(QUAL.QUAL_TYPES)
 LABELS = ("one", "two", "three", "four", "five", "six")
 UNKNOWN_IDS = (None, -1, "-1", "")
 
@@ -103,9 +105,7 @@ def _base_queryset(model, entity_name, marker_count, season):
         return queryset.select_related("team", *tournaments).prefetch_related(
             Prefetch("team__debaters", queryset=Debater.objects.select_related("school"))
         )
-    if entity_name == "debater":
-        return queryset.select_related("debater__school", *tournaments)
-    return queryset.select_related("school")
+    return queryset.select_related("debater__school", *tournaments)
 
 
 def _base_rows(model, entity_name, marker_count, season):
@@ -117,23 +117,13 @@ def _base_rows(model, entity_name, marker_count, season):
                 _base_marker(entry, label) for label in LABELS[:marker_count]
             ) if marker
         ]
-        if marker_count == 0 and float(entry.points or 0) > 0:
-            markers = [{
-                "points": float(entry.points),
-                "tournament": "Reviewed season results",
-                "url": "",
-                "live": False,
-            }]
         if entity_name == "team":
             debaters = sorted(entity.debaters.all(), key=lambda d: d.id)
             key = "team:" + ":".join(str(debater.id) for debater in debaters)
             detail = " and ".join(debater.name for debater in debaters)
-        elif entity_name == "debater":
+        else:
             key = f"debater:{entity.id}"
             detail = entity.school.name if entity.school else "Unaffiliated"
-        else:
-            key = f"school:{entity.id}"
-            detail = ""
         rows.append({
             "key": key,
             "name": entity.name,
@@ -271,7 +261,32 @@ def _already_imported(tournament, season, type_code, host_id):
     ).exists()
 
 
-def _apply_coty(context, team_debaters, place, qual_points, marker):
+def _coty_debater(coty, debater):
+    """Return the COTY breakdown entry for a debater, creating it if needed."""
+    if debater["key"] in coty["debaters"]:
+        return coty["debaters"][debater["key"]]
+    school = coty["schools"].setdefault(debater["school_key"], {
+        "key": debater["school_key"],
+        "name": debater["school_name"],
+        "url": "",
+        "debaters": [],
+    })
+    entry = {
+        "key": debater["key"],
+        "name": debater["name"],
+        "url": debater["url"],
+        "base_points": 0.0,
+        "points": 0.0,
+        "base_qualled": False,
+        "qualled": False,
+        "quals": [],
+    }
+    school["debaters"].append(entry)
+    coty["debaters"][debater["key"]] = entry
+    return entry
+
+
+def _apply_coty(context, team_debaters, place, qual_points):
     flags = context["flags"]
     if not flags["qual"] and not flags["autoqual_bar"]:
         return False
@@ -279,28 +294,24 @@ def _apply_coty(context, team_debaters, place, qual_points, marker):
     for debater in team_debaters:
         if not debater["school_key"] or not debater["school_eligible"]:
             continue
-        state = context["coty_state"][debater["key"]]
-        school = {"key": debater["school_key"], "name": debater["school_name"]}
+        entry = _coty_debater(context["coty"], debater)
         # Qual points only count from qualifying tournaments, but auto-quals
         # (Brandeis, Yale, NorthAms, ...) award the six COTY points regardless.
-        if flags["qual"]:
-            capped_delta = min(qual_points, max(0.0, 60.0 - state["points"]))
-            state["points"] += qual_points
-            if capped_delta > 0:
-                _add_marker(context["boards"]["coty"], school, marker(capped_delta))
-                used = True
-        qualifies = (
-            0 < place <= flags["autoqual_bar"]
-            or (flags["qual"] and state["points"] >= float(settings.QUAL_BAR))
-        )
-        if qualifies and not state["qualified"]:
-            state["qualified"] = True
-            _add_marker(context["boards"]["coty"], school, marker(6))
+        if flags["qual"] and qual_points > 0:
+            entry["points"] += qual_points
             used = True
+        if 0 < place <= flags["autoqual_bar"]:
+            label = AUTOQUAL_LABELS.get(context["type_code"], "Auto-qual")
+            if label not in [qual["label"] for qual in entry["quals"]]:
+                entry["quals"].append({"label": label, "live": True})
+            entry["qualled"] = True
+            used = True
+        elif flags["qual"] and entry["points"] >= float(settings.QUAL_BAR):
+            entry["qualled"] = True
     return used
 
 
-def _apply_live_payload(boards, payload, season, coty_state, people):
+def _apply_live_payload(boards, payload, season, coty, people):
     tournament = payload.get("tournament") or {}
     if not tournament.get("sanctioned") or str(tournament.get("season")) != str(season):
         return False
@@ -318,7 +329,7 @@ def _apply_live_payload(boards, payload, season, coty_state, people):
     if _already_imported(tournament, season, type_code, host_id):
         return False
     flags = _type_flags(type_code, season)
-    context = {"boards": boards, "coty_state": coty_state, "flags": flags}
+    context = {"boards": boards, "coty": coty, "flags": flags, "type_code": type_code}
     source_url = str(payload.get("source_url") or "").rstrip("/")
     used = False
 
@@ -357,7 +368,7 @@ def _apply_live_payload(boards, payload, season, coty_state, people):
             used = True
 
         qual_points = team_points_for_size(num_teams, place) if flags["qual"] else 0
-        if _apply_coty(context, team_debaters, place, qual_points, marker):
+        if _apply_coty(context, team_debaters, place, qual_points):
             used = True
 
     for result in payload.get("speaker_results", []):
@@ -408,16 +419,99 @@ def _finalize(rows, marker_limit):
         row["has_live"] = any(marker["live"] for marker in markers)
         if row["points"] > 0:
             finalized.append(row)
-    finalized.sort(key=lambda row: (-row["points"], row["name"].lower()))
+    return _place(finalized)
+
+
+def _place(rows):
+    rows.sort(key=lambda row: (-row["points"], row["name"].lower()))
     previous_points = None
     previous_place = 0
-    for index, row in enumerate(finalized, start=1):
+    for index, row in enumerate(rows, start=1):
         row["place"] = previous_place if row["points"] == previous_points else index
         row["tied"] = row["points"] == previous_points
         if row["place"] == index:
             previous_place = index
         previous_points = row["points"]
-    return finalized
+    return rows
+
+
+def _base_coty(season):
+    """Load reviewed COTY standings as the per-debater breakdown the index shows."""
+    coty = {"schools": {}, "debaters": {}}
+    for row in COTY.objects.filter(season=season).select_related("school"):
+        coty["schools"][f"school:{row.school_id}"] = {
+            "key": f"school:{row.school_id}",
+            "name": row.school.name,
+            "url": row.school.get_absolute_url(),
+            "debaters": [],
+        }
+
+    if season in {str(value) for value in settings.ONLINE_SEASONS}:
+        return coty
+
+    def reviewed_debater(debater):
+        school = debater.school
+        if school is None or not school.included_in_oty:
+            return None
+        coty["schools"].setdefault(f"school:{school.id}", {
+            "key": f"school:{school.id}",
+            "name": school.name,
+            "url": school.get_absolute_url(),
+            "debaters": [],
+        })
+        return _coty_debater(coty, {
+            "key": f"debater:{debater.id}",
+            "name": debater.name,
+            "url": debater.get_absolute_url(),
+            "school_key": f"school:{school.id}",
+            "school_name": school.name,
+        })
+
+    for qual_points in QualPoints.objects.filter(season=season).select_related(
+        "debater__school"
+    ):
+        entry = reviewed_debater(qual_points.debater)
+        if entry is not None:
+            entry["base_points"] = entry["points"] = float(qual_points.points)
+    for qual in QUAL.objects.filter(season=season).select_related("debater__school"):
+        entry = reviewed_debater(qual.debater)
+        if entry is None:
+            continue
+        entry["base_qualled"] = entry["qualled"] = True
+        if qual.qual_type > 0:
+            entry["quals"].append({"label": qual.get_qual_type_display(), "live": False})
+    return coty
+
+
+def _contribution(points, qualled):
+    return min(QUAL_POINT_CAP, points) + (QUAL_BONUS if qualled else 0.0)
+
+
+def _finalize_coty(coty):
+    """Total schools exactly like update_qual_points: capped points plus quals."""
+    schools = []
+    for school in coty["schools"].values():
+        debaters = []
+        for entry in school["debaters"]:
+            if entry["points"] <= 0 and not entry["qualled"]:
+                continue
+            entry["contribution"] = _contribution(entry["points"], entry["qualled"])
+            entry["points_live"] = entry["points"] != entry["base_points"]
+            entry["qualled_live"] = entry["qualled"] and not entry["base_qualled"]
+            entry["contribution_live"] = entry["contribution"] != _contribution(
+                entry["base_points"], entry["base_qualled"]
+            )
+            debaters.append(entry)
+        debaters.sort(key=lambda entry: (-entry["points"], entry["name"].lower()))
+        school["debaters"] = debaters
+        school["points"] = round(sum(entry["contribution"] for entry in debaters), 4)
+        school["has_live"] = any(
+            entry["points_live"] or entry["qualled_live"] or entry["contribution_live"]
+            for entry in debaters
+        )
+        if school["points"] > 0:
+            schools.append(school)
+    return _place(schools)
 
 
 def _compute_live_standings(season):
@@ -426,15 +520,8 @@ def _compute_live_standings(season):
         "toty": {row["key"]: row for row in _base_rows(TOTY, "team", 5, season)},
         "soty": {row["key"]: row for row in _base_rows(SOTY, "debater", 6, season)},
         "noty": {row["key"]: row for row in _base_rows(NOTY, "debater", 5, season)},
-        "coty": {row["key"]: row for row in _base_rows(COTY, "school", 0, season)},
     }
-    coty_state = defaultdict(lambda: {"points": 0.0, "qualified": False})
-    for debater_id, points in QualPoints.objects.filter(season=season).values_list(
-        "debater_id", "points"
-    ):
-        coty_state[f"debater:{debater_id}"]["points"] = float(points)
-    for debater_id in QUAL.objects.filter(season=season).values_list("debater_id", flat=True):
-        coty_state[f"debater:{debater_id}"]["qualified"] = True
+    coty = _base_coty(season)
 
     payloads = fetch_live_sources()
     people = _People(payloads)
@@ -443,14 +530,17 @@ def _compute_live_standings(season):
     for payload in payloads:
         if is_online_season:
             break
-        if _apply_live_payload(boards, payload, season, coty_state, people):
+        if _apply_live_payload(boards, payload, season, coty, people):
             active_sources.append(payload.get("tournament", {}).get("name", "Tournament"))
 
     return {
         "season": season,
         "boards": {
-            name: _finalize(rows, MARKER_LIMITS[name])
-            for name, rows in boards.items()
+            **{
+                name: _finalize(rows, MARKER_LIMITS[name])
+                for name, rows in boards.items()
+            },
+            "coty": _finalize_coty(coty),
         },
         "active_sources": sorted(set(active_sources)),
     }

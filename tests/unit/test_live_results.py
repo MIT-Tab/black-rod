@@ -10,7 +10,7 @@ from django.test.utils import CaptureQueriesContext
 from core import live_results
 from core.live_results import CACHE_KEY, build_live_standings
 from core.utils.rankings import redo_rankings
-from core.models import QUAL, TOTY, Debater, QualPoints, School, Team, Tournament
+from core.models import COTY, QUAL, TOTY, Debater, QualPoints, School, Team, Tournament
 
 
 def _payload(name="MIT Fall", sanctioned=True, place=3):
@@ -174,7 +174,11 @@ def test_auto_qual_tournaments_award_coty_without_points():
 
     coty = boards["coty"][0]
     assert coty["key"] == f"school:{school.id}"
-    assert [marker["points"] for marker in coty["markers"]] == [6.0, 6.0]
+    assert coty["points"] == 12
+    assert [
+        (debater["points"], debater["contribution"], debater["qualled_live"], debater["quals"])
+        for debater in coty["debaters"]
+    ] == [(0.0, 6.0, True, [{"label": "Brandeis IV", "live": True}])] * 2
     assert all(not marker["live"] for row in boards["toty"] for marker in row["markers"])
 
 
@@ -191,7 +195,56 @@ def test_existing_qualification_is_not_counted_twice():
 
     # First debater is capped at 60 qual points and already qualified; the
     # second earns 14 points and crosses the bar for a new qualification.
-    assert sorted(marker["points"] for marker in coty["markers"]) == [2.0, 6.0, 14.0]
+    breakdown = {debater["name"]: debater for debater in coty["debaters"]}
+    assert breakdown[first.name]["points"] == 72
+    assert breakdown[first.name]["contribution"] == 66
+    assert breakdown[first.name]["qualled_live"] is False
+    assert breakdown[second.name]["contribution"] == 20
+    assert breakdown[second.name]["qualled_live"] is True
+    assert coty["points"] == 86
+    assert [debater["name"] for debater in coty["debaters"]] == [first.name, second.name]
+
+
+@pytest.mark.django_db
+@override_settings(CURRENT_SEASON="2026")
+def test_live_coty_matches_reviewed_breakdown_without_live_results():
+    cache.clear()
+    school, first, second = _reviewed_team()
+    COTY.objects.create(season="2026", school=school, points=26)
+    QualPoints.objects.create(season="2026", debater=first, points=14)
+    QUAL.objects.create(season="2026", debater=first, qual_type=QUAL.POINTS)
+    QUAL.objects.create(season="2026", debater=second, qual_type=QUAL.YALE)
+    with patch("core.live_results.fetch_live_sources", return_value=[]):
+        coty = build_live_standings()["boards"]["coty"]
+
+    assert len(coty) == 1
+    assert coty[0]["points"] == 26
+    assert coty[0]["has_live"] is False
+    assert [
+        (debater["name"], debater["points"], debater["contribution"], debater["quals"])
+        for debater in coty[0]["debaters"]
+    ] == [
+        (first.name, 14.0, 20.0, []),
+        (second.name, 0.0, 6.0, [{"label": "Yale IV", "live": False}]),
+    ]
+
+
+@pytest.mark.django_db
+@override_settings(CURRENT_SEASON="2026")
+def test_live_page_shows_coty_debater_breakdown():
+    cache.clear()
+    school, first, second = _reviewed_team()
+    payload = _live_team(_payload(), first, second, school, place=1)
+    with patch("core.live_results.fetch_live_sources", return_value=[payload]):
+        response = Client().get("/live")
+
+    content = response.content.decode()
+    assert 'id="expandAll"' in content
+    assert 'data-newtarget="#coty_1"' in content
+    assert "Points (Contribution)" in content
+    assert content.count('id="coty"') == 1
+    assert content.count('id="toty"') == 1
+    assert first.name in content and second.name in content
 
 
 @pytest.mark.django_db
