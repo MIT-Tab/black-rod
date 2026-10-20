@@ -77,6 +77,9 @@ def test_live_page_labels_provisional_results():
     assert response.status_code == 200
     assert b"have not been reviewed by a human" in response.content
     assert b"MIT Fall" in response.content
+    assert b"<th scope=\"col\">School</th>" in response.content
+    assert b"<th scope=\"col\">Debaters</th>" in response.content
+    assert b"Results counting toward total" not in response.content
 
 
 @pytest.mark.django_db

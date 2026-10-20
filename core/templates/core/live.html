@@ -4,93 +4,196 @@
 {% block title %}Live APDA Standings{% endblock title %}
 
 {% block content %}
-<div class="shadow-lg card m-lg-5 mt-2 m-1 rounded-l8">
-  <div class="card-body">
-    <div class="d-flex flex-wrap justify-content-between align-items-start mb-3">
-      <div class="mr-3">
-        <h3 class="mb-1">Live APDA standings</h3>
-        <p class="text-muted mb-1">Current-season standings, updated every five minutes.</p>
-        {% if active_sources %}
-        <p class="small text-muted mb-0">
-          Live results from {{ active_sources|join:", " }}
-        </p>
-        {% endif %}
-      </div>
-      <a class="btn btn-outline-primary btn-sm mt-1" href="{% url 'core:index' %}">
-        Official standings
-      </a>
+    <div class="text-right mx-lg-5 mt-3 mb-n2">
+        <a class="btn btn-outline-primary" href="{% url 'core:index' %}">Official standings</a>
     </div>
+    <div class="shadow-lg card m-lg-5 mt-2 m-1 rounded-l8">
+        <div class="card-body">
+            <p class="small text-muted mb-3" role="note">
+                <i class="fas fa-info-circle text-warning mr-1"></i>
+                Results highlighted in yellow are live and have not been reviewed by a human.
+            </p>
+            <h5 class="card-title text-white">
+                <ul class="nav nav-pills nav-fill" id="oty_pills" role="tablist">
+                    <li class="nav-item pr-2">
+                        <a class="nav-link active" id="toty_button" data-toggle="tab" href="#toty">Team of the Year</a>
+                    </li>
+                    <li class="nav-item pr-2">
+                        <a class="nav-link" id="soty_button" data-toggle="tab" href="#soty">Speaker of the Year</a>
+                    </li>
+                    {% if boards.noty %}
+                        <li class="nav-item pr-2">
+                            <a class="nav-link" id="noty_button" data-toggle="tab" href="#noty">Novice of the Year</a>
+                        </li>
+                    {% endif %}
+                    <li class="nav-item pr-2">
+                        <a class="nav-link" id="coty_button" data-toggle="tab" href="#coty">Club of the Year</a>
+                    </li>
+                </ul>
+            </h5>
 
-    <p class="small text-muted mb-3" role="note">
-      <i class="fas fa-info-circle text-warning mr-1"></i>
-      Results highlighted in yellow are live and have not been reviewed by a human.
-    </p>
+            <div class="tab-content" id="results">
+                <div class="tab-pane fade active show" id="toty" role="tabpanel">
+                    <div class="table-responsive standings-scroll">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th scope="col" width="5%">#</th>
+                                    <th scope="col">School</th>
+                                    <th scope="col">Debaters</th>
+                                    <th scope="col">Points</th>
+                                    <th scope="col">1</th>
+                                    <th scope="col">2</th>
+                                    <th scope="col">3</th>
+                                    <th scope="col">4</th>
+                                    <th scope="col">5</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in boards.toty %}
+                                    <tr>
+                                        <td>{% if row.tied %}T-{% endif %}{{ row.place }}</td>
+                                        <td>{% if row.url %}<a href="{{ row.url }}">{{ row.name }}</a>{% else %}{{ row.name }}{% endif %}</td>
+                                        <td>{{ row.detail }}</td>
+                                        <td>{% if row.has_live %}<mark>{{ row.points|number }}</mark>{% else %}{{ row.points|number }}{% endif %}</td>
+                                        {% for marker in row.marker_slots %}
+                                            <td>
+                                                {% if marker %}
+                                                    {% if marker.live %}<mark>{% endif %}
+                                                    {{ marker.points|number }} <a href="{{ marker.url }}"{% if marker.live %} target="_blank" rel="noopener"{% endif %}>{{ marker.tournament }}</a>
+                                                    {% if marker.live %}</mark>{% endif %}
+                                                {% endif %}
+                                            </td>
+                                        {% endfor %}
+                                    </tr>
+                                {% empty %}
+                                    <tr><td colspan="9" class="shaded text-center">There are no TOTY results yet</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
 
-    <h5 class="card-title text-white">
-      <ul class="nav nav-pills nav-fill" role="tablist">
-        <li class="nav-item pr-2">
-          <a class="nav-link active" data-toggle="tab" href="#live-toty">Team of the Year</a>
-        </li>
-        <li class="nav-item pr-2">
-          <a class="nav-link" data-toggle="tab" href="#live-soty">Speaker of the Year</a>
-        </li>
-        {% if boards.noty %}
-        <li class="nav-item pr-2">
-          <a class="nav-link" data-toggle="tab" href="#live-noty">Novice of the Year</a>
-        </li>
-        {% endif %}
-        <li class="nav-item">
-          <a class="nav-link" data-toggle="tab" href="#live-coty">Club of the Year</a>
-        </li>
-      </ul>
-    </h5>
+                <div class="tab-pane fade" id="soty" role="tabpanel">
+                    <div class="table-responsive standings-scroll">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th scope="col">#</th>
+                                    <th scope="col">Debater</th>
+                                    <th scope="col">School</th>
+                                    <th scope="col">Points</th>
+                                    <th scope="col">1</th>
+                                    <th scope="col">2</th>
+                                    <th scope="col">3</th>
+                                    <th scope="col">4</th>
+                                    <th scope="col">5</th>
+                                    <th scope="col">6</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in boards.soty %}
+                                    <tr>
+                                        <td>{% if row.tied %}T-{% endif %}{{ row.place }}</td>
+                                        <td>{% if row.url %}<a href="{{ row.url }}">{{ row.name }}</a>{% else %}{{ row.name }}{% endif %}</td>
+                                        <td>{{ row.detail }}</td>
+                                        <td>{% if row.has_live %}<mark>{{ row.points|number }}</mark>{% else %}{{ row.points|number }}{% endif %}</td>
+                                        {% for marker in row.marker_slots %}
+                                            <td>
+                                                {% if marker %}
+                                                    {% if marker.live %}<mark>{% endif %}
+                                                    {{ marker.points|number }} <a href="{{ marker.url }}"{% if marker.live %} target="_blank" rel="noopener"{% endif %}>{{ marker.tournament }}</a>
+                                                    {% if marker.live %}</mark>{% endif %}
+                                                {% endif %}
+                                            </td>
+                                        {% endfor %}
+                                    </tr>
+                                {% empty %}
+                                    <tr><td colspan="10" class="shaded text-center">There are no SOTY results yet</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
 
-    <div class="tab-content">
-      {% for board_name, rows in boards.items %}
-      <section class="tab-pane fade {% if board_name == 'toty' %}show active{% endif %}" id="live-{{ board_name }}">
-        <div class="table-responsive standings-scroll">
-          <table class="table table-hover">
-            <thead>
-              <tr>
-                <th scope="col" width="5%">#</th>
-                <th scope="col">Entry</th>
-                <th scope="col">Points</th>
-                <th scope="col">Results counting toward total</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for row in rows %}
-              <tr>
-                <td>{% if row.tied %}T-{% endif %}{{ row.place }}</td>
-                <td>
-                  {% if row.url %}<a href="{{ row.url }}">{{ row.name }}</a>{% else %}{{ row.name }}{% endif %}
-                  {% if row.detail %}<div class="small text-muted">{{ row.detail }}</div>{% endif %}
-                </td>
-                <td>
-                  {% if row.has_live %}<mark>{{ row.points|number }}</mark>{% else %}{{ row.points|number }}{% endif %}
-                </td>
-                <td>
-                  {% for marker in row.markers %}
-                  <span class="d-inline-block text-nowrap mr-3">
-                    {% if marker.live %}<mark>{% endif %}
-                    {{ marker.points|number }}
-                    {% if marker.url %}<a href="{{ marker.url }}" {% if marker.live %}target="_blank" rel="noopener"{% endif %}>{{ marker.tournament }}</a>{% else %}{{ marker.tournament }}{% endif %}
-                    {% if marker.live %}</mark>{% endif %}
-                  </span>
-                  {% endfor %}
-                </td>
-              </tr>
-              {% empty %}
-              <tr>
-                <td colspan="4" class="text-center text-muted py-5">No results are available yet.</td>
-              </tr>
-              {% endfor %}
-            </tbody>
-          </table>
+                <div class="tab-pane fade" id="coty" role="tabpanel">
+                    <div class="table-responsive standings-scroll">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th scope="col" width="10%">#</th>
+                                    <th scope="col" width="20%">School</th>
+                                    <th scope="col" width="10%">Points</th>
+                                    <th scope="col" width="30%">Debater (qualified for the National Championship*)</th>
+                                    <th scope="col" width="10%">Points (Contribution)</th>
+                                    <th scope="col" width="20%">Auto-Quals</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in boards.coty %}
+                                    <tr>
+                                        <td>{% if row.tied %}T-{% endif %}{{ row.place }}</td>
+                                        <td>{% if row.url %}<a href="{{ row.url }}">{{ row.name }}</a>{% else %}{{ row.name }}{% endif %}</td>
+                                        <td>{% if row.has_live %}<mark>{{ row.points|number }}</mark>{% else %}{{ row.points|number }}{% endif %}</td>
+                                        <td colspan="3">
+                                            {% for marker in row.markers %}
+                                                {% if marker.live %}
+                                                    <mark>{{ marker.points|number }} <a href="{{ marker.url }}" target="_blank" rel="noopener">{{ marker.tournament }}</a></mark>{% if not forloop.last %}, {% endif %}
+                                                {% endif %}
+                                            {% endfor %}
+                                        </td>
+                                    </tr>
+                                {% empty %}
+                                    <tr><td colspan="6" class="shaded text-center">There are no COTY results yet</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                {% if boards.noty %}
+                    <div class="tab-pane fade" id="noty" role="tabpanel">
+                        <div class="table-responsive standings-scroll">
+                            <table class="table table-hover">
+                                <thead>
+                                    <tr>
+                                        <th scope="col">#</th>
+                                        <th scope="col">Debater</th>
+                                        <th scope="col">School</th>
+                                        <th scope="col">Points</th>
+                                        <th scope="col">1</th>
+                                        <th scope="col">2</th>
+                                        <th scope="col">3</th>
+                                        <th scope="col">4</th>
+                                        <th scope="col">5</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for row in boards.noty %}
+                                        <tr>
+                                            <td>{% if row.tied %}T-{% endif %}{{ row.place }}</td>
+                                            <td>{% if row.url %}<a href="{{ row.url }}">{{ row.name }}</a>{% else %}{{ row.name }}{% endif %}</td>
+                                            <td>{{ row.detail }}</td>
+                                            <td>{% if row.has_live %}<mark>{{ row.points|number }}</mark>{% else %}{{ row.points|number }}{% endif %}</td>
+                                            {% for marker in row.marker_slots %}
+                                                <td>
+                                                    {% if marker %}
+                                                        {% if marker.live %}<mark>{% endif %}
+                                                        {{ marker.points|number }} <a href="{{ marker.url }}"{% if marker.live %} target="_blank" rel="noopener"{% endif %}>{{ marker.tournament }}</a>
+                                                        {% if marker.live %}</mark>{% endif %}
+                                                    {% endif %}
+                                                </td>
+                                            {% endfor %}
+                                        </tr>
+                                    {% empty %}
+                                        <tr><td colspan="9" class="shaded text-center">There are no NOTY results yet</td></tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                {% endif %}
+            </div>
         </div>
-      </section>
-      {% endfor %}
     </div>
-  </div>
-</div>
 {% endblock content %}

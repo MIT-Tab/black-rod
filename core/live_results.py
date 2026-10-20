@@ -279,6 +279,11 @@ def _finalize(rows, marker_limit):
         if marker_limit:
             markers = markers[:marker_limit]
         row["markers"] = markers
+        row["marker_slots"] = (
+            markers + [None] * (marker_limit - len(markers))
+            if marker_limit
+            else markers
+        )
         row["points"] = round(sum(marker["points"] for marker in markers), 4)
         row["has_live"] = any(marker["live"] for marker in markers)
         if row["points"] > 0:
