@@ -41,6 +41,10 @@ MITTAB_PRIVATE_API_TOKENS = [
     for token in os.environ.get("MITTAB_PRIVATE_API_TOKENS", "").split(",")
     if token.strip()
 ]
+LIVE_MITTAB_DIRECTORY_URL = os.environ.get(
+    "LIVE_MITTAB_DIRECTORY_URL", "https://nu-tab.com/api/tournaments"
+)
+LIVE_MITTAB_SOURCES = os.environ.get("LIVE_MITTAB_SOURCES", "")
 
 
 # Application definition

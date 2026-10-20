@@ -1,0 +1,74 @@
+{% extends "base/base.html" %}
+{% load tags %}
+
+{% block content %}
+<style>
+  .live-shell { max-width: 1500px; margin: 1rem auto 3rem; }
+  .live-hero { background: linear-gradient(135deg, #17243d, #273f68); border-radius: 1rem; color: #fff; padding: 1.4rem 1.6rem; }
+  .live-kicker { color: #f4cf62; font-size: .78rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+  .live-disclaimer { background: #fff8dc; border: 1px solid #ead48c; border-radius: .65rem; color: #5c4b16; padding: .65rem .85rem; }
+  .live-chip { background: rgba(255,255,255,.12); border-radius: 999px; display: inline-block; font-size: .85rem; margin: .25rem .25rem 0 0; padding: .3rem .65rem; }
+  .live-points { white-space: nowrap; }
+  .live-highlight { background: #fff2a8 !important; color: #473b00; border-radius: .25rem; padding: .08rem .25rem; }
+  .live-marker { display: inline-block; margin: .12rem .4rem .12rem 0; white-space: nowrap; }
+  .live-table td, .live-table th { vertical-align: middle; }
+  .live-empty { color: #6c757d; padding: 2.5rem !important; text-align: center; }
+</style>
+
+<div class="live-shell px-2 px-lg-4">
+  <header class="live-hero shadow-sm mb-3">
+    <div class="live-kicker">Current season · updates every five minutes</div>
+    <h1 class="h2 mt-1 mb-2">Live APDA standings</h1>
+    <p class="mb-2">Reviewed standings plus results currently flowing from sanctioned Nu-Tab tournaments.</p>
+    {% for source in active_sources %}<span class="live-chip"><i class="fas fa-circle text-warning mr-1"></i>{{ source }}</span>{% endfor %}
+  </header>
+
+  <div class="live-disclaimer mb-3" role="note">
+    <i class="fas fa-info-circle mr-1"></i>
+    Yellow results are live and have not been reviewed by a human. Treat them as provisional.
+  </div>
+
+  <div class="card shadow-lg rounded-l8">
+    <div class="card-body">
+      <ul class="nav nav-pills nav-fill mb-3" role="tablist">
+        <li class="nav-item pr-2"><a class="nav-link active" data-toggle="tab" href="#live-toty">Team of the Year</a></li>
+        <li class="nav-item pr-2"><a class="nav-link" data-toggle="tab" href="#live-soty">Speaker of the Year</a></li>
+        {% if boards.noty %}<li class="nav-item pr-2"><a class="nav-link" data-toggle="tab" href="#live-noty">Novice of the Year</a></li>{% endif %}
+        <li class="nav-item"><a class="nav-link" data-toggle="tab" href="#live-coty">Club of the Year</a></li>
+      </ul>
+
+      <div class="tab-content">
+        {% for board_name, rows in boards.items %}
+        <section class="tab-pane fade {% if board_name == 'toty' %}show active{% endif %}" id="live-{{ board_name }}">
+          <div class="table-responsive">
+            <table class="table table-hover live-table">
+              <thead><tr><th scope="col">#</th><th scope="col">Entry</th><th scope="col">Points</th><th scope="col">Results counting toward total</th></tr></thead>
+              <tbody>
+                {% for row in rows %}
+                <tr>
+                  <td>{% if row.tied %}T-{% endif %}{{ row.place }}</td>
+                  <td>
+                    {% if row.url %}<a href="{{ row.url }}">{{ row.name }}</a>{% else %}<strong>{{ row.name }}</strong>{% endif %}
+                    {% if row.detail %}<div class="small text-muted">{{ row.detail }}</div>{% endif %}
+                  </td>
+                  <td class="live-points"><strong class="{% if row.has_live %}live-highlight{% endif %}">{{ row.points|number }}</strong></td>
+                  <td>
+                    {% for marker in row.markers %}
+                    <span class="live-marker {% if marker.live %}live-highlight{% endif %}">
+                      {{ marker.points|number }}
+                      {% if marker.url %}<a href="{{ marker.url }}" {% if marker.live %}target="_blank" rel="noopener"{% endif %}>{{ marker.tournament }}</a>{% else %}{{ marker.tournament }}{% endif %}
+                    </span>
+                    {% endfor %}
+                  </td>
+                </tr>
+                {% empty %}<tr><td colspan="4" class="live-empty">No results are available yet.</td></tr>{% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </section>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
