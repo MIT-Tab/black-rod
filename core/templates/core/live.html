@@ -55,11 +55,11 @@
                                         <td>{% if row.tied %}T-{% endif %}{{ row.place }}</td>
                                         <td>{% if row.url %}<a href="{{ row.url }}">{{ row.name }}</a>{% else %}{{ row.name }}{% endif %}</td>
                                         <td>{{ row.detail }}</td>
-                                        <td>{% if row.has_live %}<mark>{{ row.points|number }}</mark>{% else %}{{ row.points|number }}{% endif %}</td>
+                                        <td>{% if row.has_live %}<mark class="bg-warning">{{ row.points|number }}</mark>{% else %}{{ row.points|number }}{% endif %}</td>
                                         {% for marker in row.marker_slots %}
                                             <td>
                                                 {% if marker %}
-                                                    {% if marker.live %}<mark>{% endif %}
+                                                    {% if marker.live %}<mark class="bg-warning">{% endif %}
                                                     {{ marker.points|number }} <a href="{{ marker.url }}"{% if marker.live %} target="_blank" rel="noopener"{% endif %}>{{ marker.tournament }}</a>
                                                     {% if marker.live %}</mark>{% endif %}
                                                 {% endif %}
@@ -97,11 +97,11 @@
                                         <td>{% if row.tied %}T-{% endif %}{{ row.place }}</td>
                                         <td>{% if row.url %}<a href="{{ row.url }}">{{ row.name }}</a>{% else %}{{ row.name }}{% endif %}</td>
                                         <td>{{ row.detail }}</td>
-                                        <td>{% if row.has_live %}<mark>{{ row.points|number }}</mark>{% else %}{{ row.points|number }}{% endif %}</td>
+                                        <td>{% if row.has_live %}<mark class="bg-warning">{{ row.points|number }}</mark>{% else %}{{ row.points|number }}{% endif %}</td>
                                         {% for marker in row.marker_slots %}
                                             <td>
                                                 {% if marker %}
-                                                    {% if marker.live %}<mark>{% endif %}
+                                                    {% if marker.live %}<mark class="bg-warning">{% endif %}
                                                     {{ marker.points|number }} <a href="{{ marker.url }}"{% if marker.live %} target="_blank" rel="noopener"{% endif %}>{{ marker.tournament }}</a>
                                                     {% if marker.live %}</mark>{% endif %}
                                                 {% endif %}
@@ -134,11 +134,11 @@
                                     <tr>
                                         <td>{% if row.tied %}T-{% endif %}{{ row.place }}</td>
                                         <td>{% if row.url %}<a href="{{ row.url }}">{{ row.name }}</a>{% else %}{{ row.name }}{% endif %}</td>
-                                        <td>{% if row.has_live %}<mark>{{ row.points|number }}</mark>{% else %}{{ row.points|number }}{% endif %}</td>
+                                        <td>{% if row.has_live %}<mark class="bg-warning">{{ row.points|number }}</mark>{% else %}{{ row.points|number }}{% endif %}</td>
                                         <td colspan="3">
                                             {% for marker in row.markers %}
                                                 {% if marker.live %}
-                                                    <mark>{{ marker.points|number }} <a href="{{ marker.url }}" target="_blank" rel="noopener">{{ marker.tournament }}</a></mark>{% if not forloop.last %}, {% endif %}
+                                                    <mark class="bg-warning">{{ marker.points|number }} <a href="{{ marker.url }}" target="_blank" rel="noopener">{{ marker.tournament }}</a></mark>{% if not forloop.last %}, {% endif %}
                                                 {% endif %}
                                             {% endfor %}
                                         </td>
@@ -174,11 +174,11 @@
                                             <td>{% if row.tied %}T-{% endif %}{{ row.place }}</td>
                                             <td>{% if row.url %}<a href="{{ row.url }}">{{ row.name }}</a>{% else %}{{ row.name }}{% endif %}</td>
                                             <td>{{ row.detail }}</td>
-                                            <td>{% if row.has_live %}<mark>{{ row.points|number }}</mark>{% else %}{{ row.points|number }}{% endif %}</td>
+                                            <td>{% if row.has_live %}<mark class="bg-warning">{{ row.points|number }}</mark>{% else %}{{ row.points|number }}{% endif %}</td>
                                             {% for marker in row.marker_slots %}
                                                 <td>
                                                     {% if marker %}
-                                                        {% if marker.live %}<mark>{% endif %}
+                                                        {% if marker.live %}<mark class="bg-warning">{% endif %}
                                                         {{ marker.points|number }} <a href="{{ marker.url }}"{% if marker.live %} target="_blank" rel="noopener"{% endif %}>{{ marker.tournament }}</a>
                                                         {% if marker.live %}</mark>{% endif %}
                                                     {% endif %}

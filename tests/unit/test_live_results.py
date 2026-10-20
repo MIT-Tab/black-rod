@@ -79,6 +79,7 @@ def test_live_page_labels_provisional_results():
     assert b"MIT Fall" in response.content
     assert b"<th scope=\"col\">School</th>" in response.content
     assert b"<th scope=\"col\">Debaters</th>" in response.content
+    assert b"<mark class=\"bg-warning\">" in response.content
     assert b"Results counting toward total" not in response.content
 
 
