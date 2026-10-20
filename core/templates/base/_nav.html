@@ -13,6 +13,12 @@
 
     <div class="collapse navbar-collapse" id="navbarSupportedContent">
         <ul class="navbar-nav mr-auto">
+            {% url 'core:live_standings' as live_standings_url %}
+            <li class="nav-item {% if request.path == live_standings_url %}active{% endif %} mx-1">
+                <a class="nav-link" href="{{ live_standings_url }}">
+                    <span class="badge badge-warning text-uppercase mr-1">Live</span>Standings
+                </a>
+            </li>
             {% get_menu "NAV_MENU_LEFT" as left_menu %}
             {% for item in left_menu %}
                 {% if item.submenu %}
