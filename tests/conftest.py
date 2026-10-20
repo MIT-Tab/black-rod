@@ -1,4 +1,7 @@
+from unittest.mock import patch
+
 import django
+import pytest
 from django.conf import settings
 
 
@@ -113,3 +116,15 @@ def pytest_configure():
 
 # Clean up - remove custom fixtures that cause scope issues
 # pytest-django will handle database setup automatically
+
+
+@pytest.fixture(autouse=True)
+def no_background_live_refresh():
+    """Keep index requests from starting live-standings refresh threads.
+
+    The thread would fetch remote tournaments over the network and open its own
+    connection to the shared in-memory test database, which can deadlock the
+    test thread. Live-results tests drive refreshes explicitly instead.
+    """
+    with patch("core.live_results._start_refresh"):
+        yield

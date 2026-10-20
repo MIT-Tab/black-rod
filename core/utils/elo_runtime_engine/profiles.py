@@ -225,7 +225,7 @@ def _build_profile_for_player(
     first_year_tournament_count = _first_year_tournament_count(first_season, season_to_tournaments)
 
     has_nat_qual = any(linked_id in qual_ids for linked_id in linked_ids)
-    display_name = str(base.name if base else "Debater %s" % player_id).strip()
+    display_name = str(base.name if base else f"Debater {player_id}").strip()
     school_name = ", ".join(
         school.get("name", "").strip()
         for school in schools
@@ -234,7 +234,7 @@ def _build_profile_for_player(
 
     return DebaterProfile(
         player_id=player_id,
-        display_name=display_name or ("Debater %s" % player_id),
+        display_name=display_name or (f"Debater {player_id}"),
         primary_debater_id=primary_debater_id,
         school_name=school_name,
         schools=schools,
@@ -333,11 +333,11 @@ def _preferred_display_name(player_stats, profile, player_id):
         if top_name:
             return top_name
     if profile is not None:
-        return str(profile.display_name or "").strip() or ("Debater %s" % player_id)
+        return str(profile.display_name or "").strip() or (f"Debater {player_id}")
     player_id_value = to_int(player_id)
     if player_id_value is not None and player_id_value < 0:
         return ""
-    return "Debater %s" % player_id
+    return f"Debater {player_id}"
 
 
 def _display_snapshot_for_row(player_stats, profile, exclude_dino_rounds):
@@ -431,7 +431,7 @@ def build_dashboard_payload(
             continue
         display_name = base_name
         if display_name in used_names:
-            display_name = "%s (%s)" % (base_name, player_id)
+            display_name = f"{base_name} ({player_id})"
         used_names.add(display_name)
 
         debater_id = profile.primary_debater_id if profile is not None else None

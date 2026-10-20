@@ -70,9 +70,9 @@ class APIDataHandler:
             response.raise_for_status()
             if not response.content.strip():
                 return None
-            
+
             result = response.json()
-            
+
             return result
         except (requests.RequestException, ValueError):
             return None
@@ -83,12 +83,12 @@ class APIDataHandler:
             return []
         new_school_names = data.get('new_schools', [])
         existing_school_names = set(School.all_objects.filter(name__in=new_school_names).values_list('name', flat=True))
-        
+
         # Store mappings for exact matches so debaters can reference them
         existing_schools = School.all_objects.filter(name__in=existing_school_names)
         for school in existing_schools:
             self._school_name_map[school.name] = school.id
-        
+
         filtered_schools = [name for name in new_school_names if name not in existing_school_names]
         return [{'name': name, 'included_in_oty': True, 'server_name': name} for name in filtered_schools]
 
@@ -97,7 +97,7 @@ class APIDataHandler:
         if not data:
             return []
         new_debater_data = data.get('new_debater_data', [])
-        
+
         school_ids = {d.get('school_id') for d in new_debater_data if d.get('school_id') != -1}
         school_names = {d.get('school_name') for d in new_debater_data if d.get('school_id') == -1 and d.get('school_name')}
         schools_by_id = {s.id: s for s in School.all_objects.filter(id__in=school_ids)}
@@ -150,7 +150,7 @@ class APIDataHandler:
                 'tournament_id': tournament_id
             }
             debater_list.append(debater_dict)
-        
+
         return debater_list
 
     @transaction.atomic
@@ -271,9 +271,9 @@ class APIDataHandler:
                     "debater_one_tournament_id": tid_one,
                     "debater_two_tournament_id": tid_two,
                 }
-                
+
                 teams.append(team_dict)
-        
+
         return teams
 
     def get_speakers_from_api(self, endpoint):

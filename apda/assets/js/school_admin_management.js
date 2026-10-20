@@ -151,7 +151,9 @@ function initSchoolAdminManagement() {
       );
     }
 
-    const $actions = $('<div class="btn-group btn-group-sm admin-actions" role="group"></div>');
+    const $actions = $(
+      '<div class="btn-group btn-group-sm admin-actions" role="group"></div>',
+    );
 
     $entry.append($details);
     $entry.append($actions);
@@ -298,7 +300,6 @@ function initSchoolAdminManagement() {
 
           if (isSelfRemoval) {
             window.location.href = "/";
-            return;
           }
         }
       },
@@ -315,9 +316,9 @@ function initSchoolAdminManagement() {
   $container.on("click", ".make-primary", function handleMakePrimary() {
     const button = $(this);
     const adminId = button.data("admin-id");
-    const adminList = button.closest("ul");
     const adminName =
-      button.closest(".admin-entry").find("strong").text().trim() || "this admin";
+      button.closest(".admin-entry").find("strong").text().trim() ||
+      "this admin";
     const confirmMessage = `Are you sure you want to make ${adminName} the primary admin?`;
 
     // eslint-disable-next-line no-alert, no-restricted-globals

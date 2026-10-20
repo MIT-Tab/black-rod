@@ -1,6 +1,5 @@
 from django.db import models
 
-from core.models.debater import Debater
 from core.models.team import Team
 from core.models.tournament import Tournament
 

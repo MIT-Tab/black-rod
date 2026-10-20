@@ -105,7 +105,9 @@ class VideoRandomView(View):
 
     def get(self, request, *args, **kwargs):
         filtered_videos = (
-            VideoFilter(request.GET, queryset=Video.objects.all()).qs.distinct()
+            # An empty query string must stay unbound: django-filter would turn it
+            # into a plain dict, which the Taggit Select2 widget cannot read.
+            VideoFilter(request.GET or None, queryset=Video.objects.all()).qs.distinct()
         )
         visible_videos = self.get_visible_queryset(filtered_videos)
 

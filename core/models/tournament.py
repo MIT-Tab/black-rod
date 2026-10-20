@@ -1,7 +1,8 @@
+import re
+
 from django.conf import settings
 from django.db import models
 from django.shortcuts import reverse
-import re
 
 from core.models.school import School
 from core.utils.points import (

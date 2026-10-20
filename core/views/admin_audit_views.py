@@ -288,9 +288,9 @@ class TournamentAuditDataMixin:
             query_parts = []
             if show_incomplete_only:
                 query_parts.append("incomplete_only=1")
-            query_parts.append("sort=%s" % key)
-            query_parts.append("dir=%s" % next_dir)
-            headers[key] = {"url": "?%s" % "&".join(query_parts), "indicator": indicator}
+            query_parts.append(f"sort={key}")
+            query_parts.append(f"dir={next_dir}")
+            headers[key] = {"url": f"?{'&'.join(query_parts)}", "indicator": indicator}
         return headers
 
 
@@ -444,6 +444,8 @@ class TournamentAuditDetailView(
 class TournamentAuditRoundEditView(SuperuserRequiredMixin, TemplateView):
     template_name = "admin/tournament_round_ballot.html"
     form_class = TournamentRoundBallotForm
+    tournament = None
+    round_obj = None
 
     def dispatch(self, request, *args, **kwargs):
         self.tournament = get_object_or_404(Tournament, pk=kwargs.get("tournament_id"))
@@ -474,11 +476,7 @@ class TournamentAuditRoundEditView(SuperuserRequiredMixin, TemplateView):
         round_obj, action_type, recorded_path, recording_error = self.save_round(form)
         messages.success(
             request,
-            "Saved round %s for %s."
-            % (
-                str(round_obj.round_label or ""),
-                str(self.tournament.name or ""),
-            ),
+            f"Saved round {str(round_obj.round_label or '')} for {str(self.tournament.name or '')}.",
         )
         if recorded_path:
             messages.info(request, f"Recorded {action_type} amendment to {recorded_path}.")

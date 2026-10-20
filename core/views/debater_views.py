@@ -5,6 +5,8 @@ from django.db import connection
 from django.db.models import Q
 from django.http import HttpResponse
 from django.urls import reverse_lazy
+from django.utils.html import format_html
+from django.utils.safestring import mark_safe
 from django_filters import CharFilter, ChoiceFilter, FilterSet
 from django_tables2 import Column
 from haystack.query import SearchQuerySet
@@ -128,13 +130,13 @@ class DebaterOutreachFilter(DebaterFilter):
             return queryset
         if connection.features.supports_json_field_contains:
             return queryset.filter(region__contains=[value])
-        evaluation_qs = queryset._chain()
+        evaluation_qs = queryset.all()
         ids = [
             debater.pk
             for debater in evaluation_qs
             if value in getattr(debater, "region_list", [])
         ]
-        filtered_qs = queryset._chain()
+        filtered_qs = queryset.all()
         if not ids:
             return filtered_qs.none()
         return filtered_qs.filter(pk__in=ids)
@@ -225,7 +227,7 @@ class DebaterDetailView(CustomDetailView):
                 ]
 
         tournaments = list(set(tournaments))
-        seasons = list(set([tournament.season for tournament in tournaments]))
+        seasons = list({tournament.season for tournament in tournaments})
         seasons.sort(key=lambda season: season, reverse=True)
 
         current_season = settings.CURRENT_SEASON
@@ -433,17 +435,17 @@ class DinoAggregatedDebater:
         self.debater = debater
         self.opt_in_type = opt_in_type  # 'judge' or 'to'
         self._process_alias_group()
-    
+
     @property
     def school_name(self):
         """Property for table column access - returns the schools list"""
         return self.schools
-    
+
     @property
     def latest_year(self):
         """Property for table column access - returns the latest season string (e.g. '2024-25')"""
         return self.latest_season
-    
+
     def _process_alias_group(self):
         """Process alias group to determine display values"""
         if not self.debater.alias_group:
@@ -462,20 +464,20 @@ class DinoAggregatedDebater:
                 self.region_value = []
                 self.region_display = ""
             return
-        
+
         # Has alias group - need to aggregate
         # For judge database, only look at dinos; for TO database, look at all statuses
         if self.opt_in_type == 'judge':
             alias_debaters = self.debater.alias_group.debaters.filter(status=Debater.DINO)
         else:  # 'to'
             alias_debaters = self.debater.alias_group.debaters.all()
-        
+
         # Get schools (excluding "Unaffiliated") with IDs for linking
         schools_dict = {}
         unaffiliated_schools = {}
         latest_season_affiliated = None
         latest_season_affiliated_year = None
-        
+
         for d in alias_debaters:
             if d.school:
                 if d.school.name.lower() != "unaffiliated":
@@ -487,17 +489,17 @@ class DinoAggregatedDebater:
                         latest_season_affiliated = d.latest_season
                 else:
                     unaffiliated_schools[d.school.id] = d.school.name
-        
+
         # If no affiliated schools, include unaffiliated
         if not schools_dict and unaffiliated_schools:
             schools_dict = unaffiliated_schools
-        
+
         # Determine which profile to link based on opt-in type
         if self.opt_in_type == 'judge':
             opted_in = alias_debaters.filter(dino_judge_contact_opt_in=True)
         else:  # 'to'
             opted_in = alias_debaters.filter(dino_to_contact_opt_in=True)
-        
+
         # Pick the profile to link
         if opted_in.exists():
             # Check for unaffiliated profile among opted-in
@@ -506,7 +508,7 @@ class DinoAggregatedDebater:
         else:
             # Fallback to any in the group
             link_debater = alias_debaters.first()
-        
+
         # Set display values
         self.id = link_debater.id
         self.first_name = link_debater.first_name
@@ -523,22 +525,22 @@ class DinoAggregatedDebater:
         else:
             self.region_value = []
             self.region_display = ""
-    
+
     def _parse_season_year(self, season):
         """Parse season string to integer year, return None if invalid"""
         if not season:
             return None
         try:
-            return int(str(season).split('-')[0])
+            return int(str(season).split('-', maxsplit=1)[0])
         except (ValueError, IndexError):
             return None
-    
+
     def _format_season_display(self, season):
         """Format season year to display format (e.g., '2024' -> '2024-25')"""
         if not season:
             return None
         try:
-            year = int(str(season).split('-')[0])
+            year = int(str(season).split('-', maxsplit=1)[0])
             next_year = str(year + 1)[2:]
             return f"{year}-{next_year}"
         except (ValueError, IndexError):
@@ -559,42 +561,36 @@ class DinoTable(CustomTable):
         fields = ("id", "first_name", "last_name", "school_name", "region", "latest_year")
         attrs = {"class": "table table-striped"}
         order_by = "latest_year"
-    
+
     def render_id(self, record):
-        from django.utils.html import format_html
         return format_html('<a href="/core/debaters/{}">{}</a>', record.id, record.id)
-    
+
     def render_first_name(self, record):
-        from django.utils.html import format_html
         return format_html('<a href="/core/debaters/{}">{}</a>', record.id, record.first_name)
-    
+
     def render_last_name(self, record):
-        from django.utils.html import format_html
         return format_html('<a href="/core/debaters/{}">{}</a>', record.id, record.last_name)
-    
+
     def render_school_name(self, record):
-        from django.utils.html import format_html
-        from django.utils.safestring import mark_safe
-        
         if not record.schools:
             return ""
-        
+
         # Create links for each school
         school_links = [
             format_html('<a href="/core/schools/{}">{}</a>', school_id, school_name)
             for school_id, school_name in record.schools
         ]
-        
+
         # Join with commas
         return mark_safe(", ".join(str(link) for link in school_links))
-    
+
     def render_latest_year(self, record):
         """Render the latest season - returns the full season string formatted as YYYY-YY"""
         if not record.latest_season:
             return ""
         # Format the season from "2024" to "2024-25"
         try:
-            year = int(str(record.latest_season).split('-')[0])
+            year = int(str(record.latest_season).split('-', maxsplit=1)[0])
             next_year = str(year + 1)[2:]
             return f"{year}-{next_year}"
         except (ValueError, IndexError):
@@ -615,32 +611,32 @@ class DinoJudgeListView(CustomListView):
             status=Debater.DINO,
             dino_judge_contact_opt_in=True
         ).select_related('alias_group', 'school')
-        
+
         # Apply filters from filterset
         if hasattr(self, 'filterset') and self.filterset is not None:
             qs = self.filterset.qs
-        
+
         # Track which alias groups we've already included
         seen_alias_groups = set()
         aggregated_dinos = []
-        
+
         for debater in qs.order_by('last_name', 'first_name'):
             if debater.alias_group:
                 # Skip if we've already processed this alias group
                 if debater.alias_group.id in seen_alias_groups:
                     continue
                 seen_alias_groups.add(debater.alias_group.id)
-            
+
             aggregated_dinos.append(DinoAggregatedDebater(debater, 'judge'))
-        
+
         # Sort by latest year (oldest first), then by name
         aggregated_dinos.sort(key=lambda d: (d.latest_season_year if d.latest_season_year else 9999, d.last_name, d.first_name))
-        
+
         return aggregated_dinos
-    
+
     def get_table_data(self):
         return self.get_queryset()
-    
+
     def get_filterset(self, filterset_class):
         """Get the filterset instance, filtering on the base Debater queryset"""
         kwargs = self.get_filterset_kwargs(filterset_class)
@@ -665,32 +661,32 @@ class DinoTOListView(CustomListView):
         qs = Debater.objects.filter(
             dino_to_contact_opt_in=True
         ).select_related('alias_group', 'school')
-        
+
         # Apply filters from filterset
         if hasattr(self, 'filterset') and self.filterset is not None:
             qs = self.filterset.qs
-        
+
         # Track which alias groups we've already included
         seen_alias_groups = set()
         aggregated_dinos = []
-        
+
         for debater in qs.order_by('last_name', 'first_name'):
             if debater.alias_group:
                 # Skip if we've already processed this alias group
                 if debater.alias_group.id in seen_alias_groups:
                     continue
                 seen_alias_groups.add(debater.alias_group.id)
-            
+
             aggregated_dinos.append(DinoAggregatedDebater(debater, 'to'))
-        
+
         # Sort by latest year (oldest first), then by name
         aggregated_dinos.sort(key=lambda d: (d.latest_season_year if d.latest_season_year else 9999, d.last_name, d.first_name))
-        
+
         return aggregated_dinos
-    
+
     def get_table_data(self):
         return self.get_queryset()
-    
+
     def get_filterset(self, filterset_class):
         """Get the filterset instance, filtering on the base Debater queryset"""
         kwargs = self.get_filterset_kwargs(filterset_class)

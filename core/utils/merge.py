@@ -1,6 +1,7 @@
 from django.conf import settings
 from django.db import IntegrityError, transaction
 from django.db.models import Q
+from django.utils import timezone
 
 from core.models import (
     COTY,
@@ -162,7 +163,7 @@ def merge_debaters(primary, secondary):
         raise MergeError("Primary debater must have a valid primary key.")
     if not secondary or not secondary.pk:
         raise MergeError("Secondary debater must have a valid primary key.")
-    
+
     if primary.pk == secondary.pk:
         raise MergeError("Cannot merge a debater into itself.")
 
@@ -805,8 +806,7 @@ def _merge_reaffs(primary, secondary):
 
 def _cancel_pending_merge_requests(primary, secondary):
     """Cancel any pending merge requests involving the debaters being merged."""
-    from django.utils import timezone
-    
+
     # Find all pending requests involving either debater
     pending_requests = MergeDebaterRequest.objects.filter(
         status=MergeDebaterRequest.STATUS_PENDING
@@ -814,11 +814,11 @@ def _cancel_pending_merge_requests(primary, secondary):
         Q(primary_debater=primary) | Q(secondary_debater=primary) |
         Q(primary_debater=secondary) | Q(secondary_debater=secondary)
     )
-    
+
     # Mark them as auto-denied
     for request in pending_requests:
         request.status = MergeDebaterRequest.STATUS_DENIED
-        request.denial_reason = f"Auto-cancelled: One of these debaters was merged in another request."
+        request.denial_reason = "Auto-cancelled: One of these debaters was merged in another request."
         request.processed_at = timezone.now()
         request.processed_by = None  # System action
         request.save()

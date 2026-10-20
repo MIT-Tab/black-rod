@@ -1,8 +1,8 @@
 from datetime import date
-from types import SimpleNamespace
 
 import pytest
 from django.conf import settings
+from django.contrib.auth import get_user_model
 from django.test import RequestFactory
 
 from core.models import School, Tournament
@@ -24,7 +24,11 @@ def make_tournament():
 
 
 def setup_view(view, request):
-    request.user = SimpleNamespace(is_authenticated=True, has_perms=lambda perms: True)
+    # A real user, because rendering the page runs the nav menu's permission checks.
+    request.user = get_user_model().objects.create_superuser(
+        username=f"setup-admin-{get_user_model().objects.count()}",
+        password="test-password",
+    )
     view.setup(request)
     return view
 

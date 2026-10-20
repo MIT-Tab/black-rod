@@ -282,10 +282,6 @@ class ResourceForm(forms.ModelForm):
                     )
 
         return authors
-        authors = self.cleaned_data.get("authors")
-        if not authors or authors.count() == 0:
-            raise forms.ValidationError("At least one author is required.")
-        return authors
 
 
 class TournamentForm(forms.ModelForm):
@@ -600,9 +596,9 @@ class SchoolCreationFormsetBase(forms.BaseFormSet):
                 form.cleaned_data["_existing_match"] = existing_schools_by_name[name]
                 form.cleaned_data["_skip_creation"] = True
 
-            if form.cleaned_data.get("_skip_creation") and hasattr(form, "_errors"):
+            if form.cleaned_data.get("_skip_creation"):
                 # Allow linking or deduped rows to bypass unique-name validation
-                form._errors.pop("name", None)
+                form.errors.pop("name", None)
 
 
 IMPORT_FORMSET_PARAMS = {
@@ -1269,8 +1265,8 @@ class DebaterProfileEditForm(forms.ModelForm):
                     raise forms.ValidationError(
                         "First season cannot be after latest season."
                     )
-            except ValueError:
-                raise forms.ValidationError("Season values must be valid years.")
+            except ValueError as exc:
+                raise forms.ValidationError("Season values must be valid years.") from exc
 
         status = cleaned_data.get("status")
         try:

@@ -55,8 +55,8 @@ def debate_round_label(debate):
 
     stage_value = stage_for_rating(debate)
     if stage_value == "outround":
-        return "E%s" % (sequence_number if sequence_number is not None else "?")
-    return "P%s" % (sequence_number if sequence_number is not None else "?")
+        return f"E{sequence_number if sequence_number is not None else '?'}"
+    return f"P{sequence_number if sequence_number is not None else '?'}"
 
 
 def debate_sort_key(debate):
@@ -96,13 +96,13 @@ def debate_source_fields(debate):
             source_kind = str(primary_source.import_type or "").strip() or "round"
             source_label = (
                 str(primary_source.original_file_name or "").strip()
-                or "%s:%s" % (source_kind, int(primary_source.id))
+                or f"{source_kind}:{int(primary_source.id)}"
             )
 
     if not source_kind:
         source_kind = str(getattr(debate, "import_origin", "") or "").strip() or "round"
     if not source_label:
-        source_label = "%s:%s" % (source_kind, int(getattr(debate, "id", 0) or 0))
+        source_label = f"{source_kind}:{int(getattr(debate, 'id', 0) or 0)}"
     return source_kind, source_label
 
 

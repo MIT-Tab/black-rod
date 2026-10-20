@@ -59,7 +59,7 @@ def _resolve_elo_season_bounds():
                 seasons.append(season_value)
         if seasons:
             resolved_min = max(min_season, min(seasons))
-            resolved_max = max(resolved_min, max(seasons))
+            resolved_max = max(resolved_min, *seasons)
             return resolved_min, resolved_max
     except Exception:
         pass

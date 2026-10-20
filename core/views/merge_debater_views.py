@@ -396,7 +396,8 @@ class MergeDebaterRequestReviewView(
 
             # Log to Sentry with additional context
             logger.error(
-                f"MergeError during debater merge request #{request_id}",
+                "MergeError during debater merge request #%s",
+                request_id,
                 exc_info=True,
                 extra={
                     "request_id": request_id,
@@ -433,7 +434,8 @@ class MergeDebaterRequestReviewView(
 
             # Log to Sentry with full context
             logger.error(
-                f"IntegrityError during debater merge request #{request_id}",
+                "IntegrityError during debater merge request #%s",
+                request_id,
                 exc_info=True,
                 extra={
                     "request_id": request_id,
@@ -461,7 +463,8 @@ class MergeDebaterRequestReviewView(
 
             # Log full details to Sentry
             logger.error(
-                f"Unexpected error during debater merge request #{request_id}",
+                "Unexpected error during debater merge request #%s",
+                request_id,
                 exc_info=True,
                 extra={
                     "request_id": request_id,

@@ -21,6 +21,7 @@ from core.utils.scheduler import (
 class SchedulingDashboardView(UserPassesTestMixin, TemplateView):
     template_name = "admin/scheduling_dashboard.html"
     sample_directory = Path("/home/joey/scheduling")
+    workspace = None
 
     def test_func(self):
         return self.request.user.is_superuser

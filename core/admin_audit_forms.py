@@ -152,7 +152,7 @@ class TournamentRoundBallotForm(forms.Form):
                 else "form-control"
             )
             existing = str(field.widget.attrs.get("class") or "").strip()
-            field.widget.attrs["class"] = ("%s %s" % (existing, css_class)).strip()
+            field.widget.attrs["class"] = f"{existing} {css_class}".strip()
 
         if not self.is_bound and round_obj is not None:
             self.initial.update(self.initial_from_round(round_obj))
@@ -223,8 +223,8 @@ class TournamentRoundBallotForm(forms.Form):
             label = cls.OUTROUND_STAGE_LABELS.get(int(outround_stage or 0))
             if label:
                 return label
-            return "E%s" % (number or "?")
-        return "P%s" % (number or "?")
+            return f"E{number or '?'}"
+        return f"P{number or '?'}"
 
     @classmethod
     def initial_from_round(cls, round_obj):

@@ -73,7 +73,29 @@
         "error",
         120
       ],
-      "import/no-unresolved": "off"
+      "import/no-unresolved": "off",
+      "no-param-reassign": [
+        "error",
+        {
+          "props": true,
+          "ignorePropertyModificationsFor": [
+            "acc",
+            "accumulator",
+            "e",
+            "ctx",
+            "context",
+            "req",
+            "request",
+            "res",
+            "response",
+            "$scope",
+            "staticContext",
+            "row",
+            "rows",
+            "select"
+          ]
+        }
+      ]
     },
     "env": {
       "browser": true,

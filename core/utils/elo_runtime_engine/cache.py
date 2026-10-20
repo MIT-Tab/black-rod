@@ -113,13 +113,13 @@ def ingestion_cache_key(*, allowed_seasons, include_novice, include_proam, compl
         "max_date": _iso(max_date),
         "fingerprint": str(fingerprint or ""),
     }
-    return "ingest:%s" % _stable_hash(payload)
+    return f"ingest:{_stable_hash(payload)}"
 
 
 def pipeline_cache_key(*, args_payload, fingerprint):
     payload = dict(args_payload)
     payload["fingerprint"] = str(fingerprint or "")
-    return "pipeline:%s" % _stable_hash(payload)
+    return f"pipeline:{_stable_hash(payload)}"
 
 
 def get_ingestion_cached(key):

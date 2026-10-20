@@ -461,6 +461,9 @@ disable=raw-checker-failed,
       use-a-generator,                 # R1729 — 2
       consider-using-in,               # R1714 — 3
       too-many-locals,                 # R0914 — 2
+      too-many-arguments,              # R0913 — 24 (Elo/import pipelines pass explicit config)
+      too-many-instance-attributes,    # R0902 — 6
+      too-many-lines,                  # C0302 — 5 (large view modules; split separately)
       too-many-statements,             # R0915 — 2
       invalid-name,                    # C0103 — 2
 

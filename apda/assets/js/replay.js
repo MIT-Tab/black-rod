@@ -143,7 +143,7 @@ const buildMarkerCellContent = (marker) => {
   if (!marker) {
     return "";
   }
-  const tournament = marker.tournament;
+  const { tournament } = marker;
   const tournamentName = tournament
     ? escapeHtml(tournament.display || tournament.name || "")
     : "";
@@ -625,37 +625,6 @@ const initReplayPage = () => {
     setPlayIcon(false);
   };
 
-  const startPlayback = (resetPosition = true) => {
-    if (!state.timeline.length || !state.sliderRange) {
-      return;
-    }
-
-    if (state.currentValue === null) {
-      state.currentValue = state.sliderRange.min;
-      updateForSliderValue(state.currentValue);
-    } else if (resetPosition && state.currentValue >= state.sliderRange.max) {
-      state.currentValue = state.sliderRange.min;
-      updateForSliderValue(state.currentValue);
-    }
-
-    stopPlayback();
-    state.playing = true;
-    updatePlayInterval();
-    setPlayIcon(true);
-    state.playTimer = setInterval(() => {
-      if (state.currentValue >= state.sliderRange.max) {
-        stopPlayback();
-        return;
-      }
-      const nextValue = Math.min(
-        state.currentValue + DAY_MS,
-        state.sliderRange.max,
-      );
-      state.currentValue = nextValue;
-      updateForSliderValue(state.currentValue);
-    }, state.playIntervalMs);
-  };
-
   const markNewRows = (type, rows) => {
     const previous = state.previousRows[type] || new Map();
     const nextMap = new Map();
@@ -789,6 +758,37 @@ const initReplayPage = () => {
     const activeIso = findActiveTimelineDate(normalized);
     updateDateLabel(sliderIso);
     updateTables(activeIso);
+  };
+
+  const startPlayback = (resetPosition = true) => {
+    if (!state.timeline.length || !state.sliderRange) {
+      return;
+    }
+
+    if (state.currentValue === null) {
+      state.currentValue = state.sliderRange.min;
+      updateForSliderValue(state.currentValue);
+    } else if (resetPosition && state.currentValue >= state.sliderRange.max) {
+      state.currentValue = state.sliderRange.min;
+      updateForSliderValue(state.currentValue);
+    }
+
+    stopPlayback();
+    state.playing = true;
+    updatePlayInterval();
+    setPlayIcon(true);
+    state.playTimer = setInterval(() => {
+      if (state.currentValue >= state.sliderRange.max) {
+        stopPlayback();
+        return;
+      }
+      const nextValue = Math.min(
+        state.currentValue + DAY_MS,
+        state.sliderRange.max,
+      );
+      state.currentValue = nextValue;
+      updateForSliderValue(state.currentValue);
+    }, state.playIntervalMs);
   };
 
   const togglePlayback = () => {
