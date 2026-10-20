@@ -190,9 +190,13 @@ def index(request):
             "online_quals": online_quals,
             "online_seasons": online_seasons,
             "online_qual_bar": online_qual_bar,
-            # Read-only peek so the index never waits on remote tournaments.
+            # Never waits on remote tournaments; a stale copy refreshes in the background.
             "live_season": settings.CURRENT_SEASON,
-            "live_sources": (cached_live_standings() or {}).get("active_sources", []),
+            "live_sources": (
+                (cached_live_standings() or {}).get("active_sources", [])
+                if current_season == settings.CURRENT_SEASON
+                else []
+            ),
         },
     )
 
