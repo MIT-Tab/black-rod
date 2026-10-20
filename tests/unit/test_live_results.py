@@ -7,7 +7,9 @@ from django.db import connection
 from django.test import Client, override_settings
 from django.test.utils import CaptureQueriesContext
 
+from core import live_results
 from core.live_results import CACHE_KEY, build_live_standings
+from core.utils.rankings import redo_rankings
 from core.models import QUAL, TOTY, Debater, QualPoints, School, Team, Tournament
 
 
@@ -296,12 +298,63 @@ def test_concurrent_refresh_serves_stale_standings():
     fetch.assert_not_called()
 
 
+BANNER = b"are not in these standings yet"
+
+
 @pytest.mark.django_db
 @override_settings(CURRENT_SEASON="2026")
-def test_index_advertises_live_standings_without_fetching():
+def test_index_hides_banner_without_live_results():
     cache.clear()
-    with patch("core.live_results.fetch_live_sources") as fetch:
+    with patch("core.live_results._start_refresh") as refresh, patch(
+        "core.live_results.fetch_live_sources"
+    ) as fetch:
         response = Client().get("/")
 
     fetch.assert_not_called()
+    refresh.assert_called_once_with("2026")
+    assert BANNER not in response.content
     assert b'href="/live"' in response.content
+
+
+@pytest.mark.django_db
+@override_settings(CURRENT_SEASON="2026")
+def test_index_banner_appears_after_background_refresh():
+    cache.clear()
+    with patch("core.live_results._start_refresh") as refresh, patch(
+        "core.live_results.fetch_live_sources", return_value=[_payload()]
+    ):
+        # The first visit never waits on remote tournaments.
+        first = Client().get("/")
+        live_results._refresh(*refresh.call_args.args)
+        second = Client().get("/")
+
+    assert BANNER not in first.content
+    assert BANNER in second.content
+    assert b"MIT Fall" in second.content
+
+
+@pytest.mark.django_db
+@override_settings(CURRENT_SEASON="2026")
+def test_index_hides_banner_when_no_tournament_is_live():
+    cache.clear()
+    with patch("core.live_results._start_refresh", side_effect=live_results._refresh), patch(
+        "core.live_results.fetch_live_sources", return_value=[_payload(sanctioned=False)]
+    ):
+        Client().get("/")
+        response = Client().get("/")
+
+    assert BANNER not in response.content
+
+
+@pytest.mark.django_db
+@override_settings(CURRENT_SEASON="2026")
+def test_reviewed_rankings_update_clears_live_standings():
+    cache.clear()
+    with patch("core.live_results.fetch_live_sources", return_value=[_payload()]):
+        build_live_standings()
+
+    with patch("core.utils.rankings.Client"):
+        redo_rankings(TOTY.objects.filter(season="2026"), season="2026")
+
+    assert cache.get(f"{CACHE_KEY}:2026") is None
+    assert cache.get(f"{CACHE_KEY}:2026:stale") is None

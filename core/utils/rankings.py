@@ -5,6 +5,7 @@ from django.db.models import Exists, OuterRef, Q
 from django.shortcuts import reverse
 from django.test import Client
 
+from core.live_results import invalidate_live_standings
 from core.models.debater import Debater, QualPoints, Reaff
 from core.models.results.team import TeamResult
 from core.models.standings.coty import COTY
@@ -463,6 +464,8 @@ def redo_rankings(rankings, season=settings.CURRENT_SEASON, cache_type="toty"):
     key = make_template_fragment_key(cache_type, [season])
     print(f"CLEARING: {key} ({season})")
     cache.delete(key)
+    # Imported tournaments must stop showing as live right away.
+    invalidate_live_standings(season)
     client = Client()
     client.get(reverse("core:index") + f"?season={season}")
 

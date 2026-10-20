@@ -2,10 +2,12 @@ from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, wait
 from datetime import date, timedelta
 import logging
+import threading
 
 import requests
 from django.conf import settings
 from django.core.cache import cache
+from django.db import close_old_connections
 from django.db.models import Prefetch
 
 from core.models import COTY, NOTY, SOTY, TOTY, Debater, QualPoints, QUAL, School, Tournament
@@ -464,9 +466,42 @@ def _cache_set(key, value, timeout):
 
 
 def cached_live_standings(season=None):
-    """Return the last computed live standings without triggering a refresh."""
+    """Return the last computed live standings without waiting on a refresh.
+
+    When the fresh copy has expired, one background refresh is started so pages
+    like the index can advertise live results without visitors loading /live.
+    """
     season = str(season or settings.CURRENT_SEASON)
-    return cache.get(f"{CACHE_KEY}:{season}") or cache.get(f"{CACHE_KEY}:{season}:stale")
+    fresh_key = f"{CACHE_KEY}:{season}"
+    cached = cache.get(fresh_key)
+    if cached is not None:
+        return cached
+    if cache.add(f"{fresh_key}:lock", 1, LOCK_SECONDS):
+        _start_refresh(season)
+    return cache.get(f"{fresh_key}:stale")
+
+
+def _refresh(season):
+    fresh_key = f"{CACHE_KEY}:{season}"
+    try:
+        result = _compute_live_standings(season)
+        _cache_set(fresh_key, result, CACHE_SECONDS)
+        _cache_set(f"{fresh_key}:stale", result, STALE_SECONDS)
+    except Exception:  # pylint: disable=broad-except
+        LOGGER.exception("Background live standings refresh failed")
+    finally:
+        cache.delete(f"{fresh_key}:lock")
+        close_old_connections()
+
+
+def _start_refresh(season):
+    threading.Thread(target=_refresh, args=(season,), daemon=True).start()
+
+
+def invalidate_live_standings(season):
+    """Drop cached live standings once reviewed results change."""
+    fresh_key = f"{CACHE_KEY}:{season}"
+    cache.delete_many([fresh_key, f"{fresh_key}:stale"])
 
 
 def build_live_standings(season=None):
