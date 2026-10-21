@@ -263,7 +263,7 @@ def _load_team_members_by_id(team_ids):
         rows_by_team_id[int(team_id)].append(
             (
                 int(debater_id),
-                ("%s %s" % (str(first_name or "").strip(), str(last_name or "").strip())).strip(),
+                f"{str(first_name or '').strip()} {str(last_name or '').strip()}".strip(),
             )
         )
 
@@ -365,7 +365,7 @@ def _build_debate_from_round(
     tournament = round_obj.tournament
     tournament_key = debate_tournament_key(
         round_obj,
-        "%s:%s:%s" % (tournament.id, season, tournament.name),
+        f"{tournament.id}:{season}:{tournament.name}",
     )
     tournament_name = debate_tournament_name(round_obj, tournament.name)
 

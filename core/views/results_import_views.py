@@ -15,7 +15,6 @@ from django.template.loader import render_to_string
 from django.urls import reverse
 from django.views import View
 from haystack import connections
-from haystack.exceptions import NotHandled
 
 from core.forms import (
     DebaterForm,
@@ -82,7 +81,7 @@ MAX_TEMP_DELETIONS = 500
 @dataclass(frozen=True)
 class ResultFormsetConfig:
     key: str
-    formset_class: object
+    formset_class: type
     type_of_place: int
     kind: str  # "team" or "speaker"
     has_ghost_points: bool = False
@@ -598,6 +597,11 @@ class TournamentDataEntryView(PermissionRequiredMixin, View):
     permission_required = "core.change_tournament"
     template_name = "tournaments/data_entry.html"
     result_formsets = RESULT_FORMSET_CONFIGS
+    # Per-request caches, filled lazily by the getters below.
+    _import_config = None
+    _api_handler = None
+    _show_school_tab = False
+    _show_debater_tab = False
     tab_order = RESULT_TAB_ORDER
 
     tab_labels = {
@@ -611,7 +615,7 @@ class TournamentDataEntryView(PermissionRequiredMixin, View):
     }
 
     def get_import_config(self) -> dict:
-        if hasattr(self, "_import_config"):
+        if self._import_config is not None:
             return self._import_config
 
         params = self.request.POST if self.request.method == "POST" else self.request.GET
@@ -635,7 +639,7 @@ class TournamentDataEntryView(PermissionRequiredMixin, View):
         return self._import_config
 
     def get_api_handler(self) -> APIDataHandler:
-        if hasattr(self, "_api_handler"):
+        if self._api_handler is not None:
             return self._api_handler
 
         handler = APIDataHandler(self.request)
@@ -835,10 +839,10 @@ class TournamentDataEntryView(PermissionRequiredMixin, View):
         import_counts_from_api: bool,
     ):
         show_school_tab = bool(
-            getattr(self, "_show_school_tab", False) and "schools" in formsets
+            self._show_school_tab and "schools" in formsets
         )
         show_debater_tab = bool(
-            getattr(self, "_show_debater_tab", False) and "debaters" in formsets
+            self._show_debater_tab and "debaters" in formsets
         )
         visible_tabs = []
         for tab_key in self.tab_order:

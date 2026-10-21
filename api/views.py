@@ -714,7 +714,7 @@ def _schedule_month_blocks(tournaments, request):
     for (year, month), month_tournaments in sorted(months.items()):
         month_tournaments.sort(key=lambda t: t.date.day)
         weeks = []
-        current_week = None
+        current_week = {}
         for tournament in month_tournaments:
             day = tournament.date.day
             if not current_week or day != current_week["date"]:
@@ -2392,11 +2392,11 @@ class LLMProxyView(View):
     
     Security: Only allows internal API paths (starting with /) to prevent SSRF attacks.
     """
-    
+
     def get(self, request):
         # Get the endpoint parameter
         endpoint = request.GET.get('endpoint', '')
-        
+
         # Security: Validate that endpoint is provided and starts with /
         if not endpoint:
             return HttpResponse(
@@ -2407,7 +2407,7 @@ class LLMProxyView(View):
                 content_type='text/html',
                 status=400
             )
-        
+
         # Security: Only allow relative paths starting with / to prevent SSRF
         if not endpoint.startswith('/'):
             return HttpResponse(
@@ -2419,7 +2419,7 @@ class LLMProxyView(View):
                 content_type='text/html',
                 status=400
             )
-        
+
         # Additional security: Only allow whitelisted paths (/api/ and /.well-known/)
         allowed_prefix = any(endpoint.startswith(prefix) for prefix in LLM_PROXY_ALLOWED_PREFIXES)
         allowed_path = endpoint in LLM_PROXY_ALLOWED_PATHS
@@ -2433,7 +2433,7 @@ class LLMProxyView(View):
                 content_type='text/html',
                 status=400
             )
-        
+
         # Security: Prevent path traversal attacks
         if '..' in endpoint or '//' in endpoint:
             return HttpResponse(
@@ -2444,13 +2444,13 @@ class LLMProxyView(View):
                 content_type='text/html',
                 status=400
             )
-        
+
         # Make an internal request to the endpoint
         factory = RequestFactory()
         secure = request.is_secure()
         host = request.get_host()
         factory_kwargs = {"HTTP_HOST": host}
-        
+
         # Preserve query parameters from the original endpoint if any
         if '?' in endpoint:
             path, query = endpoint.split('?', 1)
@@ -2467,16 +2467,16 @@ class LLMProxyView(View):
             internal_request = factory.get(path, data=query_params, secure=secure, **factory_kwargs)
         else:
             internal_request = factory.get(endpoint, secure=secure, **factory_kwargs)
-        
+
         # Copy user and session from the original request
         internal_request.user = request.user
         internal_request.session = request.session
-        
+
         try:
             # Resolve the URL and call the view
             resolved = resolve(endpoint.split('?')[0])
             response = resolved.func(internal_request, *resolved.args, **resolved.kwargs)
-            
+
             # Check if response is successful
             if response.status_code != 200:
                 LOGGER.warning(
@@ -2494,17 +2494,17 @@ class LLMProxyView(View):
                     content_type='text/html',
                     status=response.status_code
                 )
-            
+
             # Parse the JSON response
             json_data = _extract_json_payload(response)
-            
+
             # Pretty-print the JSON with indent=2
             pretty_json = json.dumps(json_data, indent=2, ensure_ascii=False)
-            
+
             # Escape HTML to prevent XSS
             escaped_endpoint = html.escape(endpoint)
             escaped_json = html.escape(pretty_json)
-            
+
             # Return HTML with JSON in a <pre> tag
             html_content = f'''<!DOCTYPE html>
 <html>
@@ -2516,9 +2516,9 @@ class LLMProxyView(View):
 <pre>{escaped_json}</pre>
 </body>
 </html>'''
-            
+
             return HttpResponse(html_content, content_type='text/html')
-            
+
         except Resolver404:
             escaped_endpoint = html.escape(endpoint)
             return HttpResponse(

@@ -238,7 +238,7 @@ def resolve_synthetic_entity(
         resolve_synthetic_team(synthetic, target, actor, reason, source_context)
         return {"entity_type": entity_key}
 
-    raise ValueError("Unsupported entity_type=%r" % entity_type)
+    raise ValueError(f"Unsupported entity_type={entity_type!r}")
 
 
 def reject_synthetic_suggestion(
@@ -273,7 +273,7 @@ def reject_synthetic_suggestion(
         target = Team.objects.get(id=target_id, synthetic=False)
         snapshot = _snapshot_team(synthetic)
     else:
-        raise ValueError("Unsupported entity_type=%r" % entity_type)
+        raise ValueError(f"Unsupported entity_type={entity_type!r}")
 
     return _create_log(
         SyntheticResolutionLog.Action.REJECTED,

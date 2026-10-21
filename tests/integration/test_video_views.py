@@ -243,10 +243,14 @@ class VideoViewsTest(TestCase):  # pylint: disable=too-many-instance-attributes
         )
 
         response = self.client.get(reverse("core:video_random"))
-        self.assertRedirects(
-            response,
-            reverse("core:video_detail", kwargs={"pk": public_video.pk}),
-            fetch_redirect_response=False,
+        # setUp also creates a public video, so either public video is valid.
+        self.assertEqual(response.status_code, 302)
+        self.assertIn(
+            response["Location"],
+            {
+                reverse("core:video_detail", kwargs={"pk": video.pk})
+                for video in (self.video, public_video)
+            },
         )
 
         user_model = get_user_model()
@@ -288,7 +292,7 @@ class VideoViewsTest(TestCase):  # pylint: disable=too-many-instance-attributes
             follow=True,
         )
 
-        self.assertContains(
-            response,
+        self.assertIn(
             "No results found, or you don't have access to any matching videos.",
+            [str(message) for message in response.context["messages"]],
         )

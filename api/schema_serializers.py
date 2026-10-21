@@ -1,3 +1,5 @@
+# Read-only serializers that describe the public API schema; they never save.
+# pylint: disable=abstract-method
 from rest_framework import serializers
 
 

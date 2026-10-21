@@ -6,7 +6,6 @@ from django.conf import settings
 from core.models.debater import Debater
 from core.models.results.speaker import SpeakerResult
 from core.models.results.team import TeamResult
-from core.models.round import Round, RoundStats
 from core.models.school import School, SchoolLookup
 from core.models.standings.noty import NOTY
 from core.models.standings.soty import SOTY

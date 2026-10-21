@@ -492,4 +492,4 @@ def _synthetic_reference_token(*, model, object_id, synthetic_ids_by_model):
 
 
 def _manager_for_model(model):
-    return getattr(model, "all_objects", None) or model._base_manager
+    return getattr(model, "all_objects", None) or model._meta.base_manager

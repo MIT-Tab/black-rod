@@ -291,8 +291,8 @@ def update_noty(debater, season=settings.CURRENT_SEASON):
 
 
 def update_qual_points(team, season=settings.CURRENT_SEASON, delete_empty_team=True):
-    season_token = str(season).split("-")[0]
-    is_online_season = season_token in {str(value).split("-")[0] for value in settings.ONLINE_SEASONS}
+    season_token = str(season).split("-", maxsplit=1)[0]
+    is_online_season = season_token in {str(value).split("-", maxsplit=1)[0] for value in settings.ONLINE_SEASONS}
     if team.team_results.count() == 0:
         if delete_empty_team and season == settings.CURRENT_SEASON:
             team.delete()
@@ -323,7 +323,7 @@ def update_qual_points(team, season=settings.CURRENT_SEASON, delete_empty_team=T
             latest_season = debater.latest_season
             target_season = int(season_token)
             latest_season_token = (
-                str(latest_season).split("-")[0] if latest_season is not None else None
+                str(latest_season).split("-", maxsplit=1)[0] if latest_season is not None else None
             )
             if latest_season_token is None or int(latest_season_token) < target_season:
                 debater.latest_season = season_token
@@ -518,8 +518,8 @@ def rebuild_coty_related_rankings(season=settings.CURRENT_SEASON):
 
 
 def update_online_quals(team, season=settings.CURRENT_SEASON, delete_empty_team=True):
-    season_token = str(season).split("-")[0]
-    is_online_season = season_token in {str(value).split("-")[0] for value in settings.ONLINE_SEASONS}
+    season_token = str(season).split("-", maxsplit=1)[0]
+    is_online_season = season_token in {str(value).split("-", maxsplit=1)[0] for value in settings.ONLINE_SEASONS}
     if (
         team.team_results.count() == 0
         and team.govs.count() == 0

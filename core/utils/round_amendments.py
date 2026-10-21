@@ -673,12 +673,11 @@ def _sync_round_teams_from_metadata(round_obj, metadata_payload):
 def _validate_round_move_conflicts(round_ids, target_tournament_id):
     if not round_ids:
         return
-    import_keys = [
-        key
-        for key in Round.objects.filter(id__in=round_ids)
+    import_keys = list(
+        Round.objects.filter(id__in=round_ids)
         .exclude(import_key="")
         .values_list("import_key", flat=True)
-    ]
+    )
     if not import_keys:
         return
     conflict = (

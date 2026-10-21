@@ -6,4 +6,5 @@ class CoreConfig(AppConfig):
     default_auto_field = 'django.db.models.BigAutoField'
 
     def ready(self):
-        import core.signals  # noqa: F401
+        # Django registers signal handlers when the app is ready.
+        import core.signals  # noqa: F401  # pylint: disable=import-outside-toplevel,unused-import

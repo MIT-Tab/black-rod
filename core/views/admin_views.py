@@ -13,7 +13,7 @@ from django.contrib import messages
 from django.contrib.auth.mixins import UserPassesTestMixin
 from django.core.cache import cache
 from django.db import transaction
-from django.db.models import Count, F, Q, Min
+from django.db.models import Count, F, Q
 from django.db.models.functions import Lower
 from django.forms import modelformset_factory
 from django.http import JsonResponse
@@ -143,12 +143,8 @@ class SyntheticCleanupView(UserPassesTestMixin, TemplateView):
         if skipped:
             messages.warning(
                 request,
-                "Skipped %d selection%s because they were missing or are now referenced: %s"
-                % (
-                    len(skipped),
-                    "" if len(skipped) == 1 else "s",
-                    "; ".join(skipped[:5]),
-                ),
+                f"Skipped {len(skipped)} selection{'' if len(skipped) == 1 else 's'} "
+                f"because they were missing or are now referenced: {'; '.join(skipped[:5])}",
             )
 
         return redirect("core:synthetic_cleanup")
@@ -186,7 +182,7 @@ class SyntheticResolutionView(UserPassesTestMixin, TemplateView):
                     )
                 )
             except Exception as exc:
-                messages.warning(request, "Synthetic entity resolved but amendment recording failed: %s" % exc)
+                messages.warning(request, f"Synthetic entity resolved but amendment recording failed: {exc}")
             else:
                 if recorded_path:
                     messages.info(
@@ -194,7 +190,7 @@ class SyntheticResolutionView(UserPassesTestMixin, TemplateView):
                         f"Recorded amendment action to {recorded_path}.",
                     )
         except Exception as exc:
-            messages.error(request, "Synthetic resolution failed: %s" % exc)
+            messages.error(request, f"Synthetic resolution failed: {exc}")
 
         return redirect("core:admin_tools")
 
@@ -673,7 +669,7 @@ class MergeSuggestionsView(UserPassesTestMixin, TemplateView):
             self._set_total_results([debater_one_annotated, debater_two_annotated])
             one_total = debater_one_annotated.total_results
             two_total = debater_two_annotated.total_results
-            
+
             if two_total > one_total:
                 primary_debater = debater_two
                 secondary_debater = debater_one
@@ -715,10 +711,10 @@ class MergeSuggestionsView(UserPassesTestMixin, TemplateView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        
+
         # Check if we should force refresh (via query param)
         force_refresh = self.request.GET.get('refresh') == '1'
-        
+
         # Try to get from cache first (cache for 5 minutes)
         if not force_refresh:
             cached_suggestions = cache.get(self.cache_key)
@@ -730,7 +726,7 @@ class MergeSuggestionsView(UserPassesTestMixin, TemplateView):
         # Cache the results for 5 minutes
         suggestions = self._build_suggestions()
         cache.set(self.cache_key, suggestions, 300)
-        
+
         context["suggestions"] = suggestions
         context["cached"] = False
         return context
@@ -739,7 +735,7 @@ class MergeSuggestionsView(UserPassesTestMixin, TemplateView):
         """Build a list of potential merge candidates with scoring."""
         # Strategy: Group by exact normalized first+last name, then do fuzzy matching
         # This is MUCH faster than comparing all pairs
-        
+
         # Get IDs of debaters who already have pending merge requests
         pending_debater_ids = set()
         pending_requests = MergeDebaterRequest.objects.filter(
@@ -782,7 +778,7 @@ class MergeSuggestionsView(UserPassesTestMixin, TemplateView):
 
         # Collect pairs to check
         pairs_to_check = []
-        
+
         # First pass: exact name matches
         for (first, last), group in name_groups.items():
             if len(group) < 2:
@@ -801,7 +797,7 @@ class MergeSuggestionsView(UserPassesTestMixin, TemplateView):
                 for j in range(i + 1, len(group)):
                     first_debater = group[i]
                     second_debater = group[j]
-                    
+
                     # Skip if already in exact match
                     if (first_debater.first_normalized, first_debater.last_normalized) == \
                        (second_debater.first_normalized, second_debater.last_normalized):
@@ -811,7 +807,7 @@ class MergeSuggestionsView(UserPassesTestMixin, TemplateView):
                     name_similarity = self._calculate_name_similarity(first_debater, second_debater)
                     if name_similarity < 0.75:
                         continue
-                    
+
                     pairs_to_check.append((first_debater, second_debater, name_similarity))
 
         # Now fetch counts only for debaters in our pairs
@@ -852,19 +848,19 @@ class MergeSuggestionsView(UserPassesTestMixin, TemplateView):
 
         # Sort by score (highest first)
         suggestions.sort(key=lambda x: x["score"], reverse=True)
-        
+
         return suggestions[:self.max_suggestions]
 
     def _create_suggestion(self, first, second, name_similarity):
         """Create a suggestion dict if the pair qualifies."""
         score = self._calculate_merge_score(first, second, name_similarity)
-        
+
         if score <= 0:
             return None
 
         min_results = min(first.total_results, second.total_results)
         max_results = max(first.total_results, second.total_results)
-        
+
 
         return {
             "debater_one": first,
@@ -880,7 +876,7 @@ class MergeSuggestionsView(UserPassesTestMixin, TemplateView):
         """Calculate fuzzy match score between two debater names (0-1)."""
         name1 = f"{first.first_name} {first.last_name}".lower().strip()
         name2 = f"{second.first_name} {second.last_name}".lower().strip()
-        
+
         return SequenceMatcher(None, name1, name2).ratio()
 
     def _calculate_merge_score(self, first, second, name_similarity):
@@ -889,7 +885,7 @@ class MergeSuggestionsView(UserPassesTestMixin, TemplateView):
         Higher score = more likely to need merging.
         """
         score = 0
-        
+
         # Factor 1: Name similarity (0-100 points)
         score += name_similarity * 100
 
@@ -904,7 +900,7 @@ class MergeSuggestionsView(UserPassesTestMixin, TemplateView):
 
         min_results = min(first.total_results, second.total_results)
         max_results = max(first.total_results, second.total_results)
-        
+
 
         if max_results > 0:
             if min_results <= 5:

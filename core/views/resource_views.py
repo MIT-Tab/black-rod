@@ -4,11 +4,10 @@ from django.contrib import messages
 from django.db.models import Q
 from django.shortcuts import redirect, reverse
 from django.urls import reverse_lazy
+from django.utils.html import format_html
 from django.views import View
 from django_filters import ChoiceFilter, FilterSet
 from django_tables2 import Column
-from taggit.models import Tag
-from django.utils.html import format_html
 
 from core.forms import ResourceForm
 from core.models.resource import Resource
@@ -71,9 +70,8 @@ class ResourceTable(CustomTable):
         tag_links = []
         for tag in record.tags.all():
             # Get current query params and add this tag to the tags filter
-            from django.http import QueryDict
             query_params = self.context['request'].GET.copy()
-            
+
             # Add tag to existing tags filter (comma-separated)
             existing_tags = query_params.get('tags', '')
             if existing_tags:
@@ -81,7 +79,7 @@ class ResourceTable(CustomTable):
             else:
                 new_tags = tag.slug
             query_params['tags'] = new_tags
-            
+
             tag_links.append(format_html(
                 '<a href="?{}">{}</a>',
                 query_params.urlencode(),
@@ -91,10 +89,9 @@ class ResourceTable(CustomTable):
 
     def render_resource_type(self, record):
         # Get current query params and set the resource_type filter
-        from django.http import QueryDict
         query_params = self.context['request'].GET.copy()
         query_params['resource_type'] = record.resource_type
-        
+
         return format_html(
             '<a href="?{}">{}</a>',
             query_params.urlencode(),
@@ -135,22 +132,21 @@ class ResourceListView(CustomListView):
     def get_queryset(self):
         """Filter resources based on viewing permissions."""
         queryset = super().get_queryset()
-        
+
         if self.request.user.is_superuser:
             return queryset
-        
+
         if self.request.user.is_authenticated and self.request.user.can_view_private_videos:
             # User can see all resources
             return queryset
-        elif self.request.user.is_authenticated:
+        if self.request.user.is_authenticated:
             # Show public resources and resources they authored
             return queryset.filter(
                 Q(viewing_permission=Resource.PUBLIC) |
                 Q(authors__user=self.request.user)
             ).distinct()
-        else:
-            # Anonymous users only see public resources
-            return queryset.filter(viewing_permission=Resource.PUBLIC)
+        # Anonymous users only see public resources
+        return queryset.filter(viewing_permission=Resource.PUBLIC)
 
 
 class ResourceCreateView(LoginRequiredMixin, CustomCreateView):
@@ -237,15 +233,15 @@ class ResourceDetailView(CustomDetailView):
     def has_permission(self, *args, **kwargs):
         """Check if user has permission to view this resource."""
         resource = self.get_object()
-        
+
         # Superusers can see everything
         if self.request.user.is_superuser:
             return True
-        
+
         # Public resources are visible to everyone
         if resource.viewing_permission == Resource.PUBLIC:
             return True
-        
+
         # For private resources, check if user is logged in
         if resource.viewing_permission == Resource.REQUIRES_LOGIN:
             if not self.request.user.is_authenticated:
@@ -256,7 +252,7 @@ class ResourceDetailView(CustomDetailView):
             # Authors can always see their own resources
             if resource.is_author(self.request.user):
                 return True
-        
+
         return False
 
     buttons = [
@@ -278,10 +274,10 @@ class ResourceDetailView(CustomDetailView):
 
     def get_context_data(self, *args, **kwargs):
         context = super().get_context_data(*args, **kwargs)
-        
+
         # Check if user is an author
         context["is_author"] = self.object.is_author(self.request.user)
-        
+
         return context
 
 

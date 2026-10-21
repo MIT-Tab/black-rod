@@ -7,7 +7,7 @@ from pathlib import Path
 
 from django.db.models import Prefetch, Q
 
-from core.models import Debater, ImportedRoundMetadata, Round, RoundStats, TournamentImport
+from core.models import Debater, ImportedRoundMetadata, Round, TournamentImport
 
 
 SPEAKER_SLOTS = {

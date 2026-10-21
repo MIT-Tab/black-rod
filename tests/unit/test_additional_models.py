@@ -197,10 +197,10 @@ class TestModelEdgeCases:
     """Test edge cases and special behaviors"""
 
     def test_debater_name_with_empty_strings(self):
-        """Test debater creation with empty names"""
+        """Empty first names fall back to a placeholder when sanitized on save"""
         school = School.objects.create(name="Test School")
         debater = Debater.objects.create(first_name="", last_name="", school=school)
-        assert debater.first_name == ""
+        assert debater.first_name == "Removed"
         assert debater.last_name == ""
 
     def test_debater_save_method(self):

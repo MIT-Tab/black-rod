@@ -17,5 +17,12 @@
     {% endif %}
 {% endblock detail_view %}
 {% block added_information_view %}
-    {% if object.background_slide %}<div class="card"><div class="card-body"><h5>Background slide</h5><p class="mb-0" style="white-space: pre-wrap">{{ object.background_slide }}</p></div></div>{% endif %}
+    {% if object.background_slide %}
+        <div class="card">
+            <div class="card-body">
+                <h5>Background slide</h5>
+                <p class="mb-0" style="white-space: pre-wrap">{{ object.background_slide }}</p>
+            </div>
+        </div>
+    {% endif %}
 {% endblock added_information_view %}
