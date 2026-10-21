@@ -54,6 +54,8 @@ set. The scanner is an audit tool, not an application requirement.
 - Replace the old `pip<25` / `setuptools<60` constraints with tested, patched
   tooling release lines. Update setup instructions to use the constraints.
 - Use `.nvmrc` in CI and `npm ci` in CI/setup so the reviewed lockfile is used.
+  Pin PR runners to Ubuntu 24.04: the newly rolled-out Ubuntu 26.04 runner
+  does not provide the project's Python 3.10.16 build.
 
 The [urllib3 migration guide](https://urllib3.readthedocs.io/en/stable/v2-migration-guide.html)
 documents its Python 3.10+, OpenSSL 1.1.1+, TLS 1.2 minimum, and stricter certificate
