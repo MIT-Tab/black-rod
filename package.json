@@ -16,46 +16,45 @@
   "author": "Rodda John",
   "license": "MIT",
   "engines": {
-    "node": "20.19.4"
+    "node": "20.20.2"
   },
   "bugs": {
     "url": "https://github.com/MIT-Tab/black-rod/issues"
   },
   "homepage": "https://github.com/MIT-Tab/black-rod#readme",
   "devDependencies": {
-    "@babel/core": "^7.28.3",
-    "@babel/preset-env": "^7.28.3",
-    "autoprefixer": "^10.4.21",
+    "@babel/core": "^7.29.7",
+    "@babel/preset-env": "^7.29.7",
+    "autoprefixer": "^10.6.1",
     "babel-loader": "^9.2.1",
     "css-loader": "^6.11.0",
     "eslint": "^8.57.1",
     "eslint-config-airbnb-base": "^15.0.0",
     "eslint-config-prettier": "^10.1.8",
-    "eslint-import-resolver-webpack": "^0.13.10",
+    "eslint-import-resolver-webpack": "^0.13.11",
     "eslint-plugin-import": "^2.32.0",
-    "eslint-plugin-prettier": "^5.5.4",
-    "less": "^4.4.1",
+    "eslint-plugin-prettier": "^5.5.7",
+    "less": "^4.9.1",
     "less-loader": "^11.1.4",
-    "postcss": "^8.5.6",
+    "postcss": "^8.5.31",
     "postcss-loader": "^7.3.4",
-    "precss": "4.0.0",
-    "prettier": "^3.6.2",
-    "sass": "^1.91.0",
+    "prettier": "^3.9.10",
+    "sass": "^1.106.0",
     "sass-loader": "^13.3.3",
     "style-loader": "^3.3.4",
-    "webpack": "^5.101.3",
+    "webpack": "^5.112.0",
     "webpack-bundle-tracker": "^1.8.1",
     "webpack-cli": "^5.1.4"
   },
   "dependencies": {
     "bootstrap": "4.6.2",
-    "bootstrap-datepicker": "1.9.0",
+    "bootstrap-datepicker": "1.10.1",
     "edmonds-blossom": "^1.0.0",
     "jquery": "^3.7.1",
-    "jquery-ui": "^1.14.1",
-    "papaparse": "^5.5.3",
+    "jquery-ui": "^1.14.2",
+    "papaparse": "^5.7.0",
     "popper.js": "1.16.1",
-    "select2": "4.0.11"
+    "select2": "4.0.13"
   },
   "eslintConfig": {
     "extends": [
