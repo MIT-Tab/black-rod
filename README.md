@@ -28,13 +28,15 @@ Make sure to use `python3` for the virtual environment:
 ```bash
 python -m venv venv
 source venv/bin/activate
-pip install -r requirements.txt
+pip install --upgrade pip setuptools wheel -c constraints.txt
+pip install -r requirements.txt -c constraints.txt
 ```
 
 ##### Set up Webpack assets
 ```bash
-nvm use 20
-npm install
+nvm install
+nvm use
+npm ci
 npm run build
 ```
 

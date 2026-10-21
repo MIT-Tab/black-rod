@@ -1,2 +1,4 @@
-pip<25
-setuptools<60
+# Keep installation tools on tested, security-patched release lines.
+pip>=26.2.2,<27
+setuptools>=84.2.1,<85
+wheel>=0.48.0,<0.49
