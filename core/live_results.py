@@ -167,9 +167,11 @@ class _People:
         } - {None}
         self.debaters = {
             debater.id: debater
-            for debater in Debater.objects.filter(id__in=debater_ids).select_related("school")
+            # Explicit APDA IDs can refer to temporary/synthetic records too.
+            # Their stored affiliation is still authoritative (including null).
+            for debater in Debater.all_objects.filter(id__in=debater_ids).select_related("school")
         }
-        self.schools = School.objects.in_bulk(school_ids)
+        self.schools = School.all_objects.in_bulk(school_ids)
 
     def resolve(self, person):
         apda_id = _known_id(person.get("apda_id"))
@@ -179,6 +181,7 @@ class _People:
             return {
                 "key": f"debater:{known.id}",
                 "name": known.name,
+                "last_initial": (known.last_name[:1] or known.first_name[:1] or "?"),
                 "url": known.get_absolute_url(),
                 "school_key": f"school:{school.id}" if school else None,
                 "school_name": school.name if school else "Unaffiliated",
@@ -198,6 +201,7 @@ class _People:
         return {
             "key": f"debater-name:{name.lower()}:{school_key or ''}",
             "name": name or "Unknown debater",
+            "last_initial": name.split()[-1][:1] if name else "?",
             "url": "",
             "school_key": school_key,
             "school_name": school_name or "Unaffiliated",
@@ -366,7 +370,14 @@ def _apply_live_payload(boards, payload, season, coty, people):
                 key = "team-name:" + ":".join(sorted(d["key"] for d in team_debaters))
             _add_marker(
                 boards["toty"],
-                {"key": key, "name": team.get("name") or detail, "detail": detail},
+                {
+                    "key": key,
+                    "name": (
+                        team_debaters[0]["school_name"] + " "
+                        + "".join(debater["last_initial"] for debater in team_debaters)
+                    ),
+                    "detail": detail,
+                },
                 marker(points),
             )
             used = True
