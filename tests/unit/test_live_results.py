@@ -80,11 +80,32 @@ def test_live_page_labels_provisional_results():
 
     assert response.status_code == 200
     assert b"have not been reviewed by a human" in response.content
-    assert b"MIT Fall" in response.content
+    assert b">MIT</a>" in response.content
+    assert b"MIT Fall" not in response.content
     assert b"<th scope=\"col\">School</th>" in response.content
     assert b"<th scope=\"col\">Debaters</th>" in response.content
     assert b"<mark class=\"bg-warning\">" in response.content
     assert b"Results counting toward total" not in response.content
+
+
+@pytest.mark.parametrize("host, name, expected", [
+    ({"apda_id": 14, "name": "Tufts"}, "Tufts Fall 2026: Avatar Seven Havens", "Tufts"),
+    ({"apda_id": 14, "name": ""}, "Tufts Fall", "Tufts Fall"),
+    (None, "Tufts Fall", "Tufts Fall"),
+    (None, "", "Live tournament"),
+])
+def test_live_markers_use_host_school_name_with_fallbacks(host, name, expected):
+    marker = live_results._live_marker(2.5, {
+        "host_school": host, "name": name,
+    }, "https://tufts.nu-tab.com", 5)
+
+    assert marker == {
+        "points": 2.5,
+        "tournament": expected,
+        "url": "https://tufts.nu-tab.com",
+        "placement": 5,
+        "live": True,
+    }
 
 
 @pytest.mark.django_db
@@ -259,6 +280,74 @@ def test_hybrid_teams_do_not_earn_live_toty():
         toty = build_live_standings()["boards"]["toty"]
 
     assert not any(row["has_live"] for row in toty)
+
+
+@pytest.mark.django_db
+@override_settings(CURRENT_SEASON="2026")
+def test_new_live_toty_rows_use_school_and_debater_initials():
+    cache.clear()
+    payload = _payload()
+    payload["team_results"][0]["team"]["name"] = "fun tab nickname"
+    with patch("core.live_results.fetch_live_sources", return_value=[payload]):
+        result = build_live_standings()
+
+    row = result["boards"]["toty"][0]
+    assert row["name"] == "MIT AB"
+    assert row["detail"] == "Ada A and Bea B"
+    assert row["points"] > 0
+    assert row["name"] != payload["team_results"][0]["team"]["name"]
+
+
+@pytest.mark.django_db
+@override_settings(CURRENT_SEASON="2026")
+@pytest.mark.parametrize("flags", [{}, {"temporary": True}, {"synthetic": True}])
+def test_explicit_debater_ids_preserve_unaffiliated_status(flags):
+    cache.clear()
+    school = School.objects.create(name="Amherst")
+    julia = Debater.all_objects.create(
+        id=19492, first_name="Julia", last_name="Rubas", school=None, **flags,
+    )
+    partner = Debater.objects.create(first_name="Raina", last_name="Batra", school=school)
+    payload = _live_team(_payload(), julia, partner, school, place=5)
+    # The tab site assigns Julia to the team's school. Black Rod must use her ID.
+    person = payload["team_results"][0]["team"]["debaters"][0]
+    person["apda_id"] = str(julia.id)
+    person["name"] = "Tab site nickname"
+    payload["speaker_results"] = [{"place": 1, "division": "varsity", "debater": person}]
+    with patch("core.live_results.fetch_live_sources", return_value=[payload]):
+        boards = build_live_standings()["boards"]
+
+    assert boards["toty"] == []
+    speaker = boards["soty"][0]
+    assert speaker["key"] == f"debater:{julia.id}"
+    assert speaker["name"] == "Julia Rubas"
+    assert speaker["detail"] == "Unaffiliated"
+    assert all(
+        debater["key"] != f"debater:{julia.id}"
+        for row in boards["coty"] for debater in row["debaters"]
+    )
+
+
+@pytest.mark.django_db
+@override_settings(CURRENT_SEASON="2026")
+def test_new_live_team_uses_canonical_affiliation_and_last_names():
+    cache.clear()
+    school = School.objects.create(name="Yale")
+    first = Debater.all_objects.create(
+        first_name="Alexandra", last_name="Uy-Tioco", school=school, temporary=True,
+    )
+    second = Debater.objects.create(first_name="Grace", last_name="Lyles", school=school)
+    payload = _live_team(_payload(), first, second, school, place=3)
+    payload["team_results"][0]["team"]["name"] = "fun tab nickname"
+    for person in payload["team_results"][0]["team"]["debaters"]:
+        person["name"] = "Tab nickname"
+        person["school"] = {"apda_id": 9999, "name": "Wrong school"}
+    with patch("core.live_results.fetch_live_sources", return_value=[payload]):
+        boards = build_live_standings()["boards"]
+
+    assert boards["toty"][0]["name"] == "Yale UL"
+    assert boards["toty"][0]["detail"] == "Alexandra Uy-Tioco and Grace Lyles"
+    assert boards["coty"][0]["name"] == "Yale"
 
 
 @pytest.mark.django_db
