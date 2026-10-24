@@ -318,10 +318,12 @@ def test_explicit_debater_ids_preserve_unaffiliated_status(flags):
         boards = build_live_standings()["boards"]
 
     assert boards["toty"] == []
-    speaker = boards["soty"][0]
-    assert speaker["key"] == f"debater:{julia.id}"
-    assert speaker["name"] == "Julia Rubas"
-    assert speaker["detail"] == "Unaffiliated"
+    resolved = live_results._People([payload]).resolve(person)
+    assert resolved["key"] == f"debater:{julia.id}"
+    assert resolved["name"] == "Julia Rubas"
+    assert resolved["school_name"] == "Unaffiliated"
+    assert not resolved["school_eligible"]
+    assert boards["soty"] == []
     assert all(
         debater["key"] != f"debater:{julia.id}"
         for row in boards["coty"] for debater in row["debaters"]
@@ -500,3 +502,40 @@ def test_reviewed_rankings_update_clears_live_standings():
 
     assert cache.get(f"{CACHE_KEY}:2026") is None
     assert cache.get(f"{CACHE_KEY}:2026:stale") is None
+
+
+@pytest.mark.django_db
+@override_settings(CURRENT_SEASON="2026", LAST_NOTY_SEASON=2026)
+@pytest.mark.parametrize("eligible", [False, True])
+@pytest.mark.parametrize("known_debater", [False, True])
+@pytest.mark.parametrize("division, speaker_board", [("varsity", "soty"), ("novice", "noty")])
+def test_all_live_standings_respect_school_oty_eligibility(
+    eligible, known_debater, division, speaker_board,
+):
+    cache.clear()
+    school = School.objects.create(name="Unaffiliated", included_in_oty=eligible)
+    first = Debater.objects.create(first_name="Julia", last_name="Rubas", school=school)
+    second = Debater.objects.create(first_name="Partner", last_name="Test", school=school)
+    payload = _live_team(_payload(), first, second, school, place=3)
+    people = payload["team_results"][0]["team"]["debaters"]
+    if not known_debater:
+        for person in people:
+            person["apda_id"] = None
+    else:
+        # A known person's canonical school flag takes precedence over the feed.
+        for person in people:
+            person["school"] = {"apda_id": 9999, "name": "Misleading eligible school"}
+    payload["speaker_results"] = [
+        {"place": 1, "division": division, "debater": people[0]},
+    ]
+    # NOTY is disabled for current tournament types; exercise the historical path.
+    with patch.dict(Tournament.TOURNAMENT_TYPES[Tournament.POINTS], {"noty": True}), patch(
+        "core.live_results.fetch_live_sources", return_value=[payload],
+    ):
+        boards = build_live_standings()["boards"]
+
+    for board in ("toty", "coty", speaker_board):
+        assert bool(boards[board]) == eligible
+    if eligible:
+        assert boards[speaker_board][0]["detail"] == "Unaffiliated"
+        assert boards[speaker_board][0]["points"] > 0

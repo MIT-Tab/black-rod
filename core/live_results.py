@@ -402,6 +402,8 @@ def _apply_live_payload(boards, payload, season, coty, people):
             continue
         if points > 0:
             debater = people.resolve(result.get("debater") or {})
+            if not debater["school_eligible"]:
+                continue
             _add_marker(
                 boards[board],
                 {
