@@ -80,11 +80,32 @@ def test_live_page_labels_provisional_results():
 
     assert response.status_code == 200
     assert b"have not been reviewed by a human" in response.content
-    assert b"MIT Fall" in response.content
+    assert b">MIT</a>" in response.content
+    assert b"MIT Fall" not in response.content
     assert b"<th scope=\"col\">School</th>" in response.content
     assert b"<th scope=\"col\">Debaters</th>" in response.content
     assert b"<mark class=\"bg-warning\">" in response.content
     assert b"Results counting toward total" not in response.content
+
+
+@pytest.mark.parametrize("host, name, expected", [
+    ({"apda_id": 14, "name": "Tufts"}, "Tufts Fall 2026: Avatar Seven Havens", "Tufts"),
+    ({"apda_id": 14, "name": ""}, "Tufts Fall", "Tufts Fall"),
+    (None, "Tufts Fall", "Tufts Fall"),
+    (None, "", "Live tournament"),
+])
+def test_live_markers_use_host_school_name_with_fallbacks(host, name, expected):
+    marker = live_results._live_marker(2.5, {
+        "host_school": host, "name": name,
+    }, "https://tufts.nu-tab.com", 5)
+
+    assert marker == {
+        "points": 2.5,
+        "tournament": expected,
+        "url": "https://tufts.nu-tab.com",
+        "placement": 5,
+        "live": True,
+    }
 
 
 @pytest.mark.django_db

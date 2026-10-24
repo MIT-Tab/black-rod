@@ -240,7 +240,11 @@ def _type_flags(type_code, season):
 def _live_marker(points, tournament, source_url, placement):
     return {
         "points": float(points),
-        "tournament": tournament.get("name") or "Live tournament",
+        "tournament": (
+            (tournament.get("host_school") or {}).get("name")
+            or tournament.get("name")
+            or "Live tournament"
+        ),
         "url": source_url,
         "placement": placement,
         "live": True,
