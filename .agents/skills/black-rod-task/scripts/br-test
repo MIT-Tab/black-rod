@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# No arguments runs the same tests/coverage threshold as GitHub Actions.
+set -euo pipefail
+. "$(dirname "$0")/_env.sh"
+cd "$BR_ROOT"
+# Django uses a private in-memory SQLite test DB, matching CI.
+export BR_TESTING=1
+# Page tests render real webpack bundles, just as CI does.
+if ! "$BR_PYTHON" -c 'import json; assert json.load(open("webpack-stats.json"))["status"] == "done"' >/dev/null 2>&1; then
+  if ! npm run build >"$BR_STATE/test-webpack.log" 2>&1; then
+    tail -n 40 "$BR_STATE/test-webpack.log"
+    echo "webpack build failed; full log: $BR_STATE/test-webpack.log" >&2
+    exit 1
+  fi
+fi
+log="$BR_STATE/pytest-$(date +%s).log"
+if "$BR_PYTHON" -m pytest "$@" >"$log" 2>&1; then
+  tail -n 3 "$log"
+else
+  rc=$?
+  tail -n 70 "$log" | cut -c1-300
+  echo "pytest exit $rc; full log: $log" >&2
+  exit "$rc"
+fi
+echo "full log: $log"
