@@ -50,7 +50,7 @@ def store_source(url, payload):
     generation = uuid.uuid4().hex
     chunks = {f"mittab-import:{key}:{generation}:{offset}": compressed[offset:offset + CHUNK_SIZE]
               for offset in range(0, len(compressed), CHUNK_SIZE)}
-    failed = cache.set_many(chunks, timeout=RETENTION + 24 * 60 * 60)
+    failed = cache.set_many(chunks, timeout=None)
     if failed:
         raise RuntimeError("Could not cache the complete tournament snapshot")
     # Serialize index updates across web and scheduled workers.
@@ -59,6 +59,7 @@ def store_source(url, payload):
             break
         time.sleep(0.01)
     else:
+        cache.delete_many(chunks)
         raise RuntimeError("Another worker is updating the tournament cache; try again.")
     try:
         index = source_index()
@@ -70,9 +71,12 @@ def store_source(url, payload):
         published = cache.get(INDEX_KEY) or {}
         if published.get(key, {}).get("chunks") != list(chunks):
             raise RuntimeError("Could not publish the tournament snapshot")
-        cache.delete_many(previous_chunks)
+    except Exception:
+        cache.delete_many(chunks)
+        raise
     finally:
         cache.delete(f"{INDEX_KEY}:lock")
+    cache.delete_many(previous_chunks)
     return payload
 
 
@@ -105,6 +109,18 @@ def fresh_or_cached_source(key):
         if payload is None:
             raise ValueError("The tournament is unavailable and its snapshot has expired.") from None
         return payload
+
+
+def _update_presence(row, present, confirmed_missing):
+    if present:
+        if row.get("missing_since"):
+            for chunk in row["chunks"]:
+                cache.touch(chunk, timeout=None)
+        row["missing_since"] = None
+    elif confirmed_missing and not row.get("missing_since"):
+        row["missing_since"] = timezone.now().timestamp()
+        for chunk in row["chunks"]:
+            cache.touch(chunk, timeout=RETENTION)
 
 
 def refresh_import_sources():
@@ -141,10 +157,8 @@ def refresh_import_sources():
         try:
             index = source_index()
             for row in index.values():
-                if row["url"] in urls:
-                    row["missing_since"] = None
-                elif directory_ok and not outcomes.get(row["url"]):
-                    row["missing_since"] = row.get("missing_since") or timezone.now().timestamp()
+                _update_presence(row, row["url"] in urls,
+                                 directory_ok and not outcomes.get(row["url"]))
             cache.set(INDEX_KEY, index, timeout=None)
         finally:
             cache.delete(f"{INDEX_KEY}:lock")

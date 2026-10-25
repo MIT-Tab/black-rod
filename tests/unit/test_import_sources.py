@@ -58,12 +58,17 @@ def test_directory_failure_does_not_evict_but_disappearance_starts_retention():
     assert source_index()[source_key(URL)]["missing_since"] is None
     directory = Mock()
     directory.json.return_value = {"tournaments": []}
-    with patch("core.import_sources.requests.get", side_effect=[directory, requests.ConnectionError]):
+    with patch("core.import_sources.requests.get", side_effect=[directory, requests.ConnectionError]), \
+            patch("core.import_sources.cache.touch", wraps=cache.touch) as touch:
         refresh_import_sources()
+        assert touch.call_count > 0
+        assert all(call.kwargs["timeout"] == RETENTION for call in touch.call_args_list)
     first_missing = source_index()[source_key(URL)]["missing_since"]
     assert first_missing
-    with patch("core.import_sources.requests.get", side_effect=[directory, requests.ConnectionError]):
+    with patch("core.import_sources.requests.get", side_effect=[directory, requests.ConnectionError]), \
+            patch("core.import_sources.cache.touch", wraps=cache.touch) as touch:
         refresh_import_sources()
+        touch.assert_not_called()
     assert source_index()[source_key(URL)]["missing_since"] == first_missing
     assert cached_source(source_key(URL))["bundle"]
 
