@@ -13,7 +13,8 @@ type, and dates within seven days select the tournament automatically; a missing
 object is created. Ambiguous matches require correcting the tournament records.
 
 All result categories, participant counts, and the round bundle are imported
-together. The review uses an immutable, user/tournament-scoped snapshot for one
+together. The deprecated manual bundle upload remains available on tournament
+detail pages for older tournaments with downloaded bundles. The review uses an immutable, user/tournament-scoped snapshot for one
 hour. Save does not contact mit-tab. Result and bundle changes share a database
 transaction; failed bundle validation rolls everything back. Reviewed debater
 and school links are carried into the bundle. Repeat identities within a bundle
