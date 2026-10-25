@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -euo pipefail
+. "$(dirname "$0")/_env.sh"
+cd "$BR_ROOT"
+if [ -n "${BR_CHROME_LIBS:-}" ]; then
+  export LD_LIBRARY_PATH="$BR_CHROME_LIBS${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+fi
+port="$(cat "$BR_STATE/port" 2>/dev/null || echo "$BR_PORT")"
+exec "$BR_ROOT/venv/screenshots/bin/python" "$BR_SCRIPTS/shot.py" --base "http://127.0.0.1:$port" --preview-dir "$BR_STATE" "$@"

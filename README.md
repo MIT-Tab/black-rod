@@ -56,3 +56,11 @@ python manage.py makesuperuser
 ```bash
 ./bin/dev-server
 ```
+
+##### Agent implementation workflow
+
+The versioned [black-rod task skill](.agents/skills/black-rod-task/SKILL.md)
+provides isolated worktree setup, private SQLite development/test databases,
+dev servers, desktop/mobile screenshots, PR image links, and detached GitHub
+Actions notifications. Start with [AGENTS.md](AGENTS.md). Codex and Claude share
+the same checked-in skill; no user-level skill installation is required.

@@ -5,6 +5,25 @@ on:
     branches: [ master, main ]
 
 jobs:
+  agent_workflow:
+    name: Agent Workflow Helpers
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10.16'
+      - name: Test workflow helpers
+        run: python -m unittest discover -s .agents/skills/black-rod-task/tests -v
+      - name: Check Bash syntax
+        shell: bash
+        run: |
+          for script in .agents/skills/black-rod-task/scripts/*; do
+            if [ -f "$script" ] && head -n 1 "$script" | grep -q bash; then
+              bash -n "$script"
+            fi
+          done
+
   pylint:
     name: Python Linting
     runs-on: ubuntu-24.04

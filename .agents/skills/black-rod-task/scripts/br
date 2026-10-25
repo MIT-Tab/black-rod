@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+set -euo pipefail
+. "$(dirname "$0")/_env.sh"
+cd "$BR_ROOT"
+[ $# -gt 0 ] || { echo "usage: br <command...>" >&2; exit 2; }
+exec "$@"
