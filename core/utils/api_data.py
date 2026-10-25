@@ -13,6 +13,7 @@ class APIDataHandler:
         self._api_url = None
         self._debater_id_map = {}
         self._school_name_map = {}
+        self.payload = None
 
     def _extract_reference_id(self, data):
         """Return the identifier used by the remote API for tracking debaters."""
@@ -62,6 +63,8 @@ class APIDataHandler:
             return False, f"Failed to connect to API: {str(e)}"
 
     def _make_api_request(self, endpoint):
+        if self.payload is not None:
+            return self.payload
         api_url = self.get_api_url()
         if not api_url:
             return None

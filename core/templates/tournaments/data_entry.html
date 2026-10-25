@@ -33,6 +33,7 @@
                     <form id="data-entry-form" method="POST" novalidate>
                         {% csrf_token %}
                         <input type="hidden" name="tournament" value="{{ tournament.id }}">
+                        <input type="hidden" name="review" value="{{ review_token }}">
                         {% if current_api_url %}
                             <input type="hidden" name="api_url" value="{{ current_api_url }}">
                         {% endif %}

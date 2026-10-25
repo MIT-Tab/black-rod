@@ -1,0 +1,30 @@
+{% extends "base/base.html" %}
+{% block content %}
+    <div class="card m-2 m-lg-5">
+        <div class="card-body">
+            {% for message in messages %}<div class="alert alert-info">{{ message }}</div>{% endfor %}
+            <h1 class="h4">Import tournament results</h1>
+            <p>Review all results and rounds from an active or cached mit-tab tournament. Imports try the live site first and use its saved snapshot if it is unavailable.</p>
+            <p class="text-muted">Snapshots refresh every 12 hours and are retained for one week after a site disappears.</p>
+            {% for key, source in sources.items %}
+                <form method="post" class="border rounded p-3 mb-3 d-flex flex-wrap align-items-center justify-content-between">
+                    {% csrf_token %}
+                    <input type="hidden" name="source" value="{{ key }}">
+                    <div class="mr-3 mb-2">
+                        <strong>{{ source.name }}</strong>
+                        {% if source.missing_since %}
+                            <span class="badge badge-secondary">Cached only</span>
+                        {% else %}
+                            <span class="badge badge-success">Active</span>
+                        {% endif %}
+                        <div class="small text-muted">{{ source.url }}</div>
+                        {% if source.updated_at %}<div class="small text-muted">Snapshot: {{ source.updated_at }}</div>{% endif %}
+                    </div>
+                    <button class="btn btn-primary" type="submit">Review and import all results</button>
+                </form>
+            {% empty %}
+                <p>No active or cached tournaments are available.</p>
+            {% endfor %}
+        </div>
+    </div>
+{% endblock content %}

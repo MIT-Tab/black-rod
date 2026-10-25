@@ -1,0 +1,4 @@
+# Installed by the master deploy workflow in /etc/cron.d/black-rod-mittab-cache.
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+0 */12 * * * root cd /home/rodda/black-rod && /usr/bin/flock -n /tmp/black-rod-mittab-cache.lock env ENV=production venv/bin/python manage.py cache_mittab_results >> /var/log/black-rod-mittab-cache.log 2>&1

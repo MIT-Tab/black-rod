@@ -113,7 +113,7 @@ def test_live_markers_use_host_school_name_with_fallbacks(host, name, expected):
 def test_already_imported_tournament_is_not_counted_twice():
     cache.clear()
     host = School.objects.create(id=1, name="MIT", short_name="MIT")
-    Tournament.objects.create(
+    tournament = Tournament.objects.create(
         host=host,
         season="2026",
         date=date(2026, 10, 19),
@@ -123,6 +123,9 @@ def test_already_imported_tournament_is_not_counted_twice():
         num_debaters=64,
         num_novice_debaters=8,
     )
+    from core.models import SpeakerResult
+    debater = Debater.objects.create(first_name="Reviewed", last_name="Speaker", school=host)
+    SpeakerResult.objects.create(tournament=tournament, debater=debater, place=1, type_of_place=Debater.VARSITY)
     with patch("core.live_results.fetch_live_sources", return_value=[_payload()]):
         result = build_live_standings()
 
@@ -369,7 +372,7 @@ def test_tournament_without_host_is_ignored():
 def test_import_dated_days_apart_still_deduplicates():
     cache.clear()
     host = School.objects.create(id=1, name="MIT", short_name="MIT")
-    Tournament.objects.create(
+    tournament = Tournament.objects.create(
         host=host,
         season="2026",
         date=date(2026, 10, 17),
@@ -379,6 +382,9 @@ def test_import_dated_days_apart_still_deduplicates():
         num_debaters=64,
         num_novice_debaters=8,
     )
+    from core.models import SpeakerResult
+    debater = Debater.objects.create(first_name="Reviewed", last_name="Speaker", school=host)
+    SpeakerResult.objects.create(tournament=tournament, debater=debater, place=1, type_of_place=Debater.VARSITY)
     with patch("core.live_results.fetch_live_sources", return_value=[_payload()]):
         result = build_live_standings()
 
@@ -497,8 +503,7 @@ def test_reviewed_rankings_update_clears_live_standings():
     with patch("core.live_results.fetch_live_sources", return_value=[_payload()]):
         build_live_standings()
 
-    with patch("core.utils.rankings.Client"):
-        redo_rankings(TOTY.objects.filter(season="2026"), season="2026")
+    redo_rankings(TOTY.objects.filter(season="2026"), season="2026")
 
     assert cache.get(f"{CACHE_KEY}:2026") is None
     assert cache.get(f"{CACHE_KEY}:2026:stale") is None

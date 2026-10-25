@@ -363,21 +363,6 @@ class RoundAmendmentUploadForm(forms.Form):
         return uploaded
 
 
-class MittabBundleImportForm(forms.Form):
-    bundle_file = forms.FileField(
-        label="Mit-Tab bundle JSON",
-        help_text="Upload a JSON bundle exported from Mit-Tab for this tournament.",
-        widget=forms.ClearableFileInput(attrs={"accept": ".json,application/json"}),
-    )
-
-    def clean_bundle_file(self):
-        uploaded = self.cleaned_data["bundle_file"]
-        name = str(getattr(uploaded, "name", "") or "").lower()
-        if name and not name.endswith(".json"):
-            raise forms.ValidationError("Please upload a .json Mit-Tab bundle file.")
-        return uploaded
-
-
 class TournamentImportMoveForm(forms.Form):
     tournament_import_id = forms.IntegerField(widget=forms.HiddenInput())
     target_tournament = forms.ModelChoiceField(
@@ -400,22 +385,11 @@ class TournamentResultsImportOptionsForm(forms.Form):
     api_url = forms.URLField(
         required=False,
         label="Mit-Tab Tournament Import URL (Optional)",
-        help_text="If provided, selected categories below are imported from this Mit-Tab tournament.",
+        help_text="If provided, all results, counts, and rounds are imported from this Mit-Tab tournament.",
         widget=forms.URLInput(
             attrs={"placeholder": "https://nu-tab.com/tournament/123"}
         ),
     )
-    import_varsity_teams = forms.BooleanField(required=False, initial=False)
-    import_varsity_speakers = forms.BooleanField(required=False, initial=False)
-    import_novice_teams = forms.BooleanField(required=False, initial=False)
-    import_novice_speakers = forms.BooleanField(required=False, initial=False)
-    import_unplaced_teams = forms.BooleanField(required=False, initial=False)
-    import_counts = forms.BooleanField(
-        required=False,
-        initial=False,
-        label="Import team and novice counts",
-    )
-
     CATEGORY_FIELDS = {
         "varsity_teams": "import_varsity_teams",
         "varsity_speakers": "import_varsity_speakers",
@@ -425,27 +399,7 @@ class TournamentResultsImportOptionsForm(forms.Form):
     }
 
     def selected_result_tabs(self):
-        if not hasattr(self, "cleaned_data"):
-            return []
-        return [
-            tab_key
-            for tab_key, field_name in self.CATEGORY_FIELDS.items()
-            if self.cleaned_data.get(field_name)
-        ]
-
-    def clean(self):
-        cleaned_data = super().clean()
-        api_url = (cleaned_data.get("api_url") or "").strip()
-        selected_categories = any(
-            cleaned_data.get(field_name) for field_name in self.CATEGORY_FIELDS.values()
-        ) or cleaned_data.get("import_counts")
-
-        if selected_categories and not api_url:
-            raise forms.ValidationError(
-                "Provide a Mit-Tab tournament URL to import selected categories, or clear all import selections."
-            )
-
-        return cleaned_data
+        return list(self.CATEGORY_FIELDS) if self.cleaned_data.get("api_url") else []
 
 
 class TeamResultForm(forms.Form):

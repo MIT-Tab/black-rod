@@ -83,7 +83,7 @@ def test_setup_post_redirects_with_selected_api_categories(monkeypatch):
     assert "import_counts=1" in response["Location"]
 
 
-def test_setup_post_surfaces_api_errors(monkeypatch):
+def test_setup_does_not_make_network_requests_before_review(monkeypatch):
     tournament = make_tournament()
 
     class FakeHandler:
@@ -110,6 +110,5 @@ def test_setup_post_surfaces_api_errors(monkeypatch):
 
     response = view.post(request)
 
-    assert response.status_code == 200
-    assert b"Could not connect to the Mit-Tab tournament import source" in response.content
-    assert b"boom" not in response.content
+    assert response.status_code == 302
+    assert "api_url=" in response["Location"]

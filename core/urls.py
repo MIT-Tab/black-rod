@@ -16,7 +16,7 @@ from core.views import (
     elo_views,
     generated_code_views,
     merge_debater_views,
-    mittab_bundle_views,
+    import_source_views,
     claim_debater_views,
     team_views,
     toty_views,
@@ -287,11 +287,7 @@ urlpatterns = [
         results_import_views.TournamentDataEntryView.as_view(),
         name="tournament_dataentry",
     ),
-    path(
-        "core/tournaments/mittab_bundle/upload",
-        mittab_bundle_views.TournamentMittabBundleUploadView.as_view(),
-        name="tournament_mittab_bundle_upload",
-    ),
+    path("core/tournaments/import/", import_source_views.ImportSourcesView.as_view(), name="import_sources"),
     path(
         "core/tournaments/get_new_form",
         results_import_views.get_new_team_form,
