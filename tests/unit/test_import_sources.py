@@ -234,6 +234,7 @@ def test_bulk_rebuild_preserves_standalone_manual_qualification():
 @pytest.mark.django_db
 @override_settings(CURRENT_SEASON="2026", ONLINE_SEASONS=())
 def test_import_persistence_query_budget_for_32_teams(django_assert_max_num_queries):
+    from time import perf_counter
     from types import SimpleNamespace
     from django.test import RequestFactory
     from core.views.results_import_views import RESULT_FORMSET_CONFIGS, TournamentDataEntryView
@@ -251,7 +252,8 @@ def test_import_persistence_query_budget_for_32_teams(django_assert_max_num_quer
         {"debater_one": people[index * 2], "debater_two": people[index * 2 + 1], "ORDER": index + 1}
         for index in range(32)
     ]
+    started = perf_counter()
     with django_assert_max_num_queries(1200) as queries:
         view.persist_results(tournament, formsets, use_api=False)
     assert TeamResult.objects.filter(tournament=tournament).count() == 32
-    print(f"32-team persistence: {len(queries)} SQL queries")
+    print(f"32-team persistence: {len(queries)} SQL queries in {perf_counter() - started:.2f}s")
