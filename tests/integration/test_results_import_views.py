@@ -226,7 +226,7 @@ def test_update_rankings_rebuilds_coty_related_rankings(monkeypatch):
     )
     monkeypatch.setattr(
         riv,
-        "rebuild_coty_related_rankings",
+        "rebuild_import_qualifications",
         lambda season=settings.CURRENT_SEASON: calls["coty"].append(season),
     )
     monkeypatch.setattr(
@@ -244,6 +244,7 @@ def test_update_rankings_rebuilds_coty_related_rankings(monkeypatch):
         season=settings.CURRENT_SEASON,
     )
 
+    TeamResult.objects.create(tournament=tournament, team=team, place=1)
     riv.update_rankings(tournament, [team], [], [])
 
     assert calls["toty"] == [team]
@@ -311,7 +312,7 @@ def test_done_rebuilds_results_and_triggers_rankings(monkeypatch):
     monkeypatch.setattr(riv, "update_toty", lambda team, season=settings.CURRENT_SEASON: team_calls["toty"].append(team))
     monkeypatch.setattr(
         riv,
-        "rebuild_coty_related_rankings",
+        "rebuild_import_qualifications",
         lambda season=settings.CURRENT_SEASON: coty_rebuild_calls.append(season),
     )
     monkeypatch.setattr(riv, "update_soty", lambda debater, season=settings.CURRENT_SEASON: speaker_calls["soty"].append(debater))

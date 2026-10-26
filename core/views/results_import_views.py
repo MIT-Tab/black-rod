@@ -1,3 +1,5 @@
+import hashlib
+import json
 import logging
 import os
 from dataclasses import dataclass, field
@@ -5,17 +7,25 @@ from typing import Dict, List
 from urllib.parse import urlencode
 
 from django.conf import settings
+from django.core.cache import cache
 from django.contrib.auth.mixins import PermissionRequiredMixin
 from django.db import transaction
 from django.db.models import Count
 from django.forms import BaseModelFormSet, modelformset_factory
-from django.http import JsonResponse
+from django.http import HttpResponseBadRequest, JsonResponse
 from django.shortcuts import redirect, render
 from django.template.loader import render_to_string
 from django.urls import reverse
 from django.views import View
 from haystack import connections
+import requests
 
+from core.import_sources import (
+    fetch_import_source, fresh_or_cached_source, load_review, save_review, source_index, source_key,
+)
+from core.utils.mittab_bundle_import import (
+    LoadedMittabBundle, MittabBundleImportError, import_mittab_bundle,
+)
 from core.forms import (
     DebaterForm,
     DebaterImportFormsetBase,
@@ -37,9 +47,11 @@ from core.models.standings.qual import QUAL
 from core.models.standings.soty import SOTY
 from core.models.standings.toty import TOTY
 from core.models.tournament import Tournament
+from core.models.team import Team
+from core.models import TournamentImport
 from core.utils.api_data import APIDataHandler
 from core.utils.rankings import (
-    rebuild_coty_related_rankings,
+    rebuild_import_qualifications,
     redo_rankings,
     update_noty,
     update_soty,
@@ -473,13 +485,22 @@ def update_rankings(
         return
 
     for team in teams_to_update:
-        update_toty(team)
+        if team.team_results.exists():
+            update_toty(team)
+        else:
+            TOTY.objects.filter(team=team, season=tournament.season).delete()
     for debater in speakers_to_update:
-        update_soty(debater)
+        if debater.speaker_results.exists():
+            update_soty(debater)
+        else:
+            SOTY.objects.filter(debater=debater, season=tournament.season).delete()
     for debater in novices_to_update:
-        update_noty(debater)
+        if debater.speaker_results.exists():
+            update_noty(debater)
+        else:
+            NOTY.objects.filter(debater=debater, season=tournament.season).delete()
 
-    rebuild_coty_related_rankings(season=tournament.season)
+    rebuild_import_qualifications(season=tournament.season)
 
     rankings_to_update = [
         (TOTY, "toty"),
@@ -512,8 +533,9 @@ def reindex_debaters(
         return
     ui = connections["default"].get_unified_index()
     debater_index = ui.get_index(Debater)
-    for debater in debaters_to_reindex:
-        debater_index.update_object(debater)
+    connections["default"].get_backend().update(debater_index, Debater.all_objects.filter(
+        pk__in=[debater.pk for debater in debaters_to_reindex]
+    ).select_related("school"))
 
 
 class TournamentDataEntrySetupView(PermissionRequiredMixin, View):
@@ -563,23 +585,6 @@ class TournamentDataEntrySetupView(PermissionRequiredMixin, View):
         if api_url:
             api_handler = APIDataHandler(request)
             api_handler.set_api_url(api_url)
-            is_valid, error_message = api_handler.validate_api_connection()
-            if not is_valid:
-                logger.warning(
-                    "Mit-Tab tournament import connection validation failed",
-                    extra={"error_detail": error_message},
-                )
-                form.add_error(
-                    "api_url",
-                    "Could not connect to the Mit-Tab tournament import source. "
-                    "Check the URL and try again.",
-                )
-                return render(
-                    request,
-                    self.template_name,
-                    {"form": form, "tournament": tournament},
-                )
-
         params = {"tournament": tournament.id}
         if api_url:
             params["api_url"] = api_url
@@ -587,7 +592,7 @@ class TournamentDataEntrySetupView(PermissionRequiredMixin, View):
         for tab_key in form.selected_result_tabs():
             params[f"import_{tab_key}"] = "1"
 
-        if form.cleaned_data.get("import_counts"):
+        if api_url:
             params["import_counts"] = "1"
 
         return redirect(f"{reverse('core:tournament_dataentry')}?{urlencode(params)}")
@@ -619,17 +624,9 @@ class TournamentDataEntryView(PermissionRequiredMixin, View):
             return self._import_config
 
         params = self.request.POST if self.request.method == "POST" else self.request.GET
-        selected_tabs = {
-            tab_key
-            for tab_key in API_IMPORTABLE_TABS
-            if is_truthy(params.get(f"import_{tab_key}"))
-        }
-        import_counts = is_truthy(params.get("import_counts"))
         api_url = (params.get("api_url") or "").strip()
-
-        if not api_url:
-            selected_tabs = set()
-            import_counts = False
+        selected_tabs = set(API_IMPORTABLE_TABS) if api_url else set()
+        import_counts = bool(api_url)
 
         self._import_config = {
             "api_url": api_url,
@@ -646,6 +643,12 @@ class TournamentDataEntryView(PermissionRequiredMixin, View):
         api_url = self.get_import_config().get("api_url")
         if api_url:
             handler.set_api_url(api_url)
+        token = self.request.GET.get("review") or self.request.POST.get("review")
+        if token:
+            handler.payload = load_review(token, self.get_tournament().id, self.request.user.id)
+            mappings = cache.get(f"mittab-review:{token}:mappings") or {}
+            handler._debater_id_map = mappings.get("debaters", {})  # pylint: disable=protected-access
+            handler._school_name_map = mappings.get("schools", {})  # pylint: disable=protected-access
         self._api_handler = handler
         return self._api_handler
 
@@ -679,9 +682,33 @@ class TournamentDataEntryView(PermissionRequiredMixin, View):
             raise ValueError("Tournament ID must be provided as a URL parameter")
         return Tournament.objects.get(id=int(tournament_id))
 
+    def prepare_review(self, request, tournament):
+        params = request.GET if request.method == "GET" else request.POST
+        api_url = params.get("api_url", "").rstrip("/")
+        if not api_url or params.get("review"):
+            return None
+        if request.method == "POST":
+            return HttpResponseBadRequest("Open a new import review before saving API results.")
+        try:
+            key = source_key(api_url)
+            payload = (fresh_or_cached_source(key) if key in source_index()
+                       else fetch_import_source(api_url))
+            if not payload.get("import_ready") or not payload.get("bundle"):
+                return HttpResponseBadRequest("This tournament's results are not available yet.")
+            token = save_review(payload, tournament.id, request.user.id)
+        except (ValueError, requests.RequestException) as exc:
+            return HttpResponseBadRequest(str(exc))
+        return redirect(f"{reverse('core:tournament_dataentry')}?{urlencode({'tournament': tournament.id, 'api_url': api_url, 'review': token})}")
+
     def get(self, request, *args, **kwargs):
         tournament = self.get_tournament()
-        use_api_results = self.use_api_results()
+        review_response = self.prepare_review(request, tournament)
+        if review_response:
+            return review_response
+        try:
+            use_api_results = self.use_api_results()
+        except ValueError as exc:
+            return HttpResponseBadRequest(str(exc))
         selected_api_tabs = self.get_selected_api_tabs()
         api_state = (
             self.build_api_state(selected_api_tabs) if use_api_results else None
@@ -700,7 +727,13 @@ class TournamentDataEntryView(PermissionRequiredMixin, View):
 
     def post(self, request, *args, **kwargs):
         tournament = self.get_tournament()
-        use_api_results = self.use_api_results()
+        review_response = self.prepare_review(request, tournament)
+        if review_response:
+            return review_response
+        try:
+            use_api_results = self.use_api_results()
+        except ValueError as exc:
+            return HttpResponseBadRequest(str(exc))
         selected_api_tabs = self.get_selected_api_tabs()
         formsets = self.build_formsets(
             tournament, api_state=None, use_api=use_api_results, data=request.POST
@@ -719,18 +752,27 @@ class TournamentDataEntryView(PermissionRequiredMixin, View):
             )
             return render(request, self.template_name, context)
 
-        self.persist_results(
-            tournament,
-            formsets,
-            use_api_results,
-            import_counts_from_api=self.should_import_counts_from_api(),
-        )
+        try:
+            self.persist_results(
+                tournament,
+                formsets,
+                use_api_results,
+                import_counts_from_api=self.should_import_counts_from_api(),
+            )
+        except MittabBundleImportError as exc:
+            return HttpResponseBadRequest(f"No results were saved: {exc}")
         return redirect("core:tournament_detail", pk=tournament.id)
 
     def build_api_state(self, selected_api_tabs: List[str]) -> dict:
         handler = self.get_api_handler()
         schools_by_server = seed_temporary_schools(handler)
         debaters = seed_temporary_debaters(handler, schools_by_server)
+        token = self.request.GET.get("review")
+        if token:
+            cache.set(f"mittab-review:{token}:mappings", {
+                "debaters": handler._debater_id_map,  # pylint: disable=protected-access
+                "schools": handler._school_name_map,  # pylint: disable=protected-access
+            }, 3600)
         return {
             "schools": list(schools_by_server.values()),
             "debaters": debaters,
@@ -864,6 +906,7 @@ class TournamentDataEntryView(PermissionRequiredMixin, View):
             "debater_form": DebaterForm(include_temporary_schools=has_api_data),
             "school_form": SchoolForm(),
             "has_api_data": has_api_data,
+            "review_token": self.request.GET.get("review") or self.request.POST.get("review", ""),
             "current_api_url": current_api_url,
             "error_tab": error_tab,
             "error_tab_name": self.tab_labels.get(error_tab),
@@ -935,7 +978,13 @@ class TournamentDataEntryView(PermissionRequiredMixin, View):
         import_counts_from_api: bool = False,
     ) -> None:
         with transaction.atomic():
-            resolution = ImportResolution()
+            resolution = ImportResolution(
+                teams_to_update=list(Team.objects.filter(team_results__tournament=tournament).distinct()),
+                speakers_to_update=list(Debater.all_objects.filter(speaker_results__tournament=tournament,
+                                                                    speaker_results__type_of_place=Debater.VARSITY).distinct()),
+                novices_to_update=list(Debater.all_objects.filter(speaker_results__tournament=tournament,
+                                                                   speaker_results__type_of_place=Debater.NOVICE).distinct()),
+            )
             if use_api:
                 if "schools" in formsets:
                     resolution.schools = self.resolve_schools(formsets["schools"])
@@ -977,6 +1026,30 @@ class TournamentDataEntryView(PermissionRequiredMixin, View):
                     resolution.debaters,
                 )
 
+            if use_api and self.get_api_handler().payload:
+                handler = self.get_api_handler()
+                bundle = json.loads(json.dumps(handler.payload.get("bundle")))
+                if bundle:
+                    known_ids = set(Debater.objects.values_list("pk", flat=True))
+                    for person in bundle.get("debaters", []):
+                        local_id = handler._debater_id_map.get(str(person["id"])) or person.get("apda_id")  # pylint: disable=protected-access
+                        resolved = resolution.debaters.get(local_id)
+                        if resolved:
+                            person["apda_id"] = resolved.pk
+                        elif local_id in known_ids:
+                            person["apda_id"] = local_id
+                    for school in bundle.get("schools", []):
+                        local_id = handler._school_name_map.get(school["name"]) or school.get("apda_id")  # pylint: disable=protected-access
+                        resolved = resolution.schools.get(local_id)
+                        if resolved:
+                            school["apda_id"] = resolved.pk
+                if bundle:
+                    encoded = json.dumps(bundle, sort_keys=True).encode()
+                    # Reimporting unchanged round data is a no-op.
+                    digest = hashlib.sha256(encoded).hexdigest()
+                    if not TournamentImport.objects.filter(tournament=tournament, source_hash=digest).exists():
+                        import_mittab_bundle(LoadedMittabBundle(bundle, digest, "api-bundle.json"),
+                                            tournament, actor=self.request.user)
             update_rankings(
                 tournament,
                 resolution.teams_to_update,
@@ -988,8 +1061,8 @@ class TournamentDataEntryView(PermissionRequiredMixin, View):
                 resolution.speakers_to_update,
                 resolution.novices_to_update,
             )
-            if use_api:
-                cleanup_temporary_entities()
+            # Entity resolution removes source rows explicitly. A global cleanup
+            # here would delete temporary rows in another admin's open review.
 
     def update_tournament_counts_from_api(self, tournament: Tournament) -> None:
         counts = self.get_api_handler().get_debater_counts_from_api() or {}

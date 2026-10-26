@@ -104,6 +104,8 @@ def _ensure_results_exist(tournament):
 
 class _MittabBundleImporter:
     def __init__(self, document, tournament, import_row):
+        self._competitor_cache = {}
+        self._judge_cache = {}
         self.document = document
         self.tournament = tournament
         self.import_row = import_row
@@ -225,6 +227,11 @@ class _MittabBundleImporter:
         return resolved_ids, aliases
 
     def _resolve_competitor(self, bundle_debater_id):
+        if bundle_debater_id not in self._competitor_cache:
+            self._competitor_cache[bundle_debater_id] = self._resolve_competitor_uncached(bundle_debater_id)
+        return self._competitor_cache[bundle_debater_id]
+
+    def _resolve_competitor_uncached(self, bundle_debater_id):
         debater_payload = self.debaters_by_id.get(int(bundle_debater_id))
         if debater_payload is None:
             raise MittabBundleImportError(f"Unknown bundle debater id: {bundle_debater_id}.")
@@ -328,6 +335,11 @@ class _MittabBundleImporter:
         return resolved
 
     def _resolve_judge_identity(self, name):
+        if name not in self._judge_cache:
+            self._judge_cache[name] = self._resolve_judge_identity_uncached(name)
+        return self._judge_cache[name]
+
+    def _resolve_judge_identity_uncached(self, name):
         exact_matches = self._exact_name_matches(name)
         if len(exact_matches) == 1:
             return exact_matches[0]

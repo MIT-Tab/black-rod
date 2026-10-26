@@ -105,7 +105,7 @@ def test_tournament_create_form_has_no_api_url_field():
     assert "api_url" not in form.fields
 
 
-def test_results_import_options_require_url_when_categories_selected():
+def test_results_import_options_ignore_removed_category_fields():
     form = TournamentResultsImportOptionsForm(
         data={
             "api_url": "",
@@ -113,8 +113,9 @@ def test_results_import_options_require_url_when_categories_selected():
         }
     )
 
-    assert not form.is_valid()
-    assert "__all__" in form.errors
+    assert form.is_valid()
+    assert "import_varsity_teams" not in form.fields
+    assert form.selected_result_tabs() == []
 
 
 def test_results_import_options_allow_all_db_mode():

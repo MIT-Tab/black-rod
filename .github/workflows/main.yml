@@ -21,3 +21,4 @@ jobs:
           key: ${{ secrets.SSH_KEY }}
           script: |
             cd /home/rodda/black-rod && ./deploy.sh
+            install -m 644 /home/rodda/black-rod/deploy/mittab-results-cache.cron /etc/cron.d/black-rod-mittab-cache

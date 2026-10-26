@@ -87,6 +87,8 @@ def test_superuser_can_view_upload_page_and_button(client):
     assert "Upload Mit-Tab Bundle" in detail_response.content.decode("utf-8")
     assert upload_response.status_code == 200
     assert "Upload Mit-Tab Bundle: Upload Open" in upload_response.content.decode("utf-8")
+    assert "Deprecated:" in upload_response.content.decode("utf-8")
+    assert "Upload Mit-Tab Bundle (deprecated)" in detail_response.content.decode("utf-8")
 
 
 def test_non_superuser_cannot_access_upload_page(client):
@@ -127,3 +129,20 @@ def test_upload_page_warns_when_results_missing(client):
     assert "Results must be imported for this tournament before uploading a Mit-Tab bundle." in response.content.decode(
         "utf-8"
     )
+
+
+def test_deprecated_upload_still_imports_legacy_bundle(client):
+    from core.models import Round, TournamentImport
+
+    tournament = _make_tournament()
+    user = get_user_model().objects.create_superuser(
+        username="legacy-admin", email="legacy@example.com", password="pass123",
+    )
+    client.force_login(user)
+    response = client.post(
+        reverse("core:tournament_mittab_bundle_upload"),
+        data={"tournament": tournament.pk, "bundle_file": _bundle_file()},
+    )
+    assert response.status_code == 302
+    assert Round.objects.filter(tournament=tournament, import_key="prelim:1").exists()
+    assert TournamentImport.objects.filter(tournament=tournament).exists()

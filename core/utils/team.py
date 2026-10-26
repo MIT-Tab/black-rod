@@ -11,12 +11,8 @@ def get_or_create_team_for_debaters(debater_one, debater_two):
         return team
 
     team = Team.objects.create()
-    team.debaters.add(debater_one)
-    team.debaters.add(debater_two)
-
-    team.save()
-
+    team.debaters.add(debater_one, debater_two)
     team.update_name()
-    team.save()
+    team.save(update_fields=["name"])
 
     return team

@@ -8,6 +8,12 @@
             <div class="card-body">
                 <h4 class="card-title mb-3">Upload Mit-Tab Bundle: {{ tournament.name }}</h4>
 
+                <div class="alert alert-warning" role="note">
+                    <strong>Deprecated:</strong> Use this upload for older tournaments with a downloaded bundle.
+                    New tournament imports include round data automatically through the
+                    <a href="{% url 'core:import_sources' %}" class="alert-link">results import page</a>.
+                </div>
+
                 <p class="text-muted">
                     Upload a tournament-scoped JSON bundle exported from Mit-Tab. Results must already be imported for this tournament before the round bundle can be ingested.
                 </p>

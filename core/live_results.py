@@ -7,7 +7,7 @@ import requests
 from django.conf import settings
 from django.core.cache import cache
 from django.db import close_old_connections
-from django.db.models import Prefetch
+from django.db.models import Prefetch, Q
 
 from core.models import COTY, NOTY, SOTY, TOTY, Debater, QualPoints, QUAL, School, Tournament
 from core.utils.points import novice_points_for_size, speaker_points_for_size, team_points_for_size
@@ -66,10 +66,8 @@ def _fetch_source(source_url):
 
 def fetch_live_sources():
     urls = _directory_urls()
-    if not urls:
-        return []
     payloads = {}
-    executor = ThreadPoolExecutor(max_workers=min(8, len(urls)))
+    executor = ThreadPoolExecutor(max_workers=max(1, min(8, len(urls))))
     try:
         futures = [executor.submit(_fetch_source, url) for url in urls]
         done, not_done = wait(futures, timeout=FETCH_BUDGET_SECONDS)
@@ -82,6 +80,14 @@ def fetch_live_sources():
                 payloads[key] = payload
     finally:
         executor.shutdown(wait=False, cancel_futures=True)
+    from core.import_sources import cached_source, source_index  # pylint: disable=import-outside-toplevel
+    for key, row in source_index().items():
+        if row["url"] not in payloads:
+            snapshot = cached_source(key)
+            if snapshot:
+                payloads[row["url"]] = {name: value for name, value in snapshot.items()
+                                        if name not in {"bundle", "new_debater_data"}}
+                payloads[row["url"]]["_cached_only"] = True
     return list(payloads.values())
 
 
@@ -266,7 +272,7 @@ def _already_imported(tournament, season, type_code, host_id):
         qual_type=type_code,
         host_id=host_id,
         date__range=(held_on - window, held_on + window),
-    ).exists()
+    ).filter(Q(team_results__isnull=False) | Q(speaker_results__isnull=False)).exists()
 
 
 def _coty_debater(coty, debater):
@@ -547,7 +553,7 @@ def _compute_live_standings(season):
     for payload in payloads:
         if is_online_season:
             break
-        if _apply_live_payload(boards, payload, season, coty, people):
+        if _apply_live_payload(boards, payload, season, coty, people) and not payload.get("_cached_only"):
             active_sources.append(payload.get("tournament", {}).get("name", "Tournament"))
 
     return {

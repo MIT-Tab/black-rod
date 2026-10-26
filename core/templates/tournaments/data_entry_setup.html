@@ -22,17 +22,7 @@
 
                     {{ form.api_url|as_crispy_field }}
 
-                    <h5 class="mt-4">Mit-Tab Tournament Import</h5>
-                    <p class="text-muted mb-3">
-                        Selected categories below are imported from the Mit-Tab tournament source. Unselected categories load from existing database results.
-                    </p>
-
-                    {{ form.import_varsity_teams|as_crispy_field }}
-                    {{ form.import_varsity_speakers|as_crispy_field }}
-                    {{ form.import_novice_teams|as_crispy_field }}
-                    {{ form.import_novice_speakers|as_crispy_field }}
-                    {{ form.import_unplaced_teams|as_crispy_field }}
-                    {{ form.import_counts|as_crispy_field }}
+                    <p class="text-muted">Imports include all team and speaker results, participant counts, and round data.</p>
 
                     <div class="mt-4">
                         <button type="submit" class="btn btn-primary">Continue</button>

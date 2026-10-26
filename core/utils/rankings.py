@@ -2,8 +2,6 @@ from django.conf import settings
 from django.core.cache import cache
 from django.core.cache.utils import make_template_fragment_key
 from django.db.models import Exists, OuterRef, Q
-from django.shortcuts import reverse
-from django.test import Client
 
 from core.live_results import invalidate_live_standings
 from core.models.debater import Debater, QualPoints, Reaff
@@ -82,7 +80,7 @@ def update_toty(team, season=settings.CURRENT_SEASON):
         return
 
     results = (
-        team.team_results.filter(tournament__season=season)
+        team.team_results.select_related("tournament").filter(tournament__season=season)
         .filter(tournament__toty=True)
         .filter(type_of_place=Debater.VARSITY)
         .filter(counts_for_points=True)
@@ -166,7 +164,7 @@ def update_soty(debater, season=settings.CURRENT_SEASON):
         return
 
     results = (
-        debater.speaker_results.filter(tournament__season=season)
+        debater.speaker_results.select_related("tournament").filter(tournament__season=season)
         .filter(tournament__soty=True)
         .filter(type_of_place=Debater.VARSITY)
         .filter(counts_for_points=True)
@@ -174,7 +172,7 @@ def update_soty(debater, season=settings.CURRENT_SEASON):
 
     reaff = Reaff.objects.filter(new_debater=debater).filter(season=season).all()
     if len(reaff) > 0:
-        results = results | reaff[0].old_debater.speaker_results.filter(
+        results = results | reaff[0].old_debater.speaker_results.select_related("tournament").filter(
             tournament__season=season
         ).filter(tournament__soty=True).filter(type_of_place=Debater.VARSITY).filter(
             counts_for_points=True
@@ -247,7 +245,7 @@ def update_noty(debater, season=settings.CURRENT_SEASON):
         return
 
     results = (
-        debater.speaker_results.filter(tournament__season=season)
+        debater.speaker_results.select_related("tournament").filter(tournament__season=season)
         .filter(tournament__noty=True)
         .filter(type_of_place=Debater.NOVICE)
     )
@@ -300,7 +298,7 @@ def update_qual_points(team, season=settings.CURRENT_SEASON, delete_empty_team=T
 
     for debater in team.debaters.all():
         all_results = (
-            TeamResult.objects.filter(tournament__season=season)
+            TeamResult.objects.select_related("tournament").filter(tournament__season=season)
             .filter(type_of_place=Debater.VARSITY)
             .filter(team__debaters=debater)
         )
@@ -431,43 +429,21 @@ def update_qual_points(team, season=settings.CURRENT_SEASON, delete_empty_team=T
 
 
 def redo_rankings(rankings, season=settings.CURRENT_SEASON, cache_type="toty"):
-    handled_through_tie = []
-
-    rankings = rankings.order_by("-points")
-
-    place = 1
-
-    for ranking in rankings:
-        if ranking in handled_through_tie:
-            continue
-
-        if ranking.points == 0:
-            ranking.delete()
-            continue
-
-        if rankings.filter(points=ranking.points).count() > 1:
-            next_place = place
-            for tied_ranking in rankings.filter(points=ranking.points):
-                tied_ranking.place = place
-                tied_ranking.tied = True
-                tied_ranking.save()
-                handled_through_tie += [tied_ranking]
-                next_place += 1
-            place = next_place - 1
-        else:
-            ranking.tied = False
-            ranking.place = place
-            ranking.save()
-
-        place += 1
-
-    key = make_template_fragment_key(cache_type, [season])
-    print(f"CLEARING: {key} ({season})")
-    cache.delete(key)
-    # Imported tournaments must stop showing as live right away.
+    rows = list(rankings.exclude(points=0).order_by("-points", "pk"))
+    rankings.filter(points=0).delete()
+    previous_points = None
+    previous_place = 0
+    for index, row in enumerate(rows):
+        if row.points != previous_points:
+            previous_place = index + 1
+        row.place = previous_place
+        row.tied = ((index > 0 and rows[index - 1].points == row.points)
+                    or (index + 1 < len(rows) and rows[index + 1].points == row.points))
+        previous_points = row.points
+    if rows:
+        rankings.model.objects.bulk_update(rows, ["place", "tied"], batch_size=500)
+    cache.delete(make_template_fragment_key(cache_type, [season]))
     invalidate_live_standings(season)
-    client = Client()
-    client.get(reverse("core:index") + f"?season={season}")
 
 
 def rebuild_coty_related_rankings(season=settings.CURRENT_SEASON):
@@ -534,7 +510,7 @@ def update_online_quals(team, season=settings.CURRENT_SEASON, delete_empty_team=
 
     for debater in team.debaters.all():
         results = (
-            TeamResult.objects.filter(tournament__season=season)
+            TeamResult.objects.select_related("tournament").filter(tournament__season=season)
             .filter(type_of_place=Debater.VARSITY)
             .filter(team__debaters=debater)
             .filter(counts_for_points=True)
@@ -614,3 +590,90 @@ def place_as_round(place):
         if place <= cutoff:
             return name
     return f"Top {place}"
+
+
+def rebuild_import_qualifications(season=settings.CURRENT_SEASON):
+    """Rebuild season qualification state with bulk reads and writes.
+
+    Each debater is computed once, even when they have several partnerships.
+    This also removes stale qualifications after corrections or deleted results.
+    """
+    from collections import defaultdict  # pylint: disable=import-outside-toplevel
+    from django.db import transaction  # pylint: disable=import-outside-toplevel
+    from django.db.models import Prefetch  # pylint: disable=import-outside-toplevel
+
+    season = str(season)
+    online = season in {str(value).split("-", 1)[0] for value in settings.ONLINE_SEASONS}
+    results_by_debater = defaultdict(list)
+    people = {}
+    results = TeamResult.objects.filter(
+        tournament__season=season, type_of_place=Debater.VARSITY,
+    ).select_related("tournament", "team").prefetch_related(Prefetch(
+        "team__debaters", queryset=Debater.objects.select_related("school"),
+    ))
+    for result in results:
+        for debater in result.team.debaters.all():
+            people[debater.pk] = debater
+            if result.counts_for_points:
+                results_by_debater[debater.pk].append(result)
+    # Standalone qualifications entered without scoring records are not derived
+    # season state. Keep them while replacing computed qualifications.
+    standalone = list(QUAL.objects.filter(season=season).exclude(
+        debater_id__in=people,
+    ).exclude(debater_id__in=QualPoints.objects.filter(season=season).values("debater_id"))
+      .exclude(debater_id__in=OnlineQUAL.objects.filter(season=season).values("debater_id"))
+      .select_related("debater__school"))
+    quals, points_rows, online_rows, latest_updates = [], [], [], []
+    school_totals = defaultdict(float)
+    labels = ("one", "two", "three", "four", "five", "six")
+    for debater_id, debater in people.items():
+        if not debater.latest_season or int(debater.latest_season.split("-", 1)[0]) < int(season):
+            debater.latest_season = season
+            latest_updates.append(debater)
+        if not _school_included_in_oty(debater):
+            continue
+        scoring = results_by_debater[debater_id]
+        autoquals = {}
+        for result in scoring:
+            tournament = result.tournament
+            if (tournament.qual_type != Tournament.NATIONALS
+                    and 0 < result.place <= tournament.autoqual_bar):
+                autoquals.setdefault(tournament.qual_type, tournament.pk)
+        points = sum(result.tournament.get_qual_points(result.place, ghost_points=result.ghost_points)
+                     for result in scoring if result.tournament.qual)
+        if points > 0:
+            points_rows.append(QualPoints(season=season, debater_id=debater_id, points=points))
+        markers = sorted(((result.tournament.get_online_qual_points(result.place), result)
+                          for result in scoring), key=lambda marker: marker[0], reverse=True)[:6]
+        online_points = sum(marker[0] for marker in markers)
+        if markers:
+            row = OnlineQUAL(season=season, debater_id=debater_id, points=online_points)
+            for label, (value, result) in zip(labels, markers):
+                setattr(row, f"marker_{label}", value)
+                setattr(row, f"tournament_{label}_id", result.tournament_id)
+            online_rows.append(row)
+        if (online_points >= settings.ONLINE_QUAL_BAR if online else points >= settings.QUAL_BAR):
+            autoquals.setdefault(QUAL.POINTS, None)
+        quals.extend(QUAL(season=season, debater_id=debater_id, qual_type=kind,
+                          tournament_id=tournament_id) for kind, tournament_id in autoquals.items())
+        if not online:
+            school_totals[debater.school_id] += min(60, points) + (6 if autoquals else 0)
+    standalone_people = set()
+    for qual in standalone:
+        qual.pk = None
+        quals.append(qual)
+        if not online and qual.debater_id not in standalone_people and _school_included_in_oty(qual.debater):
+            school_totals[qual.debater.school_id] += 6
+            standalone_people.add(qual.debater_id)
+    with transaction.atomic():
+        for model in (QUAL, QualPoints, OnlineQUAL, COTY):
+            model.objects.filter(season=season).delete()
+        QUAL.objects.bulk_create(quals, batch_size=500)
+        QualPoints.objects.bulk_create(points_rows, batch_size=500)
+        OnlineQUAL.objects.bulk_create(online_rows, batch_size=500)
+        COTY.objects.bulk_create([COTY(season=season, school_id=school_id, points=points)
+                                  for school_id, points in school_totals.items() if points > 0])
+        if latest_updates:
+            Debater.all_objects.bulk_update(latest_updates, ["latest_season"], batch_size=500)
+    redo_rankings(COTY.objects.filter(season=season), season=season, cache_type="coty")
+    redo_rankings(OnlineQUAL.objects.filter(season=season), season=season, cache_type="online_quals")

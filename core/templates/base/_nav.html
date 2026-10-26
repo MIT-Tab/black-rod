@@ -13,6 +13,9 @@
 
     <div class="collapse navbar-collapse" id="navbarSupportedContent">
         <ul class="navbar-nav mr-auto">
+            {% if request.user.is_superuser %}
+                <li class="nav-item mx-1"><a class="nav-link" href="{% url 'core:import_sources' %}">Import results</a></li>
+            {% endif %}
             {% url 'core:live_standings' as live_standings_url %}
             <li class="nav-item {% if request.path == live_standings_url %}active{% endif %} mx-1">
                 <a class="nav-link" href="{{ live_standings_url }}">
