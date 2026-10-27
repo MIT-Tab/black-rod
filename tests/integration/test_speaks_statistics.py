@@ -7,7 +7,10 @@ from django.contrib.auth.models import Permission
 from django.test import TestCase
 from django.urls import reverse
 
-from core.models import Debater, Round, RoundStats, School, SpeakerResult, Team, TeamResult, Tournament
+from core.models import (
+    Debater, DebaterAlias, DebaterAliasGroup, ImportedRoundMetadata, Round, RoundStats,
+    School, SpeakerResult, Team, TeamResult, Tournament,
+)
 from core.utils.speaks_statistics import get_speaks_statistics, summarize_sample
 
 
@@ -131,16 +134,17 @@ class SpeaksStatisticsTests(TestCase):
         )
         self.assertEqual(self.metrics()["first_varsity_speaker"]["p50"], 70)
 
-    def test_missing_scores_reduce_samples_and_prevent_inferred_seed_extremes(self):
+    def test_missing_scores_exclude_only_the_affected_candidates(self):
         RoundStats.objects.filter(
             round__tournament=self.tournament, round__round_number=1, debater=self.debaters[0][0],
         ).update(speaks=None)
         metrics = self.metrics()
         self.assertEqual(metrics["breaking_teams"]["sample_size"], 1)
         self.assertEqual(metrics["breaking_teams"]["p50"], 118)
-        self.assertEqual(metrics["top_breaking_seed"]["sample_size"], 0)
-        self.assertEqual(metrics["bottom_full_field_seed"]["sample_size"], 0)
-        self.assertContains(self.client.get(self.url), "—")
+        self.assertEqual(metrics["top_breaking_seed"]["sample_size"], 1)
+        self.assertEqual(metrics["top_breaking_seed"]["p50"], 118)
+        self.assertEqual(metrics["bottom_full_field_seed"]["sample_size"], 1)
+        self.assertEqual(metrics["bottom_full_field_seed"]["p50"], 138)
 
     def test_zero_speaks_are_not_complete_team_scores(self):
         RoundStats.objects.filter(
@@ -184,12 +188,14 @@ class SpeaksStatisticsTests(TestCase):
         self.assertEqual(metrics["novice_breaking_teams"]["sample_size"], 2)
         self.assertEqual(metrics["novice_breaking_teams"]["p50"], 114)
 
-    def test_unknown_outcomes_only_exclude_seed_samples(self):
+    def test_unknown_outcomes_exclude_only_the_affected_seed_candidates(self):
         Round.objects.filter(tournament=self.tournament, gov=self.teams[0]).update(victor=Round.UNKNOWN)
         metrics = self.metrics()
         self.assertEqual(metrics["breaking_teams"]["sample_size"], 2)
-        self.assertEqual(metrics["top_breaking_seed"]["sample_size"], 0)
-        self.assertEqual(metrics["top_full_field_seed"]["sample_size"], 0)
+        self.assertEqual(metrics["top_breaking_seed"]["sample_size"], 1)
+        self.assertEqual(metrics["top_breaking_seed"]["p50"], 118)
+        self.assertEqual(metrics["top_full_field_seed"]["sample_size"], 1)
+        self.assertEqual(metrics["top_full_field_seed"]["p50"], 118)
 
     def test_speaker_ties_follow_displayed_places(self):
         SpeakerResult.objects.create(
@@ -218,13 +224,144 @@ class SpeaksStatisticsTests(TestCase):
         self.assertEqual(metrics["bottom_full_field_seed"]["sample_size"], 4)
         self.assertEqual(metrics["top_breaking_seed"]["sample_size"], 2)
 
-    def test_missing_field_participants_prevent_full_field_seed_samples(self):
+    def test_reported_field_size_does_not_discard_available_seed_samples(self):
         self.tournament.num_teams = 8
         self.tournament.save()
         metrics = self.metrics()
-        self.assertEqual(metrics["top_full_field_seed"]["sample_size"], 0)
-        self.assertEqual(metrics["bottom_full_field_seed"]["sample_size"], 0)
+        self.assertEqual(metrics["top_full_field_seed"]["sample_size"], 1)
+        self.assertEqual(metrics["top_full_field_seed"]["p50"], 122)
+        self.assertEqual(metrics["bottom_full_field_seed"]["sample_size"], 1)
         self.assertEqual(metrics["top_breaking_seed"]["sample_size"], 1)
+
+    def test_multiple_partially_scored_tournaments_each_contribute_seed_samples(self):
+        self.make_tournament("2024")
+        self.make_tournament("2024")
+        RoundStats.objects.filter(
+            debater=self.debaters[1][1], round__round_number=1,
+        ).update(speaks=None)
+        Tournament.objects.all().update(num_teams=20)
+        season = get_speaks_statistics()[0]
+        metrics = {row["key"]: row for row in season["metrics"]}
+        self.assertEqual(season["scored_tournaments"], 3)
+        for key in ("top_breaking_seed", "bottom_breaking_seed",
+                    "top_full_field_seed", "bottom_full_field_seed"):
+            self.assertEqual(metrics[key]["sample_size"], 3)
+            self.assertEqual(metrics[key]["tournament_count"], 3)
+
+    def test_results_match_rounds_by_partnership_instead_of_team_record_id(self):
+        for index in (0, 3):
+            duplicate = Team.objects.create(name=f"Result team {index}")
+            duplicate.debaters.add(*self.debaters[index])
+            TeamResult.objects.filter(tournament=self.tournament, team=self.teams[index]).update(team=duplicate)
+        metrics = self.metrics()
+        self.assertEqual(metrics["breaking_teams"]["sample_size"], 2)
+        self.assertEqual(metrics["novice_breaking_teams"]["p50"], 110)
+        self.assertEqual(metrics["top_breaking_seed"]["p50"], 122)
+
+    def test_duplicate_result_partnerships_are_not_counted_twice(self):
+        duplicate = Team.objects.create(name="Duplicate result")
+        duplicate.debaters.add(*self.debaters[0])
+        TeamResult.objects.create(tournament=self.tournament, team=duplicate, place=3)
+        self.assertEqual(self.metrics()["breaking_teams"]["sample_size"], 2)
+
+    def test_rounds_for_duplicate_team_records_form_one_complete_card(self):
+        duplicate = Team.objects.create(name="Second round team record")
+        duplicate.debaters.add(*self.debaters[0])
+        Round.objects.filter(tournament=self.tournament, gov=self.teams[0], round_number=2).update(gov=duplicate)
+        self.assertEqual(self.metrics()["top_breaking_seed"]["p50"], 122)
+
+    def test_linked_speaker_profiles_share_one_tournament_total(self):
+        original = self.debaters[1][0]
+        alias_group = DebaterAliasGroup.objects.create()
+        Debater.all_objects.filter(pk=original.pk).update(alias_group=alias_group)
+        linked = Debater.objects.create(first_name="Linked speaker", alias_group=alias_group)
+        RoundStats.objects.filter(
+            round__tournament=self.tournament, round__round_number=2, debater=original,
+        ).update(debater=linked)
+        metrics = self.metrics()
+        self.assertEqual(metrics["first_varsity_speaker"]["p50"], 70)
+        self.assertEqual(metrics["bottom_full_field_seed"]["p50"], 138)
+
+    def test_imported_side_aliases_resolve_placeholder_round_teams(self):
+        aliases = [DebaterAlias.objects.create(
+            debater=member, source_name=f"Alias {slot}", normalized_name=f"alias {slot}",
+        ) for slot, member in enumerate(self.debaters[0])]
+        placeholder = Team.objects.create(name="Imported placeholder")
+        for round_obj in Round.objects.filter(tournament=self.tournament, gov=self.teams[0]):
+            ImportedRoundMetadata.objects.create(
+                round=round_obj, gov_1_alias=aliases[0], gov_2_alias=aliases[1],
+            )
+            Round.objects.filter(pk=round_obj.pk).update(gov=placeholder)
+        metrics = self.metrics()
+        self.assertEqual(metrics["breaking_teams"]["sample_size"], 2)
+        self.assertEqual(metrics["top_breaking_seed"]["p50"], 122)
+        self.assertEqual(metrics["top_full_field_seed"]["p50"], 122)
+
+    def test_canonical_metadata_provides_partnerships_and_winners(self):
+        placeholder = Team.objects.create(name="Canonical import placeholder")
+        metadata = {
+            "team_a_ids": [member.pk for member in self.debaters[0]],
+            "team_b_ids": [member.pk for member in self.debaters[1]],
+            "winner": "a", "stage": "prelim",
+        }
+        Round.objects.filter(tournament=self.tournament, gov=self.teams[0]).update(
+            gov=placeholder, opp=placeholder, victor=Round.UNKNOWN, metadata=metadata,
+        )
+        metrics = self.metrics()
+        self.assertEqual(metrics["top_breaking_seed"]["p50"], 122)
+        self.assertEqual(metrics["bottom_full_field_seed"]["p50"], 138)
+
+    def test_canonical_winner_takes_precedence_over_the_legacy_victor_field(self):
+        Round.objects.filter(tournament=self.tournament, gov=self.teams[0]).update(metadata={"winner": "b"})
+        metrics = self.metrics()
+        self.assertEqual(metrics["top_breaking_seed"]["p50"], 118)
+        self.assertEqual(metrics["top_full_field_seed"]["p50"], 138)
+
+    def test_canonical_stage_excludes_elimination_speaks(self):
+        round_obj = Round.objects.create(
+            tournament=self.tournament, gov=self.teams[0], opp=self.teams[2],
+            round_number=1, metadata={"stage": "outround"},
+        )
+        for member in self.debaters[0] + self.debaters[2]:
+            RoundStats.objects.create(round=round_obj, debater=member, speaks=99)
+        metrics = self.metrics()
+        self.assertEqual(metrics["breaking_teams"]["p50"], 120)
+        self.assertEqual(metrics["top_breaking_seed"]["p50"], 122)
+
+    def test_novice_partnerships_breaking_in_varsity_are_included(self):
+        Debater.objects.filter(pk__in=[member.pk for member in self.debaters[0]]).update(first_season="2024")
+        metrics = self.metrics()
+        self.assertEqual(metrics["novice_breaking_teams"]["sample_size"], 2)
+        self.assertEqual(metrics["novice_breaking_teams"]["p50"], 116)
+
+    def test_linked_profiles_do_not_restart_novice_eligibility(self):
+        member = self.debaters[0][0]
+        group = DebaterAliasGroup.objects.create()
+        Debater.objects.filter(pk=member.pk).update(alias_group=group, first_season="2024")
+        Debater.objects.create(first_name="Older linked profile", alias_group=group, first_season="2023")
+        Debater.objects.filter(pk=self.debaters[0][1].pk).update(first_season="2024")
+        self.assertEqual(self.metrics()["novice_breaking_teams"]["sample_size"], 1)
+
+    def test_missing_awards_are_reconstructed_from_summed_speaker_scores(self):
+        SpeakerResult.objects.filter(tournament=self.tournament).delete()
+        Debater.objects.filter(pk__in=[member.pk for member in self.debaters[3]]).update(first_season="2024")
+        metrics = self.metrics()
+        self.assertEqual(metrics["first_varsity_speaker"]["p50"], 70)
+        self.assertEqual(metrics["first_novice_speaker"]["p50"], 56)
+        self.assertEqual(metrics["tenth_varsity_speaker"]["sample_size"], 0)
+
+    def test_tenth_speaker_can_be_reconstructed_without_awards(self):
+        SpeakerResult.objects.filter(tournament=self.tournament, place=10).delete()
+        for index, speaks in enumerate((25, 26)):
+            debater = Debater.objects.create(first_name=f"Unplaced speaker {index}")
+            for round_obj in Round.objects.filter(tournament=self.tournament, gov=self.teams[0]):
+                RoundStats.objects.create(round=round_obj, debater=debater, speaks=speaks)
+        self.assertEqual(self.metrics()["tenth_varsity_speaker"]["p50"], 50)
+
+    def test_missing_official_winner_scores_do_not_substitute_another_speaker(self):
+        RoundStats.objects.filter(debater=self.debaters[1][0]).update(speaks=None)
+        self.assertEqual(self.metrics()["first_varsity_speaker"]["sample_size"], 0)
+        self.assertContains(self.client.get(self.url), "—")
 
     def test_empty_page_and_missing_metrics(self):
         RoundStats.objects.all().delete()
