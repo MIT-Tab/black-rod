@@ -1,0 +1,29 @@
+{% load humanize %}
+<h3 class="h6">Individual speaks by final team record</h3>
+<p class="small text-muted">Preliminary W–L record. N counts individual speaker-round scores; panel scores count once after averaging.</p>
+<p class="small text-muted d-md-none">Scroll the table sideways to see every record.</p>
+<div class="table-responsive mb-4">
+    <table class="table table-sm table-bordered text-right speaks-record-table">
+        <caption class="sr-only">{{ season.season_display }} individual speaks by final preliminary team record, {{ season.round_speaks.sample_size }} samples</caption>
+        <thead class="thead-light">
+            <tr>
+                <th scope="col" class="text-left">Metric</th>
+                {% for column in season.round_speaks.columns %}<th scope="col">{{ column.label }}</th>{% endfor %}
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in season.round_speaks.rows %}
+                <tr>
+                    <th scope="row" class="text-left">{{ row.label }}</th>
+                    {% for value in row.values %}<td>{{ value|floatformat:2|default:"—" }}</td>{% endfor %}
+                </tr>
+            {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr>
+                <th scope="row" class="text-left">N (speak samples)</th>
+                {% for column in season.round_speaks.columns %}<td class="font-weight-bold">{{ column.sample_size|intcomma }}</td>{% endfor %}
+            </tr>
+        </tfoot>
+    </table>
+</div>

@@ -1,8 +1,12 @@
 {% extends "base/base.html" %}
+{% load static humanize %}
 {% block title %}Speaks Statistics | APDA Results{% endblock title %}
 {% block extra_head %}
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <script src="{% static 'js/speaks_statistics.js' %}" defer></script>
     <style>
+        .speaks-record-table th { white-space: nowrap; }
+        .speaks-cdf-chart { display: block; width: 100%; max-width: 900px; height: auto; }
         @media (max-width: 575.98px) {
             .speaks-statistics-table,
             .speaks-statistics-table tbody { display: block; }
@@ -40,17 +44,26 @@
                         <summary>How these statistics are calculated</summary>
                         <ul class="mt-2 mb-0">
                             <li>Speaks are preliminary tournament totals; combined speaks sum both teammates. Panel scores are averaged per speaker per round before summing.</li>
-                            <li>Only complete cards with positive speaks in every scheduled preliminary round count. Missing scores, duplicate round numbers, and elimination scores are excluded. Totals are not adjusted for different tournament lengths.</li>
-                            <li>Breaking teams are teams with a recorded placing or elimination appearance, grouped by varsity or novice division. A team can appear in both distributions.</li>
-                            <li>Breaking seeds are the highest and lowest varsity breaking seeds. Full-field seeds are the highest and lowest seeds among all teams with preliminary appearances.</li>
-                            <li>Seeds are ordered by preliminary wins, combined speaks, then lower combined ranks when all candidates have ranks. Tied seeds are all included. A seed sample is omitted if any candidate has incomplete scores or an unknown outcome. Full-field samples also require the recorded field size to match preliminary appearances, when a field size is available.</li>
-                            <li>Speaker places use recorded varsity and novice speaker results, including tied places. Missing placements are not inferred.</li>
-                            <li>Sample size counts team-tournament or speaker-tournament observations for that row. Percentiles use linear interpolation between sorted observations; a single observation gives the same value for all three percentiles. A dash means no usable observations.</li>
+                            <li>Tournament totals require complete cards with positive speaks in every scheduled preliminary round. Missing scores, duplicate round numbers, and elimination scores are excluded. Totals are not adjusted for different tournament lengths.</li>
+                            <li>The record table and speaks-to-percentile chart use individual preliminary speaker-round scores, averaging panels first. Valid scores from incomplete cards are included. Duplicate speaker/round numbers and elimination scores are excluded.</li>
+                            <li>Final records use all scheduled preliminary outcomes. Scores with missing outcomes or an unresolved partnership remain in All records and Unknown record. Different tournament lengths have separate W–L columns.</li>
+                            <li>A score's percentile is the percentage of season samples at or below that score, including ties. Correspondence tables include every observed fractional score and every whole score between the season's minimum and maximum.</li>
+                            <li>Team totals add the two speakers' tournament totals. Partnerships and linked speaker profiles are matched across results and imported rounds, even when their database record IDs differ.</li>
+                            <li>Preliminary wins and round stages use canonical import data when available.</li>
+                            <li>Breaking teams have a recorded placing or elimination appearance. Novice breakers include novice-division breakers and varsity breakers whose two speakers were novices that season, based on novice awards or their first season. Current novice/varsity status is not used for historical seasons.</li>
+                            <li>Breaking seeds are the highest and lowest varsity breaking seeds among available complete cards. Full-field seeds use all available complete team cards with complete preliminary outcomes. These describe the available scored field, which may be smaller than the tournament's full field.</li>
+                            <li>Seeds are ordered by preliminary wins, combined speaks, then lower combined ranks when all candidates have ranks. Tied seeds are all included. Incomplete scores or unknown outcomes exclude only the affected partnership; they do not discard the other teams' samples.</li>
+                            <li>Speaker places use recorded varsity and novice results, including tied places. When a placement is absent, it is reconstructed from complete speaker totals, then lower ranks when available. Novice eligibility uses historical first seasons and novice awards. A recorded winner with missing scores is excluded rather than replaced.</li>
+                            <li>Sample size counts team-tournament or speaker-tournament observations for that row. The number of contributing tournaments appears below the statistic's name. Percentiles use linear interpolation between sorted observations; a single observation gives the same value for all three percentiles. A dash means no usable observations.</li>
                         </ul>
                     </details>
                     {% for season in seasons %}
                         <section class="mb-4" aria-labelledby="season-{{ forloop.counter }}">
                             <h2 class="h5" id="season-{{ forloop.counter }}">{{ season.season_display }}</h2>
+                            <p class="text-muted">{{ season.round_speaks.sample_size|intcomma }} individual speak samples from {{ season.round_speaks.tournament_count }} tournament{{ season.round_speaks.tournament_count|pluralize }}.</p>
+                            {% include "admin/includes/speaks_record_distribution.html" %}
+                            {% include "admin/includes/speaks_percentile_chart.html" %}
+                            <h3 class="h6 mt-4">Team and speaker tournament totals</h3>
                             <div class="table-responsive">
                                 <table class="table table-striped table-sm speaks-statistics-table">
                                     <caption class="sr-only">Speaks percentiles and sample sizes for {{ season.season_display }}</caption>
@@ -66,7 +79,10 @@
                                     <tbody>
                                         {% for metric in season.metrics %}
                                             <tr>
-                                                <th scope="row" class="font-weight-normal">{{ metric.label }}</th>
+                                                <th scope="row" class="font-weight-normal">
+                                                    {{ metric.label }}
+                                                    <small class="d-block text-muted">{{ metric.tournament_count }} tournament{{ metric.tournament_count|pluralize }}</small>
+                                                </th>
                                                 <td class="text-right" data-label="n">{{ metric.sample_size }}</td>
                                                 <td class="text-right" data-label="25th">{{ metric.p25|floatformat:2|default:"—" }}</td>
                                                 <td class="text-right" data-label="50th">{{ metric.p50|floatformat:2|default:"—" }}</td>
@@ -78,7 +94,7 @@
                             </div>
                         </section>
                     {% empty %}
-                        <div class="alert alert-info" role="status">No complete speaks data is available yet.</div>
+                        <div class="alert alert-info" role="status">No usable preliminary speaks data is available yet.</div>
                     {% endfor %}
                 </div>
             </div>

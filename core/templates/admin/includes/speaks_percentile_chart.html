@@ -1,0 +1,61 @@
+{% load humanize %}
+<h3 class="h6">Speaks-to-percentile correspondence</h3>
+<p class="small text-muted">
+    N = {{ season.round_speaks.sample_size|intcomma }} individual speak samples.
+    Percentile = percentage of samples at or below a score. Equal scores share a percentile.
+</p>
+{% if season.round_speaks.chart %}
+    <svg class="speaks-cdf-chart mb-3" viewBox="0 0 720 300" role="img" aria-labelledby="{{ season.chart_id }}-title {{ season.chart_id }}-description">
+        <title id="{{ season.chart_id }}-title">Speaks percentile distribution for {{ season.season_display }}</title>
+        <desc id="{{ season.chart_id }}-description">Cumulative percentage of {{ season.round_speaks.sample_size }} individual scores at or below each speaks value. Exact values are available in the correspondence table below.</desc>
+        {% for tick in season.round_speaks.chart.y_ticks %}
+            <line x1="56" y1="{{ tick.y }}" x2="700" y2="{{ tick.y }}" stroke="#dee2e6" />
+            <text x="46" y="{{ tick.y }}" text-anchor="end" dominant-baseline="middle" font-size="18">{{ tick.value }}</text>
+        {% endfor %}
+        {% for tick in season.round_speaks.chart.x_ticks %}
+            <text x="{{ tick.x }}" y="274" text-anchor="middle" font-size="18">{{ tick.value|floatformat:1 }}</text>
+        {% endfor %}
+        <text x="378" y="297" text-anchor="middle" font-size="18">Speaks</text>
+        <text x="15" y="135" text-anchor="middle" font-size="18" transform="rotate(-90 15 135)">Percentile</text>
+        <path d="{{ season.round_speaks.chart.path }}" fill="none" stroke="#045fb0" stroke-width="3" />
+        {% for point in season.round_speaks.chart.points %}
+            <circle cx="{{ point.x }}" cy="{{ point.y }}" r="3" fill="#045fb0">
+                <title>{{ point.score|floatformat:2 }} speaks: percentile {{ point.percentile|floatformat:2 }}; n={{ point.sample_size }} at this score, {{ point.cumulative_count }} at or below.</title>
+            </circle>
+        {% endfor %}
+    </svg>
+    {{ season.round_speaks.correspondence|json_script:season.chart_id }}
+    <form class="speaks-score-lookup mb-3" data-values-id="{{ season.chart_id }}" data-sample-size="{{ season.round_speaks.sample_size }}">
+        <label for="{{ season.chart_id }}-score">Look up a speaks score</label>
+        <input type="number" class="form-control form-control-sm" style="max-width: 180px;" id="{{ season.chart_id }}-score" step="any" value="{{ season.round_speaks.overall.p50|floatformat:2 }}">
+        <output for="{{ season.chart_id }}-score" class="d-block small mt-2" aria-live="polite">Enter a score to see its percentile.</output>
+    </form>
+    <details class="mb-4">
+        <summary>Score-to-percentile table with sample counts</summary>
+        <div class="table-responsive mt-2" style="max-height: 360px;">
+            <table class="table table-sm table-striped text-right">
+                <caption class="sr-only">{{ season.season_display }} score-to-percentile correspondence for {{ season.round_speaks.sample_size }} samples</caption>
+                <thead>
+                    <tr>
+                        <th scope="col">Speaks</th>
+                        <th scope="col">Percentile</th>
+                        <th scope="col">N at this score</th>
+                        <th scope="col">N at or below</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for point in season.round_speaks.correspondence %}
+                        <tr>
+                            <th scope="row">{{ point.score|floatformat:2 }}</th>
+                            <td>{{ point.percentile|floatformat:2 }}</td>
+                            <td>{{ point.sample_size|intcomma }}</td>
+                            <td>{{ point.cumulative_count|intcomma }}</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </details>
+{% else %}
+    <p class="small text-muted">No individual speaks available for this season.</p>
+{% endif %}
