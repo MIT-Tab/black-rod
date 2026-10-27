@@ -3,6 +3,7 @@ from django.urls import path
 from core.views import (
     admin_audit_views,
     admin_views,
+    speaks_statistics_views,
     coty_views,
     debater_export_views,
     debater_views,
@@ -305,6 +306,11 @@ urlpatterns = [
     path("core/coty", coty_views.COTYListView.as_view(), name="coty"),
     path("core/elo/", elo_views.elo_dashboard, name="elo_dashboard"),
     path("core/admin-tools/", admin_views.AdminToolsView.as_view(), name="admin_tools"),
+    path(
+        "core/admin/speaks-stats/",
+        speaks_statistics_views.SpeaksStatisticsView.as_view(),
+        name="speaks_statistics",
+    ),
     path(
         "core/admin/synthetic-cleanup/",
         admin_views.SyntheticCleanupView.as_view(),
