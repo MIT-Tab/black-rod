@@ -104,6 +104,12 @@ class SpeaksStatisticsTests(TestCase):
         self.assertContains(response, "119.00")
         self.assertContains(response, "Top breaking seed")
         self.assertContains(response, "Bottom full-field seed")
+        self.assertContains(response, "Individual speaks by final team record")
+        self.assertContains(response, "Speaks-to-percentile correspondence")
+        self.assertContains(response, "N (speak samples)")
+        self.assertContains(response, "16 individual speak samples")
+        self.assertContains(response, 'data-values-id="speaks-cdf-0"')
+        self.assertContains(response, 'id="speaks-cdf-0" type="application/json"')
         self.assertContains(self.client.get(reverse("core:admin_tools")), self.url)
 
     @patch("core.views.speaks_statistics_views.get_speaks_statistics")
@@ -151,6 +157,7 @@ class SpeaksStatisticsTests(TestCase):
             round__tournament=self.tournament, debater=self.debaters[0][0],
         ).update(speaks=0)
         self.assertEqual(self.metrics()["breaking_teams"]["sample_size"], 1)
+        self.assertEqual(get_speaks_statistics()[0]["round_speaks"]["sample_size"], 14)
 
     def test_duplicate_round_numbers_are_not_complete_cards(self):
         original = Round.objects.filter(tournament=self.tournament, gov=self.teams[0]).first()
@@ -178,6 +185,7 @@ class SpeaksStatisticsTests(TestCase):
         self.assertEqual(metrics["breaking_teams"]["sample_size"], 2)
         self.assertEqual(metrics["breaking_teams"]["p50"], 120)
         self.assertEqual(metrics["tenth_varsity_speaker"]["p50"], 58)
+        self.assertEqual(get_speaks_statistics()[0]["round_speaks"]["sample_size"], 16)
 
     def test_novice_elimination_appearances_are_counted_once(self):
         Round.objects.create(
@@ -310,6 +318,8 @@ class SpeaksStatisticsTests(TestCase):
         metrics = self.metrics()
         self.assertEqual(metrics["top_breaking_seed"]["p50"], 122)
         self.assertEqual(metrics["bottom_full_field_seed"]["p50"], 138)
+        columns = {column["label"]: column for column in get_speaks_statistics()[0]["round_speaks"]["columns"]}
+        self.assertEqual(columns["2-0"]["sample_size"], 4)
 
     def test_canonical_winner_takes_precedence_over_the_legacy_victor_field(self):
         Round.objects.filter(tournament=self.tournament, gov=self.teams[0]).update(metadata={"winner": "b"})
@@ -366,7 +376,103 @@ class SpeaksStatisticsTests(TestCase):
     def test_empty_page_and_missing_metrics(self):
         RoundStats.objects.all().delete()
         self.assertEqual(get_speaks_statistics(), [])
-        self.assertContains(self.client.get(self.url), "No complete speaks data is available yet.")
+        self.assertContains(self.client.get(self.url), "No usable preliminary speaks data is available yet.")
+
+    def test_individual_speaks_group_by_final_record_with_counts_and_means(self):
+        distribution = get_speaks_statistics()[0]["round_speaks"]
+        columns = {column["label"]: column for column in distribution["columns"]}
+        self.assertEqual(distribution["sample_size"], 16)
+        self.assertEqual(distribution["tournament_count"], 1)
+        self.assertEqual(columns["2-0"]["sample_size"], 4)
+        self.assertEqual(columns["2-0"]["mean"], Decimal("30.5"))
+        self.assertEqual(columns["0-2"]["mean"], Decimal("34.5"))
+        self.assertEqual(columns["1-1"]["sample_size"], 8)
+        self.assertEqual(columns["1-1"]["p25"], Decimal("27.75"))
+        self.assertEqual(columns["1-1"]["p50"], Decimal("28.5"))
+        self.assertEqual(columns["1-1"]["p75"], Decimal("29.25"))
+        self.assertEqual(columns["All records"]["mean"], Decimal("30.5"))
+
+    def test_correspondence_includes_ties_and_unobserved_whole_scores(self):
+        distribution = get_speaks_statistics()[0]["round_speaks"]
+        rows = {row["score"]: row for row in distribution["correspondence"]}
+        self.assertEqual(rows[Decimal(30)]["sample_size"], 4)
+        self.assertEqual(rows[Decimal(30)]["cumulative_count"], 10)
+        self.assertEqual(rows[Decimal(30)]["percentile"], Decimal("62.5"))
+        self.assertEqual(rows[Decimal(33)]["sample_size"], 0)
+        self.assertEqual(rows[Decimal(33)]["percentile"], 75)
+        self.assertEqual(rows[Decimal(35)]["percentile"], 100)
+
+    def test_individual_samples_from_incomplete_cards_are_retained(self):
+        RoundStats.objects.filter(
+            round__tournament=self.tournament, round__round_number=1, debater=self.debaters[0][0],
+        ).update(speaks=None)
+        distribution = get_speaks_statistics()[0]["round_speaks"]
+        columns = {column["label"]: column for column in distribution["columns"]}
+        self.assertEqual(distribution["sample_size"], 15)
+        self.assertEqual(columns["2-0"]["sample_size"], 3)
+        self.assertNotIn("Unknown record", columns)
+
+    def test_unknown_records_remain_in_the_overall_distribution(self):
+        Round.objects.filter(tournament=self.tournament, gov=self.teams[0], round_number=1).update(victor=Round.UNKNOWN)
+        distribution = get_speaks_statistics()[0]["round_speaks"]
+        columns = {column["label"]: column for column in distribution["columns"]}
+        self.assertEqual(distribution["sample_size"], 16)
+        self.assertEqual(columns["Unknown record"]["sample_size"], 8)
+        self.assertEqual(columns["1-1"]["sample_size"], 8)
+        self.assertEqual(sum(column["sample_size"] for column in distribution["columns"][:-1]), 16)
+
+    def test_panel_ballots_count_as_one_individual_speak_sample(self):
+        original = RoundStats.objects.get(
+            round__tournament=self.tournament, round__round_number=1, debater=self.debaters[1][0],
+        )
+        original.speaks = Decimal("34.5")
+        original.save()
+        RoundStats.objects.create(round=original.round, debater=original.debater, score_index=2, speaks=36)
+        distribution = get_speaks_statistics()[0]["round_speaks"]
+        rows = {row["score"]: row for row in distribution["correspondence"]}
+        self.assertEqual(distribution["sample_size"], 16)
+        self.assertEqual(rows[Decimal("35.25")]["sample_size"], 1)
+        self.assertEqual(rows[Decimal("35.25")]["percentile"], 100)
+
+    def test_seasons_with_only_partial_cards_still_show_individual_distribution(self):
+        Round.objects.filter(tournament=self.tournament, round_number=2).delete()
+        season = get_speaks_statistics()[0]
+        self.assertTrue(all(metric["sample_size"] == 0 for metric in season["metrics"]))
+        self.assertEqual(season["round_speaks"]["sample_size"], 8)
+        self.assertContains(self.client.get(self.url), "8 individual speak samples")
+
+    def test_different_tournament_lengths_have_separate_record_columns(self):
+        shorter = self.make_tournament("2024")
+        Tournament.objects.filter(pk=shorter.pk).update(num_rounds=1)
+        distribution = get_speaks_statistics()[0]["round_speaks"]
+        self.assertEqual(distribution["sample_size"], 24)
+        self.assertEqual([column["label"] for column in distribution["columns"]],
+                         ["0-1", "1-0", "0-2", "1-1", "2-0", "All records"])
+
+    def test_five_round_table_includes_all_six_records(self):
+        Tournament.objects.filter(pk=self.tournament.pk).update(num_rounds=5)
+        distribution = get_speaks_statistics()[0]["round_speaks"]
+        self.assertEqual([column["label"] for column in distribution["columns"]],
+                         ["0-5", "1-4", "2-3", "3-2", "4-1", "5-0", "Unknown record", "All records"])
+        self.assertEqual(distribution["columns"][0]["sample_size"], 0)
+
+    def test_duplicate_speaker_round_numbers_do_not_inflate_the_distribution(self):
+        original = Round.objects.filter(tournament=self.tournament, gov=self.teams[0]).first()
+        duplicate = Round.objects.create(
+            tournament=self.tournament, gov=original.gov, opp=original.opp,
+            round_number=original.round_number, victor=original.victor,
+        )
+        for stat in original.stats.all():
+            RoundStats.objects.create(round=duplicate, debater=stat.debater, speaks=stat.speaks)
+        self.assertEqual(get_speaks_statistics()[0]["round_speaks"]["sample_size"], 12)
+
+    def test_round_distributions_are_separate_for_each_season(self):
+        newer = self.make_tournament("2030")
+        RoundStats.objects.filter(round__tournament=newer).update(speaks=10)
+        seasons = get_speaks_statistics()
+        self.assertEqual([season["round_speaks"]["sample_size"] for season in seasons], [16, 16])
+        self.assertEqual(seasons[0]["round_speaks"]["overall"]["mean"], 10)
+        self.assertEqual(seasons[1]["round_speaks"]["overall"]["mean"], Decimal("30.5"))
 
     def test_empty_and_interpolated_samples(self):
         self.assertEqual(summarize_sample([]), {"sample_size": 0, "p25": None, "p50": None, "p75": None})

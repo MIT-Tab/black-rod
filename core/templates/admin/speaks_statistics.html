@@ -1,8 +1,12 @@
 {% extends "base/base.html" %}
+{% load static humanize %}
 {% block title %}Speaks Statistics | APDA Results{% endblock title %}
 {% block extra_head %}
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <script src="{% static 'js/speaks_statistics.js' %}" defer></script>
     <style>
+        .speaks-record-table th { white-space: nowrap; }
+        .speaks-cdf-chart { display: block; width: 100%; max-width: 900px; height: auto; }
         @media (max-width: 575.98px) {
             .speaks-statistics-table,
             .speaks-statistics-table tbody { display: block; }
@@ -40,7 +44,10 @@
                         <summary>How these statistics are calculated</summary>
                         <ul class="mt-2 mb-0">
                             <li>Speaks are preliminary tournament totals; combined speaks sum both teammates. Panel scores are averaged per speaker per round before summing.</li>
-                            <li>Only complete cards with positive speaks in every scheduled preliminary round count. Missing scores, duplicate round numbers, and elimination scores are excluded. Totals are not adjusted for different tournament lengths.</li>
+                            <li>Tournament totals require complete cards with positive speaks in every scheduled preliminary round. Missing scores, duplicate round numbers, and elimination scores are excluded. Totals are not adjusted for different tournament lengths.</li>
+                            <li>The record table and speaks-to-percentile chart use individual preliminary speaker-round scores, averaging panels first. Valid scores from incomplete cards are included. Duplicate speaker/round numbers and elimination scores are excluded.</li>
+                            <li>Final records use all scheduled preliminary outcomes. Scores with missing outcomes or an unresolved partnership remain in All records and Unknown record. Different tournament lengths have separate W–L columns.</li>
+                            <li>A score's percentile is the percentage of season samples at or below that score, including ties. Correspondence tables include every observed fractional score and every whole score between the season's minimum and maximum.</li>
                             <li>Team totals add the two speakers' tournament totals. Partnerships and linked speaker profiles are matched across results and imported rounds, even when their database record IDs differ.</li>
                             <li>Preliminary wins and round stages use canonical import data when available.</li>
                             <li>Breaking teams have a recorded placing or elimination appearance. Novice breakers include novice-division breakers and varsity breakers whose two speakers were novices that season, based on novice awards or their first season. Current novice/varsity status is not used for historical seasons.</li>
@@ -53,7 +60,10 @@
                     {% for season in seasons %}
                         <section class="mb-4" aria-labelledby="season-{{ forloop.counter }}">
                             <h2 class="h5" id="season-{{ forloop.counter }}">{{ season.season_display }}</h2>
-                            <p class="small text-muted">{{ season.scored_tournaments }} tournament{{ season.scored_tournaments|pluralize }} with preliminary speaks.</p>
+                            <p class="text-muted">{{ season.round_speaks.sample_size|intcomma }} individual speak samples from {{ season.round_speaks.tournament_count }} tournament{{ season.round_speaks.tournament_count|pluralize }}.</p>
+                            {% include "admin/includes/speaks_record_distribution.html" %}
+                            {% include "admin/includes/speaks_percentile_chart.html" %}
+                            <h3 class="h6 mt-4">Team and speaker tournament totals</h3>
                             <div class="table-responsive">
                                 <table class="table table-striped table-sm speaks-statistics-table">
                                     <caption class="sr-only">Speaks percentiles and sample sizes for {{ season.season_display }}</caption>
@@ -84,7 +94,7 @@
                             </div>
                         </section>
                     {% empty %}
-                        <div class="alert alert-info" role="status">No complete speaks data is available yet.</div>
+                        <div class="alert alert-info" role="status">No usable preliminary speaks data is available yet.</div>
                     {% endfor %}
                 </div>
             </div>

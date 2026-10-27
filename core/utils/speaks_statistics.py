@@ -13,6 +13,12 @@ from core.utils.elo_runtime_engine.debate_contract import (
     stage_for_rating,
     winner_code_for_debate,
 )
+from core.utils.speaks_distributions import (
+    add_round_speaks_samples,
+    new_round_speaks_samples,
+    summarize_round_speaks,
+    summarize_sample,
+)
 
 
 METRICS = (
@@ -26,21 +32,6 @@ METRICS = (
     ("tenth_varsity_speaker", "10th varsity speaker speaks"),
     ("first_novice_speaker", "1st novice speaker speaks"),
 )
-
-
-def summarize_sample(values):
-    """Use linear interpolation at (n - 1) * p, including singleton samples."""
-    ordered = sorted(values)
-    summary = {"sample_size": len(ordered)}
-    for percentile in (25, 50, 75):
-        value = None
-        if ordered:
-            position = Decimal(len(ordered) - 1) * Decimal(percentile) / 100
-            lower = int(position)
-            upper = min(lower + 1, len(ordered) - 1)
-            value = ordered[lower] + (ordered[upper] - ordered[lower]) * (position - lower)
-        summary[f"p{percentile}"] = value
-    return summary
 
 
 def get_speaks_statistics():
@@ -65,13 +56,17 @@ def get_speaks_statistics():
 
     seasons = []
     for season, tournaments in by_season.items():
-        samples, coverage, scored_tournaments = _season_samples(tournaments, representatives, first_seasons)
-        if not any(samples.values()):
+        samples, coverage, scored_tournaments, round_samples = _season_samples(
+            tournaments, representatives, first_seasons,
+        )
+        if not any(samples.values()) and not round_samples["scores"]:
             continue
         seasons.append({
             "season": season,
             "season_display": tournaments[0].get_season_display(),
             "scored_tournaments": scored_tournaments,
+            "chart_id": f"speaks-cdf-{len(seasons)}",
+            "round_speaks": summarize_round_speaks(round_samples),
             "metrics": [
                 {"key": key, "label": label, "tournament_count": coverage[key],
                  **summarize_sample(samples[key])}
@@ -136,6 +131,7 @@ def _season_samples(tournaments, representatives, first_seasons):
 
     samples = defaultdict(list)
     coverage = defaultdict(int)
+    round_samples = new_round_speaks_samples()
     scored_tournaments = 0
     for tournament in tournaments:
         previous_sizes = {key: len(samples[key]) for key, _ in METRICS}
@@ -143,10 +139,11 @@ def _season_samples(tournaments, representatives, first_seasons):
         scored_tournaments += _add_tournament_samples(
             samples, tournament, rounds[tournament.pk], scores, members,
             team_results[tournament.pk], speaker_results[tournament.pk], representatives, novices,
+            round_samples,
         )
         for key, _ in METRICS:
             coverage[key] += len(samples[key]) > previous_sizes[key]
-    return samples, coverage, scored_tournaments
+    return samples, coverage, scored_tournaments, round_samples
 
 
 def _complete_round_numbers(entries, expected_rounds):
@@ -186,7 +183,7 @@ def _round_partnership(round_obj, side, members, representatives):
 
 
 def _add_tournament_samples(samples, tournament, rounds, scores, members,
-                            team_results, speaker_results, representatives, novices):
+                            team_results, speaker_results, representatives, novices, round_samples):
     breaks = {TeamResult.VARSITY: set(), TeamResult.NOVICE: set()}
     for result in team_results:
         identity = _partnership(members[result["team_id"]])
@@ -201,6 +198,7 @@ def _add_tournament_samples(samples, tournament, rounds, scores, members,
     speaker_rank_cards = defaultdict(list)
     wins = defaultdict(int)
     unknown_outcomes = set()
+    observations = []
     for round_obj in rounds:
         gov = _round_partnership(round_obj, "gov", members, representatives)
         opp = _round_partnership(round_obj, "opp", members, representatives)
@@ -217,6 +215,10 @@ def _add_tournament_samples(samples, tournament, rounds, scores, members,
         for debater_id, (speaks, ranks) in round_scores.items():
             speaker_cards[debater_id].append((round_obj.round_number, speaks))
             speaker_rank_cards[debater_id].append((round_obj.round_number, ranks))
+            if speaks is not None and speaks > 0:
+                owners = {team for team in (gov, opp) if team and debater_id in team}
+                owner = next(iter(owners)) if len(owners) == 1 else None
+                observations.append((round_obj.round_number, debater_id, speaks, owner))
         winner = winner_code_for_debate(round_obj)
         for team_id, side in (
             (gov, "a"),
@@ -248,6 +250,7 @@ def _add_tournament_samples(samples, tournament, rounds, scores, members,
              for team_id, card in rank_cards.items()}
     unknown_outcomes.update(team for team in candidates
                             if not _complete_round_numbers(team_cards[team], tournament.num_rounds))
+    add_round_speaks_samples(round_samples, tournament, observations, speaker_cards, wins, unknown_outcomes)
     breaks[TeamResult.NOVICE].update(team for team in breaks[TeamResult.VARSITY]
                                     if set(team) <= novices)
     for division, key in ((TeamResult.VARSITY, "breaking_teams"),
