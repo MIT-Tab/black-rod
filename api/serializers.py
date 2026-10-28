@@ -119,7 +119,7 @@ def serialize_video(video, request=None):
     return data
 
 
-def serialize_team_result(result, request=None):
+def serialize_team_result(result, request=None, include_team=True):
     place_display = ""
     if result.place and result.place > 0:
         place_display = place_as_round(result.place)
@@ -130,7 +130,7 @@ def serialize_team_result(result, request=None):
         "type": result.get_type_of_place_display(),
         "type_code": result.type_of_place,
         "ghost_points": result.ghost_points,
-        "team": serialize_team(result.team, request),
+        "team": serialize_team(result.team, request) if include_team else None,
         "tournament": serialize_tournament(result.tournament, request),
     }
 

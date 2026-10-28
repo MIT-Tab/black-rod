@@ -15,8 +15,6 @@ from core.access import can_download_debater_tab_cards
 from core.forms import DebaterForm
 from core.models.debater import Debater
 from core.models.debater_alias_group import DebaterAliasGroup
-from core.models.results.team import TeamResult
-from core.models.round import Round
 from core.models.standings.toty import TOTY
 from core.utils.generics import (
     CustomCreateView,
@@ -27,7 +25,8 @@ from core.utils.generics import (
     CustomUpdateView,
 )
 from core.utils.perms import has_perm
-from core.utils.rounds import get_tab_card_data, visible_canonical_rounds
+from core.utils.rounds import get_tab_card_data
+from core.utils.result_visibility import DebaterProfileResults
 from core.views.debater_export_views import (
     build_debater_partner_breakdown,
 )
@@ -209,22 +208,13 @@ class DebaterDetailView(CustomDetailView):
             False,
         )
 
-        tournaments = [
-            result.tournament
-            for result in TeamResult.objects.filter(team__debaters=self.object, team__synthetic=False)
-        ]
-        tournaments += [result.tournament for result in self.object.speaker_results.all()]
+        profile = DebaterProfileResults(self.object)
+        profile_rounds = profile.rounds()
+        tournaments = [result.tournament for result in profile.team_results.select_related("tournament")]
+        tournaments += [result.tournament for result in profile.speaker_results.select_related("tournament")]
 
         if "all" in self.request.GET:
-            for team in self.object.teams.filter(synthetic=False):
-                tournaments += [
-                    round_obj.tournament
-                    for round_obj in visible_canonical_rounds(team.govs.all())
-                ]
-                tournaments += [
-                    round_obj.tournament
-                    for round_obj in visible_canonical_rounds(team.opps.all())
-                ]
+            tournaments += [round_obj.tournament for round_obj in profile_rounds.select_related("tournament")]
 
         tournaments = list(set(tournaments))
         seasons = list({tournament.season for tournament in tournaments})
@@ -245,33 +235,24 @@ class DebaterDetailView(CustomDetailView):
         tournament_render = []
         for tournament in tournaments:
             team_results = list(
-                TeamResult.objects.filter(team__debaters=self.object, team__synthetic=False)
-                .filter(tournament=tournament)
+                profile.team_results.filter(tournament=tournament)
                 .order_by("-type_of_place")
             )
             speaker_results = list(
-                self.object.speaker_results.filter(tournament=tournament).order_by("-type_of_place")
+                profile.speaker_results.filter(tournament=tournament).order_by("-type_of_place")
             )
 
-            team_result = (
-                TeamResult.objects.filter(team__debaters=self.object, team__synthetic=False)
-                .filter(tournament=tournament)
-                .first()
-            )
-            gov_round = visible_canonical_rounds(
-                Round.objects.filter(gov__debaters=self.object, gov__synthetic=False).filter(
-                    tournament=tournament
-                )
-            )
-            opp_round = visible_canonical_rounds(
-                Round.objects.filter(opp__debaters=self.object, opp__synthetic=False).filter(
-                    tournament=tournament
-                )
-            )
-
-            team = None if not team_result else team_result.team
-            if not team and (gov_round.exists() or opp_round.exists()):
-                team = gov_round.first().gov if gov_round.exists() else opp_round.first().opp
+            team = team_results[0].team if team_results else None
+            if team is None:
+                round_obj = profile_rounds.filter(tournament=tournament).first()
+                if round_obj:
+                    team = (
+                        round_obj.gov
+                        if round_obj.gov.debaters.filter(pk=self.object.pk).exists()
+                        else round_obj.opp
+                    )
+            if not profile.can_show_team(team, tournament):
+                team = None
 
             tournament_render.append(
                 {
@@ -281,21 +262,23 @@ class DebaterDetailView(CustomDetailView):
                     + [("speaker", result) for result in speaker_results],
                     "tab_card": (
                         get_tab_card_data(team, tournament)
-                        if debater_profile_tab_cards_enabled
+                        if debater_profile_tab_cards_enabled and team is not None
                         else None
                     ),
                 }
             )
 
         context["results"] = tournament_render
-        context["totys"] = TOTY.objects.filter(team__debaters=self.object, team__synthetic=False).order_by(
+        context["totys"] = TOTY.objects.filter(team__debaters=self.object, team__synthetic=False).exclude(
+            team_id__in=profile.redacted_team_ids
+        ).order_by(
             "place",
             "season",
         )
         context["sotys"] = self.object.soty.order_by("place", "season")
         context["notys"] = self.object.noty.order_by("place", "season")
 
-        teams = list(self.object.teams.filter(synthetic=False))
+        teams = list(profile.teams())
         teams.sort(key=lambda team: (num_distinct_tournaments(team), team.toty_points), reverse=True)
         context["teams"] = teams
 

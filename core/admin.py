@@ -1,5 +1,6 @@
 import json
 
+from django import forms
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 from django.db.models import Count
@@ -214,9 +215,54 @@ class TeamAdmin(ImportExportModelAdmin):
         return queryset, use_distinct
 
 
+class TeamResultAdminForm(forms.ModelForm):
+    """Offer visibility checkboxes only for this result's team members."""
+
+    class Meta:
+        model = TeamResult
+        fields = "__all__"
+        widgets = {"hidden_from_debaters": forms.CheckboxSelectMultiple}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if "hidden_from_debaters" not in self.fields:
+            return
+        team_id = self.data.get(self.add_prefix("team")) if self.is_bound else self.instance.team_id
+        try:
+            team_id = int(team_id)
+        except (TypeError, ValueError):
+            team_id = None
+        self.fields["hidden_from_debaters"].queryset = Debater.all_objects.filter(
+            teams__pk=team_id
+        ).order_by("first_name", "last_name", "pk")
+        if not team_id:
+            self.fields["hidden_from_debaters"].help_text += " Save the team first to select members."
+
+
+class HiddenTeamResultFilter(admin.SimpleListFilter):
+    title = "profile visibility"
+    parameter_name = "profile_visibility"
+
+    def lookups(self, request, model_admin):
+        return (("hidden", "Hidden for a member"), ("visible", "Visible for everyone"))
+
+    def queryset(self, request, queryset):
+        if self.value() == "hidden":
+            return queryset.filter(hidden_from_debaters__isnull=False).distinct()
+        if self.value() == "visible":
+            return queryset.filter(hidden_from_debaters__isnull=True)
+        return queryset
+
+
 @admin.register(TeamResult)
 class TeamResultAdmin(ImportExportModelAdmin):
     resource_class = TeamResultResource
+    form = TeamResultAdminForm
+    fieldsets = (
+        (None, {"fields": ("tournament", "team", "type_of_place", "place")}),
+        ("Profile visibility", {"fields": ("hidden_from_debaters",)}),
+        ("Scoring", {"fields": ("ghost_points", "counts_for_points")}),
+    )
     list_display = (
         "tournament_name",
         "tournament_season",
@@ -224,8 +270,10 @@ class TeamResultAdmin(ImportExportModelAdmin):
         "type_of_place_display",
         "place",
         "ghost_points",
+        "hidden_members",
     )
     list_filter = (
+        HiddenTeamResultFilter,
         "tournament__name",
         "tournament__season",
         "team__name",
@@ -236,9 +284,20 @@ class TeamResultAdmin(ImportExportModelAdmin):
         "tournament__name",
         "tournament__season",
         "team__name",
+        "team__debaters__first_name",
+        "team__debaters__last_name",
         "place",
     )
     ordering = ("tournament__name", "tournament__season", "team__name", "type_of_place", "place")
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related("tournament", "team").prefetch_related(
+            "hidden_from_debaters"
+        )
+
+    @admin.display(description="Hidden from profiles")
+    def hidden_members(self, obj):
+        return ", ".join(debater.name for debater in obj.hidden_from_debaters.all()) or "—"
 
     @admin.display(description="Tournament", ordering="tournament__name")
     def tournament_name(self, obj):
@@ -264,6 +323,11 @@ class TeamResultAdmin(ImportExportModelAdmin):
 @admin.register(SpeakerResult)
 class SpeakerResultAdmin(ImportExportModelAdmin):
     resource_class = SpeakerResultResource
+    list_display = ("id", "debater", "tournament", "type_of_place", "place", "hidden_from_profile")
+    list_editable = ("hidden_from_profile",)
+    list_filter = ("hidden_from_profile", "tournament__season", "type_of_place")
+    search_fields = ("debater__first_name", "debater__last_name", "tournament__name")
+    list_select_related = ("debater", "tournament")
 
 
 @admin.register(MergeDebaterRequest)

@@ -21,6 +21,10 @@ class SpeakerResult(models.Model):
 
     tie = models.BooleanField(default=False)
     counts_for_points = models.BooleanField(default=True)
+    hidden_from_profile = models.BooleanField(
+        default=False,
+        help_text="Hide this result on the debater's public profile. The result and points are retained.",
+    )
 
     class Meta:
         unique_together = ("tournament", "type_of_place", "place")

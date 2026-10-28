@@ -6,7 +6,6 @@ from django_filters import FilterSet
 from django_tables2 import Column
 
 from core.forms import TeamForm
-from core.models.round import Round
 from core.models.team import Team
 from core.utils.generics import (
     CustomDeleteView,
@@ -15,7 +14,8 @@ from core.utils.generics import (
     CustomTable,
     CustomUpdateView,
 )
-from core.utils.rounds import get_record, get_tab_card_data, visible_canonical_rounds
+from core.utils.rounds import get_record, get_tab_card_data
+from core.utils.result_visibility import team_profile_results
 
 
 class TeamFilter(FilterSet):
@@ -100,7 +100,8 @@ class TeamDetailView(CustomDetailView):
         context = super().get_context_data(*args, **kwargs)
         context["visible_debaters"] = self.object.debaters.exclude(synthetic=True)
 
-        results = self.object.team_results.order_by("tournament__date")
+        results, rounds = team_profile_results(self.object)
+        results = results.order_by("tournament__date")
 
         to_return = []
         tournaments_handled = []
@@ -116,10 +117,6 @@ class TeamDetailView(CustomDetailView):
                 }
             ]
             tournaments_handled += [result.tournament]
-
-        rounds = visible_canonical_rounds(
-            Round.objects.filter(Q(gov=self.object) | Q(opp=self.object))
-        )
 
         tournaments = []
 

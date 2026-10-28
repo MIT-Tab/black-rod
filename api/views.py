@@ -42,6 +42,7 @@ from core.models.video import Video
 from core.utils.perms import has_perm
 from core.utils.rankings import get_qualled_debaters, place_as_round
 from core.utils.rounds import get_record, get_tab_card_data
+from core.utils.result_visibility import DebaterProfileResults, team_profile_results
 from core.utils.schools import get_debaters_for_season
 from .serializers import (
     serialize_debater,
@@ -1827,6 +1828,15 @@ class ScheduleAPIView(APIView):
         return Response(payload)
 
 
+def _redact_profile_standing_markers(history, hidden_tournaments):
+    """Keep season totals while omitting hidden tournament contributions."""
+    for entry in history:
+        entry["markers"] = [
+            marker for marker in entry["markers"]
+            if marker["tournament"]["id"] not in hidden_tournaments
+        ]
+
+
 def _determine_team_for_debater_tournament(debater, bucket):
     if bucket["team_results"]:
         return bucket["team_results"][0].team
@@ -1840,11 +1850,11 @@ def _determine_team_for_debater_tournament(debater, bucket):
 
 
 def _build_debater_season_results(debater, request):
+    profile = DebaterProfileResults(debater)
     tournament_bucket = {}
 
     team_results = (
-        TeamResult.objects.filter(team__debaters=debater)
-        .select_related("tournament", "team")
+        profile.team_results.select_related("tournament", "team")
         .order_by("tournament__date")
     )
     for result in team_results:
@@ -1855,8 +1865,7 @@ def _build_debater_season_results(debater, request):
         bucket["team_results"].append(result)
 
     speaker_results = (
-        SpeakerResult.objects.filter(debater=debater)
-        .select_related("tournament")
+        profile.speaker_results.select_related("tournament")
         .order_by("tournament__date")
     )
     for result in speaker_results:
@@ -1867,8 +1876,7 @@ def _build_debater_season_results(debater, request):
         bucket["speaker_results"].append(result)
 
     rounds = (
-        Round.objects.filter(Q(gov__debaters=debater) | Q(opp__debaters=debater))
-        .select_related("tournament", "gov", "opp")
+        profile.rounds().select_related("tournament", "gov", "opp")
         .order_by("tournament__date", "round_number")
     )
     for rnd in rounds:
@@ -1882,6 +1890,8 @@ def _build_debater_season_results(debater, request):
     for bucket in tournament_bucket.values():
         tournament = bucket["tournament"]
         team = _determine_team_for_debater_tournament(debater, bucket)
+        if not profile.can_show_team(team, tournament):
+            team = None
         record = get_record(tournament, team) if team else ""
         tab_card = _serialize_tab_card(team, tournament, request) if team else []
 
@@ -1898,7 +1908,9 @@ def _build_debater_season_results(debater, request):
             "tournament": serialize_tournament(tournament, request),
             "team": serialize_team(team, request) if team else None,
             "team_results": [
-                serialize_team_result(res, request) for res in team_results_payload
+                serialize_team_result(
+                    res, request, include_team=profile.can_show_team(res.team, tournament)
+                ) for res in team_results_payload
             ],
             "speaker_results": [
                 serialize_speaker_result(res, request) for res in speaker_results_payload
@@ -1931,9 +1943,8 @@ def _build_team_tournaments(team, request):
     entries = []
     tournaments_handled = set()
 
-    team_results = team.team_results.select_related("tournament").order_by(
-        "tournament__date"
-    )
+    team_results, profile_rounds = team_profile_results(team)
+    team_results = team_results.select_related("tournament").order_by("tournament__date")
     for result in team_results:
         tournament = result.tournament
         entries.append(
@@ -1948,8 +1959,7 @@ def _build_team_tournaments(team, request):
         tournaments_handled.add(tournament.id)
 
     extra_rounds = (
-        Round.objects.filter(Q(gov=team) | Q(opp=team))
-        .select_related("tournament")
+        profile_rounds.select_related("tournament")
         .order_by("tournament__date")
     )
     for rnd in extra_rounds:
@@ -2041,6 +2051,11 @@ class TeamDetailAPIView(APIView):
                 "tournament_five",
             ).order_by("-points", "season")
         ]
+
+        hidden_tournaments = set(team.team_results.filter(
+            hidden_from_debaters__isnull=False
+        ).values_list("tournament_id", flat=True))
+        _redact_profile_standing_markers(toty_history, hidden_tournaments)
 
         entry_limit = _parse_limit_param(request)
         if entry_limit:
@@ -2240,11 +2255,13 @@ class DebaterDetailAPIView(APIView):
         except Debater.DoesNotExist as exc:
             raise Http404("Debater not found") from exc
 
+        profile = DebaterProfileResults(debater)
         season_results = _build_debater_season_results(debater, request)
 
         toty_history = [
             _standing_payload(entry, "team", 5, request)
             for entry in TOTY.objects.filter(team__debaters=debater)
+            .exclude(team_id__in=profile.redacted_team_ids)
             .select_related(
                 "team",
                 "tournament_one",
@@ -2285,6 +2302,12 @@ class DebaterDetailAPIView(APIView):
             ).order_by("place", "season")
         ]
 
+        for history, division in ((soty_history, Debater.VARSITY), (noty_history, Debater.NOVICE)):
+            hidden_tournaments = set(debater.speaker_results.filter(
+                hidden_from_profile=True, type_of_place=division
+            ).values_list("tournament_id", flat=True))
+            _redact_profile_standing_markers(history, hidden_tournaments)
+
         alias_history = []
         if debater.alias_group:
             alias_history = [
@@ -2295,8 +2318,7 @@ class DebaterDetailAPIView(APIView):
             ]
 
         teams = (
-            Team.objects.filter(debaters=debater)
-            .annotate(tournament_count=Count("team_results__tournament", distinct=True))
+            profile.teams().annotate(tournament_count=Count("team_results__tournament", distinct=True))
             .prefetch_related(
                 Prefetch(
                     "debaters",
