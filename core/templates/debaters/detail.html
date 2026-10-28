@@ -8,6 +8,16 @@
     {{ object }}
 {% endblock title %}
 {% block extra_buttons %}
+    {% if request.user.is_staff %}
+        {% if perms.core.change_teamresult %}
+            <a href="{% url 'admin:core_teamresult_changelist' %}?q={{ object.name|urlencode }}"
+               class="btn btn-sm mr-1 btn-outline-secondary float-right">Manage Team Results</a>
+        {% endif %}
+        {% if perms.core.change_speakerresult %}
+            <a href="{% url 'admin:core_speakerresult_changelist' %}?q={{ object.name|urlencode }}"
+               class="btn btn-sm mr-1 btn-outline-secondary float-right">Manage Speaker Results</a>
+        {% endif %}
+    {% endif %}
     {% if can_download_tab_cards_csv %}
         <a href="{% url 'core:debater_tab_cards_csv' pk=object.id %}"
            class="btn btn-sm mr-1 btn-outline-secondary float-right">Download Career Tab Cards CSV</a>
@@ -397,7 +407,9 @@
                                     <td class="short-row">{{ award.place|place_as_round_filter:award.ghost_points }}</td>
                                     <td colspan="{% if tournament.tab_card and user.is_authenticated %}4{% else %}3{% endif %}"
                                         class="short-row">
-                                        <a href="{{ award.team.get_absolute_url }}">{{ award.team }}</a>
+                                        {% if tournament.team %}
+                                            <a href="{{ award.team.get_absolute_url }}">{{ award.team }}</a>
+                                        {% endif %}
                                     </td>
                                 {% endif %}
                                 {% if type == 'speaker' %}

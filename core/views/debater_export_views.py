@@ -13,6 +13,7 @@ from core.models.round import Round, RoundStats
 from core.models.team import Team
 from core.utils.debater_aliases import load_linked_debater_ids
 from core.utils.rounds import visible_canonical_rounds
+from core.utils.result_visibility import DebaterProfileResults
 
 _PARTNER_PIE_COLORS = (
     "#2563eb",
@@ -197,6 +198,9 @@ def _imported_alias_match(round_obj, linked_debater_ids):
 
 def build_debater_partner_breakdown(debater):
     linked_debater_ids = load_linked_debater_ids([debater.id])
+    redacted_pairs = set()
+    for linked_debater in Debater.objects.filter(pk__in=linked_debater_ids):
+        redacted_pairs.update(DebaterProfileResults(linked_debater).redacted_pairs)
     team_ids = list(
         Team.objects.filter(debaters__id__in=linked_debater_ids, synthetic=False)
         .distinct()
@@ -227,6 +231,8 @@ def build_debater_partner_breakdown(debater):
         elif opp_member_ids & linked_debater_ids:
             team = round_obj.opp
         if not team:
+            continue
+        if (team.pk, round_obj.tournament_id) in redacted_pairs:
             continue
         partner = next(
             (

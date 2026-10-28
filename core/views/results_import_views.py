@@ -50,6 +50,7 @@ from core.models.tournament import Tournament
 from core.models.team import Team
 from core.models import TournamentImport
 from core.utils.api_data import APIDataHandler
+from core.utils.result_visibility import preserve_profile_result_visibility
 from core.utils.rankings import (
     rebuild_import_qualifications,
     redo_rankings,
@@ -977,7 +978,7 @@ class TournamentDataEntryView(PermissionRequiredMixin, View):
         use_api: bool,
         import_counts_from_api: bool = False,
     ) -> None:
-        with transaction.atomic():
+        with transaction.atomic(), preserve_profile_result_visibility(tournament):
             resolution = ImportResolution(
                 teams_to_update=list(Team.objects.filter(team_results__tournament=tournament).distinct()),
                 speakers_to_update=list(Debater.all_objects.filter(speaker_results__tournament=tournament,

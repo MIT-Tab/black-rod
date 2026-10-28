@@ -23,6 +23,15 @@ class TeamResult(models.Model):
 
     ghost_points = models.BooleanField(default=False)
     counts_for_points = models.BooleanField(default=True)
+    hidden_from_debaters = models.ManyToManyField(
+        "core.Debater",
+        blank=True,
+        related_name="hidden_team_results",
+        help_text=(
+            "Hide this result on the selected debaters' profiles. Other members keep "
+            "the result without team or partner details. The team profile also hides it."
+        ),
+    )
 
     class Meta:
         constraints = [

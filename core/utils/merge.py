@@ -318,6 +318,9 @@ def _merge_speaker_results(primary, secondary):
                 if result.counts_for_points and not conflict.counts_for_points:
                     conflict.counts_for_points = True
                     fields_to_update.append("counts_for_points")
+                if result.hidden_from_profile and not conflict.hidden_from_profile:
+                    conflict.hidden_from_profile = True
+                    fields_to_update.append("hidden_from_profile")
                 if fields_to_update:
                     conflict.save(update_fields=fields_to_update)
             result.delete()
@@ -828,6 +831,8 @@ def _merge_teams(primary, secondary):
     teams = Team.objects.filter(debaters=secondary).distinct()
     for team in teams:
         team.debaters.add(primary)
+        for result in team.team_results.filter(hidden_from_debaters=secondary):
+            result.hidden_from_debaters.add(primary)
         team.debaters.remove(secondary)
         team.refresh_from_db()
         team.update_name()

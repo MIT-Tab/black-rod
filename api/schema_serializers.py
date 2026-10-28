@@ -226,7 +226,7 @@ class TeamResultSerializer(serializers.Serializer):
     type = serializers.CharField()
     type_code = serializers.IntegerField()
     ghost_points = serializers.BooleanField()
-    team = LiteTeamSerializer()
+    team = LiteTeamSerializer(allow_null=True)
     tournament = LiteTournamentSerializer()
 
 
