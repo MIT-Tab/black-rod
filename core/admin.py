@@ -8,6 +8,7 @@ from django.utils.html import format_html
 from import_export.admin import ImportExportModelAdmin
 from taggit.models import Tag, TaggedItem
 
+from core import agent_admin  # noqa: F401  # pylint: disable=unused-import
 from core.forms import (
     COTYForm,
     NOTYForm,

@@ -32,7 +32,11 @@ from .debater_alias_group import DebaterAliasGroup
 from .generated_code import GeneratedCode
 from .synthetic_resolution_log import SyntheticResolutionLog
 
+from .agent_access import AgentCredential, AgentChangeSet
+
 __all__ = [
+    "AgentCredential",
+    "AgentChangeSet",
     "User",
     "Debater",
     "DebaterAlias",

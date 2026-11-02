@@ -9,7 +9,7 @@ from datetime import date, datetime
 
 from django.db.models import Count, Max, Q
 
-from core.models import Debater, QUAL, Round, RoundStats
+from core.models import AgentChangeSet, Debater, QUAL, Round, RoundStats
 
 
 CACHE_TTL_SECONDS = 60 * 10
@@ -85,6 +85,7 @@ def data_fingerprint():
     )
 
     payload = {
+        "agent_change_version": AgentChangeSet.objects.aggregate(version=Max("id"))["version"] or 0,
         "round_count": int(round_agg.get("count") or 0),
         "round_max_id": int(round_agg.get("max_id") or 0),
         "round_stats_count": int(round_stats_agg.get("count") or 0),
