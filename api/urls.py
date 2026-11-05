@@ -2,12 +2,13 @@
 URL routing for API endpoints.
 """
 
-from django.urls import path
+from django.urls import include, path
 from . import views
 
 app_name = 'api'
 
 urlpatterns = [
+    path("agent/v1/", include("api.agent_urls")),
     path('standings/', views.SeasonStandingsAPIView.as_view(), name='season_standings'),
     path('standings/replay/', views.SeasonStandingsReplayAPIView.as_view(), name='season_standings_replay'),
     path('standings/through-date/', views.StandingsThroughDateAPIView.as_view(), name='standings_through_date'),

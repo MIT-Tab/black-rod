@@ -237,7 +237,7 @@ STATICFILES_DIRS = (os.path.join(BASE_DIR, "assets"),)
 STATIC_ROOT = os.path.join(BASE_DIR, "static_root")
 
 
-HAYSTACK_SIGNAL_PROCESSOR = "haystack.signals.RealtimeSignalProcessor"
+HAYSTACK_SIGNAL_PROCESSOR = "core.search_signals.CommitSignalProcessor"
 
 
 ONLINE_QUAL_BAR = 10
