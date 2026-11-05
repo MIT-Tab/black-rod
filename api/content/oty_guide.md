@@ -25,11 +25,16 @@ Speakers use the same base value. First speaker receives the base and every subs
 
 ## Club of the Year (COTY) / Qual points
 
-COTY reuses the team-points table but credits individual debaters. Every qualifying partnership that clears feeds its marker into each debater’s personal total. A debater may contribute at most 60 points to their school, but every autoqual (placing at or above the bid line at select BP/expansion tournaments) tacks on a 6-point bonus. That yields a maximum 66-point annual contribution. School totals are the sum of those capped contributions, so “qual points” and “COTY points” are the same quantity, though “qual points” often refers to the uncapped value prior to the 6-point autoqual bonus.
+COTY reuses the team-points table but credits individual debaters. Each debater contributes up to 60 earned qual points plus one 6-point qualification bonus, for a maximum annual contribution of 66 points. The bonus is awarded once per debater, even if they qualify in multiple ways.
+
+Starting in 2026–2027, BP autoquals qualify the individual for Nationals but do not earn the 6-point COTY bonus. This applies to Brandeis IV, Yale IV, NorthAms, WUDC, NAUDC, and USUDC. If that debater also qualifies by points or a non-BP autoqual during the same season, they earn the bonus then. Before 2026–2027, BP autoquals also earn the bonus.
+
+Tournament results entry includes individual autoqual recipients. These entries record qualification without assigning a team or a finishing place.
 
 ## Events without season points
 
-- Nationals and British Parliamentary weekends award autoqual bids but **no** season points.
+- British Parliamentary events award no placement points. Their qualification bonus follows the season rule above.
+- Nationals awards no season points.
 - Gender Minority, BIPOC, and similar invitationals award COTY (qual) credit only.
 
 ## General notes

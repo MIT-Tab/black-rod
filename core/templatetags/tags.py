@@ -3,6 +3,7 @@ from decimal import Decimal, InvalidOperation
 from django import template
 from django.utils.html import format_html
 
+from core.utils.qualifications import coty_bonus_quals
 from core.utils.rankings import get_qualled_debaters, place_as_round
 
 register = template.Library()
@@ -115,10 +116,10 @@ def qual_display(debater, season):
 def qual_contribution(debater, season):
     points = debater.points
 
-    if debater.qualled:
-        points += 6
-
-    return min(66, points)
+    bonus = debater.qualled and coty_bonus_quals(
+        debater.debater.quals.filter(season=season), season
+    ).exists()
+    return min(60, points) + (6 if bonus else 0)
 
 
 @register.filter

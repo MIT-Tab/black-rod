@@ -99,6 +99,12 @@
                             {% endif %}
                         </div>
 
+                        <div class="mt-4 pt-3 border-top">
+                            <h5>Individual Autoquals</h5>
+                            {{ autoqual_form.media }}
+                            {{ autoqual_form.autoqual_debaters|as_crispy_field }}
+                        </div>
+
                         {# Submit Button #}
                         <div class="mt-4 pt-3 border-top">
                             <button type="submit" class="btn btn-primary btn-lg float-right">

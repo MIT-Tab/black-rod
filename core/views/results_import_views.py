@@ -34,6 +34,7 @@ from core.forms import (
     SchoolForm,
     SchoolImportFormsetBase,
     TournamentResultsImportOptionsForm,
+    TournamentAutoQualForm,
     UnplacedTeamResultFormset,
     VarsitySpeakerResultFormset,
     VarsityTeamResultFormset,
@@ -42,6 +43,7 @@ from core.models.debater import Debater
 from core.models.results.speaker import SpeakerResult
 from core.models.results.team import TeamResult
 from core.models.school import School, SchoolLookup
+from core.models.standings.coty import COTY
 from core.models.standings.noty import NOTY
 from core.models.standings.qual import QUAL
 from core.models.standings.soty import SOTY
@@ -49,6 +51,8 @@ from core.models.standings.toty import TOTY
 from core.models.tournament import Tournament
 from core.models.team import Team
 from core.models import TournamentImport
+from core.models.tournament_autoqual import TournamentAutoQual
+from core.utils.qualifications import sync_manual_autoquals
 from core.utils.api_data import APIDataHandler
 from core.utils.result_visibility import preserve_profile_result_visibility
 from core.utils.rankings import (
@@ -57,6 +61,7 @@ from core.utils.rankings import (
     update_noty,
     update_soty,
     update_toty,
+    update_school_coty,
 )
 from core.utils.team import get_or_create_team_for_debaters
 
@@ -482,8 +487,6 @@ def update_rankings(
     teams_to_update = list(set(filter(None, teams_to_update)))
     speakers_to_update = list(set(filter(None, speakers_to_update)))
     novices_to_update = list(set(filter(None, novices_to_update)))
-    if not (teams_to_update or speakers_to_update or novices_to_update):
-        return
 
     for team in teams_to_update:
         if team.team_results.exists():
@@ -740,7 +743,9 @@ class TournamentDataEntryView(PermissionRequiredMixin, View):
             tournament, api_state=None, use_api=use_api_results, data=request.POST
         )
 
-        if not self.forms_valid(formsets, use_api_results):
+        autoqual_form = TournamentAutoQualForm(request.POST, tournament=tournament)
+        results_valid = self.forms_valid(formsets, use_api_results)
+        if not autoqual_form.is_valid() or not results_valid:
             self.log_formset_errors(formsets, request, use_api_results)
             context = self.build_context(
                 tournament,
@@ -759,6 +764,7 @@ class TournamentDataEntryView(PermissionRequiredMixin, View):
                 formsets,
                 use_api_results,
                 import_counts_from_api=self.should_import_counts_from_api(),
+                autoqual_form=autoqual_form,
             )
         except MittabBundleImportError as exc:
             return HttpResponseBadRequest(f"No results were saved: {exc}")
@@ -903,6 +909,10 @@ class TournamentDataEntryView(PermissionRequiredMixin, View):
 
         return {
             "tournament": tournament,
+            "autoqual_form": TournamentAutoQualForm(
+                self.request.POST if self.request.method == "POST" else None,
+                tournament=tournament,
+            ),
             "formsets": formsets,
             "debater_form": DebaterForm(include_temporary_schools=has_api_data),
             "school_form": SchoolForm(),
@@ -977,6 +987,7 @@ class TournamentDataEntryView(PermissionRequiredMixin, View):
         formsets: Dict[str, object],
         use_api: bool,
         import_counts_from_api: bool = False,
+        autoqual_form=None,
     ) -> None:
         with transaction.atomic(), preserve_profile_result_visibility(tournament):
             resolution = ImportResolution(
@@ -1000,6 +1011,20 @@ class TournamentDataEntryView(PermissionRequiredMixin, View):
             TeamResult.objects.filter(tournament=tournament).delete()
             SpeakerResult.objects.filter(tournament=tournament).delete()
             QUAL.objects.filter(tournament=tournament).delete()
+            affected_autoqual_debaters = set(
+                recipient.debater for recipient in tournament.autoqual_recipients.select_related("debater__school")
+            )
+            if autoqual_form is not None:
+                recipients = autoqual_form.cleaned_data["autoqual_debaters"]
+                tournament.autoqual_recipients.exclude(debater__in=recipients).delete()
+                for debater in recipients:
+                    TournamentAutoQual.objects.get_or_create(tournament=tournament, debater=debater)
+            affected_autoqual_debaters.update(
+                recipient.debater for recipient in tournament.autoqual_recipients.select_related("debater__school")
+            )
+            for debater in affected_autoqual_debaters:
+                sync_manual_autoquals(debater, tournament.season)
+            affected_autoqual_school_ids = {debater.school_id for debater in affected_autoqual_debaters}
 
             for config in self.result_formsets:
                 formset = formsets[config.key]
@@ -1057,6 +1082,10 @@ class TournamentDataEntryView(PermissionRequiredMixin, View):
                 resolution.speakers_to_update,
                 resolution.novices_to_update,
             )
+            if tournament.season != settings.CURRENT_SEASON and affected_autoqual_school_ids:
+                for school in School.objects.filter(pk__in=affected_autoqual_school_ids):
+                    update_school_coty(school, tournament.season)
+                redo_rankings(COTY.objects.filter(season=tournament.season), season=tournament.season, cache_type="coty")
             reindex_debaters(
                 resolution.teams_to_update,
                 resolution.speakers_to_update,

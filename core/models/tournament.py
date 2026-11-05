@@ -108,6 +108,9 @@ class Tournament(models.Model):
     ONLINE_PROAMS_POINTS = 13
     ONLINE_GM_POINTS = 14
     BIPOC = 15
+    USUDC = 16
+
+    BP_AUTOQUAL_TYPES = frozenset({BRANDEIS, YALE, NORTHAMS, WORLDS, NAUDC, USUDC})
 
     QUAL_TYPES = (
         (POINTS, "Regular (Points)"),
@@ -117,6 +120,7 @@ class Tournament(models.Model):
         (EXPANSION, "Expansion"),
         (WORLDS, "Worlds"),
         (NAUDC, "NAUDC"),
+        (USUDC, "USUDC"),
         (PROAMS, "ProAms"),
         (NATIONALS, "Nationals"),
         (NOVICE, "Novice"),
@@ -182,6 +186,14 @@ class Tournament(models.Model):
             "qual": False,
             "autoqual_bar": 8,
             "suffix": " NAUDC",
+        },
+        USUDC: {
+            "toty": False,
+            "soty": False,
+            "noty": False,
+            "qual": False,
+            "autoqual_bar": 0,
+            "suffix": " USUDC",
         },
         PROAMS: {
             "toty": False,

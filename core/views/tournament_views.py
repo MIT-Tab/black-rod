@@ -29,6 +29,7 @@ from core.models.debater import Debater
 from core.models.round import Round
 from core.models.team import Team
 from core.models.tournament import Tournament
+from core.models.tournament_autoqual import TournamentAutoQual
 from core.models.results.team import TeamResult
 from core.models.results.speaker import SpeakerResult
 from core.utils.generics import (
@@ -367,6 +368,7 @@ class TournamentListView(CustomListView):
                 points=points,
                 has_team_results=Exists(TeamResult.objects.filter(tournament=OuterRef("pk"))),
                 has_speaker_results=Exists(SpeakerResult.objects.filter(tournament=OuterRef("pk"))),
+                has_autoquals=Exists(TournamentAutoQual.objects.filter(tournament=OuterRef("pk"))),
                 winner_first_name=Subquery(
                     varsity_winners.values("team__debaters__first_name")[:1]
                 ),
@@ -380,7 +382,7 @@ class TournamentListView(CustomListView):
                     top_speakers.values("debater__last_name")[:1]
                 ),
             )
-            .filter(Q(has_team_results=True) | Q(has_speaker_results=True))
+            .filter(Q(has_team_results=True) | Q(has_speaker_results=True) | Q(has_autoquals=True))
             .prefetch_related(
                 Prefetch(
                     "team_results",

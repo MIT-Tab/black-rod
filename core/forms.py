@@ -313,6 +313,32 @@ class TournamentForm(forms.ModelForm):
         )
 
 
+class TournamentAutoQualForm(forms.Form):
+    autoqual_debaters = forms.ModelMultipleChoiceField(
+        label="Individual autoqual recipients",
+        queryset=Debater.objects.all(),
+        required=False,
+        widget=autocomplete.ModelSelect2Multiple(url="core:debater_autocomplete"),
+        help_text="Select every debater receiving an autoqual. No team or placement is recorded. The tournament type determines the autoqual type.",
+    )
+
+    def __init__(self, *args, tournament, **kwargs):
+        self.tournament = tournament
+        kwargs.setdefault("initial", {
+            "autoqual_debaters": tournament.autoqual_recipients.values_list("debater_id", flat=True)
+        })
+        super().__init__(*args, **kwargs)
+
+    def clean_autoqual_debaters(self):
+        debaters = self.cleaned_data["autoqual_debaters"]
+        if debaters and (
+            self.tournament.qual_type == QUAL.POINTS
+            or self.tournament.qual_type not in dict(QUAL.QUAL_TYPES)
+        ):
+            raise forms.ValidationError("Choose an autoqual tournament type before entering recipients.")
+        return debaters
+
+
 class TournamentCreateForm(TournamentForm):
     pass
 

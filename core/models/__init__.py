@@ -21,6 +21,7 @@ from .standings.soty import SOTY
 from .standings.toty import TOTY, TOTYReaff
 from .team import Team
 from .tournament import Tournament
+from .tournament_autoqual import TournamentAutoQual
 from .user import User
 from .video import Video
 from .motion import Motion, MotionUserStatus
@@ -47,6 +48,7 @@ __all__ = [
     "SchoolAdmin",
     "Team",
     "Tournament",
+    "TournamentAutoQual",
     "ImportBatch",
     "TournamentImport",
     "ImportedRoundMetadata",

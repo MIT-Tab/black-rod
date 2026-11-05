@@ -171,7 +171,10 @@ const buildCotyRecentContent = (markers) => {
       };
       grouped.set(key, current);
     }
-    if (marker.marker_type === "qual_bonus") {
+    if (
+      marker.marker_type === "qual_bonus" ||
+      marker.marker_type === "autoqual"
+    ) {
       current.qualBonus += Number(marker.points || 0);
       const label = marker.qualification && marker.qualification.label;
       if (label && label !== "Points") {
@@ -240,7 +243,10 @@ const buildCotyDebaterBreakdown = (markers, highlightDate) => {
       current.rawPoints += Number(marker.raw_points ?? marker.points ?? 0);
     }
     current.contribution += Number(marker.points || 0);
-    if (marker.marker_type === "qual_bonus") {
+    if (
+      marker.marker_type === "qual_bonus" ||
+      marker.marker_type === "autoqual"
+    ) {
       current.qualled = true;
     }
     current.markers.push(marker);

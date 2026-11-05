@@ -11,10 +11,11 @@ from django.db.models import Prefetch, Q
 
 from core.models import COTY, NOTY, SOTY, TOTY, Debater, QualPoints, QUAL, School, Tournament
 from core.utils.points import novice_points_for_size, speaker_points_for_size, team_points_for_size
+from core.utils.qualifications import qual_awards_coty_bonus
 
 
 LOGGER = logging.getLogger(__name__)
-CACHE_KEY = "live-standings:v2"
+CACHE_KEY = "live-standings:v3"
 CACHE_SECONDS = 300
 # Served while one request rebuilds, so a cache miss never fans out per visitor.
 STALE_SECONDS = 60 * 60 * 24
@@ -292,6 +293,8 @@ def _coty_debater(coty, debater):
         "base_points": 0.0,
         "points": 0.0,
         "base_qualled": False,
+        "base_bonus_eligible": False,
+        "bonus_eligible": False,
         "qualled": False,
         "quals": [],
     }
@@ -309,8 +312,7 @@ def _apply_coty(context, team_debaters, place, qual_points):
         if not debater["school_key"] or not debater["school_eligible"]:
             continue
         entry = _coty_debater(context["coty"], debater)
-        # Qual points only count from qualifying tournaments, but auto-quals
-        # (Brandeis, Yale, NorthAms, ...) award the six COTY points regardless.
+        # Qualification and COTY bonus eligibility are separate from 2026–27.
         if flags["qual"] and qual_points > 0:
             entry["points"] += qual_points
             used = True
@@ -319,9 +321,12 @@ def _apply_coty(context, team_debaters, place, qual_points):
             if label not in [qual["label"] for qual in entry["quals"]]:
                 entry["quals"].append({"label": label, "live": True})
             entry["qualled"] = True
+            if qual_awards_coty_bonus(context["type_code"], context["season"]):
+                entry["bonus_eligible"] = True
             used = True
-        elif flags["qual"] and entry["points"] >= float(settings.QUAL_BAR):
+        if flags["qual"] and entry["points"] >= float(settings.QUAL_BAR):
             entry["qualled"] = True
+            entry["bonus_eligible"] = True
     return used
 
 
@@ -343,7 +348,7 @@ def _apply_live_payload(boards, payload, season, coty, people):
     if _already_imported(tournament, season, type_code, host_id):
         return False
     flags = _type_flags(type_code, season)
-    context = {"boards": boards, "coty": coty, "flags": flags, "type_code": type_code}
+    context = {"boards": boards, "coty": coty, "flags": flags, "type_code": type_code, "season": season}
     source_url = str(payload.get("source_url") or "").rstrip("/")
     used = False
 
@@ -501,6 +506,8 @@ def _base_coty(season):
         if entry is None:
             continue
         entry["base_qualled"] = entry["qualled"] = True
+        if qual_awards_coty_bonus(qual.qual_type, season):
+            entry["base_bonus_eligible"] = entry["bonus_eligible"] = True
         if qual.qual_type > 0:
             entry["quals"].append({"label": qual.get_qual_type_display(), "live": False})
     return coty
@@ -518,11 +525,11 @@ def _finalize_coty(coty):
         for entry in school["debaters"]:
             if entry["points"] <= 0 and not entry["qualled"]:
                 continue
-            entry["contribution"] = _contribution(entry["points"], entry["qualled"])
+            entry["contribution"] = _contribution(entry["points"], entry["bonus_eligible"])
             entry["points_live"] = entry["points"] != entry["base_points"]
             entry["qualled_live"] = entry["qualled"] and not entry["base_qualled"]
             entry["contribution_live"] = entry["contribution"] != _contribution(
-                entry["base_points"], entry["base_qualled"]
+                entry["base_points"], entry["base_bonus_eligible"]
             )
             debaters.append(entry)
         debaters.sort(key=lambda entry: (-entry["points"], entry["name"].lower()))
