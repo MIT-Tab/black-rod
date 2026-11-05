@@ -18,6 +18,15 @@
     {% endif %}
 {% endblock extra_buttons %}
 {% block detail_view %}
+    {% if object.autoqual_recipients.exists %}
+        <h4>Individual Autoqual Recipients</h4>
+        <ul>
+            {% for recipient in object.autoqual_recipients.all %}
+                <li><a href="{{ recipient.debater.get_absolute_url }}">{{ recipient.debater.name }}</a></li>
+            {% endfor %}
+        </ul>
+    {% endif %}
+
     <table class="table table-bordered">
         <thead>
             <th>Field</th>

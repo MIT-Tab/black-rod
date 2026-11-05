@@ -188,13 +188,14 @@ def test_live_markers_sort_with_reviewed_markers_by_points():
 
 @pytest.mark.django_db
 @override_settings(CURRENT_SEASON="2026")
-def test_auto_qual_tournaments_award_coty_without_points():
+def test_historical_bp_autoquals_award_coty_without_placement_points():
     cache.clear()
-    school, first, second = _reviewed_team()
+    school, first, second = _reviewed_team(season="2025")
     payload = _live_team(_payload(), first, second, school, place=3)
+    payload["tournament"]["season"] = "2025"
     payload["tournament"]["tournament_type"] = Tournament.BRANDEIS
     with patch("core.live_results.fetch_live_sources", return_value=[payload]):
-        boards = build_live_standings()["boards"]
+        boards = build_live_standings(season="2025")["boards"]
 
     coty = boards["coty"][0]
     assert coty["key"] == f"school:{school.id}"
@@ -234,7 +235,7 @@ def test_existing_qualification_is_not_counted_twice():
 def test_live_coty_matches_reviewed_breakdown_without_live_results():
     cache.clear()
     school, first, second = _reviewed_team()
-    COTY.objects.create(season="2026", school=school, points=26)
+    COTY.objects.create(season="2026", school=school, points=20)
     QualPoints.objects.create(season="2026", debater=first, points=14)
     QUAL.objects.create(season="2026", debater=first, qual_type=QUAL.POINTS)
     QUAL.objects.create(season="2026", debater=second, qual_type=QUAL.YALE)
@@ -242,14 +243,14 @@ def test_live_coty_matches_reviewed_breakdown_without_live_results():
         coty = build_live_standings()["boards"]["coty"]
 
     assert len(coty) == 1
-    assert coty[0]["points"] == 26
+    assert coty[0]["points"] == 20
     assert coty[0]["has_live"] is False
     assert [
         (debater["name"], debater["points"], debater["contribution"], debater["quals"])
         for debater in coty[0]["debaters"]
     ] == [
         (first.name, 14.0, 20.0, []),
-        (second.name, 0.0, 6.0, [{"label": "Yale IV", "live": False}]),
+        (second.name, 0.0, 0.0, [{"label": "Yale IV", "live": False}]),
     ]
 
 

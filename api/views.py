@@ -41,6 +41,8 @@ from core.models.tournament import Tournament
 from core.models.video import Video
 from core.utils.perms import has_perm
 from core.utils.rankings import get_qualled_debaters, place_as_round
+from core.utils.qualifications import coty_bonus_quals, qual_awards_coty_bonus
+from core.models.tournament_autoqual import TournamentAutoQual
 from core.utils.rounds import get_record, get_tab_card_data
 from core.utils.result_visibility import DebaterProfileResults, team_profile_results
 from core.utils.schools import get_debaters_for_season
@@ -632,7 +634,14 @@ def _tournament_special_notes(tournament):
         else True
     )
 
-    if tournament.qual_type == Tournament.EXPANSION or "bp" in name:
+    if tournament.qual_type in Tournament.BP_AUTOQUAL_TYPES:
+        bonus_note = (
+            "six COTY bonus points per qualified debater."
+            if qual_awards_coty_bonus(tournament.qual_type, tournament.season)
+            else "no COTY bonus; qualifying by points or a non-BP autoqual still earns the six-point bonus."
+        )
+        notes.append("BP autoquals award individual qualification and " + bonus_note)
+    elif tournament.qual_type == Tournament.EXPANSION or "bp" in name:
         notes.append(
             "British Parliamentary weekends award autoqual slots, but no TOTY/SOTY/COTY points."
         )
@@ -944,11 +953,11 @@ def _coty_replay_marker(
     marker = {
         "points": round(float(points), 4),
         "marker_type": marker_type,
-        "place": result.place,
-        "ghost_points": result.ghost_points,
+        "place": getattr(result, "place", None),
+        "ghost_points": getattr(result, "ghost_points", False),
         "earned_on": tournament.date.isoformat() if tournament.date else None,
         "tournament": _lite_tournament(tournament, request),
-        "result_id": result.id,
+        "result_id": result.id if isinstance(result, TeamResult) else None,
         "debater": _lite_debater(debater, request),
     }
     if raw_points is not None:
@@ -993,12 +1002,17 @@ def _collect_coty_replay_standings(season, request):
     schools = {}
     qual_bar = float(settings.QUAL_BAR)
 
-    for result in results:
-        tournament = result.tournament
-        if not tournament:
-            continue
+    recipients = TournamentAutoQual.objects.filter(
+        tournament__season=season,
+        debater__school__included_in_oty=True,
+        tournament__qual_type__in=[kind for kind, _ in QUAL.QUAL_TYPES if kind != QUAL.POINTS],
+    ).select_related("tournament", "debater__school")
+    events = [(result, False) for result in results] + [(recipient, True) for recipient in recipients]
+    events.sort(key=lambda event: (event[0].tournament.date, event[0].tournament_id, event[1], event[0].id))
 
-        debaters = getattr(result.team, "coty_replay_debaters", [])
+    for result, manual_autoqual in events:
+        tournament = result.tournament
+        debaters = [result.debater] if manual_autoqual else getattr(result.team, "coty_replay_debaters", [])
         for debater in debaters:
             school = debater.school
             if not school:
@@ -1012,10 +1026,11 @@ def _collect_coty_replay_standings(season, request):
                     "raw_points": 0.0,
                     "capped_points": 0.0,
                     "qualled": False,
+                    "bonus_awarded": False,
                 },
             )
 
-            raw_points = tournament.get_qual_points(
+            raw_points = 0 if manual_autoqual else tournament.get_qual_points(
                 result.place, ghost_points=result.ghost_points
             )
             if raw_points > 0:
@@ -1035,23 +1050,32 @@ def _collect_coty_replay_standings(season, request):
                         )
                     )
 
-            autoqual = (
+            autoqual = manual_autoqual or (
                 tournament.qual_type != Tournament.NATIONALS
-                and result.place != -1
+                and result.place > 0
                 and tournament.autoqual_bar > 0
                 and result.place <= tournament.autoqual_bar
             )
             points_qual = state["raw_points"] >= qual_bar
 
-            if not state["qualled"] and (autoqual or points_qual):
+            bonus_eligible = points_qual or (
+                autoqual and qual_awards_coty_bonus(tournament.qual_type, season)
+            )
+            newly_qualified = not state["qualled"] and (autoqual or points_qual)
+            new_bonus = not state["bonus_awarded"] and bonus_eligible
+            if newly_qualified or new_bonus:
                 state["qualled"] = True
+                state["bonus_awarded"] = state["bonus_awarded"] or new_bonus
                 qualification_type = (
-                    tournament.qual_type if autoqual else Tournament.POINTS
+                    tournament.qual_type
+                    if autoqual and (not new_bonus or qual_awards_coty_bonus(tournament.qual_type, season))
+                    else Tournament.POINTS
                 )
+                # A BP qualification remains visible on its date with a zero-point marker.
                 school_markers[school.id].append(
                     _coty_replay_marker(
-                        marker_type="qual_bonus",
-                        points=6,
+                        marker_type="qual_bonus" if new_bonus else "autoqual",
+                        points=6 if new_bonus else 0,
                         result=result,
                         debater=debater,
                         request=request,
@@ -1347,8 +1371,7 @@ def _qual_display(debater, season):
 
 
 def _qual_contribution(points, qualled):
-    contribution = points + (6 if qualled else 0)
-    return min(66, contribution)
+    return min(60, points) + (6 if qualled else 0)
 
 
 def _coty_breakdown_for_school(school, season, request):
@@ -1360,7 +1383,10 @@ def _coty_breakdown_for_school(school, season, request):
                 "debater": serialize_debater(debater, request),
                 "points": qual_point.points,
                 "qualled": qual_point.qualled,
-                "contribution": _qual_contribution(qual_point.points, qual_point.qualled),
+                "contribution": _qual_contribution(
+                    qual_point.points,
+                    coty_bonus_quals(debater.quals.filter(season=season), season).exists(),
+                ),
                 "auto_quals": _qual_display(debater, season),
             }
         )

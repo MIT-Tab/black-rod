@@ -21,6 +21,7 @@ class QUAL(AbstractStanding):
     NORTHAMS = 3
     EXPANSION = 4
     WORLDS = 5
+    USUDC = Tournament.USUDC
     NAUDC = 6
     PROAMS = 7
     NATIONALS = 8
@@ -36,6 +37,7 @@ class QUAL(AbstractStanding):
         (EXPANSION, "Expansion"),
         (WORLDS, "Worlds"),
         (NAUDC, "NAUDC"),
+        (USUDC, "USUDC"),
         (PROAMS, "ProAms"),
         (NATIONALS, "Nationals"),
         (NOVICE, "Novice"),

@@ -22,9 +22,12 @@ from core.models import (
     TeamResult,
     TOTY,
     TOTYReaff,
+    TournamentAutoQual,
     Video,
     School,
 )
+
+from core.utils.qualifications import coty_bonus_quals, sync_manual_autoquals
 
 
 class MergeError(Exception):
@@ -184,6 +187,7 @@ def merge_debaters(primary, secondary):
     )
     seasons.update(primary.qual_points.values_list("season", flat=True))
     seasons.update(secondary.qual_points.values_list("season", flat=True))
+    seasons.update(TournamentAutoQual.objects.filter(debater__in=[primary, secondary]).values_list("tournament__season", flat=True))
     seasons.update(primary.quals.values_list("season", flat=True))
     seasons.update(secondary.quals.values_list("season", flat=True))
     seasons.update(primary.soty.values_list("season", flat=True))
@@ -202,6 +206,8 @@ def merge_debaters(primary, secondary):
 
         _merge_qual_points(primary, secondary)
         _merge_qualifications(primary, secondary)
+        for recipient in secondary.tournament_autoquals.all():
+            TournamentAutoQual.objects.get_or_create(tournament=recipient.tournament, debater=primary)
         _merge_standings(primary, secondary)
 
         _merge_videos(primary, secondary)
@@ -723,6 +729,7 @@ def _recompute_qual_points_and_quals(debater, season):
         if not _is_online_season(season):
             _sync_points_qual(debater=debater, season=season, qualified=False)
         return
+    sync_manual_autoquals(debater, season)
     if not all_results.exists():
         return
     scoring_results = all_results.filter(counts_for_points=True)
@@ -781,7 +788,7 @@ def _recompute_coty(school, season):
     )
     points = sum(min(60, qual_points.points) for qual_points in relevant_qual_points)
     qualled_debaters = (
-        QUAL.objects.filter(season=season, debater__school=school)
+        coty_bonus_quals(QUAL.objects.filter(season=season, debater__school=school), season)
         .values("debater")
         .distinct()
         .count()

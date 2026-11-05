@@ -5,6 +5,7 @@ from django.db.models import Exists, OuterRef, Q
 
 from core.live_results import invalidate_live_standings
 from core.models.debater import Debater, QualPoints, Reaff
+from core.models.school import School
 from core.models.results.team import TeamResult
 from core.models.standings.coty import COTY
 from core.models.standings.noty import NOTY
@@ -14,6 +15,8 @@ from core.models.standings.soty import SOTY
 from core.models.standings.toty import TOTY, TOTYReaff
 from core.models.team import Team
 from core.models.tournament import Tournament
+from core.utils.qualifications import coty_bonus_quals, qual_awards_coty_bonus, sync_manual_autoquals
+from core.models.tournament_autoqual import TournamentAutoQual
 
 
 def _school_included_in_oty(debater):
@@ -151,6 +154,7 @@ def update_soty(debater, season=settings.CURRENT_SEASON):
             ]
         )
         and debater.speaker_results.count() == 0
+        and not debater.tournament_autoquals.exists()
     ):
         debater.delete()
         return
@@ -235,6 +239,7 @@ def update_noty(debater, season=settings.CURRENT_SEASON):
             ]
         )
         and debater.speaker_results.count() == 0
+        and not debater.tournament_autoquals.exists()
     ):
         debater.delete()
         return
@@ -297,98 +302,7 @@ def update_qual_points(team, season=settings.CURRENT_SEASON, delete_empty_team=T
         return
 
     for debater in team.debaters.all():
-        all_results = (
-            TeamResult.objects.select_related("tournament").filter(tournament__season=season)
-            .filter(type_of_place=Debater.VARSITY)
-            .filter(team__debaters=debater)
-        )
-        scoring_results = all_results.filter(counts_for_points=True)
-
-        if not _school_included_in_oty(debater):
-            if season == settings.CURRENT_SEASON:
-                QUAL.objects.filter(season=season, debater__school=debater.school).delete()
-                QualPoints.objects.filter(
-                    season=season, debater__school=debater.school
-                ).delete()
-                COTY.objects.filter(season=season, school=debater.school).delete()
-            continue
-
-        if season == settings.CURRENT_SEASON:
-            QUAL.objects.filter(season=season, debater=debater).delete()
-
-        qual = None
-        if all_results.exists():
-            latest_season = debater.latest_season
-            target_season = int(season_token)
-            latest_season_token = (
-                str(latest_season).split("-", maxsplit=1)[0] if latest_season is not None else None
-            )
-            if latest_season_token is None or int(latest_season_token) < target_season:
-                debater.latest_season = season_token
-                debater.save()
-
-        for result in scoring_results:
-            if (
-                result.tournament.qual_type != Tournament.NATIONALS
-                and result.place != -1
-                and result.place <= result.tournament.autoqual_bar
-            ):
-                qual, created = QUAL.objects.get_or_create(
-                    season=season,
-                    debater=debater,
-                    qual_type=result.tournament.qual_type,
-                    defaults={"tournament": result.tournament},
-                )
-                if not created and result.tournament and not qual.tournament:
-                    qual.tournament = result.tournament
-                    qual.save(update_fields=["tournament"])
-
-        results = scoring_results.filter(tournament__qual=True)
-
-        markers = [
-            (
-                result.tournament.get_qual_points(
-                    result.place, ghost_points=result.ghost_points
-                ),
-                result,
-            )
-            for result in results
-        ]
-
-        markers.sort(key=lambda marker: marker[0], reverse=True)
-
-        points = sum([marker[0] for marker in markers])
-
-        qual_points = (
-            QualPoints.objects.filter(season=season).filter(debater=debater).first()
-        )
-
-        if points <= 0:
-            if qual_points and not qual and season == settings.CURRENT_SEASON:
-                qual_points.delete()
-            continue
-
-        if not qual_points:
-            qual_points = QualPoints.objects.create(season=season, debater=debater)
-
-        qual_points.points = points
-        qual_points.save()
-
-        if is_online_season:
-            continue
-
-        if points >= settings.QUAL_BAR:
-            qual = (
-                QUAL.objects.filter(debater=debater)
-                .filter(qual_type=QUAL.POINTS)
-                .filter(season=season)
-                .first()
-            )
-
-            if not qual:
-                QUAL.objects.create(
-                    debater=debater, season=season, qual_type=QUAL.POINTS
-                )
+        update_debater_qual_points(debater, season)
 
     if is_online_season:
         for debater in team.debaters.all():
@@ -397,35 +311,119 @@ def update_qual_points(team, season=settings.CURRENT_SEASON, delete_empty_team=T
                 COTY.objects.filter(season=season, school=school).delete()
         return
 
-    for debater in team.debaters.all():
-        if not _school_included_in_oty(debater):
-            continue
+    for school in {debater.school for debater in team.debaters.all() if debater.school_id}:
+        update_school_coty(school, season)
 
-        coty = COTY.objects.filter(season=season).filter(school=debater.school).first()
 
-        if not coty:
-            coty = COTY.objects.create(season=season, school=debater.school)
+def update_debater_qual_points(debater, season=settings.CURRENT_SEASON):
+    season = str(season)
+    season_token = season.split("-", maxsplit=1)[0]
+    is_online_season = season_token in {str(value).split("-", maxsplit=1)[0] for value in settings.ONLINE_SEASONS}
+    all_results = (
+        TeamResult.objects.select_related("tournament").filter(tournament__season=season)
+        .filter(type_of_place=Debater.VARSITY)
+        .filter(team__debaters=debater)
+    )
+    scoring_results = all_results.filter(counts_for_points=True)
 
-        relevant_qual_points = (
-            QualPoints.objects.filter(season=season)
-            .filter(debater__school=debater.school)
-            .all()
+    if not _school_included_in_oty(debater):
+        if season == settings.CURRENT_SEASON:
+            QUAL.objects.filter(season=season, debater__school=debater.school).delete()
+            QualPoints.objects.filter(
+                season=season, debater__school=debater.school
+            ).delete()
+            COTY.objects.filter(season=season, school=debater.school).delete()
+        return
+
+    if season == settings.CURRENT_SEASON:
+        QUAL.objects.filter(season=season, debater=debater).delete()
+
+    sync_manual_autoquals(debater, season)
+    if all_results.exists() or debater.tournament_autoquals.filter(tournament__season=season).exists():
+        latest_season = debater.latest_season
+        target_season = int(season_token)
+        latest_season_token = (
+            str(latest_season).split("-", maxsplit=1)[0] if latest_season is not None else None
+        )
+        if latest_season_token is None or int(latest_season_token) < target_season:
+            debater.latest_season = season_token
+            debater.save()
+
+    for result in scoring_results:
+        if (
+            result.tournament.qual_type != Tournament.NATIONALS
+            and result.place > 0
+            and result.place <= result.tournament.autoqual_bar
+        ):
+            qual, created = QUAL.objects.get_or_create(
+                season=season,
+                debater=debater,
+                qual_type=result.tournament.qual_type,
+                defaults={"tournament": result.tournament},
+            )
+            if not created and result.tournament and not qual.tournament:
+                qual.tournament = result.tournament
+                qual.save(update_fields=["tournament"])
+
+    results = scoring_results.filter(tournament__qual=True)
+
+    markers = [
+        (
+            result.tournament.get_qual_points(
+                result.place, ghost_points=result.ghost_points
+            ),
+            result,
+        )
+        for result in results
+    ]
+
+    markers.sort(key=lambda marker: marker[0], reverse=True)
+
+    points = sum([marker[0] for marker in markers])
+
+    qual_points = (
+        QualPoints.objects.filter(season=season).filter(debater=debater).first()
+    )
+
+    if points <= 0:
+        if qual_points and season == settings.CURRENT_SEASON:
+            qual_points.delete()
+        return
+
+    if not qual_points:
+        qual_points = QualPoints.objects.create(season=season, debater=debater)
+
+    qual_points.points = points
+    qual_points.save()
+
+    if is_online_season:
+        return
+
+    if points >= settings.QUAL_BAR:
+        qual = (
+            QUAL.objects.filter(debater=debater)
+            .filter(qual_type=QUAL.POINTS)
+            .filter(season=season)
+            .first()
         )
 
-        relevant_qual_points = sum([min(60, q.points) for q in relevant_qual_points])
+        if not qual:
+            QUAL.objects.create(
+                debater=debater, season=season, qual_type=QUAL.POINTS
+            )
 
-        qualled_debaters = [
-            q.debater
-            for q in QUAL.objects.filter(season=season)
-            .filter(debater__school=debater.school)
-            .all()
-        ]
-        qualled_debaters = len(list(set(qualled_debaters)))
 
-        relevant_qual_points += qualled_debaters * 6
-
-        coty.points = relevant_qual_points
-        coty.save()
+def update_school_coty(school, season=settings.CURRENT_SEASON):
+    if not school.included_in_oty or str(season) in {str(value) for value in settings.ONLINE_SEASONS}:
+        COTY.objects.filter(season=season, school=school).delete()
+        return
+    points = sum(
+        min(60, q.points)
+        for q in QualPoints.objects.filter(season=season, debater__school=school)
+    )
+    quals = coty_bonus_quals(QUAL.objects.filter(season=season, debater__school=school), season)
+    points += quals.values("debater_id").distinct().count() * 6
+    COTY.objects.update_or_create(season=season, school=school, defaults={"points": points})
 
 
 def redo_rankings(rankings, season=settings.CURRENT_SEASON, cache_type="toty"):
@@ -443,6 +441,8 @@ def redo_rankings(rankings, season=settings.CURRENT_SEASON, cache_type="toty"):
     if rows:
         rankings.model.objects.bulk_update(rows, ["place", "tied"], batch_size=500)
     cache.delete(make_template_fragment_key(cache_type, [season]))
+    if cache_type == "coty":
+        cache.delete(f"api:standings_replay:{season}")
     invalidate_live_standings(season)
 
 
@@ -480,6 +480,22 @@ def rebuild_coty_related_rankings(season=settings.CURRENT_SEASON):
     for team in teams:
         update_qual_points(team, season=season, delete_empty_team=False)
         update_online_quals(team, season=season, delete_empty_team=False)
+
+    # Include people with no team, and clear school totals after recipients are removed.
+    standalone = Debater.objects.filter(
+        Q(tournament_autoquals__tournament__season=season)
+        | Q(quals__season=season)
+        | Q(qual_points__season=season)
+    ).exclude(teams__team_results__tournament__season=season).distinct()
+    for debater in standalone:
+        update_debater_qual_points(debater, season)
+    schools = School.objects.filter(
+        Q(coty__season=season)
+        | Q(debaters__quals__season=season)
+        | Q(debaters__qual_points__season=season)
+    ).distinct()
+    for school in schools:
+        update_school_coty(school, season)
 
     redo_rankings(
         COTY.objects.filter(season=season),
@@ -616,6 +632,15 @@ def rebuild_import_qualifications(season=settings.CURRENT_SEASON):
             people[debater.pk] = debater
             if result.counts_for_points:
                 results_by_debater[debater.pk].append(result)
+    manual_autoquals = defaultdict(dict)
+    for recipient in TournamentAutoQual.objects.filter(
+        tournament__season=season,
+    ).select_related("tournament", "debater__school"):
+        kind = recipient.tournament.qual_type
+        if kind not in dict(QUAL.QUAL_TYPES) or kind == QUAL.POINTS:
+            continue
+        people[recipient.debater_id] = recipient.debater
+        manual_autoquals[recipient.debater_id].setdefault(kind, recipient.tournament_id)
     # Standalone qualifications entered without scoring records are not derived
     # season state. Keep them while replacing computed qualifications.
     standalone = list(QUAL.objects.filter(season=season).exclude(
@@ -633,7 +658,7 @@ def rebuild_import_qualifications(season=settings.CURRENT_SEASON):
         if not _school_included_in_oty(debater):
             continue
         scoring = results_by_debater[debater_id]
-        autoquals = {}
+        autoquals = dict(manual_autoquals[debater_id])
         for result in scoring:
             tournament = result.tournament
             if (tournament.qual_type != Tournament.NATIONALS
@@ -657,12 +682,15 @@ def rebuild_import_qualifications(season=settings.CURRENT_SEASON):
         quals.extend(QUAL(season=season, debater_id=debater_id, qual_type=kind,
                           tournament_id=tournament_id) for kind, tournament_id in autoquals.items())
         if not online:
-            school_totals[debater.school_id] += min(60, points) + (6 if autoquals else 0)
+            bonus = any(qual_awards_coty_bonus(kind, season) for kind in autoquals)
+            school_totals[debater.school_id] += min(60, points) + (6 if bonus else 0)
     standalone_people = set()
     for qual in standalone:
         qual.pk = None
         quals.append(qual)
-        if not online and qual.debater_id not in standalone_people and _school_included_in_oty(qual.debater):
+        if (not online and qual.debater_id not in standalone_people
+                and _school_included_in_oty(qual.debater)
+                and qual_awards_coty_bonus(qual.qual_type, season)):
             school_totals[qual.debater.school_id] += 6
             standalone_people.add(qual.debater_id)
     with transaction.atomic():
