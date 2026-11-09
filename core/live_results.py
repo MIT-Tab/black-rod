@@ -15,7 +15,7 @@ from core.utils.qualifications import qual_awards_coty_bonus
 
 
 LOGGER = logging.getLogger(__name__)
-CACHE_KEY = "live-standings:v3"
+CACHE_KEY = "live-standings:v4"
 CACHE_SECONDS = 300
 # Served while one request rebuilds, so a cache miss never fans out per visitor.
 STALE_SECONDS = 60 * 60 * 24
@@ -268,12 +268,19 @@ def _already_imported(tournament, season, type_code, host_id):
     except ValueError:
         return False
     window = timedelta(days=IMPORT_MATCH_DAYS)
+    # The reviewed type can correct a misconfigured Nu-Tab tournament. On the
+    # same date, host and season identify the event independently of its type.
+    # Keep the type check for nearby dates so a different event the following
+    # week does not hide this one's live results.
     return Tournament.objects.filter(
         season=season,
-        qual_type=type_code,
         host_id=host_id,
         date__range=(held_on - window, held_on + window),
-    ).filter(Q(team_results__isnull=False) | Q(speaker_results__isnull=False)).exists()
+    ).filter(
+        Q(date=held_on) | Q(qual_type=type_code)
+    ).filter(
+        Q(team_results__isnull=False) | Q(speaker_results__isnull=False)
+    ).exists()
 
 
 def _coty_debater(coty, debater):

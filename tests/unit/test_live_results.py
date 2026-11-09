@@ -11,6 +11,8 @@ from core import live_results
 from core.live_results import CACHE_KEY, build_live_standings
 from core.utils.rankings import redo_rankings
 from core.models import COTY, QUAL, TOTY, Debater, QualPoints, School, Team, Tournament
+from core.models.results.speaker import SpeakerResult
+from core.models.results.team import TeamResult
 
 
 def _payload(name="MIT Fall", sanctioned=True, place=3):
@@ -110,7 +112,9 @@ def test_live_markers_use_host_school_name_with_fallbacks(host, name, expected):
 
 @pytest.mark.django_db
 @override_settings(CURRENT_SEASON="2026")
-def test_already_imported_tournament_is_not_counted_twice():
+@pytest.mark.parametrize("corrected_type", [Tournament.POINTS, Tournament.PROAMS])
+@pytest.mark.parametrize("result_kind", ["team", "speaker"])
+def test_already_imported_tournament_is_not_counted_twice(corrected_type, result_kind):
     cache.clear()
     host = School.objects.create(id=1, name="MIT", short_name="MIT")
     tournament = Tournament.objects.create(
@@ -123,14 +127,64 @@ def test_already_imported_tournament_is_not_counted_twice():
         num_debaters=64,
         num_novice_debaters=8,
     )
-    from core.models import SpeakerResult
-    debater = Debater.objects.create(first_name="Reviewed", last_name="Speaker", school=host)
-    SpeakerResult.objects.create(tournament=tournament, debater=debater, place=1, type_of_place=Debater.VARSITY)
+    if result_kind == "team":
+        TeamResult.objects.create(
+            tournament=tournament, team=Team.objects.create(name="MIT AB"), place=1,
+        )
+    else:
+        SpeakerResult.objects.create(
+            tournament=tournament,
+            debater=Debater.objects.create(first_name="Ada", last_name="A", school=host),
+            place=1,
+        )
+    # Correct the type after entering results, as with Northeastern ProAms.
+    tournament.qual_type = corrected_type
+    tournament.save()
     with patch("core.live_results.fetch_live_sources", return_value=[_payload()]):
         result = build_live_standings()
 
     assert result["active_sources"] == []
     assert result["boards"]["toty"] == []
+    assert all(not row["has_live"] for row in result["boards"]["coty"])
+    assert BANNER not in Client().get("/").content
+
+
+@pytest.mark.django_db
+@override_settings(CURRENT_SEASON="2026")
+def test_scheduled_tournament_without_results_does_not_hide_live_results():
+    cache.clear()
+    host = School.objects.create(id=1, name="MIT", short_name="MIT")
+    Tournament.objects.create(host=host, season="2026", date=date(2026, 10, 19))
+
+    with patch("core.live_results.fetch_live_sources", return_value=[_payload()]):
+        result = build_live_standings()
+
+    assert result["active_sources"] == ["MIT Fall"]
+    assert result["boards"]["toty"][0]["has_live"] is True
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "saved_date,saved_type,imported",
+    [
+        (date(2026, 10, 18), Tournament.POINTS, True),
+        (date(2026, 10, 18), Tournament.PROAMS, False),
+        (date(2026, 10, 26), Tournament.PROAMS, False),
+        (date(2026, 10, 27), Tournament.POINTS, False),
+    ],
+)
+def test_import_matching_preserves_type_and_date_bounds_for_nearby_events(
+    saved_date, saved_type, imported,
+):
+    host = School.objects.create(id=1, name="MIT", short_name="MIT")
+    tournament = Tournament.objects.create(
+        host=host, season="2026", date=saved_date, qual_type=saved_type,
+    )
+    TeamResult.objects.create(
+        tournament=tournament, team=Team.objects.create(name="MIT AB"), place=1,
+    )
+
+    assert live_results._already_imported(_payload()["tournament"], "2026", 0, host.id) is imported
 
 
 def _reviewed_team(season="2026"):
