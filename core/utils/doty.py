@@ -23,14 +23,35 @@ class DOTYStanding:
     markers: list = field(default_factory=list)
     place: int = 0
     tied: bool = False
+    marker_limit: int = 6
 
     @property
     def points(self):
-        return sum(marker.points for marker in self.markers[:6])
+        return sum(marker.points for marker in self.markers[:self.marker_limit])
 
     @property
     def counting_markers(self):
-        return self.markers[:6] + [None] * max(0, 6 - len(self.markers))
+        return self.markers[:self.marker_limit] + [None] * max(0, self.marker_limit - len(self.markers))
+
+
+def _marker_sort_key(marker):
+    return (-marker.points, marker.tournament.date, marker.tournament.pk)
+
+
+def _rank_standings(standings):
+    standings.sort(key=lambda row: (-row.points, row.debater.name, row.debater.pk))
+    totals = defaultdict(int)
+    for row in standings:
+        totals[row.points] += 1
+    place = 0
+    previous_points = None
+    for index, row in enumerate(standings, start=1):
+        if row.points != previous_points:
+            place = index
+        row.place = place
+        row.tied = totals[row.points] > 1
+        previous_points = row.points
+    return standings
 
 
 def get_doty_standings(season):
@@ -94,20 +115,34 @@ def get_doty_standings(season):
     for debater_id, tournament_markers in markers.items():
         positive_markers = sorted(
             (marker for marker in tournament_markers.values() if marker.points > 0),
-            key=lambda marker: (-marker.points, marker.tournament.date, marker.tournament.pk),
+            key=_marker_sort_key,
         )
         if positive_markers:
             standings.append(DOTYStanding(debaters[debater_id], positive_markers))
-    standings.sort(key=lambda row: (-row.points, row.debater.name, row.debater.pk))
-    totals = defaultdict(int)
-    for row in standings:
-        totals[row.points] += 1
-    place = 0
-    previous_points = None
-    for index, row in enumerate(standings, start=1):
-        if row.points != previous_points:
-            place = index
-        row.place = place
-        row.tied = totals[row.points] > 1
-        previous_points = row.points
-    return standings
+    return _rank_standings(standings)
+
+
+def get_doty_variants(season):
+    """Compute all three proposals from the same read-only season results.
+
+    Split every tournament's components before selecting the best nine or twelve
+    markers, including components from tournaments outside the original top six.
+    Speaking and qual markers compete for the same slots without per-type caps.
+    """
+    combined = get_doty_standings(season)
+    separate = []
+    for row in combined:
+        markers = []
+        for marker in row.markers:
+            if marker.soty_points > 0:
+                markers.append(DOTYMarker(marker.tournament, soty_points=marker.soty_points))
+            if marker.qual_points > 0:
+                markers.append(DOTYMarker(marker.tournament, qual_points=marker.qual_points))
+        separate.append((row.debater, sorted(markers, key=_marker_sort_key)))
+    variants = {"combined": combined}
+    for limit in (9, 12):
+        variants[f"separate_{limit}"] = _rank_standings([
+            DOTYStanding(debater, markers, marker_limit=limit)
+            for debater, markers in separate
+        ])
+    return variants

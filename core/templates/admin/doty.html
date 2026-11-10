@@ -13,8 +13,10 @@
             </div>
             <p class="text-muted">Admin-only hypothetical standings. This preview does not save or change official rankings.</p>
             <p>
-                Each tournament marker adds SOTY points and qual points. The best six combined markers count toward DOTY.
-                For example, top speaking and winning a 20-point tournament earns 40 points.
+                Compare three DOTY proposals for the same season. The original counts the best six combined tournament markers.
+                The alternatives count the best nine or twelve separate SOTY or qual markers, in any mix.
+                Top speaking and winning a 20-point tournament earns one 40-point marker in the original,
+                or two separate 20-point markers in either alternative.
                 Existing varsity eligibility, speaker ties, ghost points, tournament scoring flags, and reaffirmations apply.
                 Either component can contribute on its own; autoquals do not add points.
             </p>
@@ -27,54 +29,17 @@
                 </select>
                 <button type="submit" class="btn btn-primary">View standings</button>
             </form>
-            <h2 class="h5">{{ season_display }} Full leaderboard</h2>
-            <p>{{ standings|length }} debater{{ standings|length|pluralize }}</p>
-            <div class="table-responsive">
-                <table class="table table-striped table-sm">
-                    <caption>DOTY standings for {{ season_display }}. Marker breakdowns show SOTY + qual points.</caption>
-                    <thead>
-                        <tr>
-                            <th scope="col">Place</th>
-                            <th scope="col">Debater</th>
-                            <th scope="col">School</th>
-                            <th scope="col">Points</th>
-                            <th scope="col">1</th>
-                            <th scope="col">2</th>
-                            <th scope="col">3</th>
-                            <th scope="col">4</th>
-                            <th scope="col">5</th>
-                            <th scope="col">6</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for row in standings %}
-                            <tr>
-                                <td>{% if row.tied %}T-{% endif %}{{ row.place }}</td>
-                                <th scope="row" class="font-weight-normal">
-                                    <a href="{{ row.debater.get_absolute_url }}">{{ row.debater.name }}</a>
-                                </th>
-                                <td><a href="{{ row.debater.school.get_absolute_url }}">{{ row.debater.school.name }}</a></td>
-                                <td class="font-weight-bold">{{ row.points|floatformat:-2 }}</td>
-                                {% for marker in row.counting_markers %}
-                                    <td>
-                                        {% if marker %}
-                                            <strong>{{ marker.points|floatformat:-2 }}</strong>
-                                            <a class="d-block" href="{{ marker.tournament.get_absolute_url }}">{{ marker.tournament }}</a>
-                                            <small class="text-muted text-nowrap">{{ marker.soty_points|floatformat:-2 }} + {{ marker.qual_points|floatformat:-2 }}</small>
-                                        {% else %}
-                                            —
-                                        {% endif %}
-                                    </td>
-                                {% endfor %}
-                            </tr>
-                        {% empty %}
-                            <tr>
-                                <td colspan="10">No eligible DOTY results are available for this season.</td>
-                            </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
+            <h2 class="h5">{{ season_display }} Full leaderboards</h2>
+            <nav aria-label="DOTY proposals" class="mb-4 d-flex flex-wrap">
+                {% for leaderboard in leaderboards %}
+                    <a href="#{{ leaderboard.id }}" class="btn btn-sm btn-outline-primary mr-2 mb-2">{{ leaderboard.title }}</a>
+                {% endfor %}
+            </nav>
+            {% for leaderboard in leaderboards %}
+                <section id="{{ leaderboard.id }}" class="mb-5">
+                    {% include "admin/includes/doty_leaderboard.html" %}
+                </section>
+            {% endfor %}
         </div>
     </div>
 {% endblock content %}
