@@ -1,0 +1,50 @@
+<h3 class="h5">{{ leaderboard.title }}</h3>
+<p>{{ leaderboard.description }}</p>
+<p>{{ leaderboard.standings|length }} debater{{ leaderboard.standings|length|pluralize }}</p>
+<div class="table-responsive">
+    <table class="table table-striped table-sm">
+        <caption>{{ leaderboard.title }} for {{ season_display }}. {% if leaderboard.separate %}Each marker is labeled SOTY or Qual.{% else %}Marker breakdowns show SOTY + qual points.{% endif %}</caption>
+        <thead>
+            <tr>
+                <th scope="col">Place</th>
+                <th scope="col">Debater</th>
+                <th scope="col">School</th>
+                <th scope="col">Points</th>
+                {% for slot in leaderboard.slots %}
+                    <th scope="col">{{ slot }}</th>
+                {% endfor %}
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in leaderboard.standings %}
+                <tr>
+                    <td>{% if row.tied %}T-{% endif %}{{ row.place }}</td>
+                    <th scope="row" class="font-weight-normal">
+                        <a href="{{ row.debater.get_absolute_url }}">{{ row.debater.name }}</a>
+                    </th>
+                    <td><a href="{{ row.debater.school.get_absolute_url }}">{{ row.debater.school.name }}</a></td>
+                    <td class="font-weight-bold">{{ row.points|floatformat:-2 }}</td>
+                    {% for marker in row.counting_markers %}
+                        <td>
+                            {% if marker %}
+                                <strong>{{ marker.points|floatformat:-2 }}</strong>
+                                <a class="d-block" href="{{ marker.tournament.get_absolute_url }}">{{ marker.tournament }}</a>
+                                {% if leaderboard.separate %}
+                                    <small class="text-muted">{% if marker.soty_points %}SOTY{% else %}Qual{% endif %}</small>
+                                {% else %}
+                                    <small class="text-muted text-nowrap">{{ marker.soty_points|floatformat:-2 }} + {{ marker.qual_points|floatformat:-2 }}</small>
+                                {% endif %}
+                            {% else %}
+                                —
+                            {% endif %}
+                        </td>
+                    {% endfor %}
+                </tr>
+            {% empty %}
+                <tr>
+                    <td colspan="{{ leaderboard.colspan }}">No eligible DOTY results are available for this season.</td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>

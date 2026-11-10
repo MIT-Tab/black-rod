@@ -7,7 +7,7 @@ from django.views.decorators.cache import never_cache
 from django.views.generic import TemplateView
 
 from core.models import Tournament
-from core.utils.doty import get_doty_standings
+from core.utils.doty import get_doty_variants
 
 
 @method_decorator(never_cache, name="dispatch")
@@ -32,5 +32,25 @@ class DOTYPreviewView(UserPassesTestMixin, TemplateView):
         ]
         context["season"] = season
         context["season_display"] = Tournament(season=season).get_season_display() if season else ""
-        context["standings"] = get_doty_standings(season) if season else []
+        variants = get_doty_variants(season) if season else {}
+        context["standings"] = variants.get("combined", [])
+        context["leaderboards"] = [
+            {
+                "id": key,
+                "title": title,
+                "description": description,
+                "separate": key != "combined",
+                "standings": variants.get(key, []),
+                "slots": range(1, limit + 1),
+                "colspan": limit + 4,
+            }
+            for key, title, description, limit in (
+                ("combined", "Original: 6 combined markers",
+                 "The best six tournament totals, each adding SOTY + qual points.", 6),
+                ("separate_9", "Alternative: 9 separate markers",
+                 "The best nine individual SOTY or qual markers across all tournaments.", 9),
+                ("separate_12", "Alternative: 12 separate markers",
+                 "The best twelve individual SOTY or qual markers across all tournaments.", 12),
+            )
+        ]
         return context

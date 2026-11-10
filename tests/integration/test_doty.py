@@ -8,7 +8,7 @@ from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 
 from core.models import Debater, Reaff, School, SpeakerResult, Team, TeamResult, Tournament
-from core.utils.doty import get_doty_standings
+from core.utils.doty import get_doty_standings, get_doty_variants
 
 
 class DOTYTests(TestCase):
@@ -60,6 +60,81 @@ class DOTYTests(TestCase):
         self.assertEqual(rows[0].markers[0].soty_points, 20)
         self.assertEqual(rows[0].markers[0].qual_points, 20)
 
+    def test_alternatives_award_two_markers_for_top_speaking_and_winning(self):
+        tournament = self.tournament()
+        self.speaker(tournament)
+        self.team_result(tournament)
+        variants = get_doty_variants("2024")
+        self.assertEqual(len(variants["combined"][0].markers), 1)
+        for limit in (9, 12):
+            with self.subTest(limit=limit):
+                row = variants[f"separate_{limit}"][0]
+                self.assertEqual(row.points, 40)
+                self.assertEqual(len(row.counting_markers), limit)
+                self.assertEqual([(m.soty_points, m.qual_points) for m in row.markers],
+                                 [(20, 0), (0, 20)])
+                self.assertEqual([m.tournament for m in row.markers], [tournament, tournament])
+
+    def test_alternatives_cap_the_shared_pool_at_nine_or_twelve(self):
+        for _ in range(7):
+            tournament = self.tournament()
+            self.speaker(tournament)
+            self.team_result(tournament)
+        variants = get_doty_variants("2024")
+        self.assertEqual(variants["combined"][0].points, 240)
+        self.assertEqual(variants["separate_9"][0].points, 180)
+        self.assertEqual(variants["separate_12"][0].points, 240)
+        for limit in (9, 12):
+            row = variants[f"separate_{limit}"][0]
+            self.assertEqual(len(row.markers), 14)
+            self.assertEqual(len(row.counting_markers), limit)
+
+    def test_alternatives_include_tournaments_outside_original_best_six(self):
+        for _ in range(6):
+            tournament = self.tournament()
+            self.speaker(tournament)
+            self.team_result(tournament, place=9)  # 20 SOTY + 1.5 qual.
+        qual_only = self.tournament()
+        self.team_result(qual_only)
+        variants = get_doty_variants("2024")
+        self.assertEqual(variants["combined"][0].points, 129)
+        self.assertNotIn(qual_only, [m.tournament for m in variants["combined"][0].counting_markers])
+        self.assertEqual(variants["separate_9"][0].points, 143)
+        self.assertEqual(variants["separate_12"][0].points, 147.5)
+        for limit in (9, 12):
+            row = variants[f"separate_{limit}"][0]
+            self.assertIn(qual_only, [m.tournament for m in row.counting_markers])
+
+    def test_each_version_ranks_independently_and_allows_one_marker_type(self):
+        specialist = Debater.objects.create(first_name="Specialist", school=self.school)
+        for _ in range(12):
+            self.speaker(self.tournament(), debater=specialist)
+        for _ in range(4):
+            tournament = self.tournament()
+            self.speaker(tournament)
+            self.team_result(tournament)
+        variants = get_doty_variants("2024")
+        self.assertEqual(variants["combined"][0].debater, self.debater)
+        self.assertEqual(variants["combined"][0].points, 160)
+        for limit in (9, 12):
+            row = variants[f"separate_{limit}"][0]
+            self.assertEqual(row.debater, specialist)
+            self.assertEqual(row.points, limit * 20)
+            self.assertTrue(all(m.qual_points == 0 for m in row.markers))
+
+    def test_alternative_ties_are_computed_for_each_budget(self):
+        for _ in range(9):
+            self.speaker(self.tournament())
+        for _ in range(10):
+            self.speaker(self.tournament(), debater=self.partner)
+        third = Debater.objects.create(first_name="Casey", school=self.school)
+        self.speaker(self.tournament(), debater=third, place=2)
+        variants = get_doty_variants("2024")
+        self.assertEqual([(row.place, row.tied) for row in variants["separate_9"]],
+                         [(1, True), (1, True), (3, False)])
+        self.assertEqual([(row.debater, row.place, row.tied) for row in variants["separate_12"]],
+                         [(self.partner, 1, False), (self.debater, 2, False), (third, 3, False)])
+
     def test_best_six_are_selected_after_combining_components(self):
         for _ in range(6):
             self.speaker(self.tournament())
@@ -87,6 +162,10 @@ class DOTYTests(TestCase):
         row = get_doty_standings("2024")[0]
         self.assertEqual(row.points, 69)  # (20 + 9) + 20 + 20
         self.assertEqual(len(row.markers), 3)
+        for key in ("separate_9", "separate_12"):
+            row = get_doty_variants("2024")[key][0]
+            self.assertEqual(row.points, 69)
+            self.assertEqual(len(row.markers), 4)
 
     def test_school_eligibility_zero_markers_and_speaker_only_results(self):
         tournament = self.tournament()
@@ -101,6 +180,8 @@ class DOTYTests(TestCase):
         rows = get_doty_standings("2024")
         self.assertEqual({row.debater for row in rows}, {self.debater, self.partner})
         self.assertEqual(len(rows[0].markers), 1)
+        for rows in get_doty_variants("2024").values():
+            self.assertEqual({row.debater for row in rows}, {self.debater, self.partner})
 
     def test_reaffirmation_moves_both_components_to_new_profile_for_that_season(self):
         new = Debater.objects.create(first_name="Alex new", school=self.school)
@@ -119,6 +200,9 @@ class DOTYTests(TestCase):
         self.assertEqual(rows[0].points, 60)
         self.assertNotIn(self.debater, [row.debater for row in rows])
         self.assertEqual(get_doty_standings("2023")[0].debater, self.debater)
+        for rows in get_doty_variants("2024").values():
+            self.assertEqual(rows[0].debater, new)
+            self.assertEqual(rows[0].points, 60)
 
     def test_competition_ranks_skip_places_after_a_tie(self):
         self.team_result(self.tournament())
@@ -139,6 +223,15 @@ class DOTYTests(TestCase):
             response = self.client.get(reverse("core:doty"), {"season": "2024"})
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.context["standings"]), 14)
+        self.assertEqual([len(board["standings"]) for board in response.context["leaderboards"]],
+                         [14, 14, 14])
+        self.assertEqual([len(board["slots"]) for board in response.context["leaderboards"]],
+                         [6, 9, 12])
+        self.assertContains(response, "Original: 6 combined markers")
+        self.assertContains(response, "Alternative: 9 separate markers")
+        self.assertContains(response, "Alternative: 12 separate markers")
+        self.assertContains(response, "<small class=\"text-muted\">SOTY</small>", html=True)
+        self.assertContains(response, "<small class=\"text-muted\">Qual</small>", html=True)
         self.assertContains(response, "2024-25")
         self.assertContains(response, "40")
         self.assertContains(response, "20 + 20")
@@ -149,7 +242,7 @@ class DOTYTests(TestCase):
             self.assertTrue(query["sql"].lstrip().upper().startswith("SELECT"), query["sql"])
         self.assertContains(self.client.get(reverse("core:admin_tools")), reverse("core:doty"))
 
-    @patch("core.views.doty_views.get_doty_standings")
+    @patch("core.views.doty_views.get_doty_variants")
     def test_anonymous_regular_and_staff_users_cannot_compute_preview(self, calculate):
         self.assertEqual(self.client.get(reverse("core:doty")).status_code, 302)
         for staff in (False, True):
@@ -182,3 +275,5 @@ class DOTYTests(TestCase):
         self.team_result(self.tournament())
         with self.assertNumQueries(5):
             get_doty_standings("2024")
+        with self.assertNumQueries(5):
+            get_doty_variants("2024")
