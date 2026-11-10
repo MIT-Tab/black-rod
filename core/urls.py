@@ -1,6 +1,7 @@
 from django.urls import path
 
 from core.views import (
+    doty_views,
     admin_audit_views,
     admin_views,
     speaks_statistics_views,
@@ -33,6 +34,7 @@ from core.views import (
 app_name = "core"
 
 urlpatterns = [
+    path("DOTY", doty_views.DOTYPreviewView.as_view(), name="doty"),
     path(".well-known/ai-plugin.json", plugin_views.ai_plugin_manifest, name="ai_plugin_manifest"),
     path(".well-known/openapi.json", plugin_views.PluginSchemaView.as_view(), name="openapi_schema"),
     path("", views.index, name="index"),
