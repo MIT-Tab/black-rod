@@ -1,3 +1,4 @@
+- When the user's opening request in a chat asks for a feature or bug fix, treat it as authorization to push the task branch and open a pull request after verification. Honor any explicit request to keep the work local.
 - For every implementation task in this repository, read and follow [.agents/skills/black-rod-task/SKILL.md](.agents/skills/black-rod-task/SKILL.md) before changing files. Use this versioned skill even if an older user-level copy is installed.
 - Work in a dedicated sibling worktree from fresh `origin/master`; preserve the starting checkout's uncommitted work. Continue in an existing dedicated task worktree rather than creating nested worktrees.
 - Use `venv/bin/python` and the repo's `requirements.txt`/`constraints.txt`. Use the skill's `br`/`br-test` helpers for isolated development and test databases. Do not copy production databases or modify the starting checkout's SQLite files.
