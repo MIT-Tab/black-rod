@@ -80,6 +80,7 @@ INSTALLED_APPS = [
 ]
 
 CRISPY_TEMPLATE_PACK = "bootstrap4"
+TAGGIT_STRIP_UNICODE_WHEN_SLUGIFYING = True
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
@@ -87,6 +88,7 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "allauth.account.middleware.AccountMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
@@ -267,8 +269,8 @@ SOCIALACCOUNT_STORE_TOKENS = True
 # Basic allauth settings required for imports (test/dev only)
 if os.environ.get("ENV") != "production":
     ACCOUNT_EMAIL_VERIFICATION = "none"
-    ACCOUNT_EMAIL_REQUIRED = False
-    ACCOUNT_AUTHENTICATION_METHOD = "username"
+    ACCOUNT_LOGIN_METHODS = {"username"}
+    ACCOUNT_SIGNUP_FIELDS = ["username*", "email", "password1*", "password2*"]
 
 SOCIALACCOUNT_ADAPTER = 'apdaonline.adapter.APDAOnlineAdapter'
 SOCIALACCOUNT_PROVIDERS = {

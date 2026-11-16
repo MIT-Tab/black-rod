@@ -5,11 +5,9 @@ from allauth.socialaccount.providers.oauth2.views import (
     OAuth2LoginView,
 )
 
-from .provider import APDAOnlineProvider
-
 
 class APDAOnlineOAuth2Adapter(OAuth2Adapter):
-    provider_id = APDAOnlineProvider.id
+    provider_id = "apdaonline"
 
     access_token_url = "https://apda.online/oauth/token"
     authorize_url = "https://apda.online/oauth/authorize"

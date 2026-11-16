@@ -208,9 +208,10 @@ def test_merge_debaters_reassigns_related_records():
         debater=secondary,
     )
 
+    secondary_id = secondary.pk
     result_meta = merge_debaters(primary, secondary)
 
-    assert Debater.objects.filter(pk=secondary.pk).exists() is False
+    assert Debater.objects.filter(pk=secondary_id).exists() is False
     team.refresh_from_db()
     assert primary in team.debaters.all()
     assert secondary not in team.debaters.all()
@@ -228,10 +229,10 @@ def test_merge_debaters_reassigns_related_records():
     assert video.pm == primary
 
     assert QualPoints.objects.filter(debater=primary, season=settings.CURRENT_SEASON).exists()
-    assert QUAL.objects.filter(debater=secondary).count() == 0
-    assert SOTY.objects.filter(debater=secondary).count() == 0
-    assert NOTY.objects.filter(debater=secondary).count() == 0
-    assert OnlineQUAL.objects.filter(debater=secondary).count() == 0
+    assert QUAL.objects.filter(debater_id=secondary_id).count() == 0
+    assert SOTY.objects.filter(debater_id=secondary_id).count() == 0
+    assert NOTY.objects.filter(debater_id=secondary_id).count() == 0
+    assert OnlineQUAL.objects.filter(debater_id=secondary_id).count() == 0
     assert Reaff.objects.filter(new_debater=primary).exists()
     primary.refresh_from_db()
     assert primary.elo_manual_opt == Debater.EloManualOpt.OPT_OUT
