@@ -19,6 +19,8 @@ from core.models.tournament import Tournament
 
 class StandingsReplayAPITests(TestCase):
     def setUp(self):
+        cache.clear()
+        self.addCleanup(cache.clear)
         self.season = settings.CURRENT_SEASON
         self.school = School.objects.create(name="Replay University", included_in_oty=True)
         self.debaters = [
@@ -159,6 +161,31 @@ class StandingsReplayAPITests(TestCase):
                 self.tournament_two.date.isoformat(),
             },
         )
+
+    def test_replay_and_snapshot_exclude_results_that_do_not_count_for_points(self):
+        TeamResult.objects.filter(tournament=self.tournament_one).update(counts_for_points=False)
+        SpeakerResult.objects.filter(tournament=self.tournament_one).update(counts_for_points=False)
+
+        replay_url = reverse("api:season_standings_replay")
+        snapshot_url = reverse("api:standings_through_date")
+        date_two = self.tournament_two.date.isoformat()
+        replay = self.client.get(replay_url, {"season": self.season})
+        snapshot = self.client.get(snapshot_url, {"season": self.season, "through": date_two})
+
+        self.assertEqual(replay.status_code, 200)
+        self.assertEqual(snapshot.status_code, 200)
+        for board, expected_points in {
+            "toty": self.tournament_two.get_toty_points(2),
+            "soty": self.tournament_two.get_soty_points(5),
+        }.items():
+            with self.subTest(board=board):
+                replay_row, = replay.json()["standings"][board]
+                self.assertEqual(
+                    [marker["earned_on"] for marker in replay_row["all_markers"]],
+                    [date_two],
+                )
+                snapshot_row, = snapshot.json()["standings"][board]
+                self.assertAlmostEqual(snapshot_row["points"], expected_points, places=2)
 
     def test_standings_snapshot_through_date_limits_markers(self):
         """The partial standings endpoint should only count markers earned on/before the target date."""

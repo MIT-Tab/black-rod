@@ -795,7 +795,7 @@ def _serialize_team_results_for_replay(results, season, request, source_team_id,
     serialized = []
     for result in results:
         tournament = result.tournament
-        if not tournament:
+        if not result.counts_for_points or not tournament:
             continue
         points = tournament.get_toty_points(
             result.place, ghost_points=result.ghost_points
@@ -865,7 +865,7 @@ def _serialize_speaker_results_for_replay(results, season, request, source_debat
     serialized = []
     for result in results:
         tournament = result.tournament
-        if not tournament:
+        if not result.counts_for_points or not tournament:
             continue
         place_adjustment = result.place - (1 if result.tie else 0)
         points = tournament.get_soty_points(place_adjustment)
