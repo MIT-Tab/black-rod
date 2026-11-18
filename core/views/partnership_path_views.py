@@ -1,12 +1,17 @@
+from uuid import uuid4
+
 from dal import autocomplete
 from django import forms
+from django.contrib import messages
 from django.core.cache import cache
+from django.core.exceptions import PermissionDenied
 from django.db.models import Case, Value, When
 from django.db.models.functions import Concat, Lower, Trim
 from django.http import HttpResponse
+from django.shortcuts import redirect
 from django.template.loader import render_to_string
 from django.views.decorators.cache import never_cache
-from django.views.decorators.http import require_safe
+from django.views.decorators.http import require_POST, require_safe
 from django.views.generic import TemplateView
 
 from core.models import Debater
@@ -15,7 +20,7 @@ from core.utils.partnership_stats import calculate_partnership_stats
 
 STATS_CACHE_KEY = "public-partnership-stats:v2"
 STATS_CACHE_TIMEOUT = 24 * 60 * 60
-STATS_LOCK_KEY = f"{STATS_CACHE_KEY}:lock"
+STATS_GENERATION_KEY = f"{STATS_CACHE_KEY}:generation"
 
 
 class PartnershipDebaterAutocomplete(autocomplete.Select2QuerySetView):
@@ -84,22 +89,42 @@ class PartnershipStatsView(TemplateView):
     template_name = "debaters/partnership_stats.html"
 
 
+def _stats_cache_key():
+    generation = cache.get_or_set(STATS_GENERATION_KEY, uuid4, timeout=None)
+    return f"{STATS_CACHE_KEY}:{generation.hex}"
+
+
 @never_cache
 @require_safe
 def partnership_stats_results(_request):
-    html = cache.get(STATS_CACHE_KEY)
+    cache_key = _stats_cache_key()
+    lock_key = f"{cache_key}:lock"
+    html = cache.get(cache_key)
     if html is not None:
         return HttpResponse(html)
-    if not cache.add(STATS_LOCK_KEY, True, timeout=120):
+    if not cache.add(lock_key, True, timeout=120):
         return HttpResponse(status=202)
 
     try:
-        html = cache.get(STATS_CACHE_KEY)
+        html = cache.get(cache_key)
         if html is None:
             html = render_to_string(
                 "debaters/_partnership_stats_results.html", calculate_partnership_stats()
             )
-            cache.set(STATS_CACHE_KEY, html, timeout=STATS_CACHE_TIMEOUT)
+            cache.set(cache_key, html, timeout=STATS_CACHE_TIMEOUT)
         return HttpResponse(html)
     finally:
-        cache.delete(STATS_LOCK_KEY)
+        cache.delete(lock_key)
+
+
+@require_POST
+def clear_partnership_stats_cache(request):
+    if not request.user.is_superuser:
+        raise PermissionDenied
+
+    previous_key = _stats_cache_key()
+    # A refresh already in progress can only write to its previous generation.
+    cache.set(STATS_GENERATION_KEY, uuid4(), timeout=None)
+    cache.delete(previous_key)
+    messages.success(request, "Partnership statistics cache cleared.")
+    return redirect("core:partnership_stats")

@@ -132,6 +132,11 @@ urlpatterns = [
         name="partnership_stats",
     ),
     path(
+        "core/debaters/partnership-paths/stats/clear-cache/",
+        partnership_path_views.clear_partnership_stats_cache,
+        name="clear_partnership_stats_cache",
+    ),
+    path(
         "core/debaters/partnership-paths/stats/results/",
         partnership_path_views.partnership_stats_results,
         name="partnership_stats_results",

@@ -1,10 +1,17 @@
 from unittest.mock import patch
 
+import pytest
+from django.conf import settings
 from django.core.cache import cache
+from django.test import Client
 from django.urls import reverse
 
 from core.utils.partnership_stats import _distance_stats, _interconnection_stats
-from core.views.partnership_path_views import STATS_CACHE_KEY, STATS_CACHE_TIMEOUT, STATS_LOCK_KEY
+from core.views.partnership_path_views import (
+    STATS_CACHE_TIMEOUT,
+    STATS_GENERATION_KEY,
+    _stats_cache_key,
+)
 
 
 def _graph(edges):
@@ -38,7 +45,9 @@ def test_interconnection_counts_distinct_paths_without_revisiting_debaters():
 
 
 def test_stats_load_separately_and_cache_the_fragment(client):
-    cache.delete_many([STATS_CACHE_KEY, STATS_LOCK_KEY])
+    key = _stats_cache_key()
+    lock_key = f"{key}:lock"
+    cache.delete_many([key, lock_key])
     try:
         with patch(
             "core.views.partnership_path_views.calculate_partnership_stats", return_value={}
@@ -48,10 +57,10 @@ def test_stats_load_separately_and_cache_the_fragment(client):
             assert b"Loading partnership statistics" in page.content
             calculate.assert_not_called()
             url = reverse("core:partnership_stats_results")
-            cache.add(STATS_LOCK_KEY, True, timeout=120)
+            cache.add(lock_key, True, timeout=120)
             assert client.get(url).status_code == 202
             calculate.assert_not_called()
-            cache.delete(STATS_LOCK_KEY)
+            cache.delete(lock_key)
 
             with patch.object(cache, "set", wraps=cache.set) as store:
                 results = client.get(url)
@@ -60,7 +69,53 @@ def test_stats_load_separately_and_cache_the_fragment(client):
                 assert client.get(url).content == results.content
                 calculate.assert_called_once_with()
                 store.assert_called_once_with(
-                    STATS_CACHE_KEY, results.content.decode(), timeout=STATS_CACHE_TIMEOUT
+                    key, results.content.decode(), timeout=STATS_CACHE_TIMEOUT
                 )
     finally:
-        cache.delete_many([STATS_CACHE_KEY, STATS_LOCK_KEY])
+        cache.delete_many([key, lock_key, STATS_GENERATION_KEY])
+
+
+@pytest.mark.django_db
+def test_only_superuser_can_clear_stats_cache_with_csrf(client, django_user_model):
+    page_url = reverse("core:partnership_stats")
+    clear_url = reverse("core:clear_partnership_stats_cache")
+    results_url = reverse("core:partnership_stats_results")
+    old_key = _stats_cache_key()
+    cache.set(old_key, "Stale statistics")
+    cache.set("other-cache-key", "Keep this")
+    try:
+        assert clear_url.encode() not in client.get(page_url).content
+        assert client.post(clear_url).status_code == 403
+
+        staff = django_user_model.objects.create_user(username="staff", is_staff=True)
+        client.force_login(staff)
+        assert clear_url.encode() not in client.get(page_url).content
+        assert client.post(clear_url).status_code == 403
+        assert cache.get(old_key) == "Stale statistics"
+
+        admin = django_user_model.objects.create_superuser(username="admin")
+        admin_client = Client(enforce_csrf_checks=True)
+        admin_client.force_login(admin)
+        assert clear_url.encode() in admin_client.get(page_url).content
+        assert admin_client.get(clear_url).status_code == 405
+        assert admin_client.post(clear_url).status_code == 403
+        assert cache.get(old_key) == "Stale statistics"
+
+        token = admin_client.cookies[settings.CSRF_COOKIE_NAME].value
+        response = admin_client.post(clear_url, {"csrfmiddlewaretoken": token}, follow=True)
+        assert response.redirect_chain == [(page_url, 302)]
+        assert b"Partnership statistics cache cleared." in response.content
+        assert cache.get(old_key) is None
+        assert cache.get("other-cache-key") == "Keep this"
+
+        # An in-flight request may finish writing under the retired cache key.
+        cache.set(old_key, "Late stale statistics")
+        with patch(
+            "core.views.partnership_path_views.calculate_partnership_stats", return_value={}
+        ) as calculate:
+            results = client.get(results_url)
+            assert b"Furthest apart" in results.content
+            assert client.get(results_url).content == results.content
+            calculate.assert_called_once_with()
+    finally:
+        cache.delete_many([old_key, _stats_cache_key(), STATS_GENERATION_KEY, "other-cache-key"])
