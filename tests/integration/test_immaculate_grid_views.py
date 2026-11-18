@@ -9,6 +9,7 @@ from core.models import (
     ImmaculateGridPlay, School, SOTY, SpeakerResult, Team, TeamResult, Tournament, User,
 )
 from core.utils.immaculate_grid.catalog import load_catalog, person_key
+from core.utils.immaculate_grid.boards import daily_board
 from core.utils.merge import merge_debaters
 
 
@@ -70,16 +71,28 @@ class ImmaculateGridTests(TestCase):
         self.assertContains(response, "60 pts")
         self.assertContains(response, "Immaculate Grid (Beta)")
         self.assertContains(response, '<span class="immaculate-beta">Beta</span>', html=True)
-        assert response.context["remaining"] == 7
+        assert response.context["attempts"] == 2
+        assert response.context["score"] == 60
+        assert response.context["penalty"] == 0
         assert response.context["solved"] == 1
 
-    def test_daily_limit_is_per_account_and_old_board_forms_expire(self):
+    def test_daily_progress_is_per_account_and_old_board_forms_expire(self):
         self.client.force_login(self.player)
         for cell in range(9):
             self._guess(self.miss, cell, cell)
         self._guess(self.answer, 0, 8)
         assert len(self._progress()) == 9
-        self.assertContains(self.client.get(self.grid_url), "You solved 0 of 9 squares.")
+        response = self.client.get(self.grid_url)
+        assert not response.context["finished"]
+        self.assertContains(response, 'data-cell="0"')
+        self._guess(self.answer, 0, 9)
+        assert len(self._progress()) == 10
+        response = self.client.get(self.grid_url)
+        assert response.context["rarity"] == 60
+        assert response.context["penalty"] == 5
+        assert response.context["score"] == 55
+        self._guess(self.alias, 1, 10)
+        assert len(self._progress()) == 10
 
         self.clock.return_value = self.day + timedelta(days=1)
         self._guess(self.answer, 0, 0)
@@ -89,6 +102,69 @@ class ImmaculateGridTests(TestCase):
         self.client.force_login(self.other)
         self._guess(self.answer, 0, 0)
         assert ImmaculateGridPlay.objects.count() == 2
+
+    def test_old_nine_guess_games_resume_and_extra_misses_also_cost_five_points(self):
+        previous = [
+            {"cell": 0, "person": f"d{index}", "name": "Previous guess", "score": None}
+            for index in range(1000, 1009)
+        ]
+        ImmaculateGridPlay.objects.create(board=self.board, user=self.player, guesses=previous)
+        self.client.force_login(self.player)
+        self._guess(self.miss, 1, 9)
+        self._guess(self.answer, 0, 10)
+        response = self.client.get(self.grid_url)
+        assert len(self._progress()) == 11
+        assert response.context["score"] == 50
+        assert response.context["penalty"] == 10
+
+    def test_share_results_gives_square_scores_and_hides_guessed_names(self):
+        self.client.force_login(self.player)
+        self._guess(self.answer, 0, 0)
+        self._guess(self.miss, 1, 1)
+        response = self.client.get(self.grid_url)
+        share = response.context["share_results"]
+        assert "2026-11-18" in share
+        assert "🟩 60 | ⬜ — | ⬜ —\n⬜ — | ⬜ — | ⬜ —\n⬜ — | ⬜ — | ⬜ —" in share
+        assert "1/9 solved · 60 points" in share
+        assert "2 guesses · 0 penalty points" in share
+        assert self.answer.name not in share and self.miss.name not in share
+        self.assertContains(response, f'data-play-url="{self.grid_url}"')
+
+    def test_finished_grid_remains_shareable(self):
+        guesses = [
+            {"cell": cell, "person": f"d{1000 + cell}", "name": "Private answer", "score": cell + 1}
+            for cell in range(9)
+        ]
+        ImmaculateGridPlay.objects.create(board=self.board, user=self.player, guesses=guesses)
+        self.client.force_login(self.player)
+        response = self.client.get(self.grid_url)
+        assert response.context["finished"]
+        self.assertContains(response, "You solved every square!")
+        self.assertContains(response, "Copy results")
+        self.assertNotContains(response, 'id="immaculate-guess"')
+        assert "Private answer" not in response.context["share_results"]
+        self._guess(self.answer, 0, 9)
+        assert len(self._progress()) == 9
+
+    def test_search_matches_ben_koch_when_extending_a_partial_name(self):
+        ben = Debater.objects.create(first_name="Ben", last_name="Koch")
+        for index in range(13):
+            Debater.objects.create(first_name=f"Abel Ben {index}", last_name="Koch")
+        self.client.force_login(self.player)
+        for query in ("Ben Koc", "Ben Koch", "  Ben\u00a0Koch  "):
+            results = self.client.get(self.search_url, {"q": query}).json()["results"]
+            assert results[0]["id"] == ben.pk
+
+    def test_saved_board_refresh_skips_generation_and_loading_answer_maps(self):
+        with patch("core.utils.immaculate_grid.boards.load_catalog", side_effect=AssertionError), \
+                patch("core.utils.immaculate_grid.boards.build_board", side_effect=AssertionError):
+            with self.assertNumQueries(2):
+                first = daily_board(self.day)
+                second = daily_board(self.day)
+            assert first.pk == second.pk == self.board.pk
+            assert first.get_deferred_fields() == {"answers", "aliases"}
+            self.client.force_login(self.player)
+            assert self.client.get(self.grid_url).status_code == 200
 
     def test_hidden_debaters_remain_searchable_and_scorable(self):
         self.client.force_login(self.player)

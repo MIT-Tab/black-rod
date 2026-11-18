@@ -31,7 +31,6 @@
 
 .immaculate-date,
 .immaculate-heading p,
-.immaculate-rules,
 .immaculate-feedback {
   color: var(--grid-muted);
 }
@@ -138,15 +137,6 @@
   border-color: #badcc9;
   color: #174b36;
   background: #e7f4ec;
-}
-
-.immaculate-unsolved {
-  color: #65728a;
-  background: #f1f3f8;
-}
-
-.immaculate-rules summary {
-  cursor: pointer;
 }
 
 .immaculate-search-results {
