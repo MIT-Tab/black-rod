@@ -1,11 +1,21 @@
 from dal import autocomplete
 from django import forms
+from django.core.cache import cache
 from django.db.models import Case, Value, When
 from django.db.models.functions import Concat, Lower, Trim
+from django.http import HttpResponse
+from django.template.loader import render_to_string
+from django.views.decorators.cache import never_cache
+from django.views.decorators.http import require_safe
 from django.views.generic import TemplateView
 
 from core.models import Debater
 from core.utils.partnership_paths import find_partnership_paths
+from core.utils.partnership_stats import calculate_partnership_stats
+
+STATS_CACHE_KEY = "public-partnership-stats:v2"
+STATS_CACHE_TIMEOUT = 24 * 60 * 60
+STATS_LOCK_KEY = f"{STATS_CACHE_KEY}:lock"
 
 
 class PartnershipDebaterAutocomplete(autocomplete.Select2QuerySetView):
@@ -68,3 +78,28 @@ class PartnershipPathView(TemplateView):
                 form.cleaned_data["first_debater"], form.cleaned_data["second_debater"]
             )
         return context
+
+
+class PartnershipStatsView(TemplateView):
+    template_name = "debaters/partnership_stats.html"
+
+
+@never_cache
+@require_safe
+def partnership_stats_results(_request):
+    html = cache.get(STATS_CACHE_KEY)
+    if html is not None:
+        return HttpResponse(html)
+    if not cache.add(STATS_LOCK_KEY, True, timeout=120):
+        return HttpResponse(status=202)
+
+    try:
+        html = cache.get(STATS_CACHE_KEY)
+        if html is None:
+            html = render_to_string(
+                "debaters/_partnership_stats_results.html", calculate_partnership_stats()
+            )
+            cache.set(STATS_CACHE_KEY, html, timeout=STATS_CACHE_TIMEOUT)
+        return HttpResponse(html)
+    finally:
+        cache.delete(STATS_LOCK_KEY)

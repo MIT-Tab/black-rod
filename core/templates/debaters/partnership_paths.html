@@ -7,6 +7,7 @@
 {% block content %}
     <main class="container py-4">
         <h1>Debater Partnership Paths</h1>
+        {% include "debaters/_partnership_nav.html" %}
         <p>Find up to five paths ranked by fewest partnerships. Linked debater profiles count as one person.</p>
         <form method="get" class="card card-body mb-4">
             {{ form.media }}

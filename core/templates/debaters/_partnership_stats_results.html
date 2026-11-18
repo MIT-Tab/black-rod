@@ -1,0 +1,58 @@
+<section class="mb-4" aria-labelledby="furthest-debaters">
+    <h2 class="h4" id="furthest-debaters">Furthest apart</h2>
+    {% if furthest_pairs %}
+        <p>The longest shortest path spans <strong>{{ diameter }} partnership{{ diameter|pluralize }}</strong>.</p>
+        <ul class="list-group">
+            {% for first, second in furthest_pairs %}
+                <li class="list-group-item">
+                    <a href="{% url 'core:partnership_paths' %}?first_debater={{ first.pk }}&amp;second_debater={{ second.pk }}">
+                        {{ first.name }} and {{ second.name }}
+                    </a>
+                </li>
+            {% endfor %}
+        </ul>
+    {% else %}
+        <p>No connected debater pairs.</p>
+    {% endif %}
+</section>
+<section class="mb-4" aria-labelledby="reach-leaders">
+    <h2 class="h4" id="reach-leaders">Most debaters reached</h2>
+    <p>Top three by the number of distinct debaters whose shortest path is exactly the given number of jumps.</p>
+    {% include "debaters/_partnership_rankings.html" with rankings=reach_leaders only %}
+</section>
+<section class="mb-4" aria-labelledby="interconnection-leaders">
+    <h2 class="h4" id="interconnection-leaders">Most interconnected pairs</h2>
+    <p>Top five pairs by shared partners, three-hop paths, and four-hop paths. A path cannot revisit a debater.</p>
+    <div class="row">
+        {% for ranking in interconnection_leaders %}
+            <div class="col-md-6 col-lg-4 mb-3">
+                <div class="card h-100">
+                    <div class="card-header">
+                        <h3 class="h6 mb-0">
+                            {% if forloop.first %}
+                                Shared partners
+                            {% else %}
+                                {{ forloop.counter|add:"1" }}-hop paths
+                            {% endif %}
+                        </h3>
+                    </div>
+                    {% if ranking %}
+                        <ol class="list-group list-group-flush">
+                            {% for first, second, count in ranking %}
+                                <li class="list-group-item d-flex justify-content-between align-items-baseline">
+                                    <span>
+                                        <a href="{{ first.get_absolute_url }}">{{ first.name }}</a> and
+                                        <a href="{{ second.get_absolute_url }}">{{ second.name }}</a>
+                                    </span>
+                                    <span class="ml-3">{{ count }}</span>
+                                </li>
+                            {% endfor %}
+                        </ol>
+                    {% else %}
+                        <div class="card-body text-muted">No paths of this length.</div>
+                    {% endif %}
+                </div>
+            </div>
+        {% endfor %}
+    </div>
+</section>
