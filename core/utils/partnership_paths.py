@@ -1,6 +1,6 @@
 """Find short, loopless paths through the debater partnership graph."""
 
-from collections import defaultdict, deque
+from collections import deque
 from heapq import heappop, heappush
 from itertools import combinations, groupby
 from operator import itemgetter
@@ -62,17 +62,12 @@ def _shortest_paths(graph, start, end, limit):
     return paths
 
 
-def find_partnership_paths(start, end):
+def build_partnership_graph():
     public_debaters = Debater.objects.all()
     representatives, _ = build_representative_debater_maps(
         public_debaters.values_list("id", "alias_group_id")
     )
-    start_id = representatives[start.pk]
-    end_id = representatives[end.pk]
-    if start_id == end_id:
-        return [[start]]
-
-    neighbors = defaultdict(set)
+    neighbors = {vertex: set() for vertex in set(representatives.values())}
     redacted_teams = TeamResult.objects.filter(
         hidden_from_debaters__isnull=False,
     ).values("team_id")
@@ -88,9 +83,19 @@ def find_partnership_paths(start, end):
             neighbors[left].add(right)
             neighbors[right].add(left)
 
+    return representatives, neighbors
+
+
+def find_partnership_paths(start, end):
+    representatives, neighbors = build_partnership_graph()
+    start_id = representatives[start.pk]
+    end_id = representatives[end.pk]
+    if start_id == end_id:
+        return [[start]]
+
     graph = {vertex: sorted(adjacent) for vertex, adjacent in neighbors.items()}
     paths = _shortest_paths(graph, start_id, end_id, limit=5)
     intermediate_ids = {vertex for path in paths for vertex in path[1:-1]}
-    debaters = public_debaters.in_bulk(intermediate_ids)
+    debaters = Debater.objects.in_bulk(intermediate_ids)
     debaters.update({start_id: start, end_id: end})
     return [[debaters[vertex] for vertex in path] for path in paths]

@@ -293,7 +293,6 @@ NAV_MENU_LEFT = [
             {"name": "Debaters", "url": "core:debater_list", "root": True},
             {"name": "Tournaments", "url": "core:tournament_list", "root": True},
             {"name": "Teams", "url": "core:team_list", "root": True},
-            {"name": "Stats", "url": "core:stats", "root": True},
             {
                 "name": "ELO Rankings",
                 "url": "core:elo_dashboard",
@@ -319,6 +318,7 @@ NAV_MENU_LEFT = [
         "url": "core:partnership_paths",
         "submenu": [
             {"name": "Debater paths", "url": "core:partnership_paths"},
+            {"name": "Stats", "url": "core:stats", "root": True},
         ],
     },
     {

@@ -14,6 +14,7 @@ import "./sortable-formset";
 import "./school_admin_management";
 import "./data-entry";
 import "./replay";
+import initPartnershipStats from "./partnership_stats";
 import initSchedulingBrowserRunner from "./scheduling_browser_runner";
 
 function getCookie(name) {
@@ -104,4 +105,5 @@ $(document).ready(() => {
 
   $("#teams").on("keyup", teamSearch);
   initSchedulingBrowserRunner();
+  initPartnershipStats();
 });
