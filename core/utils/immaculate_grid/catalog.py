@@ -12,11 +12,14 @@ from core.models import (
 )
 from core.utils.elo_runtime_engine.constants import normalize_school_name, season_to_int
 
+DEBATER_ACTIVITY_YEARS = 4
+HOST_ACTIVITY_YEARS = 3
+
 ELIMINATION_PLACES = {
     1: "Won",
-    2: "Reached finals",
-    4: "Reached semis",
-    8: "Reached quarters",
+    2: "Finals or better",
+    4: "Semis or better",
+    8: "Quarters or better",
 }
 EVENT_TYPES = {
     Tournament.PROAMS: "Pro-Am",
@@ -52,6 +55,14 @@ class Clue:
     topic: str
     people: set = field(default_factory=set)
     subject: str | None = None
+    latest_host_result: date | None = None
+
+    @property
+    def kind(self):
+        category, _, variant = self.key.partition(":")
+        if category in ("host", "event"):
+            return ("placement", variant.rsplit(":", 1)[-1])
+        return (category, "")
 
     def display(self):
         result = {"key": self.key, "label": self.label}
@@ -65,11 +76,15 @@ class Catalog:
     aliases: dict
     clues: dict = field(default_factory=dict)
     rarity: dict = field(default_factory=dict)
+    recent_people: set = field(default_factory=set)
 
-    def add(self, key, label, person, topic=None, subject=None):
+    def add(self, key, label, person, topic=None, subject=None, host_result_date=None):
         if key not in self.clues:
             self.clues[key] = Clue(key, label, topic or key, subject=subject)
-        self.clues[key].people.add(person)
+        clue = self.clues[key]
+        clue.people.add(person)
+        if host_result_date is not None:
+            clue.latest_host_result = max(host_result_date, clue.latest_host_result or host_result_date)
 
 
 @dataclass
@@ -83,11 +98,11 @@ class Career:
     points: dict = field(default_factory=dict)
     prestige: int = 0
     top_ten: bool = False
-    award_divisions: set = field(default_factory=set)
+    winning_speaker_divisions: set = field(default_factory=set)
     varsity_seasons: set = field(default_factory=set)
     speaker_seasons: set = field(default_factory=set)
     finalist_seasons: set = field(default_factory=set)
-    placing_hosts: set = field(default_factory=set)
+    semifinal_hosts_by_season: dict = field(default_factory=dict)
     placed_partners: set = field(default_factory=set)
     partner_schools: set = field(default_factory=set)
 
@@ -157,20 +172,21 @@ def _team_members():
     return teams
 
 
-def _placing_clues(catalog, person, place, host, kind, schools):
+def _placing_clues(catalog, person, place, host, kind, schools, event_day):
     for cutoff, label in ELIMINATION_PLACES.items():
         if place <= cutoff:
             if host in schools:
                 catalog.add(
                     f"host:{host}:{cutoff}",
                     f"Tournament winner at {schools[host]}" if cutoff == 1 else f"{label} at {schools[host]}",
-                    person, topic=f"host:{host}",
+                    person, topic=f"host:{host}", host_result_date=event_day,
                 )
             if kind in EVENT_TYPES:
                 event = EVENT_TYPES[kind]
+                event_label = "Nationals" if kind == Tournament.NATIONALS else f"a {event} tournament"
                 catalog.add(
                     f"event:{event}:{cutoff}",
-                    f"{label} a {event} tournament" if cutoff == 1 else f"{label} at a {event} tournament",
+                    f"{label} {event_label}" if cutoff == 1 else f"{label} at {event_label}",
                     person, topic=f"event:{event}",
                 )
 
@@ -210,14 +226,13 @@ def _record_team_results(day, catalog, careers, schools, affiliations, teams, re
             year = career.record_tournament(season, event_day, pk in affiliations)
             if not placing:
                 continue
-            _placing_clues(catalog, person, place, host, kind, schools)
-            career.award_divisions.add(division)
-            if host in schools:
-                career.placing_hosts.add(host)
+            _placing_clues(catalog, person, place, host, kind, schools, event_day)
             if hybrid and team not in redacted:
                 catalog.add("hybrid", "Placed on a hybrid team", person)
             if division == TeamResult.VARSITY and year is not None:
                 career.varsity_seasons.add(year)
+                if place <= 4 and host in schools:
+                    career.semifinal_hosts_by_season.setdefault(year, set()).add(host)
                 if place <= 2:
                     career.finalist_seasons.add(year)
                 # Later outrounds and Nationals runs raise a debater's prominence.
@@ -237,15 +252,14 @@ def _record_speaker_results(day, catalog, careers, schools, affiliations):
         person = catalog.aliases[pk]
         career = careers[person]
         year = career.record_tournament(season, event_day, pk in affiliations)
-        career.award_divisions.add(division)
-        if host in schools:
-            career.placing_hosts.add(host)
+        rank = max(1, place - int(tie))
+        if rank == 1:
+            career.winning_speaker_divisions.add(division)
         if division != SpeakerResult.VARSITY:
             continue
         if year is not None:
             career.varsity_seasons.add(year)
             career.speaker_seasons.add(year)
-        rank = max(1, place - int(tie))
         if rank == 1:
             catalog.add("top_speaker", "Won top varsity speaker", person)
         if host in schools:
@@ -253,7 +267,7 @@ def _record_speaker_results(day, catalog, careers, schools, affiliations):
                 if rank <= cutoff:
                     catalog.add(
                         f"speaker:{host}:{cutoff}", f"Top-{cutoff} varsity speaker at {schools[host]}",
-                        person, topic=f"host:{host}",
+                        person, topic=f"host:{host}", host_result_date=event_day,
                     )
         prominence = (11 - rank) * (2 if kind == Tournament.NATIONALS else 1)
         career.prestige = max(career.prestige, prominence)
@@ -286,14 +300,20 @@ def _career_clues(catalog, person, career, schools):
     ):
         if season is not None:
             catalog.add(f"{key}:{season}", f"{label} {_season_label(season)}", person)
-    if {TeamResult.NOVICE, TeamResult.VARSITY} <= career.award_divisions:
-        catalog.add("both_divisions", "Earned novice and varsity awards", person)
+    if {SpeakerResult.NOVICE, SpeakerResult.VARSITY} <= career.winning_speaker_divisions:
+        catalog.add("both_divisions", "Top speaker in novice and varsity", person)
+    most_hosts = max(map(len, career.semifinal_hosts_by_season.values()), default=0)
+    for cutoff in range(3, 7):
+        if most_hosts >= cutoff:
+            catalog.add(
+                f"placed_hosts:{cutoff}", f"Varsity semis at {cutoff}+ hosts in one season",
+                person, topic="placed_hosts",
+            )
     if len(career.finalist_seasons) >= 2:
         catalog.add("multiple_finals", "Varsity team finalist in 2+ seasons", person)
     for key, records, cutoffs, label in (
         ("speaks_seasons", career.speaker_seasons, (2, 3, 4), "Varsity speaker awards in {}+ seasons"),
         ("varsity_seasons", career.varsity_seasons, (2, 3, 4), "Varsity placements in {}+ seasons"),
-        ("placed_hosts", career.placing_hosts, (3, 4, 5, 6), "Placed at {}+ different hosts"),
         ("placed_partners", career.placed_partners, (3, 4, 5, 6), "Placed with {}+ different partners"),
         ("partner_schools", career.partner_schools, (2, 3, 4), "Placed with partners from {}+ schools"),
     ):
@@ -302,8 +322,8 @@ def _career_clues(catalog, person, career, schools):
                 catalog.add(f"{key}:{cutoff}", label.format(cutoff), person, topic=key)
 
 
-def _four_years_before(day):
-    year = day.year - 4
+def _years_before(day, years):
+    year = day.year - years
     return day.replace(year=year, day=min(day.day, monthrange(year, day.month)[1]))
 
 
@@ -320,13 +340,21 @@ def load_catalog(day):
     _record_speaker_results(day, catalog, careers, schools, affiliations)
     _record_standings(year, catalog, careers, teams, redacted)
     hidden = hidden_people()
-    cutoff = _four_years_before(day)
+    cutoff = _years_before(day, DEBATER_ACTIVITY_YEARS)
     for person, career in careers.items():
         _career_clues(catalog, person, career, schools)
         catalog.rarity[person] = rarity_score(
             year - (career.latest_season or year), sum(career.points.values()), career.prestige
         )
-        if career.top_ten and career.latest_tournament and career.latest_tournament >= cutoff and person not in hidden:
-            for partner in partners[person]:
-                catalog.add(f"partner:{person}", f"Partnered with {career.name}", partner, subject=person)
+        if career.latest_tournament is not None and career.latest_tournament >= cutoff:
+            catalog.recent_people.add(person)
+            if career.top_ten and person not in hidden:
+                for partner in partners[person]:
+                    catalog.add(f"partner:{person}", f"Partnered with {career.name}", partner, subject=person)
+
+    host_cutoff = _years_before(day, HOST_ACTIVITY_YEARS)
+    catalog.clues = {
+        key: clue for key, clue in catalog.clues.items()
+        if clue.latest_host_result is None or clue.latest_host_result >= host_cutoff
+    }
     return catalog

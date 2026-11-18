@@ -15,7 +15,11 @@ EST = fixed_timezone(timedelta(hours=-5), "EST")
 CATEGORY_COOLDOWN = 21
 PAIR_COOLDOWN = 100
 MINIMUM_ANSWERS = 15
+MINIMUM_RECENT_ANSWERS = 10
+MAXIMUM_ANSWERS = 100
+MAXIMUM_CLUE_ANSWERS = 500
 GRID_WIDTH = 3
+MINIMUM_CLUE_KINDS = 4
 GUESS_LIMIT = GRID_WIDTH ** 2
 
 
@@ -45,13 +49,20 @@ def cooldowns(day, history):
     return blocked_clues, blocked_pairs
 
 
-def compatible_pairs(clues, rarity):
+def compatible_pairs(clues, rarity, recent_people):
+    candidates = [
+        clue for clue in clues.values()
+        if MINIMUM_ANSWERS <= len(clue.people) <= MAXIMUM_CLUE_ANSWERS
+        and len(clue.people & recent_people) >= MINIMUM_RECENT_ANSWERS
+    ]
     pairs = {}
-    for first, second in combinations(clues.values(), 2):
+    for first, second in combinations(candidates, 2):
         if first.topic == second.topic:
             continue
         overlap = first.people & second.people
-        if len(overlap) < MINIMUM_ANSWERS or overlap in (first.people, second.people):
+        if not MINIMUM_ANSWERS <= len(overlap) <= MAXIMUM_ANSWERS:
+            continue
+        if len(overlap & recent_people) < MINIMUM_RECENT_ANSWERS or overlap in (first.people, second.people):
             continue
         scores = [rarity[person] for person in overlap]
         if min(scores) < max(scores):
@@ -68,13 +79,21 @@ def scale_scores(people, rarity):
     }
 
 
-def _column_choices(shared, order, clues, row_topics):
+def _column_choices(shared, order, clues, kinds, row_topics, row_kinds):
     candidates = sorted(
         (key for key in shared if clues[key].topic not in row_topics),
-        key=order.__getitem__,
+        key=lambda key: (kinds[key] in row_kinds, order[key]),
     )
     for columns in combinations(candidates, GRID_WIDTH):
-        if len({clues[key].topic for key in columns}) == GRID_WIDTH:
+        if len({clues[key].topic for key in columns}) != GRID_WIDTH:
+            continue
+        column_kinds = {kinds[key] for key in columns}
+        board_kinds = column_kinds | row_kinds
+        if (
+            len(column_kinds) == GRID_WIDTH
+            and len(board_kinds) >= MINIMUM_CLUE_KINDS
+            and any(category != "placement" for category, _ in board_kinds)
+        ):
             return columns
     return None
 
@@ -89,21 +108,24 @@ def choose_clues(day, clues, pairs, blocked_clues, blocked_pairs):
     keys = sorted(key for key, adjacent in neighbors.items() if len(adjacent) >= GRID_WIDTH)
     random.Random(f"black-rod-immaculate-grid:{day.isoformat()}").shuffle(keys)
     order = {key: index for index, key in enumerate(keys)}
+    kinds = {key: clues[key].kind for key in keys}
 
     for index, first in enumerate(keys):
         for second_index in range(index + 1, len(keys)):
             second = keys[second_index]
             first_topics = {clues[first].topic, clues[second].topic}
-            if len(first_topics) < 2:
+            first_kinds = {kinds[first], kinds[second]}
+            if len(first_topics) < 2 or len(first_kinds) < 2:
                 continue
             shared = neighbors[first] & neighbors[second] & order.keys()
             if len(shared) < GRID_WIDTH:
                 continue
             for third in keys[second_index + 1:]:
-                if clues[third].topic in first_topics:
+                if clues[third].topic in first_topics or kinds[third] in first_kinds:
                     continue
                 columns = _column_choices(
-                    shared & neighbors[third], order, clues, {*first_topics, clues[third].topic}
+                    shared & neighbors[third], order, clues, kinds,
+                    {*first_topics, clues[third].topic}, {*first_kinds, kinds[third]},
                 )
                 if columns is not None:
                     return (first, second, third), columns
@@ -113,7 +135,7 @@ def choose_clues(day, clues, pairs, blocked_clues, blocked_pairs):
 def build_board(day, catalog, history):
     blocked_clues, blocked_pairs = cooldowns(day, history)
     clues = {key: clue for key, clue in catalog.clues.items() if key not in blocked_clues}
-    pairs = compatible_pairs(clues, catalog.rarity)
+    pairs = compatible_pairs(clues, catalog.rarity, catalog.recent_people)
     rows, columns = choose_clues(day, clues, pairs, blocked_clues, blocked_pairs)
     answers = [
         scale_scores(pairs[pair_key(row, column)], catalog.rarity)

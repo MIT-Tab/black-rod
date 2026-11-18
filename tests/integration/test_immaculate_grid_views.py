@@ -6,7 +6,7 @@ from django.urls import reverse
 
 from core.models import (
     Debater, DebaterAliasGroup, ImmaculateGridBoard, ImmaculateGridHiddenDebater,
-    ImmaculateGridPlay, School, SOTY, Team, TeamResult, Tournament, User,
+    ImmaculateGridPlay, School, SOTY, SpeakerResult, Team, TeamResult, Tournament, User,
 )
 from core.utils.immaculate_grid.catalog import load_catalog, person_key
 from core.utils.merge import merge_debaters
@@ -68,6 +68,8 @@ class ImmaculateGridTests(TestCase):
         response = self.client.get(self.grid_url)
         self.assertContains(response, "Avery Answer")
         self.assertContains(response, "60 pts")
+        self.assertContains(response, "Immaculate Grid (Beta)")
+        self.assertContains(response, '<span class="immaculate-beta">Beta</span>', html=True)
         assert response.context["remaining"] == 7
         assert response.context["solved"] == 1
 
@@ -122,8 +124,11 @@ class ImmaculateGridTests(TestCase):
 
         catalog = load_catalog(self.day)
         assert catalog.clues[f"school:{school.pk}"].people == {self.identity}
+        assert catalog.recent_people == {self.identity, f"d{self.miss.pk}"}
         assert catalog.clues[f"host:{school.pk}:1"].people == {self.identity, f"d{self.miss.pk}"}
         assert catalog.clues["event:Nationals:1"].people == {self.identity, f"d{self.miss.pk}"}
+        assert catalog.clues["event:Nationals:8"].label == "Quarters or better at Nationals"
+        assert catalog.clues[f"host:{school.pk}:8"].label == "Quarters or better at Fixture University"
         assert catalog.clues[f"partner:{self.identity}"].people == {f"d{self.miss.pk}"}
         assert f"partner:{self.identity}" not in load_catalog(date(2029, 4, 26)).clues
 
@@ -131,6 +136,52 @@ class ImmaculateGridTests(TestCase):
         catalog = load_catalog(self.day)
         assert f"partner:{self.identity}" not in catalog.clues
         assert self.identity in catalog.clues["SOTY:10"].people
+
+    def test_host_clues_require_recent_results_and_accept_historical_answers(self):
+        former = School.objects.create(name="Former Host")
+        current = School.objects.create(name="Current Host")
+        previous = Tournament.objects.create(host=former, date=date(2023, 3, 3), season="2022")
+        historical = Tournament.objects.create(host=current, date=date(2020, 3, 1), season="2019")
+        recent = Tournament.objects.create(host=current, date=date(2024, 10, 1), season="2024")
+        Tournament.objects.create(host=former, date=date(2026, 11, 7), season="2026")
+        SpeakerResult.objects.create(tournament=previous, debater=self.answer, place=1)
+        SpeakerResult.objects.create(tournament=historical, debater=self.miss, place=1)
+        SpeakerResult.objects.create(tournament=recent, debater=self.answer, place=1)
+
+        catalog = load_catalog(self.day)
+        assert catalog.recent_people == {self.identity}
+        assert f"speaker:{former.pk}:5" not in catalog.clues
+        assert catalog.clues[f"speaker:{current.pk}:5"].people == {self.identity, f"d{self.miss.pk}"}
+
+    def test_novice_and_varsity_clue_requires_winning_speaker_in_both_divisions(self):
+        host = School.objects.create(name="Dual Division Host")
+        tournament = Tournament.objects.create(host=host, date=date(2025, 10, 1), season="2025")
+        second_tournament = Tournament.objects.create(host=host, date=date(2025, 10, 8), season="2025")
+        SpeakerResult.objects.create(
+            tournament=tournament, debater=self.answer, place=1, type_of_place=SpeakerResult.NOVICE,
+        )
+        SpeakerResult.objects.create(
+            tournament=tournament, debater=self.miss, place=2, type_of_place=SpeakerResult.NOVICE,
+        )
+        SpeakerResult.objects.create(tournament=second_tournament, debater=self.answer, place=1)
+        SpeakerResult.objects.create(tournament=tournament, debater=self.miss, place=1)
+
+        assert load_catalog(self.day).clues["both_divisions"].people == {self.identity}
+
+    def test_multi_host_clue_counts_varsity_semifinals_at_distinct_hosts_in_one_season(self):
+        hosts = [School.objects.create(name=f"Placement Host {i}") for i in range(3)]
+        qualifying = Team.objects.create(name="Qualifying Team")
+        qualifying.debaters.add(self.answer)
+        other = Team.objects.create(name="Other Team")
+        other.debaters.add(self.miss)
+        for i, host in enumerate(hosts):
+            tournament = Tournament.objects.create(host=host, date=date(2025, 10, i + 1), season="2025")
+            TeamResult.objects.create(tournament=tournament, team=qualifying, place=3)
+            TeamResult.objects.create(tournament=tournament, team=other, place=4 if i < 2 else 5)
+        earlier = Tournament.objects.create(host=hosts[2], date=date(2024, 10, 1), season="2024")
+        TeamResult.objects.create(tournament=earlier, team=other, place=3)
+
+        assert load_catalog(self.day).clues["placed_hosts:3"].people == {self.identity}
 
     def test_hidden_debater_flag_survives_profile_merge(self):
         ImmaculateGridHiddenDebater.objects.create(debater=self.alias)

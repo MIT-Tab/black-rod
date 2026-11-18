@@ -6,6 +6,23 @@
   color: var(--grid-ink);
 }
 
+.immaculate-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.65rem;
+}
+
+.immaculate-beta {
+  padding: 0.25rem 0.55rem;
+  border-radius: 0.4rem;
+  color: #233670;
+  background: #e9eefb;
+  font-size: 0.8rem;
+  font-weight: 700;
+  line-height: 1.15;
+}
+
 .immaculate-heading h1 {
   font-weight: 750;
   letter-spacing: -0.035em;
