@@ -10,6 +10,7 @@ from core.views import (
     debater_views,
     debater_profile_views,
     noty_views,
+    partnership_path_views,
     results_import_views,
     school_admin_views,
     school_views,
@@ -124,6 +125,11 @@ urlpatterns = [
         "core/debater-alias-groups/autocomplete",
         debater_views.DebaterAliasGroupAutocomplete.as_view(),
         name="alias_group_autocomplete",
+    ),
+    path(
+        "core/debaters/partnership-paths/",
+        partnership_path_views.PartnershipPathView.as_view(),
+        name="partnership_paths",
     ),
     path("core/teams/", team_views.TeamListView.as_view(), name="team_list"),
     path(

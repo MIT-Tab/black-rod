@@ -1,0 +1,43 @@
+{% extends "base/base.html" %}
+{% load crispy_forms_tags %}
+{% block title %}Debater Partnership Paths{% endblock title %}
+{% block extra_head %}
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+{% endblock extra_head %}
+{% block content %}
+    <main class="container py-4">
+        <h1>Debater Partnership Paths</h1>
+        <p>Find up to five paths ranked by fewest partnerships. Linked debater profiles count as one person.</p>
+        <form method="get" class="card card-body mb-4">
+            {{ form.media }}
+            <div class="form-row">
+                <div class="col-md-6">{{ form.first_debater|as_crispy_field }}</div>
+                <div class="col-md-6">{{ form.second_debater|as_crispy_field }}</div>
+            </div>
+            <div>
+                <button type="submit" class="btn btn-primary">Find paths</button>
+            </div>
+        </form>
+        {% if searched %}
+            <h2>Results</h2>
+            {% if paths %}
+                <ol class="list-group">
+                    {% for path in paths %}
+                        {% with hops=path|length|add:"-1" %}
+                            <li class="list-group-item">
+                                <div class="font-weight-bold">{{ hops }} partnership{{ hops|pluralize }}</div>
+                                {% for debater in path %}
+                                    {% if not forloop.first %}<span class="text-muted mx-1" aria-hidden="true">&rarr;</span>{% endif %}
+                                    <a href="{{ debater.get_absolute_url }}">{{ debater.display_name }}</a>
+                                {% endfor %}
+                                {% if not hops %}<div>The selected profiles belong to the same debater.</div>{% endif %}
+                            </li>
+                        {% endwith %}
+                    {% endfor %}
+                </ol>
+            {% else %}
+                <p>No partnership path connects the selected debaters.</p>
+            {% endif %}
+        {% endif %}
+    </main>
+{% endblock content %}
