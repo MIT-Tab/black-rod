@@ -8,6 +8,15 @@
         <h1>Debater Partnership Stats</h1>
         {% include "debaters/_partnership_nav.html" %}
         <p>Linked debater profiles count as one person. Statistics refresh every 24 hours.</p>
+        {% if request.user.is_superuser %}
+            <form action="{% url 'core:clear_partnership_stats_cache' %}" method="post" class="mb-3">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-outline-primary">Clear statistics cache</button>
+            </form>
+        {% endif %}
+        {% for message in messages %}
+            <p class="alert alert-success" role="status">{{ message }}</p>
+        {% endfor %}
         <div data-partnership-stats-url="{% url 'core:partnership_stats_results' %}"
              aria-busy="true">
             <p role="status">Loading partnership statistics…</p>
