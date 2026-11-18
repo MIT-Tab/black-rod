@@ -5,7 +5,7 @@ from heapq import heappop, heappush
 from itertools import combinations, groupby
 from operator import itemgetter
 
-from core.models import Debater, Team
+from core.models import Debater, Team, TeamResult
 from core.utils.debater_aliases import build_representative_debater_maps
 
 
@@ -63,9 +63,9 @@ def _shortest_paths(graph, start, end, limit):
 
 
 def find_partnership_paths(start, end):
-    real_debaters = Debater.all_objects.filter(synthetic=False)
+    public_debaters = Debater.objects.all()
     representatives, _ = build_representative_debater_maps(
-        real_debaters.values_list("id", "alias_group_id")
+        public_debaters.values_list("id", "alias_group_id")
     )
     start_id = representatives[start.pk]
     end_id = representatives[end.pk]
@@ -73,8 +73,12 @@ def find_partnership_paths(start, end):
         return [[start]]
 
     neighbors = defaultdict(set)
+    redacted_teams = TeamResult.objects.filter(
+        hidden_from_debaters__isnull=False,
+    ).values("team_id")
     memberships = (
-        Team.debaters.through.objects.filter(team__synthetic=False, debater__synthetic=False)
+        Team.debaters.through.objects.filter(team__synthetic=False, debater__in=public_debaters)
+        .exclude(team_id__in=redacted_teams)
         .order_by("team_id")
         .values_list("team_id", "debater_id")
     )
@@ -87,6 +91,6 @@ def find_partnership_paths(start, end):
     graph = {vertex: sorted(adjacent) for vertex, adjacent in neighbors.items()}
     paths = _shortest_paths(graph, start_id, end_id, limit=5)
     intermediate_ids = {vertex for path in paths for vertex in path[1:-1]}
-    debaters = real_debaters.in_bulk(intermediate_ids)
+    debaters = public_debaters.in_bulk(intermediate_ids)
     debaters.update({start_id: start, end_id: end})
     return [[debaters[vertex] for vertex in path] for path in paths]

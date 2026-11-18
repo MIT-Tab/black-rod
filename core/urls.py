@@ -127,6 +127,11 @@ urlpatterns = [
         name="alias_group_autocomplete",
     ),
     path(
+        "core/debaters/partnership-paths/autocomplete/",
+        partnership_path_views.PartnershipDebaterAutocomplete.as_view(),
+        name="partnership_debater_autocomplete",
+    ),
+    path(
         "core/debaters/partnership-paths/",
         partnership_path_views.PartnershipPathView.as_view(),
         name="partnership_paths",
