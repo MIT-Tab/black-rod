@@ -3,6 +3,7 @@ import "bootstrap";
 import "bootstrap-datepicker/build/build.less";
 import "../css/app.scss";
 import "../css/navigation.scss";
+import "../css/immaculate-grid.scss";
 
 import "bootstrap-datepicker";
 
@@ -14,6 +15,7 @@ import "./sortable-formset";
 import "./school_admin_management";
 import "./data-entry";
 import "./replay";
+import "./immaculate_grid";
 import initPartnershipStats from "./partnership_stats";
 import initSchedulingBrowserRunner from "./scheduling_browser_runner";
 

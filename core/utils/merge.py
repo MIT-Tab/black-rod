@@ -7,6 +7,7 @@ from core.models import (
     COTY,
     DebaterAlias,
     Debater,
+    ImmaculateGridHiddenDebater,
     ImportedRoundJudge,
     ImportedRoundMetadata,
     MergeDebaterRequest,
@@ -220,6 +221,8 @@ def merge_debaters(primary, secondary):
         # Cancel any other pending merge requests involving these debaters
         _cancel_pending_merge_requests(primary, secondary)
 
+        if ImmaculateGridHiddenDebater.objects.filter(debater=secondary).exists():
+            ImmaculateGridHiddenDebater.objects.get_or_create(debater=primary)
         secondary.delete()
 
         _recompute_merged_rankings(

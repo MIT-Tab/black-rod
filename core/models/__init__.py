@@ -1,5 +1,6 @@
 from .debater import Debater, QualPoints, Reaff
 from .debater_alias import DebaterAlias
+from .immaculate_grid import ImmaculateGridBoard, ImmaculateGridHiddenDebater, ImmaculateGridPlay
 from .results.speaker import SpeakerResult
 from .results.team import TeamResult
 from .round import Round, RoundStats
@@ -41,6 +42,9 @@ __all__ = [
     "User",
     "Debater",
     "DebaterAlias",
+    "ImmaculateGridBoard",
+    "ImmaculateGridHiddenDebater",
+    "ImmaculateGridPlay",
     "Reaff",
     "QualPoints",
     "School",
