@@ -1,7 +1,9 @@
+from datetime import date
+
 import pytest
 from django.urls import reverse
 
-from core.models import Debater, DebaterAliasGroup, Team
+from core.models import Debater, DebaterAliasGroup, School, Team, TeamResult, Tournament
 from core.utils.partnership_paths import find_partnership_paths
 
 pytestmark = pytest.mark.django_db
@@ -10,6 +12,7 @@ pytestmark = pytest.mark.django_db
 def _partner(*debaters, synthetic=False):
     team = Team.objects.create(name="Partnership", synthetic=synthetic)
     team.debaters.add(*debaters)
+    return team
 
 
 def test_paths_are_ranked_and_deduplicated_across_aliases():
@@ -60,27 +63,52 @@ def test_synthetic_teams_and_profiles_do_not_connect_debaters():
     assert find_partnership_paths(first, last) == []
 
 
-def test_partnership_paths_page_and_navigation_require_superuser(client, django_user_model):
+def test_redacted_partnership_and_temporary_profile_are_excluded():
+    first = Debater.objects.create(first_name="First")
+    last = Debater.objects.create(first_name="Last")
+    temporary = Debater.all_objects.create(first_name="Temporary", temporary=True)
+    _partner(first, temporary)
+    _partner(temporary, last)
+    team = _partner(first, last)
+    school = School.objects.create(name="Host")
+    tournament = Tournament.objects.create(host=school, season="2026", date=date(2026, 1, 1))
+    result = TeamResult.objects.create(team=team, tournament=tournament)
+    result.hidden_from_debaters.add(first)
+
+    assert find_partnership_paths(first, last) == []
+
+
+def test_partnership_paths_page_and_fun_menu_are_public(client):
     url = reverse("core:partnership_paths")
-    assert client.get(url).status_code == 302
-
-    user = django_user_model.objects.create_user(username="staff", is_staff=True)
-    client.force_login(user)
-    assert client.get(url).status_code == 403
-    assert url.encode() not in client.get(reverse("core:team_list")).content
-
-    user.is_superuser = True
-    user.save(update_fields=["is_superuser"])
     first = Debater.objects.create(first_name="First Debater")
     last = Debater.objects.create(first_name="Last Debater")
+    temporary = Debater.all_objects.create(first_name="Temporary", temporary=True)
     _partner(first, last)
 
     response = client.get(url, {"first_debater": first.pk, "second_debater": last.pk})
     assert response.status_code == 200
     assert response.context["paths"] == [[first, last]]
-    assert url.encode() in response.content
+    assert b"Fun" in response.content
+    assert f'href="{url}">Debater paths'.encode() in response.content
     assert b"1 partnership" in response.content
 
-    invalid = client.get(url, {"first_debater": first.pk, "second_debater": "invalid"})
+    invalid = client.get(url, {"first_debater": first.pk, "second_debater": temporary.pk})
     assert invalid.context["form"].errors
     assert "paths" not in invalid.context
+
+
+def test_partnership_autocomplete_prioritizes_exact_full_name(client):
+    exact = Debater.objects.create(first_name="Alex", last_name="Lee")
+    prefix = Debater.objects.create(first_name="Alex", last_name="Leeman")
+    reversed_name = Debater.objects.create(first_name="Lee", last_name="Alex")
+    Debater.objects.create(first_name="Alex", last_name="Kim")
+    Debater.objects.create(first_name="Terry", last_name="Lee")
+    Debater.all_objects.create(first_name="Alex", last_name="Lee", temporary=True)
+    Debater.all_objects.create(first_name="Alex", last_name="Lee", synthetic=True)
+
+    response = client.get(reverse("core:partnership_debater_autocomplete"), {"q": "  aLEX   lee "})
+
+    assert response.status_code == 200
+    assert [row["id"] for row in response.json()["results"]] == [
+        str(exact.pk), str(prefix.pk), str(reversed_name.pk)
+    ]

@@ -315,6 +315,13 @@ NAV_MENU_LEFT = [
         ],
     },
     {
+        "name": "Fun",
+        "url": "core:partnership_paths",
+        "submenu": [
+            {"name": "Debater paths", "url": "core:partnership_paths"},
+        ],
+    },
+    {
         "name": "My Account",
         "url": "core:my_debater_profile",
         "root": True,
