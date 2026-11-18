@@ -20,6 +20,7 @@ from core.views import (
     generated_code_views,
     merge_debater_views,
     import_source_views,
+    immaculate_grid_views,
     mittab_bundle_views,
     claim_debater_views,
     team_views,
@@ -47,6 +48,9 @@ urlpatterns = [
     ),
     path("standings/replay/", views.standings_replay, name="standings_replay"),
     path("stats/", views.stats, name="stats"),
+    path("immaculate-grid/", immaculate_grid_views.grid, name="immaculate_grid"),
+    path("immaculate-grid/guess/", immaculate_grid_views.guess, name="immaculate_grid_guess"),
+    path("immaculate-grid/search/", immaculate_grid_views.search, name="immaculate_grid_search"),
     path("core/schools/", school_views.SchoolListView.as_view(), name="school_list"),
     path(
         "core/schools/<int:pk>",

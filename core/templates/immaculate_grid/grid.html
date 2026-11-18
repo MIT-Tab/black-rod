@@ -1,0 +1,135 @@
+{% extends "base/base.html" %}
+{% block title %}
+    Immaculate Grid · APDA Standings
+{% endblock title %}
+{% block extra_head %}
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+{% endblock extra_head %}
+{% block content %}
+    <main class="immaculate-grid mx-auto my-4 my-md-5" data-immaculate-grid>
+        <header class="immaculate-heading mb-4">
+            <p class="immaculate-date mb-2">{{ day|date:"F j, Y" }} · New grid at midnight EST</p>
+            <h1 class="mb-2">Immaculate Grid</h1>
+            {% if rows %}
+                <p class="mb-0">Find a debater who matches both clues in each square. Each debater can solve one square.</p>
+            {% endif %}
+        </header>
+        {% if not rows %}
+            <div class="alert alert-secondary" role="status">Today's grid is unavailable.</div>
+        {% else %}
+            <div class="immaculate-summary mb-3">
+                <div>
+                    <span>Solved</span>
+                    <strong>{{ solved }}/9</strong>
+                </div>
+                <div>
+                    <span>Guesses left</span>
+                    <strong>{{ remaining }}</strong>
+                </div>
+                <div>
+                    <span>Rarity points</span>
+                    <strong>{{ rarity }}</strong>
+                </div>
+            </div>
+            <div class="immaculate-feedback" aria-live="polite">
+                {% for message in messages %}<p class="mb-1">{{ message }}</p>{% endfor %}
+                {% if not remaining %}
+                    {% if solved == 9 %}
+                        <p class="mb-1">Immaculate! You solved every square.</p>
+                    {% else %}
+                        <p class="mb-1">You solved {{ solved }} of 9 squares. A new grid opens at midnight EST.</p>
+                    {% endif %}
+                {% elif not messages and latest_guess %}
+                    {% if latest_guess.score is None %}
+                        <p class="mb-1">Incorrect guess for that square.</p>
+                    {% else %}
+                        <p class="mb-1">{{ latest_guess.name }} earned {{ latest_guess.score }} rarity points.</p>
+                    {% endif %}
+                {% endif %}
+            </div>
+            <table class="immaculate-board" aria-label="Today's Immaculate Grid">
+                <thead>
+                    <tr>
+                        <td></td>
+                        {% for column in columns %}<th scope="col">{{ column.label }}</th>{% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in rows %}
+                        <tr>
+                            <th scope="row">{{ row.label }}</th>
+                            {% for cell in row.cells %}
+                                <td>
+                                    {% if cell.answer %}
+                                        <div class="immaculate-square immaculate-correct">
+                                            <span>{{ cell.answer.name }}</span>
+                                            <small>{{ cell.answer.score }} pts</small>
+                                        </div>
+                                    {% elif remaining %}
+                                        <button class="immaculate-square immaculate-open"
+                                                type="button"
+                                                disabled
+                                                data-cell="{{ cell.index }}"
+                                                data-clue="{{ row.label }} × {{ cell.column }}"
+                                                aria-label="Guess for {{ row.label }} and {{ cell.column }}">
+                                            <span aria-hidden="true">+</span>
+                                        </button>
+                                    {% else %}
+                                        <div class="immaculate-square immaculate-unsolved">
+                                            <span aria-label="Unsolved">–</span>
+                                        </div>
+                                    {% endif %}
+                                </td>
+                            {% endfor %}
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            <details class="immaculate-rules mt-3">
+                <summary>How rarity points work</summary>
+                <p class="mb-0 mt-2">
+                    Each correct answer earns 1 to 100 points. Debaters who competed longer ago, earned fewer
+                    standings points, or had less prominent finishes tend to earn more.
+                </p>
+            </details>
+            {% if remaining %}
+                <dialog class="immaculate-picker"
+                        id="immaculate-guess"
+                        aria-labelledby="immaculate-guess-title">
+                    <form class="modal-content"
+                          method="post"
+                          action="{% url 'core:immaculate_grid_guess' %}"
+                          data-search-url="{% url 'core:immaculate_grid_search' %}">
+                        {% csrf_token %}
+                        <input name="day" type="hidden" value="{{ day|date:'Y-m-d' }}">
+                        <input name="attempts" type="hidden" value="{{ attempts }}">
+                        <input name="cell" type="hidden">
+                        <input name="debater" type="hidden">
+                        <div class="modal-header">
+                            <div>
+                                <h2 id="immaculate-guess-title" class="modal-title h5">Choose a debater</h2>
+                                <p class="text-muted small mb-0" data-immaculate-clue></p>
+                            </div>
+                            <button type="button" class="close" data-close-picker aria-label="Close">
+                                <span aria-hidden="true">×</span>
+                            </button>
+                        </div>
+                        <div class="modal-body">
+                            <label class="sr-only" for="immaculate-name">Search for a debater</label>
+                            <input type="search"
+                                   class="form-control"
+                                   id="immaculate-name"
+                                   placeholder="Search by name"
+                                   autocomplete="off">
+                            <p class="small text-muted mt-2 mb-0" data-search-status role="status"></p>
+                            <div class="list-group immaculate-search-results" data-search-results></div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="submit" class="btn btn-primary" disabled>Submit guess</button>
+                        </div>
+                    </form>
+                </dialog>
+            {% endif %}
+        {% endif %}
+    </main>
+{% endblock content %}

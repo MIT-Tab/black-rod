@@ -58,6 +58,7 @@ from core.models import (
     ClaimDebaterRequest,
     DebaterAliasGroup,
     ImportBatch,
+    ImmaculateGridHiddenDebater,
     ImportedRoundJudge,
     ImportedRoundMetadata,
     SyntheticResolutionLog,
@@ -113,6 +114,14 @@ class DebaterAdmin(ImportExportModelAdmin):
     )
     def debater_name(self, obj):
         return f"{obj.first_name} {obj.last_name}"
+
+
+@admin.register(ImmaculateGridHiddenDebater)
+class ImmaculateGridHiddenDebaterAdmin(admin.ModelAdmin):
+    list_display = ("debater",)
+    list_select_related = ("debater",)
+    search_fields = ("debater__first_name", "debater__last_name")
+    autocomplete_fields = ("debater",)
 
 
 @admin.register(DebaterAliasGroup)
