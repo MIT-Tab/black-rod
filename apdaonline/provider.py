@@ -1,17 +1,19 @@
-from allauth.socialaccount import providers
-from allauth.socialaccount.adapter import get_adapter
 from allauth.socialaccount.providers.base import ProviderAccount
 from allauth.socialaccount.providers.oauth2.provider import OAuth2Provider
+
+from .views import APDAOnlineOAuth2Adapter
 
 
 class APDAOnlineAccount(ProviderAccount):
     pass
 
 
-class APDAOnlineProvider(OAuth2Provider):
-    id = "apdaonline"
+class APDAOnlineProvider(OAuth2Provider):  # pylint: disable=abstract-method
+    # This provider uses browser redirects and does not accept posted tokens.
+    id = APDAOnlineOAuth2Adapter.provider_id
     name = "APDAOnline"
     account_class = APDAOnlineAccount
+    oauth2_adapter_class = APDAOnlineOAuth2Adapter
 
     def extract_uid(self, data):
         return str(data["ID"])
@@ -28,12 +30,5 @@ class APDAOnlineProvider(OAuth2Provider):
             "name": data["display_name"],
         }
 
-    def sociallogin_from_response(self, request, response):
-        sociallogin = super().sociallogin_from_response(request, response)
 
-        print(get_adapter(request))
-
-        return sociallogin
-
-
-providers.registry.register(APDAOnlineProvider)
+provider_classes = [APDAOnlineProvider]
