@@ -3,7 +3,7 @@
         <div class="col-md-6 col-lg-4 mb-3">
             <div class="card h-100">
                 <div class="card-header">
-                    <h3 class="h6 mb-0">{{ forloop.counter }} jump{{ forloop.counter|pluralize }}</h3>
+                    <h3 class="h6 mb-0">Up to {{ forloop.counter }} jump{{ forloop.counter|pluralize }}</h3>
                 </div>
                 {% if ranking %}
                     <ol class="list-group list-group-flush">
@@ -15,7 +15,7 @@
                         {% endfor %}
                     </ol>
                 {% else %}
-                    <div class="card-body text-muted">No paths of this length.</div>
+                    <div class="card-body text-muted">No debaters reached.</div>
                 {% endif %}
             </div>
         </div>

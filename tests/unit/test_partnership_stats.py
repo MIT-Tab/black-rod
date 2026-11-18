@@ -22,17 +22,20 @@ def _graph(edges):
     return graph
 
 
-def test_distances_include_all_diameter_ties_and_count_shortest_reach():
+def test_distances_include_all_diameter_ties_and_count_cumulative_reach():
     graph = _graph([
         (1, 2), (2, 3), (3, 4), (4, 5), (5, 6), (6, 7), (7, 8), (7, 9),
         (10, 11),
     ])
+    graph[12] = set()
     diameter, pairs, reach = _distance_stats(graph)
 
     assert diameter == 7
     assert pairs == [(1, 8), (1, 9)]
-    assert [layer.get(7, 0) for layer in reach] == [3, 1, 1, 1, 1, 1]
-    assert 10 not in reach[1]
+    assert [layer.get(7, 0) for layer in reach] == [3, 4, 5, 6, 7, 8]
+    assert [layer[1] for layer in reach] == [1, 2, 3, 4, 5, 6]
+    assert [layer[10] for layer in reach] == [1] * 6
+    assert all(12 not in layer for layer in reach)
 
 
 def test_interconnection_counts_distinct_paths_without_revisiting_debaters():
