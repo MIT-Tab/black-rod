@@ -3,7 +3,8 @@ import logging
 from django import forms
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.db.models import Q
+from django.db.models import Case, Q, Value, When
+from django.db.models.functions import Concat, Lower, Trim
 from django.http import JsonResponse
 from django.shortcuts import redirect, render
 from django.views.decorators.cache import never_cache
@@ -11,7 +12,7 @@ from django.views.decorators.http import require_GET, require_POST
 
 from core.models import Debater, ImmaculateGridBoard, ImmaculateGridPlay
 from core.utils.immaculate_grid.boards import (
-    GRID_WIDTH, GUESS_LIMIT, NoCompatibleBoard, daily_board, game_date,
+    EXTRA_GUESS_PENALTY, GRID_WIDTH, GUESS_LIMIT, NoCompatibleBoard, daily_board, game_date,
 )
 from core.utils.immaculate_grid.catalog import hidden_people, person_key
 
@@ -22,7 +23,7 @@ GRID_URL = "core:immaculate_grid"
 class GuessForm(forms.Form):
     day = forms.DateField(input_formats=["%Y-%m-%d"])
     cell = forms.IntegerField(min_value=0, max_value=GUESS_LIMIT - 1)
-    attempts = forms.IntegerField(min_value=0, max_value=GUESS_LIMIT - 1)
+    attempts = forms.IntegerField(min_value=0)
     debater = forms.ModelChoiceField(queryset=Debater.objects.all())
 
 
@@ -58,6 +59,20 @@ def _board_rows(board, correct):
     ]
 
 
+def _share_results(day, correct, attempts, score, penalty):
+    squares = [
+        f"🟩 {correct[index]['score']}" if index in correct else "⬜ —"
+        for index in range(GUESS_LIMIT)
+    ]
+    rows = [" | ".join(squares[start:start + GRID_WIDTH]) for start in range(0, GUESS_LIMIT, GRID_WIDTH)]
+    return "\n".join([
+        f"APDA Immaculate Grid · {day.isoformat()}",
+        *rows,
+        f"{len(correct)}/9 solved · {score} points",
+        f"{attempts} guesses · {penalty} penalty points",
+    ])
+
+
 @never_cache
 @login_required
 @require_GET
@@ -74,14 +89,20 @@ def grid(request):
     play = ImmaculateGridPlay.objects.filter(board=board, user=request.user).first()
     guesses = play.guesses if play else []
     correct = {item["cell"]: item for item in guesses if item["score"] is not None}
+    penalty = max(0, len(guesses) - GUESS_LIMIT) * EXTRA_GUESS_PENALTY
+    rarity = sum(item["score"] for item in correct.values())
+    score = rarity - penalty
     return render(request, "immaculate_grid/grid.html", {
         "day": day,
         "columns": board.columns,
         "rows": _board_rows(board, correct),
         "solved": len(correct),
         "attempts": len(guesses),
-        "remaining": GUESS_LIMIT - len(guesses),
-        "rarity": sum(item["score"] for item in correct.values()),
+        "finished": len(correct) == GUESS_LIMIT,
+        "rarity": rarity,
+        "penalty": penalty,
+        "score": score,
+        "share_results": _share_results(day, correct, len(guesses), score, penalty),
         "latest_guess": guesses[-1] if guesses else None,
     })
 
@@ -90,13 +111,22 @@ def grid(request):
 @login_required
 @require_GET
 def search(request):
-    query = request.GET.get("q", "").strip()[:80]
+    query = " ".join(request.GET.get("q", "").split())[:80]
     if len(query) < 2:
         return JsonResponse({"results": []})
-    candidates = Debater.objects.select_related("school")
+    candidates = Debater.objects.select_related("school").alias(
+        full_name=Trim(Concat("first_name", Value(" "), "last_name"))
+    )
     for word in query.split():
-        candidates = candidates.filter(Q(first_name__icontains=word) | Q(last_name__icontains=word))
-    candidates = candidates.order_by("first_name", "last_name", "pk")[:12]
+        candidates = candidates.filter(full_name__icontains=word)
+    candidates = candidates.order_by(
+        Case(
+            When(full_name__iexact=query, then=Value(0)),
+            When(full_name__istartswith=query, then=Value(1)),
+            default=Value(2),
+        ),
+        Lower("full_name"), "pk",
+    )[:12]
     return JsonResponse({"results": [
         {"id": debater.pk, "name": debater.name, "school": debater.school.name if debater.school else ""}
         for debater in candidates
@@ -104,8 +134,6 @@ def search(request):
 
 
 def _guess_issue(play, attempts, cell, person):
-    if len(play.guesses) >= GUESS_LIMIT:
-        return "You’ve used all nine guesses today."
     if len(play.guesses) != attempts:
         return "Your grid was updated. Choose a square to continue."
     for item in play.guesses:

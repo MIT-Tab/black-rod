@@ -6,7 +6,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
 {% endblock extra_head %}
 {% block content %}
-    <main class="immaculate-grid mx-auto my-4 my-md-5" data-immaculate-grid>
+    <main class="immaculate-grid mx-auto my-4 my-md-5"
+          data-immaculate-grid
+          data-play-url="{% url 'core:immaculate_grid' %}">
         <header class="immaculate-heading mb-4">
             <p class="immaculate-date mb-2">{{ day|date:"F j, Y" }} · New grid at midnight EST</p>
             <div class="immaculate-title mb-2">
@@ -26,22 +28,22 @@
                     <strong>{{ solved }}/9</strong>
                 </div>
                 <div>
-                    <span>Guesses left</span>
-                    <strong>{{ remaining }}</strong>
+                    <span>Guesses</span>
+                    <strong>{{ attempts }}</strong>
                 </div>
                 <div>
-                    <span>Rarity points</span>
-                    <strong>{{ rarity }}</strong>
+                    <span>Points</span>
+                    <strong>{{ score }}</strong>
                 </div>
             </div>
+            <p class="small text-muted mb-2">
+                Each guess after nine costs 5 points.
+                {% if penalty %}{{ rarity }} rarity points − {{ penalty }} penalty points.{% endif %}
+            </p>
             <div class="immaculate-feedback" aria-live="polite">
                 {% for message in messages %}<p class="mb-1">{{ message }}</p>{% endfor %}
-                {% if not remaining %}
-                    {% if solved == 9 %}
-                        <p class="mb-1">Immaculate! You solved every square.</p>
-                    {% else %}
-                        <p class="mb-1">You solved {{ solved }} of 9 squares. A new grid opens at midnight EST.</p>
-                    {% endif %}
+                {% if finished %}
+                    <p class="mb-1">You solved every square!</p>
                 {% elif not messages and latest_guess %}
                     {% if latest_guess.score is None %}
                         <p class="mb-1">Incorrect guess for that square.</p>
@@ -68,7 +70,7 @@
                                             <span>{{ cell.answer.name }}</span>
                                             <small>{{ cell.answer.score }} pts</small>
                                         </div>
-                                    {% elif remaining %}
+                                    {% else %}
                                         <button class="immaculate-square immaculate-open"
                                                 type="button"
                                                 disabled
@@ -77,10 +79,6 @@
                                                 aria-label="Guess for {{ row.label }} and {{ cell.column }}">
                                             <span aria-hidden="true">+</span>
                                         </button>
-                                    {% else %}
-                                        <div class="immaculate-square immaculate-unsolved">
-                                            <span aria-label="Unsolved">–</span>
-                                        </div>
                                     {% endif %}
                                 </td>
                             {% endfor %}
@@ -88,14 +86,18 @@
                     {% endfor %}
                 </tbody>
             </table>
-            <details class="immaculate-rules mt-3">
-                <summary>How rarity points work</summary>
-                <p class="mb-0 mt-2">
-                    Each correct answer earns 1 to 100 points. Debaters who competed longer ago, earned fewer
-                    standings points, or had less prominent finishes tend to earn more.
-                </p>
-            </details>
-            {% if remaining %}
+            <div class="d-flex flex-wrap align-items-center mt-3">
+                <button type="button"
+                        class="btn btn-outline-primary mr-3"
+                        data-copy-results
+                        disabled>Copy results</button>
+                <span class="small text-muted" data-copy-status role="status"></span>
+            </div>
+            <div class="mt-2" data-share-fallback hidden>
+                <label class="sr-only" for="immaculate-share-results">Results to copy</label>
+                <textarea id="immaculate-share-results" class="form-control" rows="7" readonly>{{ share_results }}</textarea>
+            </div>
+            {% if not finished %}
                 <dialog class="immaculate-picker"
                         id="immaculate-guess"
                         aria-labelledby="immaculate-guess-title">
@@ -123,7 +125,10 @@
                                    class="form-control"
                                    id="immaculate-name"
                                    placeholder="Search by name"
-                                   autocomplete="off">
+                                   autocomplete="off"
+                                   autocorrect="off"
+                                   autocapitalize="none"
+                                   spellcheck="false">
                             <p class="small text-muted mt-2 mb-0" data-search-status role="status"></p>
                             <div class="list-group immaculate-search-results" data-search-results></div>
                         </div>

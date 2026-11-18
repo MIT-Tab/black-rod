@@ -21,6 +21,7 @@ MAXIMUM_CLUE_ANSWERS = 500
 GRID_WIDTH = 3
 MINIMUM_CLUE_KINDS = 4
 GUESS_LIMIT = GRID_WIDTH ** 2
+EXTRA_GUESS_PENALTY = 5
 
 
 class NoCompatibleBoard(Exception):
@@ -152,7 +153,7 @@ def build_board(day, catalog, history):
 
 
 def daily_board(day):
-    existing = ImmaculateGridBoard.objects.filter(date=day).first()
+    existing = ImmaculateGridBoard.objects.only("date", "rows", "columns").filter(date=day).first()
     if existing is not None:
         return existing
 
@@ -163,7 +164,7 @@ def daily_board(day):
             [SiteSetting(key="immaculate_grid_generation", value=day.isoformat())],
             update_conflicts=True, update_fields=["value"], unique_fields=["key"],
         )
-        existing = ImmaculateGridBoard.objects.filter(date=day).first()
+        existing = ImmaculateGridBoard.objects.only("date", "rows", "columns").filter(date=day).first()
         if existing is not None:
             return existing
         window = timedelta(days=PAIR_COOLDOWN)
