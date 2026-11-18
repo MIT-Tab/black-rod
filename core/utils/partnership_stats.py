@@ -2,7 +2,7 @@
 
 from collections import Counter
 from heapq import nlargest
-from itertools import chain
+from itertools import accumulate, chain
 
 from core.models import Debater
 from core.utils.partnership_paths import build_partnership_graph
@@ -24,14 +24,18 @@ def _distance_stats(graph):
     furthest = []
     reach = [{} for _ in range(6)]
     for source in sorted(graph):
+        counts = [0] * len(reach)
         for distance, layer in enumerate(_distance_layers(graph, source), start=1):
             if distance <= len(reach):
-                reach[distance - 1][source] = len(layer)
+                counts[distance - 1] = len(layer)
             if distance >= diameter:
                 if distance > diameter:
                     diameter = distance
                     furthest.clear()
                 furthest.extend((source, end) for end in sorted(layer) if end > source)
+        for ranking, total in zip(reach, accumulate(counts)):
+            if total:
+                ranking[source] = total
     return diameter, furthest, reach
 
 

@@ -18,7 +18,7 @@ from core.models import Debater
 from core.utils.partnership_paths import find_partnership_paths
 from core.utils.partnership_stats import calculate_partnership_stats
 
-STATS_CACHE_KEY = "public-partnership-stats:v2"
+STATS_CACHE_KEY = "public-partnership-stats:v3"
 STATS_CACHE_TIMEOUT = 24 * 60 * 60
 STATS_GENERATION_KEY = f"{STATS_CACHE_KEY}:generation"
 
