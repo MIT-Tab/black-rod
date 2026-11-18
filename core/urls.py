@@ -1,4 +1,5 @@
 from django.urls import path
+from django.views.generic import TemplateView
 
 from core.views import (
     doty_views,
@@ -48,6 +49,7 @@ urlpatterns = [
     ),
     path("standings/replay/", views.standings_replay, name="standings_replay"),
     path("stats/", views.stats, name="stats"),
+    path("games/", TemplateView.as_view(template_name="core/games.html"), name="games"),
     path("immaculate-grid/", immaculate_grid_views.grid, name="immaculate_grid"),
     path("immaculate-grid/guess/", immaculate_grid_views.guess, name="immaculate_grid_guess"),
     path("immaculate-grid/search/", immaculate_grid_views.search, name="immaculate_grid_search"),

@@ -318,7 +318,7 @@ NAV_MENU_LEFT = [
         "url": "core:partnership_paths",
         "submenu": [
             {"name": "Debater paths", "url": "core:partnership_paths"},
-            {"name": "Immaculate Grid (Beta)", "url": "core:immaculate_grid", "root": True},
+            {"name": "Games", "url": "core:games", "root": True},
             {"name": "Stats", "url": "core:stats", "root": True},
         ],
     },
