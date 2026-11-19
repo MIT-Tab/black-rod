@@ -135,8 +135,65 @@
 
 .immaculate-correct {
   border-color: #badcc9;
+}
+
+.immaculate-rarity-common {
   color: #174b36;
   background: #e7f4ec;
+}
+
+.immaculate-rarity-uncommon {
+  border-color: #b9d5f3;
+  color: #1d466f;
+  background: #e6f1fc;
+}
+
+.immaculate-rarity-rare {
+  border-color: #d3c0f1;
+  color: #563179;
+  background: #f1eafb;
+}
+
+.immaculate-rarity-epic {
+  border-color: #efcb9b;
+  color: #79460e;
+  background: #fff1dc;
+}
+
+.immaculate-rarity-galaxy {
+  border-color: #6654ac;
+  color: #fff;
+  background: linear-gradient(135deg, #18274f, #5b2b7c);
+}
+
+.immaculate-rarity-legend {
+  gap: 0.4rem;
+
+  li {
+    padding: 0.25rem 0.45rem;
+    border-radius: 0.3rem;
+    font-size: 0.77rem;
+    font-weight: 600;
+  }
+}
+
+.immaculate-answer-results {
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.immaculate-answer-score {
+  flex-shrink: 0;
+  margin-left: 0.7rem;
+  padding: 0.25rem 0.45rem;
+  border-radius: 0.3rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.immaculate-answer-profile {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .immaculate-search-results {

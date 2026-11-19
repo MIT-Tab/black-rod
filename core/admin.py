@@ -75,6 +75,7 @@ from core.resources import (
     TeamResultResource,
     TournamentResource,
 )
+from core.utils.debater_aliases import load_linked_debater_ids
 
 # Register your models here.
 
@@ -89,9 +90,33 @@ class SchoolAdmin(ImportExportModelAdmin):
     fields = ["name", "short_name", "included_in_oty"]
 
 
+class DebaterAdminForm(forms.ModelForm):
+    immaculate_hidden = forms.BooleanField(
+        required=False,
+        label="Hide from Immaculate Grid clues",
+        help_text=(
+            "Hide this debater and all linked names from clues and hints. "
+            "They remain valid answers. Unchecking also clears this setting on linked profiles."
+        ),
+    )
+
+    class Meta:
+        model = Debater
+        fields = "__all__"
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance.pk:
+            linked_ids = load_linked_debater_ids([self.instance.pk])
+            self.initial["immaculate_hidden"] = ImmaculateGridHiddenDebater.objects.filter(
+                debater_id__in=linked_ids
+            ).exists()
+
+
 @admin.register(Debater)
 class DebaterAdmin(ImportExportModelAdmin):
     resource_class = DebaterResource
+    form = DebaterAdminForm
     list_display = (
         "first_name",
         "last_name",
@@ -108,6 +133,21 @@ class DebaterAdmin(ImportExportModelAdmin):
     def get_queryset(self, request):
         return Debater.all_objects.select_related("school")
 
+    def get_fieldsets(self, request, obj=None):
+        fields = [field for field in self.get_fields(request, obj) if field != "immaculate_hidden"]
+        return [
+            ("Immaculate Grid", {"fields": ("immaculate_hidden",)}),
+            (None, {"fields": fields}),
+        ]
+
+    def save_model(self, request, obj, form, change):
+        super().save_model(request, obj, form, change)
+        if form.cleaned_data["immaculate_hidden"]:
+            ImmaculateGridHiddenDebater.objects.get_or_create(debater=obj)
+        elif "immaculate_hidden" in form.changed_data:
+            linked_ids = load_linked_debater_ids([obj.pk])
+            ImmaculateGridHiddenDebater.objects.filter(debater_id__in=linked_ids).delete()
+
     @admin.display(
         description="Debater Name",
         ordering="first_name",
@@ -120,8 +160,8 @@ class DebaterAdmin(ImportExportModelAdmin):
 class ImmaculateGridHiddenDebaterAdmin(admin.ModelAdmin):
     list_display = ("debater",)
     list_select_related = ("debater",)
-    search_fields = ("debater__first_name", "debater__last_name")
-    autocomplete_fields = ("debater",)
+    search_fields = ("debater__first_name", "debater__last_name", "debater__school__name", "debater__id")
+    raw_id_fields = ("debater",)
 
 
 @admin.register(DebaterAliasGroup)

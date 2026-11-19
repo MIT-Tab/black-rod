@@ -4,6 +4,7 @@ import random
 from collections import defaultdict
 from datetime import timedelta, timezone as fixed_timezone
 from itertools import combinations, product
+from math import log2
 
 from django.db import transaction
 from django.utils import timezone
@@ -16,6 +17,8 @@ CATEGORY_COOLDOWN = 21
 PAIR_COOLDOWN = 100
 MINIMUM_ANSWERS = 15
 MINIMUM_RECENT_ANSWERS = 10
+PARTNER_MINIMUM_ANSWERS = 5
+PARTNER_MINIMUM_RECENT_ANSWERS = 3
 MAXIMUM_ANSWERS = 100
 MAXIMUM_CLUE_ANSWERS = 500
 GRID_WIDTH = 3
@@ -50,39 +53,57 @@ def cooldowns(day, history):
     return blocked_clues, blocked_pairs
 
 
+def _answer_minimums(*clues):
+    if any(clue.key.startswith("partner:") for clue in clues):
+        return PARTNER_MINIMUM_ANSWERS, PARTNER_MINIMUM_RECENT_ANSWERS
+    return MINIMUM_ANSWERS, MINIMUM_RECENT_ANSWERS
+
+
 def compatible_pairs(clues, rarity, recent_people):
-    candidates = [
-        clue for clue in clues.values()
-        if MINIMUM_ANSWERS <= len(clue.people) <= MAXIMUM_CLUE_ANSWERS
-        and len(clue.people & recent_people) >= MINIMUM_RECENT_ANSWERS
-    ]
+    candidates = []
+    for clue in clues.values():
+        minimum, recent_minimum = _answer_minimums(clue)
+        if minimum <= len(clue.people) <= MAXIMUM_CLUE_ANSWERS and len(clue.people & recent_people) >= recent_minimum:
+            candidates.append(clue)
     pairs = {}
     for first, second in combinations(candidates, 2):
         if first.topic == second.topic:
             continue
+        partnered = first.key.startswith("partner:") or second.key.startswith("partner:")
+        minimum, recent_minimum = _answer_minimums(first, second)
         overlap = first.people & second.people
-        if not MINIMUM_ANSWERS <= len(overlap) <= MAXIMUM_ANSWERS:
+        if not minimum <= len(overlap) <= MAXIMUM_ANSWERS:
             continue
-        if len(overlap & recent_people) < MINIMUM_RECENT_ANSWERS or overlap in (first.people, second.people):
+        if len(overlap & recent_people) < recent_minimum:
             continue
-        scores = [rarity[person] for person in overlap]
+        if not partnered and overlap in (first.people, second.people):
+            continue
+        scores = answer_rarities(overlap, rarity, (first, second)).values()
         if min(scores) < max(scores):
             pairs[pair_key(first.key, second.key)] = overlap
     return pairs
 
 
-def scale_scores(people, rarity):
-    minimum = min(rarity[person] for person in people)
-    maximum = max(rarity[person] for person in people)
+def answer_rarities(people, rarity, clues):
     return {
-        person: round(1 + 99 * (rarity[person] - minimum) / (maximum - minimum))
+        person: rarity[person] - 5 * sum(log2(clue.frequency(person)) for clue in clues)
+        for person in people
+    }
+
+
+def scale_scores(people, rarity, clues=()):
+    scores = answer_rarities(people, rarity, clues)
+    minimum = min(scores.values())
+    maximum = max(scores.values())
+    return {
+        person: round(1 + 99 * (scores[person] - minimum) / (maximum - minimum))
         for person in sorted(people)
     }
 
 
 def _column_choices(shared, order, clues, kinds, row_topics, row_kinds):
     candidates = sorted(
-        (key for key in shared if clues[key].topic not in row_topics),
+        (key for key in shared if clues[key].topic not in row_topics and not key.startswith("partner:")),
         key=lambda key: (kinds[key] in row_kinds, order[key]),
     )
     for columns in combinations(candidates, GRID_WIDTH):
@@ -107,13 +128,15 @@ def choose_clues(day, clues, pairs, blocked_clues, blocked_pairs):
             neighbors[second].add(first)
 
     keys = sorted(key for key, adjacent in neighbors.items() if len(adjacent) >= GRID_WIDTH)
-    random.Random(f"black-rod-immaculate-grid:{day.isoformat()}").shuffle(keys)
+    rng = random.Random(f"black-rod-immaculate-grid:{day.isoformat()}")
+    rng.shuffle(keys)
     order = {key: index for index, key in enumerate(keys)}
     kinds = {key: clues[key].kind for key in keys}
+    partners = [key for key in keys if key.startswith("partner:")]
+    other_keys = [key for key in keys if not key.startswith("partner:")]
 
-    for index, first in enumerate(keys):
-        for second_index in range(index + 1, len(keys)):
-            second = keys[second_index]
+    for first in partners:
+        for second_index, second in enumerate(other_keys):
             first_topics = {clues[first].topic, clues[second].topic}
             first_kinds = {kinds[first], kinds[second]}
             if len(first_topics) < 2 or len(first_kinds) < 2:
@@ -121,7 +144,7 @@ def choose_clues(day, clues, pairs, blocked_clues, blocked_pairs):
             shared = neighbors[first] & neighbors[second] & order.keys()
             if len(shared) < GRID_WIDTH:
                 continue
-            for third in keys[second_index + 1:]:
+            for third in other_keys[second_index + 1:]:
                 if clues[third].topic in first_topics or kinds[third] in first_kinds:
                     continue
                 columns = _column_choices(
@@ -129,6 +152,8 @@ def choose_clues(day, clues, pairs, blocked_clues, blocked_pairs):
                     {*first_topics, clues[third].topic}, {*first_kinds, kinds[third]},
                 )
                 if columns is not None:
+                    if rng.getrandbits(1):
+                        return columns, (first, second, third)
                     return (first, second, third), columns
     raise NoCompatibleBoard(f"No compatible Immaculate Grid board for {day}.")
 
@@ -139,7 +164,7 @@ def build_board(day, catalog, history):
     pairs = compatible_pairs(clues, catalog.rarity, catalog.recent_people)
     rows, columns = choose_clues(day, clues, pairs, blocked_clues, blocked_pairs)
     answers = [
-        scale_scores(pairs[pair_key(row, column)], catalog.rarity)
+        scale_scores(pairs[pair_key(row, column)], catalog.rarity, (clues[row], clues[column]))
         for row, column in product(rows, columns)
     ]
     eligible = set().union(*(cell.keys() for cell in answers))
