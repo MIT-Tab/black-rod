@@ -8,7 +8,7 @@ from itertools import combinations, pairwise
 from math import log2
 
 from core.models import (
-    Debater, ImmaculateGridHiddenDebater, Round, School, SOTY, SpeakerResult,
+    Debater, ImmaculateGridHiddenDebater, QualPoints, Round, School, SOTY, SpeakerResult,
     Team, TeamResult, TOTY, Tournament,
 )
 from core.utils.elo_runtime_engine.constants import normalize_school_name, season_to_int
@@ -19,6 +19,8 @@ HOST_ACTIVITY_YEARS = 3
 # Recent careers age slowly. Once outside the recent window, older eras earn
 # much more even when the debater was prominent in their own era.
 AGE_POINTS = ((0, 0), (4, 2), (6, 49), (10, 74), (13, 87), (17, 94), (18, 101), (24, 117))
+# Qualification and speaker points have a wider combined scale than SOTY/TOTY.
+POINTS_FOR_HALF_DISCOUNT = 120
 
 ELIMINATION_PLACES = {
     1: "Won",
@@ -58,7 +60,7 @@ def _age_points(seasons_since_active):
 
 def rarity_score(seasons_since_active, points, prestige, career_span=0, attended_tournaments=0):
     """Estimate rarity in display points before clue-specific adjustments."""
-    standings_discount = 70 * points / (points + 75)
+    standings_discount = 70 * points / (points + POINTS_FOR_HALF_DISCOUNT)
     career_discount = min(12, max(0, career_span) * 1.5)
     # Frequent appearances make recent names especially familiar. Fade the
     # extra discount between four and eight seasons after their last season.
@@ -154,9 +156,11 @@ class Career:
             self.school_tournaments.setdefault(school_id, set()).add(tournament_id)
         return year
 
-    def record_standing(self, award, season, place, points):
-        key = (award, season)
+    def record_points(self, source, season, points):
+        key = (source, season)
         self.points[key] = max(self.points.get(key, 0), points)
+
+    def record_standing(self, place):
         self.prestige = max(self.prestige, 11 - place)
         self.top_ten = self.top_ten or place <= 10
 
@@ -312,6 +316,14 @@ def _record_speaker_results(day, catalog, careers, schools, affiliations):
 
 
 def _record_standings(year, catalog, careers, teams, redacted):
+    qual_rows = QualPoints.objects.filter(season__lte=str(year), points__gt=0).values_list(
+        "debater_id", "season", "points"
+    )
+    for pk, season, points in qual_rows.iterator():
+        person = catalog.aliases.get(pk)
+        if person is not None:
+            careers[person].record_points("QUAL", season, points)
+
     for model, award, member_field in ((SOTY, "SOTY", "debater_id"), (TOTY, "TOTY", "team_id")):
         rows = model.objects.filter(season__lte=str(year), place__gt=0).values_list(
             member_field, "season", "place", "points"
@@ -322,7 +334,10 @@ def _record_standings(year, catalog, careers, teams, redacted):
                 person = catalog.aliases.get(member)
                 if person is None:
                     continue
-                careers[person].record_standing(award, season, place, points)
+                career = careers[person]
+                if award == "SOTY":
+                    career.record_points(award, season, points)
+                career.record_standing(place)
                 for cutoff in (10, 20):
                     if place <= cutoff:
                         catalog.add(

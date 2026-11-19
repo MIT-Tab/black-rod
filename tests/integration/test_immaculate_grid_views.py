@@ -6,7 +6,7 @@ from django.urls import reverse
 
 from core.models import (
     Debater, DebaterAliasGroup, ImmaculateGridBoard, ImmaculateGridHiddenDebater,
-    ImmaculateGridPlay, Round, School, SOTY, SpeakerResult, Team, TeamResult, Tournament, User,
+    ImmaculateGridPlay, QualPoints, Round, School, SOTY, SpeakerResult, Team, TeamResult, TOTY, Tournament, User,
 )
 from core.utils.immaculate_grid.catalog import load_catalog, person_key, rarity_score
 from core.utils.immaculate_grid.boards import daily_board
@@ -277,9 +277,17 @@ class ImmaculateGridTests(TestCase):
         self.alias.save()
         SOTY.objects.create(debater=self.answer, season="2023", place=2, points=100)
         SOTY.objects.create(debater=self.alias, season="2023", place=2, points=100)
+        QualPoints.objects.create(debater=self.answer, season="2023", points=25)
+        QualPoints.objects.create(debater=self.alias, season="2023", points=30)
+        QualPoints.objects.create(debater=self.alias, season="2025", points=20)
+        QualPoints.objects.create(debater=self.alias, season="2027", points=500)
+        team = Team.objects.create(name="Ranked team")
+        team.debaters.add(self.answer)
+        TOTY.objects.create(team=team, season="2023", place=3, points=500)
         catalog = load_catalog(self.day)
-        assert catalog.rarity[self.identity] == rarity_score(1, 100, 9, career_span=4)
+        assert catalog.rarity[self.identity] == rarity_score(1, 150, 9, career_span=4)
         assert catalog.clues["SOTY:10"].frequency(self.identity) == 1
+        assert catalog.clues["TOTY:10"].frequency(self.identity) == 1
         assert catalog.clues[f"school:{first_school.pk}"].people == {self.identity}
         assert catalog.clues[f"school:{second_school.pk}"].people == {self.identity}
 

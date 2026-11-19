@@ -142,7 +142,7 @@ def test_more_frequent_qualifying_results_receive_fewer_points():
 def test_recent_partners_and_older_answers_score_on_same_scale():
     rarity = {
         "recent_regular": rarity_score(3, 51, 10, career_span=3, attended_tournaments=23),
-        "recent_champion": rarity_score(2, 176, 9, career_span=2, attended_tournaments=1),
+        "recent_champion": rarity_score(2, 280, 9, career_span=2, attended_tournaments=1),
         "recent_low_standings": rarity_score(3, 2, 6, career_span=1, attended_tournaments=6),
         "older_regular": rarity_score(6, 90, 10, career_span=3, attended_tournaments=19),
         "older_champion": rarity_score(13, 446, 16, career_span=3, attended_tournaments=58),
