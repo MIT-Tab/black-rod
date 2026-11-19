@@ -19,11 +19,12 @@ jobs:
           FORUM_PROFILE_API_TOKEN: ${{ secrets.FORUM_PROFILE_API_TOKEN }}
         with:
           envs: FORUM_PROFILE_API_TOKEN
-          script_stop: true
           host: ${{ secrets.SSH_HOST }}
           username: root
           key: ${{ secrets.SSH_KEY }}
           script: |
+            # Shell-native failure handling preserves multiline Python heredocs.
+            set -e
             cd /home/rodda/black-rod
             # Update only this integration's key before deploy.sh restarts Django.
             # Never print the token or the rest of the production configuration.
