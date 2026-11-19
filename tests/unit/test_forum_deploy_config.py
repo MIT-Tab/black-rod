@@ -2,6 +2,7 @@
 import os
 from pathlib import Path
 import subprocess
+import shlex
 import sys
 import tempfile
 
@@ -44,3 +45,41 @@ def test_missing_or_invalid_secret_never_overwrites_config():
             assert result.returncode == expected
             assert token.encode() not in result.stdout if token else result.stdout == b''
             assert path.read_text() == original
+
+
+def test_remote_deployment_script_handles_heredoc_and_stops_on_failure():
+    """Run the shell consumed by ssh-action, including its script_stop expansion."""
+    workflow = yaml.safe_load(WORKFLOW.read_text())
+    config = workflow['jobs']['deploy']['steps'][1]['with']
+    for token, expected in (('a' * 64, 0), ('invalid', 1)):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'venv/bin').mkdir(parents=True)
+            # CI installs dependencies only in the real test environment.
+            (root / 'venv/pyvenv.cfg').write_text(
+                f'home = {sys.base_prefix}/bin\ninclude-system-site-packages = false\n'
+            )
+            # A relocated Python symlink can lose its real virtualenv's packages.
+            # Execute the original interpreter path while preserving stdin/arguments.
+            launcher = root / 'venv/bin/python'
+            launcher.write_text('#!/bin/sh\nexec ' + shlex.quote(sys.executable) + ' "$@"\n')
+            launcher.chmod(0o700)
+            (root / '.env').write_text('UNCHANGED=keep\n')
+            deploy = root / 'deploy.sh'
+            deploy.write_text('#!/bin/sh\ntouch deployed\n')
+            deploy.chmod(0o700)
+            (root / 'install').write_text('#!/bin/sh\nexit 0\n')
+            (root / 'install').chmod(0o700)
+            script = config['script'].replace('/home/rodda/black-rod', directory)
+            if config.get('script_stop'):
+                # drone-ssh checks each line, even lines inside a heredoc.
+                check = 'DRONE_SSH_PREV_COMMAND_EXIT_CODE=$?; if [ $DRONE_SSH_PREV_COMMAND_EXIT_CODE -ne 0 ]; then exit $DRONE_SSH_PREV_COMMAND_EXIT_CODE; fi;'
+                script = '\n'.join(line + '\n' + check for line in script.splitlines())
+            result = subprocess.run(['bash', '-c', script], capture_output=True,
+                                    env={**os.environ, 'FORUM_PROFILE_API_TOKEN': token,
+                                         'DOT_ENV_FILE': str(root / '.env'),
+                                         'PATH': directory + os.pathsep + os.environ['PATH']})
+            assert result.returncode == expected, result.stderr.decode()
+            assert (root / 'deployed').exists() == (expected == 0)
+            assert result.stdout == b''
+            assert token.encode() not in result.stderr
