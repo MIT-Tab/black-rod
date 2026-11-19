@@ -4,10 +4,12 @@ URL routing for API endpoints.
 
 from django.urls import include, path
 from . import views
+from .forum_profile_views import ForumProfilesAPIView
 
 app_name = 'api'
 
 urlpatterns = [
+    path("private/forum-profiles/", ForumProfilesAPIView.as_view(), name="forum_profiles"),
     path("agent/v1/", include("api.agent_urls")),
     path('standings/', views.SeasonStandingsAPIView.as_view(), name='season_standings'),
     path('standings/replay/', views.SeasonStandingsReplayAPIView.as_view(), name='season_standings_replay'),

@@ -15,10 +15,31 @@ jobs:
 
       - name: Deploy over SSH
         uses: appleboy/ssh-action@v1.0.3
+        env:
+          FORUM_PROFILE_API_TOKEN: ${{ secrets.FORUM_PROFILE_API_TOKEN }}
         with:
+          envs: FORUM_PROFILE_API_TOKEN
+          script_stop: true
           host: ${{ secrets.SSH_HOST }}
           username: root
           key: ${{ secrets.SSH_KEY }}
           script: |
-            cd /home/rodda/black-rod && ./deploy.sh
+            cd /home/rodda/black-rod
+            # Update only this integration's key before deploy.sh restarts Django.
+            # Never print the token or the rest of the production configuration.
+            venv/bin/python - <<'PYTHON'
+            import os
+            import re
+            from dotenv import set_key
+            token = os.environ.get("FORUM_PROFILE_API_TOKEN", "")
+            if token:
+                if not re.fullmatch(r"[a-f0-9]{64}", token):
+                    raise SystemExit("Invalid forum integration credential format")
+                path = os.environ.get("DOT_ENV_FILE", ".env")
+                metadata = os.stat(path)
+                set_key(path, "FORUM_PROFILE_API_TOKEN", token)
+                os.chown(path, metadata.st_uid, metadata.st_gid)
+                os.chmod(path, metadata.st_mode & 0o777)
+            PYTHON
+            ./deploy.sh
             install -m 644 /home/rodda/black-rod/deploy/mittab-results-cache.cron /etc/cron.d/black-rod-mittab-cache
