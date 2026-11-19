@@ -3,7 +3,7 @@ import logging
 from django import forms
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.db.models import Case, Q, Value, When
+from django.db.models import Case, Value, When
 from django.db.models.functions import Concat, Lower, Trim
 from django.http import JsonResponse
 from django.shortcuts import redirect, render
@@ -13,9 +13,9 @@ from django.views.decorators.http import require_GET, require_POST
 from core.models import Debater, ImmaculateGridBoard, ImmaculateGridPlay
 from core.utils.debater_aliases import load_linked_debater_ids
 from core.utils.immaculate_grid.boards import (
-    EXTRA_GUESS_PENALTY, GRID_WIDTH, GUESS_LIMIT, NoCompatibleBoard, daily_board, game_date,
+    EXTRA_GUESS_PENALTY, GRID_WIDTH, GUESS_LIMIT, NoCompatibleBoard, clues_visible, daily_board, game_date,
 )
-from core.utils.immaculate_grid.catalog import hidden_people, person_key
+from core.utils.immaculate_grid.catalog import person_key
 from core.utils.immaculate_grid.rarities import RARITY_TIERS, rarity_tier
 
 logger = logging.getLogger(__name__)
@@ -24,6 +24,7 @@ GRID_URL = "core:immaculate_grid"
 
 class GuessForm(forms.Form):
     day = forms.DateField(input_formats=["%Y-%m-%d"])
+    board = forms.IntegerField(min_value=1)
     cell = forms.IntegerField(min_value=0, max_value=GUESS_LIMIT - 1)
     attempts = forms.IntegerField(min_value=0)
     debater = forms.ModelChoiceField(queryset=Debater.objects.all())
@@ -31,22 +32,8 @@ class GuessForm(forms.Form):
 
 class AnswerReviewForm(forms.Form):
     day = forms.DateField(input_formats=["%Y-%m-%d"])
+    board = forms.IntegerField(min_value=1)
     cell = forms.IntegerField(min_value=0, max_value=GUESS_LIMIT - 1)
-
-
-def _clues_visible(board):
-    subjects = {clue["subject"] for clue in board.rows + board.columns if "subject" in clue}
-    if not subjects:
-        return True
-    if subjects & hidden_people():
-        return False
-    profile_ids = [int(person[1:]) for person in subjects if person.startswith("d")]
-    group_ids = [int(person[1:]) for person in subjects if person.startswith("a")]
-    public = Debater.objects.filter(Q(pk__in=profile_ids) | Q(alias_group_id__in=group_ids))
-    visible = set()
-    for pk, group in public.values_list("pk", "alias_group_id"):
-        visible.update((f"d{pk}", person_key(pk, group)))
-    return subjects <= visible
 
 
 def _board_rows(board, correct):
@@ -90,9 +77,6 @@ def grid(request):
     except NoCompatibleBoard as exc:
         logger.warning("%s", exc)
         return render(request, "immaculate_grid/grid.html", {"day": day}, status=503)
-    if not _clues_visible(board):
-        return render(request, "immaculate_grid/grid.html", {"day": day}, status=503)
-
     play = ImmaculateGridPlay.objects.filter(board=board, user=request.user).first()
     guesses = play.guesses if play else []
     correct = {
@@ -104,6 +88,7 @@ def grid(request):
     score = rarity - penalty
     return render(request, "immaculate_grid/grid.html", {
         "day": day,
+        "board_id": board.pk,
         "columns": board.columns,
         "rows": _board_rows(board, correct),
         "solved": len(correct),
@@ -125,13 +110,15 @@ def answers(request):
     form = AnswerReviewForm(request.GET)
     if not form.is_valid():
         return JsonResponse({"error": "Choose a grid and a square."}, status=400)
-    board = ImmaculateGridBoard.objects.filter(date=form.cleaned_data["day"]).first()
+    board = ImmaculateGridBoard.objects.filter(
+        date=form.cleaned_data["day"], pk=form.cleaned_data["board"], replaced_at__isnull=True,
+    ).first()
     if board is None:
         return JsonResponse({"error": "This grid is unavailable."}, status=404)
     play = ImmaculateGridPlay.objects.filter(board=board, user=request.user).first()
     if play is None or len({item["cell"] for item in play.guesses if item["score"] is not None}) != GUESS_LIMIT:
         return JsonResponse({"error": "Solve all nine squares to view valid answers."}, status=403)
-    if not _clues_visible(board):
+    if not clues_visible(board):
         return JsonResponse({"error": "This grid is unavailable."}, status=503)
 
     cell = form.cleaned_data["cell"]
@@ -218,8 +205,11 @@ def guess(request):
     if data["day"] != day:
         messages.info(request, "A new daily grid is ready.")
         return redirect(GRID_URL)
-    board = ImmaculateGridBoard.objects.filter(date=day).first()
-    if board is None or not _clues_visible(board):
+    board = ImmaculateGridBoard.objects.filter(
+        date=day, pk=data["board"], replaced_at__isnull=True,
+    ).first()
+    if board is None or not clues_visible(board):
+        messages.info(request, "This grid has changed. Choose a square on the latest board.")
         return redirect(GRID_URL)
     play, _ = ImmaculateGridPlay.objects.get_or_create(board=board, user=request.user)
     debater = data["debater"]

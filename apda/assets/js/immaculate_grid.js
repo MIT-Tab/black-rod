@@ -41,6 +41,7 @@ function initAnswerReview(grid) {
     status.textContent = "Loading answers…";
     const url = new URL(grid.dataset.answersUrl, window.location.href);
     url.searchParams.set("day", grid.dataset.day);
+    url.searchParams.set("board", grid.dataset.board);
     url.searchParams.set("cell", select.value);
     try {
       const response = await fetch(url, { signal: request.signal });

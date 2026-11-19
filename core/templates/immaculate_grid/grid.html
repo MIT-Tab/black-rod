@@ -9,6 +9,7 @@
     <main class="immaculate-grid mx-auto my-4 my-md-5"
           data-immaculate-grid
           data-day="{{ day|date:'Y-m-d' }}"
+          data-board="{{ board_id }}"
           data-answers-url="{% url 'core:immaculate_grid_answers' %}"
           data-play-url="{% url 'core:immaculate_grid' %}">
         <header class="immaculate-heading mb-4">
@@ -157,6 +158,7 @@
                           data-search-url="{% url 'core:immaculate_grid_search' %}">
                         {% csrf_token %}
                         <input name="day" type="hidden" value="{{ day|date:'Y-m-d' }}">
+                        <input name="board" type="hidden" value="{{ board_id }}">
                         <input name="attempts" type="hidden" value="{{ attempts }}">
                         <input name="cell" type="hidden">
                         <input name="debater" type="hidden">

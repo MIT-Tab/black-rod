@@ -42,9 +42,10 @@ class ImmaculateGridTests(TestCase):
         self.clock = clock.start()
         self.addCleanup(clock.stop)
 
-    def _guess(self, debater, cell, attempts, day=None):
+    def _guess(self, debater, cell, attempts, day=None, board=None):
         return self.client.post(self.guess_url, {
             "day": day or self.day,
+            "board": (board or self.board).pk,
             "cell": cell,
             "attempts": attempts,
             "debater": debater.pk,
@@ -73,7 +74,7 @@ class ImmaculateGridTests(TestCase):
     def test_grid_search_and_guesses_require_login(self):
         assert self.client.get(self.grid_url).status_code == 302
         assert self.client.get(self.search_url, {"q": "Avery"}).status_code == 302
-        assert self.client.get(self.answers_url, {"day": self.day, "cell": 0}).status_code == 302
+        assert self.client.get(self.answers_url, {"day": self.day, "board": self.board.pk, "cell": 0}).status_code == 302
         assert self._guess(self.answer, 0, 0).status_code == 302
         assert not ImmaculateGridPlay.objects.exists()
 
@@ -182,7 +183,7 @@ class ImmaculateGridTests(TestCase):
                 first = daily_board(self.day)
                 second = daily_board(self.day)
             assert first.pk == second.pk == self.board.pk
-            assert first.get_deferred_fields() == {"answers", "aliases"}
+            assert first.get_deferred_fields() == {"answers", "aliases", "replaced_at"}
             self.client.force_login(self.player)
             assert self.client.get(self.grid_url).status_code == 200
         self.board.refresh_from_db()
@@ -190,12 +191,12 @@ class ImmaculateGridTests(TestCase):
 
     def test_answer_review_requires_the_current_account_to_finish(self):
         self.client.force_login(self.player)
-        request = {"day": self.day, "cell": 0}
+        request = {"day": self.day, "board": self.board.pk, "cell": 0}
         assert self.client.get(self.answers_url, request).status_code == 403
         self._guess(self.answer, 0, 0)
         response = self.client.get(self.answers_url, request)
         assert response.status_code == 403 and "answers" not in response.json()
-        assert self.client.get(self.answers_url, {"day": self.day, "cell": 9}).status_code == 400
+        assert self.client.get(self.answers_url, {"day": self.day, "board": self.board.pk, "cell": 9}).status_code == 400
         self._finish_grid()
         self.client.force_login(self.other)
         assert self.client.get(self.answers_url, request).status_code == 403
@@ -204,14 +205,14 @@ class ImmaculateGridTests(TestCase):
         people = self._finish_grid()
         ImmaculateGridHiddenDebater.objects.create(debater=self.alias)
         with patch("core.utils.immaculate_grid.boards.load_catalog", side_effect=AssertionError):
-            response = self.client.get(self.answers_url, {"day": self.day, "cell": 0})
+            response = self.client.get(self.answers_url, {"day": self.day, "board": self.board.pk, "cell": 0})
         assert response.status_code == 200
         options = response.json()["answers"]
         assert len(options) == 9
         assert options[0]["score"] == 100 and options[0]["tier"]["emoji"] == "🌌"
         assert next(option for option in options if option["name"] == people[0].name)["score"] == 60
         self.clock.return_value = self.day + timedelta(days=1)
-        assert self.client.get(self.answers_url, {"day": self.day, "cell": 0}).status_code == 200
+        assert self.client.get(self.answers_url, {"day": self.day, "board": self.board.pk, "cell": 0}).status_code == 200
 
     def test_copied_results_include_each_answers_rarity_color(self):
         self._finish_grid()
@@ -282,16 +283,57 @@ class ImmaculateGridTests(TestCase):
         assert catalog.clues[f"school:{first_school.pk}"].people == {self.identity}
         assert catalog.clues[f"school:{second_school.pk}"].people == {self.identity}
 
-    def test_hidden_partner_is_removed_from_an_already_published_board(self):
+    def test_hidden_partner_replaces_todays_board_and_keeps_old_progress_separate(self):
+        self._finish_grid()
+        old_progress = self._progress()
+        self.board.rows[0].update(label="Partnered with Avery Answer", subject=self.identity)
+        self.board.save(update_fields=["rows"])
+        self.assertContains(self.client.get(self.grid_url), "Partnered with Avery Answer")
+        ImmaculateGridHiddenDebater.objects.create(debater=self.alias)
+        replacement = ImmaculateGridBoard(
+            date=self.day,
+            rows=[{"key": "new", "label": "Replacement clue"}, *self.board.rows[1:]],
+            columns=self.board.columns,
+            answers=self.board.answers,
+            aliases=self.board.aliases,
+        )
+        with patch("core.utils.immaculate_grid.boards.build_board", return_value=replacement) as build:
+            response = self.client.get(self.grid_url)
+            assert response.context["board_id"] == replacement.pk
+            assert response.context["attempts"] == 0
+            self.assertContains(response, "Replacement clue")
+            self.assertNotContains(response, "Partnered with Avery Answer")
+            assert self.client.get(self.grid_url).context["board_id"] == replacement.pk
+            build.assert_called_once()
+
+        self.board.refresh_from_db()
+        assert self.board.replaced_at is not None
+        assert self._progress() == old_progress
+        # A second player still has a tab open with zero guesses on the old board.
+        self.client.force_login(self.other)
+        self._guess(self.answer, 0, 0)
+        assert not ImmaculateGridPlay.objects.filter(user=self.other).exists()
+        self._guess(self.answer, 0, 0, board=replacement)
+        assert ImmaculateGridPlay.objects.get(user=self.other, board=replacement).guesses[0]["score"] == 60
+
+        self.client.force_login(self.player)
+        for board, status in ((self.board, 404), (replacement, 403)):
+            response = self.client.get(self.answers_url, {"day": self.day, "board": board.pk, "cell": 0})
+            assert response.status_code == status
+
+    def test_hidden_clue_remains_private_when_no_replacement_is_possible(self):
         self.board.rows[0].update(label="Partnered with Avery Answer", subject=self.identity)
         self.board.save(update_fields=["rows"])
         self.client.force_login(self.player)
-        self.assertContains(self.client.get(self.grid_url), "Partnered with Avery Answer")
+        self._guess(self.answer, 0, 0)
         ImmaculateGridHiddenDebater.objects.create(debater=self.alias)
+
+        # The small test database has no compatible replacement board.
         response = self.client.get(self.grid_url)
         self.assertNotContains(response, "Avery Answer", status_code=503)
-        self._guess(self.answer, 0, 0)
-        assert not ImmaculateGridPlay.objects.exists()
+        self.board.refresh_from_db()
+        assert self.board.replaced_at is None
+        assert self._progress()[0]["score"] == 60
 
     def test_catalog_uses_dated_results_and_linked_profiles_without_naming_hidden_people(self):
         school = School.objects.create(name="Fixture University")

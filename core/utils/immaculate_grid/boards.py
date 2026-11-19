@@ -7,10 +7,11 @@ from itertools import combinations, product
 from math import log2
 
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 
-from core.models import ImmaculateGridBoard, SiteSetting
-from core.utils.immaculate_grid.catalog import load_catalog
+from core.models import Debater, ImmaculateGridBoard, SiteSetting
+from core.utils.immaculate_grid.catalog import hidden_people, load_catalog, person_key
 
 EST = fixed_timezone(timedelta(hours=-5), "EST")
 CATEGORY_COOLDOWN = 21
@@ -177,9 +178,27 @@ def build_board(day, catalog, history):
     )
 
 
+def clues_visible(board):
+    subjects = {clue["subject"] for clue in board.rows + board.columns if "subject" in clue}
+    if not subjects:
+        return True
+    if subjects & hidden_people():
+        return False
+    profile_ids = [int(person[1:]) for person in subjects if person.startswith("d")]
+    group_ids = [int(person[1:]) for person in subjects if person.startswith("a")]
+    public = Debater.objects.filter(Q(pk__in=profile_ids) | Q(alias_group_id__in=group_ids))
+    visible = set()
+    for pk, group in public.values_list("pk", "alias_group_id"):
+        visible.update((f"d{pk}", person_key(pk, group)))
+    return subjects <= visible
+
+
 def daily_board(day):
-    existing = ImmaculateGridBoard.objects.only("date", "rows", "columns").filter(date=day).first()
-    if existing is not None:
+    active = ImmaculateGridBoard.objects.only("date", "rows", "columns").filter(
+        date=day, replaced_at__isnull=True,
+    )
+    existing = active.first()
+    if existing is not None and clues_visible(existing):
         return existing
 
     with transaction.atomic():
@@ -189,13 +208,18 @@ def daily_board(day):
             [SiteSetting(key="immaculate_grid_generation", value=day.isoformat())],
             update_conflicts=True, update_fields=["value"], unique_fields=["key"],
         )
-        existing = ImmaculateGridBoard.objects.only("date", "rows", "columns").filter(date=day).first()
-        if existing is not None:
+        existing = active.first()
+        if existing is not None and clues_visible(existing):
             return existing
         window = timedelta(days=PAIR_COOLDOWN)
         history = ImmaculateGridBoard.objects.filter(
             date__range=(day - window, day + window)
-        ).only("date", "rows", "columns")
+        ).exclude(date=day).only("date", "rows", "columns")
         board = build_board(day, load_catalog(day), history)
+        if not clues_visible(board):
+            raise NoCompatibleBoard(f"Clue visibility changed while generating the grid for {day}.")
+        if existing is not None:
+            existing.replaced_at = timezone.now()
+            existing.save(update_fields=["replaced_at"])
         board.save()
         return board
