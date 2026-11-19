@@ -1,10 +1,9 @@
 """Choose and publish the daily board from compatible clue intersections."""
 
 import random
-from bisect import bisect_right
 from collections import defaultdict
 from datetime import timedelta, timezone as fixed_timezone
-from itertools import combinations, product
+from itertools import combinations, pairwise, product
 from math import log2
 
 from django.db import transaction
@@ -27,9 +26,13 @@ GRID_WIDTH = 3
 MINIMUM_CLUE_KINDS = 4
 GUESS_LIMIT = GRID_WIDTH ** 2
 EXTRA_GUESS_PENALTY = 5
-# Calibrate the display curve in raw rarity units so a common answer doesn't
-# become uncommon just because the other answers in its square are familiar.
-RARITY_SCORE_ANCHORS = ((13.5, 9), (15, 31), (20.5, 39), (22, 50))
+# Use the same raw rarity curve in every square, with room for a small bonus.
+RARITY_SCORE_ANCHORS = (
+    (0, 1), (13.5, 4), (15, 26), (20.5, 34), (22, 45),
+    (28, 60), (40, 75), (55, 90), (75, 100),
+)
+MAXIMUM_SQUARE_BONUS = 5
+RARITY_PER_BONUS_POINT = 4
 
 
 class NoCompatibleBoard(Exception):
@@ -96,26 +99,23 @@ def answer_rarities(people, rarity, clues):
     }
 
 
+def _absolute_points(raw):
+    raw = max(raw, RARITY_SCORE_ANCHORS[0][0])
+    for (low_raw, low_points), (high_raw, high_points) in pairwise(RARITY_SCORE_ANCHORS):
+        if raw <= high_raw:
+            fraction = (raw - low_raw) / (high_raw - low_raw)
+            return low_points + fraction * (high_points - low_points)
+    return RARITY_SCORE_ANCHORS[-1][1]
+
+
 def scale_scores(people, rarity, clues=()):
     scores = answer_rarities(people, rarity, clues)
     minimum = min(scores.values())
-    maximum = max(scores.values())
-    anchors = [
-        (minimum, 1),
-        *((raw, points) for raw, points in RARITY_SCORE_ANCHORS if minimum < raw < maximum),
-        (maximum, 100),
-    ]
-    breaks = [raw for raw, _ in anchors]
     points = {}
     for person, raw in sorted(scores.items()):
-        if raw == maximum:
-            points[person] = 100
-            continue
-        upper = bisect_right(breaks, raw)
-        low_raw, low_points = anchors[upper - 1]
-        high_raw, high_points = anchors[upper]
-        fraction = (raw - low_raw) / (high_raw - low_raw)
-        points[person] = round(low_points + fraction * (high_points - low_points))
+        # A tightly clustered pool earns only a small bonus even at the top.
+        bonus = min(MAXIMUM_SQUARE_BONUS, (raw - minimum) / RARITY_PER_BONUS_POINT)
+        points[person] = min(100, round(_absolute_points(raw) + bonus))
     return points
 
 

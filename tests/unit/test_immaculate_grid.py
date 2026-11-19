@@ -39,7 +39,7 @@ def _catalog(overlap_size, recent_count=10, keys=None):
     return Catalog({}, clues, {person: i for i, person in enumerate(sorted(people))}, recent_people=recent)
 
 
-def test_board_selection_is_stable_and_all_squares_have_equal_score_bounds():
+def test_board_selection_is_stable_and_all_squares_use_the_shared_point_scale():
     day = date(2026, 11, 18)
     catalog = _catalog(15)
     first = build_board(day, catalog, [])
@@ -50,7 +50,7 @@ def test_board_selection_is_stable_and_all_squares_have_equal_score_bounds():
     assert len(first.answers) == 9
     assert sum(clue["key"].startswith("partner:") for clue in first.rows + first.columns) == 1
     assert all(len(cell.keys() & catalog.recent_people) == 10 for cell in first.answers)
-    assert all(len(cell) == 15 and min(cell.values()) == 1 and max(cell.values()) == 100 for cell in first.answers)
+    assert all(len(cell) == 15 and 1 <= min(cell.values()) < max(cell.values()) < 100 for cell in first.answers)
 
     later = day + timedelta(days=100)
     with pytest.raises(NoCompatibleBoard):
@@ -137,7 +137,7 @@ def test_more_frequent_qualifying_results_receive_fewer_points():
     clue = Clue("partner:d1", "Partnered with One", "partner:d1")
     clue.occurrences = {"frequent": set(range(20)), "once": {1}}
     scores = scale_scores({"frequent", "once"}, {"frequent": 50, "once": 50}, (clue,))
-    assert scores == {"frequent": 1, "once": 100}
+    assert scores["frequent"] < scores["once"] < 100
 
 
 @pytest.mark.parametrize("raw_scores,low_count,middle_count,high_count", [
@@ -150,10 +150,22 @@ def test_point_curve_matches_partner_square_examples(raw_scores, low_count, midd
     rarity = dict(enumerate(raw_scores))
     scores = list(scale_scores(rarity, rarity).values())
     assert scores == sorted(scores)
-    assert scores[0] == 1 and scores[-1] == 100
+    assert scores[0] == 1 and scores[-1] < 100
     assert all(score < 10 for score in scores[:low_count])
     assert all(30 < score < 40 for score in scores[low_count:low_count + middle_count])
     assert all(score > 50 for score in scores[-high_count:])
+
+
+def test_narrow_partner_pool_cannot_outscore_obscure_answers_in_broad_pool():
+    partner_rarity = dict(enumerate((23, 23.2, 23.5, 23.7, 24, 24.2)))
+    broad_rarity = dict(enumerate(range(84)))
+    partner = scale_scores(partner_rarity, partner_rarity)
+    broad = scale_scores(broad_rarity, broad_rarity)
+
+    assert max(partner.values()) - min(partner.values()) <= 4
+    assert max(partner.values()) < broad[40] < broad[55]
+    assert broad[0] == 1 and broad[83] == 100
+    assert 0 <= broad[24] - partner[4] <= 5
 
 
 def test_partner_squares_allow_five_answers_including_three_recent():
