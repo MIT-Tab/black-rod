@@ -17,11 +17,20 @@ class ImmaculateGridHiddenDebater(models.Model):
 
 
 class ImmaculateGridBoard(models.Model):
-    date = models.DateField(unique=True)
+    date = models.DateField(db_index=True)
+    replaced_at = models.DateTimeField(null=True, blank=True)
     rows = models.JSONField()
     columns = models.JSONField()
     answers = models.JSONField()
     aliases = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=("date",), condition=models.Q(replaced_at__isnull=True),
+                name="one_active_immaculate_board_per_day",
+            )
+        ]
 
     def __str__(self):
         return str(self.date)
