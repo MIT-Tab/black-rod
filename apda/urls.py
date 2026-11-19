@@ -8,11 +8,13 @@ from api.views import (
     RobotsTxtView,
 )
 from core.views.views import FilteredSearchView
+from apdaonline.login import ResultsLoginView
 
 favicon_view = RedirectView.as_view(url='/favicon.ico', permanent=True)
 
 urlpatterns = [
     path("admin/", admin.site.urls),
+    path("auth/login/", ResultsLoginView.as_view(), name="login"),
     path("auth/", include("django.contrib.auth.urls")),
     path("accounts/", include("allauth.urls")),
     path("search/", FilteredSearchView(), name="haystack_search"),

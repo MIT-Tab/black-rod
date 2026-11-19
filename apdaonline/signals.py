@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.dispatch import receiver
 from allauth.account.signals import user_logged_in
 from allauth.socialaccount.models import SocialAccount
@@ -7,7 +8,9 @@ APDA_USERINFO_URL = "https://apda.online/oauth/me"
 
 @receiver(user_logged_in)
 def sync_apda_permissions_on_login(request, user, **kwargs):
-    print("Yipee we're here!")
+    if request is not None and hasattr(request, "session"):
+        remember = request.session.pop("apda_remember_login", True)
+        request.session.set_expiry(settings.SESSION_COOKIE_AGE if remember else 0)
     try:
         sa = SocialAccount.objects.get(user=user, provider="apdaonline")
     except SocialAccount.DoesNotExist:

@@ -15,7 +15,9 @@ import os
 import re
 from dotenv import load_dotenv
 
-load_dotenv(os.environ.get("DOT_ENV_FILE", ".env"))
+# Resolve configuration independently of the worker/deployment working directory.
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+load_dotenv(os.environ.get("DOT_ENV_FILE", os.path.join(PROJECT_ROOT, ".env")))
 
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -490,3 +492,12 @@ SPECTACULAR_SETTINGS = {
 
 # Shared only with the WordPress forum server; an empty token disables lookup.
 FORUM_PROFILE_API_TOKEN = os.environ.get("FORUM_PROFILE_API_TOKEN", "").strip()
+
+# Persist sessions in PostgreSQL (SQLite in private development), not worker memory.
+SESSION_ENGINE = "django.contrib.sessions.backends.db"
+SESSION_COOKIE_AGE = 30 * 24 * 60 * 60
+SESSION_EXPIRE_AT_BROWSER_CLOSE = False
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = "Lax"
+SESSION_COOKIE_SECURE = ENV == "production"
+CSRF_COOKIE_SECURE = ENV == "production"
