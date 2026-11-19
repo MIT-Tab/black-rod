@@ -1,32 +1,26 @@
 {% extends "base/base.html" %}
-{% load crispy_forms_tags socialaccount %}
+{% load crispy_forms_tags %}
 {% block content %}
     <div class="row">
         <div class="col"></div>
-        <div class="col">
+        <div class="col-md-6 col-lg-4">
             <div class="card mt-5">
                 <div class="card-body">
                     <h5 class="card-title">Login</h5>
-                    <p class="card-text">
-                        {% if next %}
-                            {% if user.is_authenticated %}
-                                <div class="alert alert-danger" role="alert">
-                                    Your account doesn't have access to this page. To proceed, please login with an account that has access.
-                                </div>
-                            {% else %}
-                                <div class="alert alert-danger" role="alert">Please login to see this page.</div>
-                            {% endif %}
-                        {% endif %}
-                        <a class="btn btn-primary" href="{% provider_login_url "apdaonline" %}">Login with apda.online</a>
+                    {% if next %}
+                        <div class="alert alert-info" role="alert">Please sign in to continue to this page.</div>
+                    {% endif %}
+                    <form method="post" action="{% url 'login' %}" novalidate>
+                        {% csrf_token %}
+                        <input type="hidden" name="next" value="{{ next }}">
+                        {{ form.remember|as_crispy_field }}
+                        <button class="btn btn-primary" type="submit" name="provider" value="apdaonline">Login with apda.online</button>
                         <hr>
-                        <form method="post" action="{% url 'login' %}" novalidate>
-                            {% csrf_token %}
-                            {{ form|crispy }}
-                            <input class="btn btn-secondary" type="submit" value="Login">
-                            <input type="hidden" name="next" value="{{ next }}">
-                        </form>
-                    </p>
-                    <!--<p><a href="{% url 'password_reset' %}">Lost password?</a></p>-->
+                        {{ form.non_field_errors }}
+                        {{ form.username|as_crispy_field }}
+                        {{ form.password|as_crispy_field }}
+                        <input class="btn btn-secondary" type="submit" value="Login">
+                    </form>
                 </div>
             </div>
         </div>
