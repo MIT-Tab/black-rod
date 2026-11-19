@@ -140,6 +140,22 @@ def test_more_frequent_qualifying_results_receive_fewer_points():
     assert scores == {"frequent": 1, "once": 100}
 
 
+@pytest.mark.parametrize("raw_scores,low_count,middle_count,high_count", [
+    ((-9.624, -6.454, 3.824, 4.588, 13.313, 15.007, 15.131, 18.362,
+      18.389, 18.443, 19.509, 24.495, 33.298, 33.305), 5, 6, 3),
+    ((-8.014, -6.454, 3.824, 4.588, 13.313, 20.007, 20.464,
+      22.433, 23.277, 25.131, 26.287, 29.495), 5, 2, 5),
+])
+def test_point_curve_matches_partner_square_examples(raw_scores, low_count, middle_count, high_count):
+    rarity = dict(enumerate(raw_scores))
+    scores = list(scale_scores(rarity, rarity).values())
+    assert scores == sorted(scores)
+    assert scores[0] == 1 and scores[-1] == 100
+    assert all(score < 10 for score in scores[:low_count])
+    assert all(30 < score < 40 for score in scores[low_count:low_count + middle_count])
+    assert all(score > 50 for score in scores[-high_count:])
+
+
 def test_partner_squares_allow_five_answers_including_three_recent():
     catalog = _catalog(15)
     catalog.clues["partner:d1"].people = {f"person{i}" for i in (0, 1, 2, 13, 14)}
