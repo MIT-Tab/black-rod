@@ -411,10 +411,13 @@ class ImmaculateGridTests(TestCase):
         TeamResult.objects.create(team=team, tournament=first, place=1, type_of_place=TeamResult.NOVICE)
         TeamResult.objects.create(team=alias_team, tournament=first, place=2)
         TeamResult.objects.create(team=team, tournament=second, place=1)
+        Debater.objects.filter(alias_group=self.alias_group).update(first_season="2025", latest_season="2025")
+        SpeakerResult.objects.create(tournament=first, debater=self.alias, place=1)
         SOTY.objects.create(debater=self.answer, place=5, season="2025", points=20)
         catalog = load_catalog(self.day)
         assert catalog.clues[f"partner:{self.identity}"].frequency(f"d{self.miss.pk}") == 2
         assert catalog.clues[f"school:{host.pk}"].frequency(self.identity) == 2
+        assert catalog.rarity[self.identity] == rarity_score(1, 20, 10, result_tournaments=2)
 
     def test_multi_host_clue_counts_varsity_semifinals_at_distinct_hosts_in_one_season(self):
         hosts = [School.objects.create(name=f"Placement Host {i}") for i in range(3)]

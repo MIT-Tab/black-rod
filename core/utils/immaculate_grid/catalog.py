@@ -4,7 +4,8 @@ from calendar import monthrange
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import date
-from itertools import combinations
+from itertools import combinations, pairwise
+from math import log2
 
 from core.models import (
     Debater, ImmaculateGridHiddenDebater, School, SOTY, SpeakerResult,
@@ -14,6 +15,9 @@ from core.utils.elo_runtime_engine.constants import normalize_school_name, seaso
 
 DEBATER_ACTIVITY_YEARS = 4
 HOST_ACTIVITY_YEARS = 3
+# Recent careers age slowly. Once outside the recent window, older eras earn
+# much more even when the debater was prominent in their own era.
+AGE_POINTS = ((0, 0), (4, 2), (6, 49), (10, 74), (13, 87), (17, 94), (18, 101), (24, 117))
 
 ELIMINATION_PLACES = {
     1: "Won",
@@ -43,13 +47,24 @@ def hidden_people():
     return {f"d{pk}" for pk, _ in rows} | {f"a{group}" for group in groups} | {f"d{pk}" for pk in linked}
 
 
-def rarity_score(seasons_since_active, points, prestige, career_span=0):
-    """Keep recent alumni close to current debaters, then gradually reward older careers."""
+def _age_points(seasons_since_active):
     age = max(0, seasons_since_active)
-    older_years = max(0, age - 4)
-    recency = 0.5 * min(age, 4) + 43 * older_years ** 2 / (older_years ** 2 + 64)
-    career = 10 * 4 / (max(0, career_span) + 4)
-    return recency + career + 30 * 35 / (35 + points) + 25 * 10 / (10 + prestige)
+    for (first, low), (last, high) in pairwise(AGE_POINTS):
+        if age <= last:
+            return low + (high - low) * (age - first) / (last - first)
+    return AGE_POINTS[-1][1]
+
+
+def rarity_score(seasons_since_active, points, prestige, career_span=0, result_tournaments=0):
+    """Estimate rarity in display points before clue-specific adjustments."""
+    standings_discount = 70 * points / (points + 75)
+    career_discount = min(12, max(0, career_span) * 1.5)
+    results_discount = 3 * log2(1 + result_tournaments / 5)
+    prestige_discount = 0.45 * prestige
+    return (
+        64 + _age_points(seasons_since_active)
+        - standings_discount - career_discount - results_discount - prestige_discount
+    )
 
 
 @dataclass
@@ -101,6 +116,7 @@ class Career:
     name: str
     schools: set = field(default_factory=set)
     school_tournaments: dict = field(default_factory=dict)
+    result_tournaments: set = field(default_factory=set)
     first_season: int | None = None
     latest_season: int | None = None
     latest_affiliated: int | None = None
@@ -240,6 +256,7 @@ def _record_team_results(day, catalog, careers, schools, affiliations, teams, re
             year = career.record_tournament(season, event_day, affiliations.get(pk), tournament_id)
             if not placing:
                 continue
+            career.result_tournaments.add(tournament_id)
             _placing_clues(catalog, person, place, host, kind, schools, event_day, tournament_id)
             if hybrid and team not in redacted:
                 catalog.add("hybrid", "Placed on a hybrid team", person, occurrences=(tournament_id,))
@@ -266,6 +283,7 @@ def _record_speaker_results(day, catalog, careers, schools, affiliations):
         person = catalog.aliases[pk]
         career = careers[person]
         year = career.record_tournament(season, event_day, affiliations.get(pk), tournament_id)
+        career.result_tournaments.add(tournament_id)
         rank = max(1, place - int(tie))
         if rank == 1:
             career.winning_speaker_divisions.add(division)
@@ -377,6 +395,7 @@ def load_catalog(day):
         catalog.rarity[person] = rarity_score(
             year - (career.latest_season or year), sum(career.points.values()), career.prestige,
             max(0, (career.latest_season or year) - (career.first_season or year)),
+            len(career.result_tournaments),
         )
         if career.latest_tournament is not None and career.latest_tournament >= cutoff:
             catalog.recent_people.add(person)

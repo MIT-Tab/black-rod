@@ -39,7 +39,7 @@ def _catalog(overlap_size, recent_count=10, keys=None):
     return Catalog({}, clues, {person: i for i, person in enumerate(sorted(people))}, recent_people=recent)
 
 
-def test_board_selection_is_stable_and_all_squares_have_equal_score_bounds():
+def test_board_selection_is_stable_and_scores_use_the_shared_range():
     day = date(2026, 11, 18)
     catalog = _catalog(15)
     first = build_board(day, catalog, [])
@@ -50,7 +50,7 @@ def test_board_selection_is_stable_and_all_squares_have_equal_score_bounds():
     assert len(first.answers) == 9
     assert sum(clue["key"].startswith("partner:") for clue in first.rows + first.columns) == 1
     assert all(len(cell.keys() & catalog.recent_people) == 10 for cell in first.answers)
-    assert all(len(cell) == 15 and min(cell.values()) == 1 and max(cell.values()) == 100 for cell in first.answers)
+    assert all(len(cell) == 15 and 1 <= min(cell.values()) < max(cell.values()) < 100 for cell in first.answers)
 
     later = day + timedelta(days=100)
     with pytest.raises(NoCompatibleBoard):
@@ -108,13 +108,12 @@ def test_rarity_rises_with_older_results_fewer_points_and_less_prestige():
     assert rarity_score(4, 20, 5) > reference
 
 
-def test_recency_grows_slowly_for_four_years_then_accelerates_gradually():
+def test_age_is_a_small_factor_for_recent_careers_and_a_large_one_for_older_eras():
     scores = [rarity_score(age, 100, 10) for age in range(17)]
     assert scores[2] - scores[0] == pytest.approx(1)
     assert scores[4] - scores[0] == pytest.approx(2)
-    assert 0 < scores[5] - scores[4] < 1
-    assert scores[6] - scores[5] > scores[5] - scores[4]
-    assert scores[8] - scores[0] > 10
+    assert scores[6] - scores[4] > 35
+    assert scores[13] - scores[6] > 30
     assert scores == sorted(scores)
 
 
@@ -137,23 +136,36 @@ def test_more_frequent_qualifying_results_receive_fewer_points():
     clue = Clue("partner:d1", "Partnered with One", "partner:d1")
     clue.occurrences = {"frequent": set(range(20)), "once": {1}}
     scores = scale_scores({"frequent", "once"}, {"frequent": 50, "once": 50}, (clue,))
-    assert scores == {"frequent": 1, "once": 100}
+    assert scores["frequent"] < scores["once"] < 60
 
 
-@pytest.mark.parametrize("raw_scores,low_count,middle_count,high_count", [
-    ((-9.624, -6.454, 3.824, 4.588, 13.313, 15.007, 15.131, 18.362,
-      18.389, 18.443, 19.509, 24.495, 33.298, 33.305), 5, 6, 3),
-    ((-8.014, -6.454, 3.824, 4.588, 13.313, 20.007, 20.464,
-      22.433, 23.277, 25.131, 26.287, 29.495), 5, 2, 5),
-])
-def test_point_curve_matches_partner_square_examples(raw_scores, low_count, middle_count, high_count):
-    rarity = dict(enumerate(raw_scores))
-    scores = list(scale_scores(rarity, rarity).values())
-    assert scores == sorted(scores)
-    assert scores[0] == 1 and scores[-1] == 100
-    assert all(score < 10 for score in scores[:low_count])
-    assert all(30 < score < 40 for score in scores[low_count:low_count + middle_count])
-    assert all(score > 50 for score in scores[-high_count:])
+def test_recent_partners_and_older_answers_score_on_same_scale():
+    rarity = {
+        "recent_regular": rarity_score(3, 51, 10, career_span=3, result_tournaments=23),
+        "recent_champion": rarity_score(2, 176, 9, career_span=2, result_tournaments=1),
+        "recent_low_standings": rarity_score(3, 2, 6, career_span=1, result_tournaments=6),
+        "older_regular": rarity_score(6, 90, 10, career_span=3, result_tournaments=19),
+        "older_champion": rarity_score(13, 446, 16, career_span=3, result_tournaments=58),
+        "historical": rarity_score(22, 0, 8, result_tournaments=11),
+    }
+    clue = Clue("partner:d1", "Partnered with One", "partner:d1")
+    clue.occurrences = {"recent_regular": {1, 2}, "recent_champion": {1}, "recent_low_standings": {1}}
+    recent = set(clue.occurrences)
+    partner = scale_scores(recent, rarity, (clue,))
+    broad = scale_scores(rarity, rarity)
+    assert partner["recent_champion"] <= 10
+    assert 5 <= partner["recent_regular"] <= 20
+    assert 45 <= partner["recent_low_standings"] <= 60
+    assert 55 <= broad["older_regular"] < broad["older_champion"] <= 85
+    assert broad["historical"] == 100
+
+
+def test_square_bonus_does_not_stretch_a_narrow_pool():
+    rarity = dict(enumerate((23, 23.2, 23.5, 23.7, 24, 24.2)))
+    narrow = scale_scores(rarity, rarity)
+    broad = scale_scores(rarity | {6: 0, 7: 95}, rarity | {6: 0, 7: 95})
+    assert max(narrow.values()) - min(narrow.values()) <= 2
+    assert all(0 <= broad[person] - narrow[person] <= 3 for person in rarity)
 
 
 def test_partner_squares_allow_five_answers_including_three_recent():
