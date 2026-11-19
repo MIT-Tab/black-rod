@@ -2,6 +2,7 @@
 import os
 from pathlib import Path
 import subprocess
+import shlex
 import sys
 import tempfile
 
@@ -54,7 +55,15 @@ def test_remote_deployment_script_handles_heredoc_and_stops_on_failure():
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / 'venv/bin').mkdir(parents=True)
-            (root / 'venv/bin/python').symlink_to(sys.executable)
+            # CI installs dependencies only in the real test environment.
+            (root / 'venv/pyvenv.cfg').write_text(
+                f'home = {sys.base_prefix}/bin\ninclude-system-site-packages = false\n'
+            )
+            # A relocated Python symlink can lose its real virtualenv's packages.
+            # Execute the original interpreter path while preserving stdin/arguments.
+            launcher = root / 'venv/bin/python'
+            launcher.write_text('#!/bin/sh\nexec ' + shlex.quote(sys.executable) + ' "$@"\n')
+            launcher.chmod(0o700)
             (root / '.env').write_text('UNCHANGED=keep\n')
             deploy = root / 'deploy.sh'
             deploy.write_text('#!/bin/sh\ntouch deployed\n')
