@@ -165,7 +165,9 @@ function initImmaculateGrid() {
       if (!response.ok || response.redirected) throw new Error("Search failed");
       const data = await response.json();
       if (number !== searchNumber) return;
-      data.results.forEach((match) => knownMatches.set(match.id, match));
+      data.results.forEach((match) =>
+        knownMatches.set(match.person ?? match.id, match),
+      );
       const matches = data.results.length
         ? data.results
         : previousMatches(query);

@@ -8,7 +8,7 @@ from core.models import (
     Debater, DebaterAliasGroup, ImmaculateGridBoard, ImmaculateGridHiddenDebater,
     ImmaculateGridPlay, School, SOTY, SpeakerResult, Team, TeamResult, Tournament, User,
 )
-from core.utils.immaculate_grid.catalog import load_catalog, person_key
+from core.utils.immaculate_grid.catalog import load_catalog, person_key, rarity_score
 from core.utils.immaculate_grid.boards import daily_board
 from core.utils.merge import merge_debaters
 
@@ -226,9 +226,61 @@ class ImmaculateGridTests(TestCase):
         self.client.force_login(self.player)
         ImmaculateGridHiddenDebater.objects.create(debater=self.alias)
         names = {item["name"] for item in self.client.get(self.search_url, {"q": "Avery"}).json()["results"]}
-        assert names == {"Avery Answer", "Avery Other"}
+        assert names == {"Avery Answer"}
+        alias_result = self.client.get(self.search_url, {"q": "Avery Other"}).json()["results"]
+        assert len(alias_result) == 1 and alias_result[0]["person"] == self.identity
         self._guess(self.answer, 0, 0)
         assert self._progress()[0]["score"] == 60
+
+    def test_linked_search_profiles_share_one_person_and_do_not_use_up_result_slots(self):
+        Debater.objects.bulk_create([
+            Debater(first_name="Avery", last_name=f"Alias {index}", alias_group=self.alias_group)
+            for index in range(15)
+        ] + [
+            Debater(first_name="Avery", last_name=f"Separate {index}") for index in range(14)
+        ])
+        self.client.force_login(self.player)
+        results = self.client.get(self.search_url, {"q": "Avery"}).json()["results"]
+        assert len(results) == 12
+        assert len({result["person"] for result in results}) == 12
+        first = self.client.get(self.search_url, {"q": "Avery Answer"}).json()["results"][0]
+        alternate = self.client.get(self.search_url, {"q": "Avery Other"}).json()["results"][0]
+        assert first["person"] == alternate["person"] == self.identity
+
+    def test_profiles_linked_after_publication_cannot_solve_two_squares(self):
+        first_key, alternate_key = f"d{self.answer.pk}", f"d{self.alias.pk}"
+        self.board.aliases = {str(self.answer.pk): first_key, str(self.alias.pk): alternate_key}
+        self.board.answers = [{first_key: 60, alternate_key: 60} for _ in range(9)]
+        self.board.save(update_fields=["answers", "aliases"])
+        original = (self.board.answers, self.board.aliases)
+        self.client.force_login(self.player)
+        self._guess(self.answer, 0, 0)
+        self._guess(self.alias, 1, 1)
+        assert len(self._progress()) == 1 and self._progress()[0]["score"] == 60
+        self.board.refresh_from_db()
+        assert (self.board.answers, self.board.aliases) == original
+
+    def test_same_answer_cannot_fill_two_squares_or_add_a_penalty(self):
+        self.client.force_login(self.player)
+        self._guess(self.answer, 0, 0)
+        response = self._guess(self.answer, 1, 1)
+        assert len(self._progress()) == 1
+        self.assertContains(self.client.get(response.url), "You’ve already used that debater.")
+
+    def test_scoring_combines_linked_career_spans_and_season_points(self):
+        first_school = School.objects.create(name="First school")
+        second_school = School.objects.create(name="Second school")
+        self.answer.first_season, self.answer.latest_season, self.answer.school = "2021", "2023", first_school
+        self.alias.first_season, self.alias.latest_season, self.alias.school = "2023", "2025", second_school
+        self.answer.save()
+        self.alias.save()
+        SOTY.objects.create(debater=self.answer, season="2023", place=2, points=100)
+        SOTY.objects.create(debater=self.alias, season="2023", place=2, points=100)
+        catalog = load_catalog(self.day)
+        assert catalog.rarity[self.identity] == rarity_score(1, 100, 9, career_span=4)
+        assert catalog.clues["SOTY:10"].frequency(self.identity) == 1
+        assert catalog.clues[f"school:{first_school.pk}"].people == {self.identity}
+        assert catalog.clues[f"school:{second_school.pk}"].people == {self.identity}
 
     def test_hidden_partner_is_removed_from_an_already_published_board(self):
         self.board.rows[0].update(label="Partnered with Avery Answer", subject=self.identity)

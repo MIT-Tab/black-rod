@@ -9,6 +9,8 @@ from django.urls import reverse
 from core.models.school import School
 from core.models.debater_alias import DebaterAlias
 from core.models.debater import Debater
+from core.models.debater_alias_group import DebaterAliasGroup
+from core.models.immaculate_grid import ImmaculateGridHiddenDebater
 from core.models.round import Round, RoundStats
 from core.models.round_import import (
     ImportBatch,
@@ -21,6 +23,7 @@ from core.models.tags import TaggedResource
 from core.models.team import Team
 from core.models.tournament import Tournament
 from core.models.user import User
+from core.utils.immaculate_grid.catalog import hidden_people, person_key
 
 
 
@@ -159,6 +162,51 @@ class AdminTestCase(TestCase):
         queryset = model_admin.get_queryset(MockRequest(self.superuser))
 
         self.assertIn(synthetic, queryset)
+
+    def test_debater_admin_checkbox_sets_and_clears_hidden_status_for_linked_names(self):
+        group = DebaterAliasGroup.objects.create()
+        debater = Debater.objects.create(first_name="Hidden", last_name="Person", alias_group=group)
+        linked = Debater.objects.create(first_name="Other", last_name="Name", alias_group=group)
+        self.client.force_login(self.superuser)
+        url = reverse("admin:core_debater_change", args=[debater.pk])
+        payload = {
+            "first_name": debater.first_name, "last_name": debater.last_name,
+            "status": debater.status, "alias_group": group.pk,
+            "immaculate_hidden": "on", "_save": "Save",
+        }
+        response = self.client.post(url, payload)
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(ImmaculateGridHiddenDebater.objects.filter(debater=debater).exists())
+        self.assertIn(person_key(linked.pk, linked.alias_group_id), hidden_people())
+
+        linked_url = reverse("admin:core_debater_change", args=[linked.pk])
+        response = self.client.get(linked_url)
+        self.assertTrue(response.context["adminform"].form["immaculate_hidden"].value())
+        payload.update(first_name=linked.first_name, last_name=linked.last_name)
+        del payload["immaculate_hidden"]
+        response = self.client.post(linked_url, payload)
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(ImmaculateGridHiddenDebater.objects.filter(debater__alias_group=group).exists())
+
+    def test_linking_a_profile_does_not_accidentally_unhide_the_group(self):
+        group = DebaterAliasGroup.objects.create()
+        hidden = Debater.objects.create(first_name="Hidden", alias_group=group)
+        other = Debater.objects.create(first_name="Other")
+        ImmaculateGridHiddenDebater.objects.create(debater=hidden)
+        self.client.force_login(self.superuser)
+        response = self.client.post(reverse("admin:core_debater_change", args=[other.pk]), {
+            "first_name": other.first_name, "status": other.status,
+            "alias_group": group.pk, "_save": "Save",
+        })
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(ImmaculateGridHiddenDebater.objects.filter(debater=hidden).exists())
+
+    def test_hidden_debater_admin_uses_searchable_lookup_instead_of_full_dropdown(self):
+        self.client.force_login(self.superuser)
+        response = self.client.get(reverse("admin:core_immaculategridhiddendebater_add"))
+        self.assertContains(response, 'class="vForeignKeyRawIdAdminField"')
+        self.assertContains(response, 'class="related-lookup"')
+        self.assertNotContains(response, '<select name="debater"')
 
     def test_round_admin_queryset_includes_stats_count_and_import_summary(self):
         round_obj, gov_one = self._create_round_fixture()

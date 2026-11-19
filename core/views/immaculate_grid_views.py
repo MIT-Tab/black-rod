@@ -11,6 +11,7 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET, require_POST
 
 from core.models import Debater, ImmaculateGridBoard, ImmaculateGridPlay
+from core.utils.debater_aliases import load_linked_debater_ids
 from core.utils.immaculate_grid.boards import (
     EXTRA_GUESS_PENALTY, GRID_WIDTH, GUESS_LIMIT, NoCompatibleBoard, daily_board, game_date,
 )
@@ -141,9 +142,10 @@ def answers(request):
     options = []
     for profile in profiles:
         person = board.aliases[str(profile.pk)]
-        if person in seen:
+        identity = person_key(profile.pk, profile.alias_group_id)
+        if identity in seen:
             continue
-        seen.add(person)
+        seen.add(identity)
         options.append({
             "name": profile.name,
             "school": profile.school.name if profile.school else "",
@@ -173,20 +175,31 @@ def search(request):
             default=Value(2),
         ),
         Lower("full_name"), "pk",
-    )[:12]
-    return JsonResponse({"results": [
-        {"id": debater.pk, "name": debater.name, "school": debater.school.name if debater.school else ""}
-        for debater in candidates
-    ]})
+    )
+    results = []
+    seen = set()
+    for debater in candidates.iterator(chunk_size=32):
+        person = person_key(debater.pk, debater.alias_group_id)
+        if person in seen:
+            continue
+        seen.add(person)
+        results.append({
+            "id": debater.pk, "person": person, "name": debater.name,
+            "school": debater.school.name if debater.school else "",
+        })
+        if len(results) == 12:
+            break
+    return JsonResponse({"results": results})
 
 
-def _guess_issue(play, attempts, cell, person):
+def _guess_issue(play, attempts, cell, people, profile_ids):
     if len(play.guesses) != attempts:
         return "Your grid was updated. Choose a square to continue."
     for item in play.guesses:
         if item["cell"] == cell and item["score"] is not None:
             return "That square is already solved."
-        if item["person"] == person and (item["score"] is not None or item["cell"] == cell):
+        same_person = item["person"] in people or item.get("debater_id") in profile_ids
+        if same_person and (item["score"] is not None or item["cell"] == cell):
             return "You’ve already used that debater."
     return None
 
@@ -211,8 +224,11 @@ def guess(request):
     play, _ = ImmaculateGridPlay.objects.get_or_create(board=board, user=request.user)
     debater = data["debater"]
     person = board.aliases.get(str(debater.pk)) or person_key(debater.pk, debater.alias_group_id)
+    profile_ids = load_linked_debater_ids([debater.pk]) if debater.alias_group_id else {debater.pk}
+    people = {f"d{pk}" for pk in profile_ids} | {person_key(debater.pk, debater.alias_group_id)}
+    people.update(board.aliases[str(pk)] for pk in profile_ids if str(pk) in board.aliases)
     cell = data["cell"]
-    issue = _guess_issue(play, data["attempts"], cell, person)
+    issue = _guess_issue(play, data["attempts"], cell, people, profile_ids)
     if issue:
         messages.info(request, issue)
         return redirect(GRID_URL)
@@ -220,7 +236,10 @@ def guess(request):
         messages.info(request, "A new daily grid is ready.")
         return redirect(GRID_URL)
 
-    item = {"cell": cell, "person": person, "name": debater.name, "score": board.answers[cell].get(person)}
+    item = {
+        "cell": cell, "person": person, "debater_id": debater.pk,
+        "name": debater.name, "score": board.answers[cell].get(person),
+    }
     if not ImmaculateGridPlay.objects.filter(pk=play.pk, guesses=play.guesses).update(
         guesses=[*play.guesses, item]
     ):
