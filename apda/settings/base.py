@@ -487,3 +487,6 @@ SPECTACULAR_SETTINGS = {
     "SECURITY": [],
     "SERVE_INCLUDE_SCHEMA": False,
 }
+
+# Shared only with the WordPress forum server; an empty token disables lookup.
+FORUM_PROFILE_API_TOKEN = os.environ.get("FORUM_PROFILE_API_TOKEN", "").strip()
