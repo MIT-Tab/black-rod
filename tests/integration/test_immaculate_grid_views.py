@@ -6,7 +6,7 @@ from django.urls import reverse
 
 from core.models import (
     Debater, DebaterAliasGroup, ImmaculateGridBoard, ImmaculateGridHiddenDebater,
-    ImmaculateGridPlay, School, SOTY, SpeakerResult, Team, TeamResult, Tournament, User,
+    ImmaculateGridPlay, Round, School, SOTY, SpeakerResult, Team, TeamResult, Tournament, User,
 )
 from core.utils.immaculate_grid.catalog import load_catalog, person_key, rarity_score
 from core.utils.immaculate_grid.boards import daily_board
@@ -417,7 +417,28 @@ class ImmaculateGridTests(TestCase):
         catalog = load_catalog(self.day)
         assert catalog.clues[f"partner:{self.identity}"].frequency(f"d{self.miss.pk}") == 2
         assert catalog.clues[f"school:{host.pk}"].frequency(self.identity) == 2
-        assert catalog.rarity[self.identity] == rarity_score(1, 20, 10, result_tournaments=2)
+        assert catalog.rarity[self.identity] == rarity_score(1, 20, 10, attended_tournaments=2)
+
+    def test_attendance_counts_nonplacing_and_public_round_only_entries(self):
+        host = School.objects.create(name="Attendance Host")
+        Debater.objects.filter(alias_group=self.alias_group).update(first_season="2025", latest_season="2025")
+        team = Team.objects.create(name="Attending team")
+        team.debaters.add(self.alias)
+        other = Team.objects.create(name="Opponent")
+        other.debaters.add(self.miss)
+        placed, unplaced, round_only, hidden = [
+            Tournament.objects.create(host=host, date=date(2025, 10, day), season="2025")
+            for day in (1, 8, 15, 22)
+        ]
+        TeamResult.objects.create(team=team, tournament=placed, place=1)
+        TeamResult.objects.create(team=team, tournament=unplaced)
+        blocked = TeamResult.objects.create(team=team, tournament=hidden)
+        blocked.hidden_from_debaters.add(self.alias)
+        for tournament in (placed, round_only, hidden):
+            Round.objects.create(gov=team, opp=other, tournament=tournament, victor=Round.GOV)
+
+        catalog = load_catalog(self.day)
+        assert catalog.rarity[self.identity] == rarity_score(1, 0, 8, attended_tournaments=3)
 
     def test_multi_host_clue_counts_varsity_semifinals_at_distinct_hosts_in_one_season(self):
         hosts = [School.objects.create(name=f"Placement Host {i}") for i in range(3)]

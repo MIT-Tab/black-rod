@@ -141,12 +141,12 @@ def test_more_frequent_qualifying_results_receive_fewer_points():
 
 def test_recent_partners_and_older_answers_score_on_same_scale():
     rarity = {
-        "recent_regular": rarity_score(3, 51, 10, career_span=3, result_tournaments=23),
-        "recent_champion": rarity_score(2, 176, 9, career_span=2, result_tournaments=1),
-        "recent_low_standings": rarity_score(3, 2, 6, career_span=1, result_tournaments=6),
-        "older_regular": rarity_score(6, 90, 10, career_span=3, result_tournaments=19),
-        "older_champion": rarity_score(13, 446, 16, career_span=3, result_tournaments=58),
-        "historical": rarity_score(22, 0, 8, result_tournaments=11),
+        "recent_regular": rarity_score(3, 51, 10, career_span=3, attended_tournaments=23),
+        "recent_champion": rarity_score(2, 176, 9, career_span=2, attended_tournaments=1),
+        "recent_low_standings": rarity_score(3, 2, 6, career_span=1, attended_tournaments=6),
+        "older_regular": rarity_score(6, 90, 10, career_span=3, attended_tournaments=19),
+        "older_champion": rarity_score(13, 446, 16, career_span=3, attended_tournaments=58),
+        "historical": rarity_score(22, 0, 8, attended_tournaments=11),
     }
     clue = Clue("partner:d1", "Partnered with One", "partner:d1")
     clue.occurrences = {"recent_regular": {1, 2}, "recent_champion": {1}, "recent_low_standings": {1}}
@@ -154,10 +154,17 @@ def test_recent_partners_and_older_answers_score_on_same_scale():
     partner = scale_scores(recent, rarity, (clue,))
     broad = scale_scores(rarity, rarity)
     assert partner["recent_champion"] <= 10
-    assert 5 <= partner["recent_regular"] <= 20
+    assert 1 <= partner["recent_regular"] <= 15
     assert 45 <= partner["recent_low_standings"] <= 60
-    assert 55 <= broad["older_regular"] < broad["older_champion"] <= 85
+    assert 50 <= broad["older_regular"] < broad["older_champion"] <= 85
     assert broad["historical"] == 100
+
+
+def test_frequent_attendance_lowers_rarity_without_standings_points():
+    recent_discount = rarity_score(2, 0, 0) - rarity_score(2, 0, 0, attended_tournaments=20)
+    historical_discount = rarity_score(15, 0, 0) - rarity_score(15, 0, 0, attended_tournaments=20)
+    assert recent_discount > 15
+    assert 0 < historical_discount < recent_discount / 2
 
 
 def test_square_bonus_does_not_stretch_a_narrow_pool():

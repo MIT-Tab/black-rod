@@ -8,10 +8,11 @@ from itertools import combinations, pairwise
 from math import log2
 
 from core.models import (
-    Debater, ImmaculateGridHiddenDebater, School, SOTY, SpeakerResult,
+    Debater, ImmaculateGridHiddenDebater, Round, School, SOTY, SpeakerResult,
     Team, TeamResult, TOTY, Tournament,
 )
 from core.utils.elo_runtime_engine.constants import normalize_school_name, season_to_int
+from core.utils.rounds import visible_canonical_rounds
 
 DEBATER_ACTIVITY_YEARS = 4
 HOST_ACTIVITY_YEARS = 3
@@ -55,15 +56,19 @@ def _age_points(seasons_since_active):
     return AGE_POINTS[-1][1]
 
 
-def rarity_score(seasons_since_active, points, prestige, career_span=0, result_tournaments=0):
+def rarity_score(seasons_since_active, points, prestige, career_span=0, attended_tournaments=0):
     """Estimate rarity in display points before clue-specific adjustments."""
     standings_discount = 70 * points / (points + 75)
     career_discount = min(12, max(0, career_span) * 1.5)
-    results_discount = 3 * log2(1 + result_tournaments / 5)
+    # Frequent appearances make recent names especially familiar. Fade the
+    # extra discount between four and eight seasons after their last season.
+    recent_weight = max(0, min(1, (8 - seasons_since_active) / 4))
+    activity = log2(1 + attended_tournaments / 5)
+    activity_discount = 3 * activity + recent_weight * min(10, 5.5 * activity)
     prestige_discount = 0.45 * prestige
     return (
         64 + _age_points(seasons_since_active)
-        - standings_discount - career_discount - results_discount - prestige_discount
+        - standings_discount - career_discount - activity_discount - prestige_discount
     )
 
 
@@ -116,7 +121,7 @@ class Career:
     name: str
     schools: set = field(default_factory=set)
     school_tournaments: dict = field(default_factory=dict)
-    result_tournaments: set = field(default_factory=set)
+    attended_tournaments: set = field(default_factory=set)
     first_season: int | None = None
     latest_season: int | None = None
     latest_affiliated: int | None = None
@@ -254,9 +259,9 @@ def _record_team_results(day, catalog, careers, schools, affiliations, teams, re
             person = catalog.aliases[pk]
             career = careers[person]
             year = career.record_tournament(season, event_day, affiliations.get(pk), tournament_id)
+            career.attended_tournaments.add(tournament_id)
             if not placing:
                 continue
-            career.result_tournaments.add(tournament_id)
             _placing_clues(catalog, person, place, host, kind, schools, event_day, tournament_id)
             if hybrid and team not in redacted:
                 catalog.add("hybrid", "Placed on a hybrid team", person, occurrences=(tournament_id,))
@@ -283,7 +288,7 @@ def _record_speaker_results(day, catalog, careers, schools, affiliations):
         person = catalog.aliases[pk]
         career = careers[person]
         year = career.record_tournament(season, event_day, affiliations.get(pk), tournament_id)
-        career.result_tournaments.add(tournament_id)
+        career.attended_tournaments.add(tournament_id)
         rank = max(1, place - int(tie))
         if rank == 1:
             career.winning_speaker_divisions.add(division)
@@ -376,17 +381,32 @@ def _years_before(day, years):
     return day.replace(year=year, day=min(day.day, monthrange(year, day.month)[1]))
 
 
+def _record_round_attendance(day, careers, aliases, teams, redacted_pairs):
+    rounds = visible_canonical_rounds(
+        Round.objects.filter(tournament__date__lte=day).exclude(victor__in=(Round.UNKNOWN, Round.BYE))
+    )
+    entries = rounds.values_list("tournament_id", "gov_id").union(
+        rounds.values_list("tournament_id", "opp_id")
+    )
+    for tournament_id, team_id in entries.iterator():
+        if (team_id, tournament_id) not in redacted_pairs:
+            for pk in teams.get(team_id, ()):
+                careers[aliases[pk]].attended_tournaments.add(tournament_id)
+
+
 def load_catalog(day):
     year = day.year - (day.month < 8)
     schools = _schools()
     aliases, careers, affiliations = _profiles(year, schools)
     catalog = Catalog(aliases)
     teams = _team_members()
-    redacted = set(
-        TeamResult.objects.filter(hidden_from_debaters__isnull=False).values_list("team_id", flat=True)
+    redacted_pairs = set(
+        TeamResult.objects.filter(hidden_from_debaters__isnull=False).values_list("team_id", "tournament_id")
     )
+    redacted = {team_id for team_id, _ in redacted_pairs}
     partners = _record_team_results(day, catalog, careers, schools, affiliations, teams, redacted)
     _record_speaker_results(day, catalog, careers, schools, affiliations)
+    _record_round_attendance(day, careers, aliases, teams, redacted_pairs)
     _record_standings(year, catalog, careers, teams, redacted)
     hidden = hidden_people()
     cutoff = _years_before(day, DEBATER_ACTIVITY_YEARS)
@@ -395,7 +415,7 @@ def load_catalog(day):
         catalog.rarity[person] = rarity_score(
             year - (career.latest_season or year), sum(career.points.values()), career.prestige,
             max(0, (career.latest_season or year) - (career.first_season or year)),
-            len(career.result_tournaments),
+            len(career.attended_tournaments),
         )
         if career.latest_tournament is not None and career.latest_tournament >= cutoff:
             catalog.recent_people.add(person)
