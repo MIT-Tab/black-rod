@@ -1,7 +1,6 @@
 """Choose and publish the daily board from compatible clue intersections."""
 
 import random
-from bisect import bisect_right
 from collections import defaultdict
 from datetime import timedelta, timezone as fixed_timezone
 from itertools import combinations, product
@@ -27,9 +26,10 @@ GRID_WIDTH = 3
 MINIMUM_CLUE_KINDS = 4
 GUESS_LIMIT = GRID_WIDTH ** 2
 EXTRA_GUESS_PENALTY = 5
-# Calibrate the display curve in raw rarity units so a common answer doesn't
-# become uncommon just because the other answers in its square are familiar.
-RARITY_SCORE_ANCHORS = ((13.5, 9), (15, 31), (20.5, 39), (22, 50))
+MAXIMUM_SQUARE_BONUS = 3
+POINTS_PER_BONUS_POINT = 4
+REPEAT_CLUE_DISCOUNT = 2
+REPEAT_PARTNER_DISCOUNT = 8
 
 
 class NoCompatibleBoard(Exception):
@@ -90,8 +90,12 @@ def compatible_pairs(clues, rarity, recent_people):
 
 
 def answer_rarities(people, rarity, clues):
+    weighted_clues = [
+        (clue, REPEAT_PARTNER_DISCOUNT if clue.kind[0] == "partner" else REPEAT_CLUE_DISCOUNT)
+        for clue in clues
+    ]
     return {
-        person: rarity[person] - 5 * sum(log2(clue.frequency(person)) for clue in clues)
+        person: rarity[person] - sum(weight * log2(clue.frequency(person)) for clue, weight in weighted_clues)
         for person in people
     }
 
@@ -99,23 +103,10 @@ def answer_rarities(people, rarity, clues):
 def scale_scores(people, rarity, clues=()):
     scores = answer_rarities(people, rarity, clues)
     minimum = min(scores.values())
-    maximum = max(scores.values())
-    anchors = [
-        (minimum, 1),
-        *((raw, points) for raw, points in RARITY_SCORE_ANCHORS if minimum < raw < maximum),
-        (maximum, 100),
-    ]
-    breaks = [raw for raw, _ in anchors]
     points = {}
     for person, raw in sorted(scores.items()):
-        if raw == maximum:
-            points[person] = 100
-            continue
-        upper = bisect_right(breaks, raw)
-        low_raw, low_points = anchors[upper - 1]
-        high_raw, high_points = anchors[upper]
-        fraction = (raw - low_raw) / (high_raw - low_raw)
-        points[person] = round(low_points + fraction * (high_points - low_points))
+        bonus = min(MAXIMUM_SQUARE_BONUS, (raw - minimum) / POINTS_PER_BONUS_POINT)
+        points[person] = min(100, max(1, round(raw + bonus)))
     return points
 
 

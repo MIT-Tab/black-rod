@@ -6,7 +6,7 @@ from django.urls import reverse
 
 from core.models import (
     Debater, DebaterAliasGroup, ImmaculateGridBoard, ImmaculateGridHiddenDebater,
-    ImmaculateGridPlay, School, SOTY, SpeakerResult, Team, TeamResult, Tournament, User,
+    ImmaculateGridPlay, QualPoints, Round, School, SOTY, SpeakerResult, Team, TeamResult, TOTY, Tournament, User,
 )
 from core.utils.immaculate_grid.catalog import load_catalog, person_key, rarity_score
 from core.utils.immaculate_grid.boards import daily_board
@@ -277,9 +277,17 @@ class ImmaculateGridTests(TestCase):
         self.alias.save()
         SOTY.objects.create(debater=self.answer, season="2023", place=2, points=100)
         SOTY.objects.create(debater=self.alias, season="2023", place=2, points=100)
+        QualPoints.objects.create(debater=self.answer, season="2023", points=25)
+        QualPoints.objects.create(debater=self.alias, season="2023", points=30)
+        QualPoints.objects.create(debater=self.alias, season="2025", points=20)
+        QualPoints.objects.create(debater=self.alias, season="2027", points=500)
+        team = Team.objects.create(name="Ranked team")
+        team.debaters.add(self.answer)
+        TOTY.objects.create(team=team, season="2023", place=3, points=500)
         catalog = load_catalog(self.day)
-        assert catalog.rarity[self.identity] == rarity_score(1, 100, 9, career_span=4)
+        assert catalog.rarity[self.identity] == rarity_score(1, 150, 9, career_span=4)
         assert catalog.clues["SOTY:10"].frequency(self.identity) == 1
+        assert catalog.clues["TOTY:10"].frequency(self.identity) == 1
         assert catalog.clues[f"school:{first_school.pk}"].people == {self.identity}
         assert catalog.clues[f"school:{second_school.pk}"].people == {self.identity}
 
@@ -411,10 +419,34 @@ class ImmaculateGridTests(TestCase):
         TeamResult.objects.create(team=team, tournament=first, place=1, type_of_place=TeamResult.NOVICE)
         TeamResult.objects.create(team=alias_team, tournament=first, place=2)
         TeamResult.objects.create(team=team, tournament=second, place=1)
+        Debater.objects.filter(alias_group=self.alias_group).update(first_season="2025", latest_season="2025")
+        SpeakerResult.objects.create(tournament=first, debater=self.alias, place=1)
         SOTY.objects.create(debater=self.answer, place=5, season="2025", points=20)
         catalog = load_catalog(self.day)
         assert catalog.clues[f"partner:{self.identity}"].frequency(f"d{self.miss.pk}") == 2
         assert catalog.clues[f"school:{host.pk}"].frequency(self.identity) == 2
+        assert catalog.rarity[self.identity] == rarity_score(1, 20, 10, attended_tournaments=2)
+
+    def test_attendance_counts_nonplacing_and_public_round_only_entries(self):
+        host = School.objects.create(name="Attendance Host")
+        Debater.objects.filter(alias_group=self.alias_group).update(first_season="2025", latest_season="2025")
+        team = Team.objects.create(name="Attending team")
+        team.debaters.add(self.alias)
+        other = Team.objects.create(name="Opponent")
+        other.debaters.add(self.miss)
+        placed, unplaced, round_only, hidden = [
+            Tournament.objects.create(host=host, date=date(2025, 10, day), season="2025")
+            for day in (1, 8, 15, 22)
+        ]
+        TeamResult.objects.create(team=team, tournament=placed, place=1)
+        TeamResult.objects.create(team=team, tournament=unplaced)
+        blocked = TeamResult.objects.create(team=team, tournament=hidden)
+        blocked.hidden_from_debaters.add(self.alias)
+        for tournament in (placed, round_only, hidden):
+            Round.objects.create(gov=team, opp=other, tournament=tournament, victor=Round.GOV)
+
+        catalog = load_catalog(self.day)
+        assert catalog.rarity[self.identity] == rarity_score(1, 0, 8, attended_tournaments=3)
 
     def test_multi_host_clue_counts_varsity_semifinals_at_distinct_hosts_in_one_season(self):
         hosts = [School.objects.create(name=f"Placement Host {i}") for i in range(3)]
