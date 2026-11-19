@@ -53,6 +53,7 @@ urlpatterns = [
     path("immaculate-grid/", immaculate_grid_views.grid, name="immaculate_grid"),
     path("immaculate-grid/guess/", immaculate_grid_views.guess, name="immaculate_grid_guess"),
     path("immaculate-grid/search/", immaculate_grid_views.search, name="immaculate_grid_search"),
+    path("immaculate-grid/answers/", immaculate_grid_views.answers, name="immaculate_grid_answers"),
     path("core/schools/", school_views.SchoolListView.as_view(), name="school_list"),
     path(
         "core/schools/<int:pk>",

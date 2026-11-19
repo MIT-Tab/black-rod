@@ -8,6 +8,8 @@
 {% block content %}
     <main class="immaculate-grid mx-auto my-4 my-md-5"
           data-immaculate-grid
+          data-day="{{ day|date:'Y-m-d' }}"
+          data-answers-url="{% url 'core:immaculate_grid_answers' %}"
           data-play-url="{% url 'core:immaculate_grid' %}">
         <header class="immaculate-heading mb-4">
             <p class="immaculate-date mb-2">{{ day|date:"F j, Y" }} · New grid at midnight EST</p>
@@ -66,10 +68,21 @@
                             {% for cell in row.cells %}
                                 <td>
                                     {% if cell.answer %}
-                                        <div class="immaculate-square immaculate-correct">
-                                            <span>{{ cell.answer.name }}</span>
-                                            <small>{{ cell.answer.score }} pts</small>
-                                        </div>
+                                        {% if finished %}
+                                            <button type="button"
+                                                    class="immaculate-square immaculate-correct immaculate-rarity-{{ cell.answer.tier.key }}"
+                                                    data-review-cell="{{ cell.index }}"
+                                                    disabled
+                                                    aria-label="View valid answers for {{ row.label }} and {{ cell.column }}">
+                                                <span>{{ cell.answer.name }}</span>
+                                                <small>{{ cell.answer.tier.label }} · {{ cell.answer.score }} pts</small>
+                                            </button>
+                                        {% else %}
+                                            <div class="immaculate-square immaculate-correct immaculate-rarity-{{ cell.answer.tier.key }}">
+                                                <span>{{ cell.answer.name }}</span>
+                                                <small>{{ cell.answer.tier.label }} · {{ cell.answer.score }} pts</small>
+                                            </div>
+                                        {% endif %}
                                     {% else %}
                                         <button class="immaculate-square immaculate-open"
                                                 type="button"
@@ -86,18 +99,55 @@
                     {% endfor %}
                 </tbody>
             </table>
+            <ul class="immaculate-rarity-legend list-unstyled d-flex flex-wrap mt-3 mb-0" aria-label="Rarity points">
+                {% for tier in rarity_tiers %}
+                    <li class="immaculate-rarity-{{ tier.key }}">{{ tier.label }} {{ tier.minimum }}–{{ tier.maximum }}</li>
+                {% endfor %}
+            </ul>
             <div class="d-flex flex-wrap align-items-center mt-3">
                 <button type="button"
                         class="btn btn-outline-primary mr-3"
                         data-copy-results
                         disabled>Copy results</button>
                 <span class="small text-muted" data-copy-status role="status"></span>
+                {% if finished %}
+                    <button type="button"
+                            class="btn btn-outline-primary my-2"
+                            data-review-cell="0"
+                            disabled>View valid answers</button>
+                {% endif %}
             </div>
             <div class="mt-2" data-share-fallback hidden>
                 <label class="sr-only" for="immaculate-share-results">Results to copy</label>
                 <textarea id="immaculate-share-results" class="form-control" rows="7" readonly>{{ share_results }}</textarea>
             </div>
-            {% if not finished %}
+            {% if finished %}
+                <dialog class="immaculate-picker"
+                        id="immaculate-answers"
+                        aria-labelledby="immaculate-answers-title">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h2 id="immaculate-answers-title" class="modal-title h5">Valid answers</h2>
+                            <button type="button" class="close" data-close-answers aria-label="Close">
+                                <span aria-hidden="true">×</span>
+                            </button>
+                        </div>
+                        <div class="modal-body">
+                            <label for="immaculate-answer-cell">Square</label>
+                            <select id="immaculate-answer-cell" class="form-control">
+                                {% for row in rows %}
+                                    {% for cell in row.cells %}
+                                        <option value="{{ cell.index }}" data-clue="{{ row.label }} × {{ cell.column }}">Row {{ forloop.parentloop.counter }}, column {{ forloop.counter }}</option>
+                                    {% endfor %}
+                                {% endfor %}
+                            </select>
+                            <p class="small mt-2 mb-0" data-answer-clue></p>
+                            <p class="small text-muted mt-2 mb-2" data-answer-status role="status"></p>
+                            <ul class="list-group immaculate-answer-results" data-answer-results></ul>
+                        </div>
+                    </div>
+                </dialog>
+            {% else %}
                 <dialog class="immaculate-picker"
                         id="immaculate-guess"
                         aria-labelledby="immaculate-guess-title">

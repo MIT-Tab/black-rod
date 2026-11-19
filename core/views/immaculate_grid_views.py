@@ -15,6 +15,7 @@ from core.utils.immaculate_grid.boards import (
     EXTRA_GUESS_PENALTY, GRID_WIDTH, GUESS_LIMIT, NoCompatibleBoard, daily_board, game_date,
 )
 from core.utils.immaculate_grid.catalog import hidden_people, person_key
+from core.utils.immaculate_grid.rarities import RARITY_TIERS, rarity_tier
 
 logger = logging.getLogger(__name__)
 GRID_URL = "core:immaculate_grid"
@@ -25,6 +26,11 @@ class GuessForm(forms.Form):
     cell = forms.IntegerField(min_value=0, max_value=GUESS_LIMIT - 1)
     attempts = forms.IntegerField(min_value=0)
     debater = forms.ModelChoiceField(queryset=Debater.objects.all())
+
+
+class AnswerReviewForm(forms.Form):
+    day = forms.DateField(input_formats=["%Y-%m-%d"])
+    cell = forms.IntegerField(min_value=0, max_value=GUESS_LIMIT - 1)
 
 
 def _clues_visible(board):
@@ -61,7 +67,7 @@ def _board_rows(board, correct):
 
 def _share_results(day, correct, attempts, score, penalty):
     squares = [
-        f"🟩 {correct[index]['score']}" if index in correct else "⬜ —"
+        f"{rarity_tier(correct[index]['score'])['emoji']} {correct[index]['score']}" if index in correct else "⬜ —"
         for index in range(GUESS_LIMIT)
     ]
     rows = [" | ".join(squares[start:start + GRID_WIDTH]) for start in range(0, GUESS_LIMIT, GRID_WIDTH)]
@@ -88,7 +94,10 @@ def grid(request):
 
     play = ImmaculateGridPlay.objects.filter(board=board, user=request.user).first()
     guesses = play.guesses if play else []
-    correct = {item["cell"]: item for item in guesses if item["score"] is not None}
+    correct = {
+        item["cell"]: {**item, "tier": rarity_tier(item["score"])}
+        for item in guesses if item["score"] is not None
+    }
     penalty = max(0, len(guesses) - GUESS_LIMIT) * EXTRA_GUESS_PENALTY
     rarity = sum(item["score"] for item in correct.values())
     score = rarity - penalty
@@ -103,8 +112,46 @@ def grid(request):
         "penalty": penalty,
         "score": score,
         "share_results": _share_results(day, correct, len(guesses), score, penalty),
+        "rarity_tiers": RARITY_TIERS,
         "latest_guess": guesses[-1] if guesses else None,
     })
+
+
+@never_cache
+@login_required
+@require_GET
+def answers(request):
+    form = AnswerReviewForm(request.GET)
+    if not form.is_valid():
+        return JsonResponse({"error": "Choose a grid and a square."}, status=400)
+    board = ImmaculateGridBoard.objects.filter(date=form.cleaned_data["day"]).first()
+    if board is None:
+        return JsonResponse({"error": "This grid is unavailable."}, status=404)
+    play = ImmaculateGridPlay.objects.filter(board=board, user=request.user).first()
+    if play is None or len({item["cell"] for item in play.guesses if item["score"] is not None}) != GUESS_LIMIT:
+        return JsonResponse({"error": "Solve all nine squares to view valid answers."}, status=403)
+    if not _clues_visible(board):
+        return JsonResponse({"error": "This grid is unavailable."}, status=503)
+
+    cell = form.cleaned_data["cell"]
+    scores = board.answers[cell]
+    profile_ids = [int(pk) for pk, person in board.aliases.items() if person in scores]
+    profiles = Debater.objects.filter(pk__in=profile_ids).select_related("school").order_by("pk")
+    seen = set()
+    options = []
+    for profile in profiles:
+        person = board.aliases[str(profile.pk)]
+        if person in seen:
+            continue
+        seen.add(person)
+        options.append({
+            "name": profile.name,
+            "school": profile.school.name if profile.school else "",
+            "score": scores[person],
+            "tier": rarity_tier(scores[person]),
+        })
+    options.sort(key=lambda option: (-option["score"], option["name"].casefold()))
+    return JsonResponse({"answers": options})
 
 
 @never_cache

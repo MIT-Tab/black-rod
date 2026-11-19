@@ -5,9 +5,11 @@ from types import SimpleNamespace
 import pytest
 
 from core.utils.immaculate_grid.boards import (
-    MAXIMUM_ANSWERS, MAXIMUM_CLUE_ANSWERS, NoCompatibleBoard, build_board, cooldowns, game_date, pair_key,
+    MAXIMUM_ANSWERS, MAXIMUM_CLUE_ANSWERS, NoCompatibleBoard, build_board, cooldowns,
+    game_date, pair_key, scale_scores,
 )
 from core.utils.immaculate_grid.catalog import Catalog, Clue, rarity_score
+from core.utils.immaculate_grid.rarities import rarity_tier
 
 
 def test_day_changes_at_midnight_standard_time_even_in_summer():
@@ -30,7 +32,7 @@ def test_cooldowns_include_last_21_and_100_days_and_ignore_axis_order():
 def _catalog(overlap_size, recent_count=10, keys=None):
     overlap = {f"person{i}" for i in range(overlap_size)}
     clues = {}
-    for i, key in enumerate(keys or (f"clue{i}" for i in range(6))):
+    for i, key in enumerate(keys or (*[f"clue{i}" for i in range(5)], "partner:d1")):
         clues[key] = Clue(key, key, key, people=overlap | {f"unique{i}"})
     people = set().union(*(clue.people for clue in clues.values()))
     recent = {f"person{i}" for i in range(recent_count)} | {f"unique{i}" for i in range(len(clues))}
@@ -46,6 +48,7 @@ def test_board_selection_is_stable_and_all_squares_have_equal_score_bounds():
 
     assert (first.rows, first.columns, first.answers) == (second.rows, second.columns, second.answers)
     assert len(first.answers) == 9
+    assert sum(clue["key"].startswith("partner:") for clue in first.rows + first.columns) == 1
     assert all(len(cell.keys() & catalog.recent_people) == 10 for cell in first.answers)
     assert all(len(cell) == 15 and min(cell.values()) == 1 and max(cell.values()) == 100 for cell in first.answers)
 
@@ -86,7 +89,7 @@ def test_rejects_overly_broad_clues_and_intersections():
 
 def test_host_and_event_quarterfinal_clues_count_as_one_kind():
     day = date(2026, 11, 18)
-    repeated = ("host:1:8", "host:2:8", "host:3:8", "event:Nationals:8", "SOTY:10", "school:9")
+    repeated = ("host:1:8", "host:2:8", "host:3:8", "event:Nationals:8", "SOTY:10", "school:9", "partner:d1")
     with pytest.raises(NoCompatibleBoard):
         build_board(day, _catalog(15, keys=repeated), [])
 
@@ -103,3 +106,59 @@ def test_rarity_rises_with_older_results_fewer_points_and_less_prestige():
     assert rarity_score(5, 20, 10) > reference
     assert rarity_score(4, 10, 10) > reference
     assert rarity_score(4, 20, 5) > reference
+
+
+def test_recency_grows_slowly_for_four_years_then_accelerates_gradually():
+    scores = [rarity_score(age, 100, 10) for age in range(17)]
+    assert scores[2] - scores[0] == pytest.approx(1)
+    assert scores[4] - scores[0] == pytest.approx(2)
+    assert 0 < scores[5] - scores[4] < 1
+    assert scores[6] - scores[5] > scores[5] - scores[4]
+    assert scores[8] - scores[0] > 10
+    assert scores == sorted(scores)
+
+
+def test_longer_careers_receive_fewer_points_with_other_factors_equal():
+    assert rarity_score(2, 100, 10, career_span=8) < rarity_score(2, 100, 10, career_span=4)
+    assert rarity_score(2, 100, 10, career_span=4) < rarity_score(2, 100, 10, career_span=1)
+
+
+def test_recent_champions_stay_less_rare_than_current_debaters_with_fewer_achievements():
+    rarity = {
+        "current": rarity_score(0, 100, 10, career_span=3),
+        "recent_champion": rarity_score(2, 300, 20, career_span=4),
+        "older_champion": rarity_score(10, 300, 20, career_span=4),
+    }
+    scores = scale_scores(set(rarity), rarity)
+    assert scores["recent_champion"] < scores["current"] < scores["older_champion"]
+
+
+def test_more_frequent_qualifying_results_receive_fewer_points():
+    clue = Clue("partner:d1", "Partnered with One", "partner:d1")
+    clue.occurrences = {"frequent": set(range(20)), "once": {1}}
+    scores = scale_scores({"frequent", "once"}, {"frequent": 50, "once": 50}, (clue,))
+    assert scores == {"frequent": 1, "once": 100}
+
+
+def test_partner_squares_allow_five_answers_including_three_recent():
+    catalog = _catalog(15)
+    catalog.clues["partner:d1"].people = {f"person{i}" for i in (0, 1, 2, 13, 14)}
+    board = build_board(date(2026, 11, 18), catalog, [])
+    assert sorted(len(cell) for cell in board.answers) == [5, 5, 5, 15, 15, 15, 15, 15, 15]
+    catalog.clues["partner:d1"].people.remove("person14")
+    with pytest.raises(NoCompatibleBoard):
+        build_board(date(2026, 11, 18), catalog, [])
+    catalog.clues["partner:d1"].people.add("person14")
+    catalog.recent_people.remove("person2")
+    with pytest.raises(NoCompatibleBoard):
+        build_board(date(2026, 11, 18), catalog, [])
+
+
+@pytest.mark.parametrize("score,key,emoji", [
+    (1, "common", "🟩"), (24, "common", "🟩"), (25, "uncommon", "🟦"),
+    (49, "uncommon", "🟦"), (50, "rare", "🟪"), (74, "rare", "🟪"),
+    (75, "epic", "🟧"), (89, "epic", "🟧"), (90, "galaxy", "🌌"), (100, "galaxy", "🌌"),
+])
+def test_rarity_band_boundaries_match_share_emojis(score, key, emoji):
+    assert rarity_tier(score)["key"] == key
+    assert rarity_tier(score)["emoji"] == emoji

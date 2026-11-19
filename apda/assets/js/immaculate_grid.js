@@ -21,10 +21,85 @@ function initResultsSharing(grid) {
   });
 }
 
+function initAnswerReview(grid) {
+  const modal = grid.querySelector("#immaculate-answers");
+  if (!modal) return;
+
+  const select = modal.querySelector("#immaculate-answer-cell");
+  const results = modal.querySelector("[data-answer-results]");
+  const status = modal.querySelector("[data-answer-status]");
+  const clue = modal.querySelector("[data-answer-clue]");
+  let opener;
+  let activeRequest;
+
+  async function loadAnswers() {
+    if (activeRequest) activeRequest.abort();
+    const request = new AbortController();
+    activeRequest = request;
+    results.replaceChildren();
+    clue.textContent = select.selectedOptions[0].dataset.clue;
+    status.textContent = "Loading answers…";
+    const url = new URL(grid.dataset.answersUrl, window.location.href);
+    url.searchParams.set("day", grid.dataset.day);
+    url.searchParams.set("cell", select.value);
+    try {
+      const response = await fetch(url, { signal: request.signal });
+      if (!response.ok || response.redirected)
+        throw new Error("Answers unavailable");
+      const data = await response.json();
+      if (activeRequest !== request) return;
+      data.answers.forEach((answer) => {
+        const item = document.createElement("li");
+        item.className =
+          "list-group-item d-flex align-items-center justify-content-between";
+        const profile = document.createElement("span");
+        profile.className = "immaculate-answer-profile";
+        const name = document.createElement("strong");
+        name.textContent = answer.name;
+        const school = document.createElement("small");
+        school.className = "d-block text-muted";
+        school.textContent = answer.school;
+        profile.append(name, school);
+        const score = document.createElement("span");
+        score.className = `immaculate-answer-score immaculate-rarity-${answer.tier.key}`;
+        score.textContent = `${answer.tier.label} · ${answer.score} pts`;
+        item.append(profile, score);
+        results.append(item);
+      });
+      status.textContent = `${data.answers.length} valid answers`;
+    } catch {
+      if (activeRequest === request && !request.signal.aborted) {
+        status.textContent =
+          "Answers are unavailable. Choose the square again to retry.";
+      }
+    }
+  }
+
+  grid.querySelectorAll("[data-review-cell]").forEach((button) => {
+    button.addEventListener("click", () => {
+      opener = button;
+      select.value = button.dataset.reviewCell;
+      modal.showModal();
+      select.focus();
+      loadAnswers();
+    });
+    button.removeAttribute("disabled");
+  });
+  select.addEventListener("change", loadAnswers);
+  modal
+    .querySelector("[data-close-answers]")
+    .addEventListener("click", () => modal.close());
+  modal.addEventListener("close", () => {
+    if (activeRequest) activeRequest.abort();
+    if (opener) opener.focus();
+  });
+}
+
 function initImmaculateGrid() {
   const grid = document.querySelector("[data-immaculate-grid]");
   if (!grid) return;
   initResultsSharing(grid);
+  initAnswerReview(grid);
 
   const modal = grid.querySelector("#immaculate-guess");
   if (!modal) return;
