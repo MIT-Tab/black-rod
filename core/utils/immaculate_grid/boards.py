@@ -1,6 +1,7 @@
 """Choose and publish the daily board from compatible clue intersections."""
 
 import random
+from bisect import bisect_right
 from collections import defaultdict
 from datetime import timedelta, timezone as fixed_timezone
 from itertools import combinations, product
@@ -25,6 +26,9 @@ GRID_WIDTH = 3
 MINIMUM_CLUE_KINDS = 4
 GUESS_LIMIT = GRID_WIDTH ** 2
 EXTRA_GUESS_PENALTY = 5
+# Calibrate the display curve in raw rarity units so a common answer doesn't
+# become uncommon just because the other answers in its square are familiar.
+RARITY_SCORE_ANCHORS = ((13.5, 9), (15, 31), (20.5, 39), (22, 50))
 
 
 class NoCompatibleBoard(Exception):
@@ -95,10 +99,23 @@ def scale_scores(people, rarity, clues=()):
     scores = answer_rarities(people, rarity, clues)
     minimum = min(scores.values())
     maximum = max(scores.values())
-    return {
-        person: round(1 + 99 * (scores[person] - minimum) / (maximum - minimum))
-        for person in sorted(people)
-    }
+    anchors = [
+        (minimum, 1),
+        *((raw, points) for raw, points in RARITY_SCORE_ANCHORS if minimum < raw < maximum),
+        (maximum, 100),
+    ]
+    breaks = [raw for raw, _ in anchors]
+    points = {}
+    for person, raw in sorted(scores.items()):
+        if raw == maximum:
+            points[person] = 100
+            continue
+        upper = bisect_right(breaks, raw)
+        low_raw, low_points = anchors[upper - 1]
+        high_raw, high_points = anchors[upper]
+        fraction = (raw - low_raw) / (high_raw - low_raw)
+        points[person] = round(low_points + fraction * (high_points - low_points))
+    return points
 
 
 def _column_choices(shared, order, clues, kinds, row_topics, row_kinds):
