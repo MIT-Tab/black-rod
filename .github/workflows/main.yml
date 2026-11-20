@@ -7,6 +7,9 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    concurrency:
+      group: black-rod-production
+      cancel-in-progress: false
     steps:
       - name: Add server to known_hosts
         run: |
@@ -42,5 +45,18 @@ jobs:
                 os.chown(path, metadata.st_uid, metadata.st_gid)
                 os.chmod(path, metadata.st_mode & 0o777)
             PYTHON
+            # deploy.sh reinstalls dependencies in the serving virtualenv.
+            # Supervisor waits for the old workers to exit before pip runs.
+            supervisorctl stop black-rod
             ./deploy.sh
+            venv/bin/python - <<'PYTHON'
+            import ssl
+            from pathlib import Path
+            import django.views.debug
+            import requests.certs
+
+            ssl.create_default_context(cafile=requests.certs.where())
+            (Path(django.views.debug.__file__).parent / "templates" / "technical_500.txt").read_text(encoding="utf-8")
+            PYTHON
+            supervisorctl status black-rod
             install -m 644 /home/rodda/black-rod/deploy/mittab-results-cache.cron /etc/cron.d/black-rod-mittab-cache

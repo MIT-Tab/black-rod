@@ -1,4 +1,4 @@
-"""Exercise the deployment's credential writer without real credentials."""
+"""Exercise the remote deployment workflow with a local sandbox."""
 import os
 from pathlib import Path
 import subprocess
@@ -51,7 +51,15 @@ def test_remote_deployment_script_handles_heredoc_and_stops_on_failure():
     """Run the shell consumed by ssh-action, including its script_stop expansion."""
     workflow = yaml.safe_load(WORKFLOW.read_text())
     config = workflow['jobs']['deploy']['steps'][1]['with']
-    for token, expected in (('a' * 64, 0), ('invalid', 1)):
+    cases = (
+        ('a' * 64, '', 0, ['stop black-rod', 'deploy', 'status black-rod', 'install']),
+        ('invalid', '', 1, []),
+        ('a' * 64, 'stop', 1, ['stop black-rod']),
+        ('a' * 64, 'deploy', 1, ['stop black-rod', 'deploy']),
+        ('a' * 64, 'ca', 1, ['stop black-rod', 'deploy']),
+        ('a' * 64, 'status', 1, ['stop black-rod', 'deploy', 'status black-rod']),
+    )
+    for token, failure, expected, commands in cases:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / 'venv/bin').mkdir(parents=True)
@@ -66,10 +74,24 @@ def test_remote_deployment_script_handles_heredoc_and_stops_on_failure():
             launcher.chmod(0o700)
             (root / '.env').write_text('UNCHANGED=keep\n')
             deploy = root / 'deploy.sh'
-            deploy.write_text('#!/bin/sh\ntouch deployed\n')
+            deploy.write_text(
+                '#!/bin/sh\nprintf "deploy\\n" >> commands\n'
+                '[ "$STUB_FAILURE" != deploy ] || exit 1\n'
+            )
             deploy.chmod(0o700)
-            (root / 'install').write_text('#!/bin/sh\nexit 0\n')
+            supervisor = root / 'supervisorctl'
+            supervisor.write_text(
+                '#!/bin/sh\nprintf "%s\\n" "$*" >> commands\n'
+                '[ "$STUB_FAILURE" != "$1" ]\n'
+            )
+            supervisor.chmod(0o700)
+            (root / 'install').write_text('#!/bin/sh\nprintf "install\\n" >> commands\n')
             (root / 'install').chmod(0o700)
+            if failure == 'ca':
+                requests = root / 'requests'
+                requests.mkdir()
+                (requests / '__init__.py').touch()
+                (requests / 'certs.py').write_text('def where(): return "missing-ca.pem"\n')
             script = config['script'].replace('/home/rodda/black-rod', directory)
             if config.get('script_stop'):
                 # drone-ssh checks each line, even lines inside a heredoc.
@@ -78,8 +100,10 @@ def test_remote_deployment_script_handles_heredoc_and_stops_on_failure():
             result = subprocess.run(['bash', '-c', script], capture_output=True,
                                     env={**os.environ, 'FORUM_PROFILE_API_TOKEN': token,
                                          'DOT_ENV_FILE': str(root / '.env'),
+                                         'STUB_FAILURE': failure,
                                          'PATH': directory + os.pathsep + os.environ['PATH']})
             assert result.returncode == expected, result.stderr.decode()
-            assert (root / 'deployed').exists() == (expected == 0)
+            recorded = root / 'commands'
+            assert (recorded.read_text().splitlines() if recorded.exists() else []) == commands
             assert result.stdout == b''
             assert token.encode() not in result.stderr

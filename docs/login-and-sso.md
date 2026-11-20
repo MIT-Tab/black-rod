@@ -16,6 +16,24 @@ state, and the exact results callback. LoginWP still controls other redirects;
 failed logins and arbitrary callback URLs do not qualify. The provider continues
 to validate the client, callback, authorization code, and OAuth state.
 
+### Results callback failures during deployment
+
+On November 20, 2026, WordPress returned users to the Results callback while a
+Results deploy was reinstalling packages in the live virtualenv. Requests
+failed before contacting the WordPress token endpoint because certifi's CA
+bundle was missing. Django's error reporting then tried to read its own missing
+error template. The [deployment log](https://github.com/MIT-Tab/black-rod/actions/runs/44760243569)
+records both package removals before the callbacks and the completed installation
+and worker restart afterward.
+
+The Results deploy workflow serializes deployments and stops Supervisor's
+`black-rod` process before invoking the host's `deploy.sh`. That script performs
+the install and starts the service again. Results is unavailable during this
+maintenance window. Afterward the workflow checks the CA bundle, Django's error template,
+and Supervisor status before reporting success. If the deploy fails after the
+stop, inspect the failed step and repair the release and dependencies before
+starting `black-rod` again. Retrying the deploy can start from a stopped process.
+
 Results' login button previously opened allauth's GET confirmation page. The new
 login form submits directly through a CSRF-protected POST, eliminating that extra
 Continue step and retaining the originally requested page. Existing linked
