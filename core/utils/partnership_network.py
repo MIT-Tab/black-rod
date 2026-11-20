@@ -5,6 +5,7 @@ from itertools import combinations
 
 from core.models import Debater, QUAL, Round, SpeakerResult, Team, TeamResult
 from core.utils.debater_aliases import build_representative_debater_maps
+from core.utils.partnership_paths import _shortest_paths
 
 
 def _season_filter(queryset, filters, prefix="tournament__"):
@@ -104,3 +105,24 @@ def build_partnership_network(filters):
             "url": person.get_absolute_url(),
         })
     return {"nodes": nodes, "edges": edges}
+
+
+def find_network_paths(filters, first_debater, second_debater):
+    data = build_partnership_network(filters)
+    nodes = {node["id"]: node for node in data["nodes"]}
+    graph = {person_id: set() for person_id in nodes}
+    for edge in data["edges"]:
+        graph[edge["from"]].add(edge["to"])
+        graph[edge["to"]].add(edge["from"])
+    representatives, _ = build_representative_debater_maps(
+        Debater.objects.values_list("id", "alias_group_id")
+    )
+    first = representatives[first_debater.pk]
+    second = representatives[second_debater.pk]
+    if first not in graph or second not in graph:
+        return []
+    graph = {person_id: sorted(neighbors) for person_id, neighbors in graph.items()}
+    return [
+        [nodes[person_id] for person_id in path]
+        for path in _shortest_paths(graph, first, second, limit=5)
+    ]

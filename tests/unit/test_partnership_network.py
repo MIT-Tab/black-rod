@@ -89,3 +89,30 @@ def test_network_is_public_and_validates_filters(client):
     for year in [2024, 2025]:
         Tournament.objects.create(host=host, season=str(year), date=date(year, 1, 1))
     assert client.get(data_url, {"from_season": "2025", "to_season": "2024"}).status_code == 400
+
+
+def test_network_paths_follow_filters_and_aliases(client):
+    group = DebaterAliasGroup.objects.create()
+    school = School.objects.create(name="School")
+    first = Debater.objects.create(first_name="First", school=school, alias_group=group)
+    alias = Debater.objects.create(first_name="Alias", school=school, alias_group=group)
+    middle = Debater.objects.create(first_name="Middle", school=school)
+    last = Debater.objects.create(first_name="Last", school=school)
+    event = Tournament.objects.create(host=school, season="2025", date=date(2025, 1, 1))
+    for members in [(alias, middle), (middle, last)]:
+        team = Team.objects.create(name="Partners")
+        team.debaters.add(*members)
+        TeamResult.objects.create(team=team, tournament=event)
+    url = reverse("core:partnership_network_paths")
+    query = {"first_debater": alias.pk, "second_debater": last.pk}
+    response = client.get(url, query)
+    assert response.status_code == 200
+    assert [[node["id"] for node in path] for path in response.json()["paths"]] == [
+        [first.pk, middle.pk, last.pk]
+    ]
+    assert client.get(url, {**query, "min_tournaments": 2}).json() == {"paths": []}
+    assert client.get(url, {**query, "first_debater": "invalid"}).status_code == 400
+    temporary = Debater.all_objects.create(first_name="Temporary", temporary=True)
+    assert client.get(url, {**query, "first_debater": temporary.pk}).status_code == 400
+    same = client.get(url, {**query, "second_debater": first.pk})
+    assert [node["id"] for node in same.json()["paths"][0]] == [first.pk]
