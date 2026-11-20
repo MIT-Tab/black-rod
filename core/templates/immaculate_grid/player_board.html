@@ -1,0 +1,16 @@
+{% extends "base/base.html" %}
+{% block title %}
+    {{ player_name }} · Immaculate Grid
+{% endblock title %}
+{% block extra_head %}
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+{% endblock extra_head %}
+{% block content %}
+    <main class="immaculate-grid mx-auto my-4 my-md-5">
+        <a href="{% url 'core:immaculate_grid_leaderboard' %}">Back to leaderboard</a>
+        <p class="immaculate-date mt-3 mb-2">{{ day|date:"F j, Y" }}</p>
+        <h1>{{ player_name }}’s grid</h1>
+        <p>{{ solved }}/9 solved · {{ attempts }} guesses · {{ score }} points</p>
+        {% include "immaculate_grid/board_cells.html" %}
+    </main>
+{% endblock content %}

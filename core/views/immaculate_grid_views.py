@@ -5,17 +5,18 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db.models import Case, Value, When
 from django.db.models.functions import Concat, Lower, Trim
-from django.http import JsonResponse
-from django.shortcuts import redirect, render
+from django.http import HttpResponseForbidden, JsonResponse
+from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET, require_POST
 
 from core.models import Debater, ImmaculateGridBoard, ImmaculateGridPlay
 from core.utils.debater_aliases import load_linked_debater_ids
 from core.utils.immaculate_grid.boards import (
-    EXTRA_GUESS_PENALTY, GRID_WIDTH, GUESS_LIMIT, NoCompatibleBoard, clues_visible, daily_board, game_date,
+    GRID_WIDTH, GUESS_LIMIT, NoCompatibleBoard, clues_visible, daily_board, game_date,
 )
 from core.utils.immaculate_grid.catalog import person_key
+from core.utils.immaculate_grid.leaderboard import player_name, rankings, score_guesses, solved_guesses
 from core.utils.immaculate_grid.rarities import RARITY_TIERS, rarity_tier
 
 logger = logging.getLogger(__name__)
@@ -55,7 +56,7 @@ def _board_rows(board, correct):
 
 def _share_results(day, correct, attempts, score, penalty):
     squares = [
-        f"{rarity_tier(correct[index]['score'])['emoji']} {correct[index]['score']}" if index in correct else "⬜ —"
+        f"{correct[index]['tier']['emoji']} {correct[index]['score']}" if index in correct else "⬜ —"
         for index in range(GUESS_LIMIT)
     ]
     rows = [" | ".join(squares[start:start + GRID_WIDTH]) for start in range(0, GUESS_LIMIT, GRID_WIDTH)]
@@ -65,6 +66,13 @@ def _share_results(day, correct, attempts, score, penalty):
         f"{len(correct)}/9 solved · {score} points",
         f"{attempts} guesses · {penalty} penalty points",
     ])
+
+
+def _correct_answers(board, guesses):
+    return {
+        cell: {**item, "tier": rarity_tier(item["score"], max(board.answers[cell].values(), default=None))}
+        for cell, item in solved_guesses(guesses).items()
+    }
 
 
 @never_cache
@@ -79,13 +87,10 @@ def grid(request):
         return render(request, "immaculate_grid/grid.html", {"day": day}, status=503)
     play = ImmaculateGridPlay.objects.filter(board=board, user=request.user).first()
     guesses = play.guesses if play else []
-    correct = {
-        item["cell"]: {**item, "tier": rarity_tier(item["score"])}
-        for item in guesses if item["score"] is not None
-    }
-    penalty = max(0, len(guesses) - GUESS_LIMIT) * EXTRA_GUESS_PENALTY
-    rarity = sum(item["score"] for item in correct.values())
+    correct = _correct_answers(board, guesses)
+    rarity, penalty = score_guesses(guesses)
     score = rarity - penalty
+    today, week = rankings(day, request.user.pk)
     return render(request, "immaculate_grid/grid.html", {
         "day": day,
         "board_id": board.pk,
@@ -100,6 +105,44 @@ def grid(request):
         "share_results": _share_results(day, correct, len(guesses), score, penalty),
         "rarity_tiers": RARITY_TIERS,
         "latest_guess": guesses[-1] if guesses else None,
+        "today_leaders": today[:3],
+        "week_leaders": week[:3],
+        "can_view_boards": len(correct) == GUESS_LIMIT,
+    })
+
+
+@never_cache
+@login_required
+@require_GET
+def leaderboard(request):
+    day = game_date()
+    today, week = rankings(day, request.user.pk)
+    play = ImmaculateGridPlay.objects.filter(
+        board__date=day, board__replaced_at__isnull=True, user=request.user,
+    ).only("guesses").first()
+    return render(request, "immaculate_grid/leaderboard.html", {
+        "day": day, "today_leaders": today, "week_leaders": week,
+        "can_view_boards": bool(play and len(solved_guesses(play.guesses)) == GUESS_LIMIT),
+    })
+
+
+@never_cache
+@login_required
+@require_GET
+def player_board(request, player_id):
+    board = get_object_or_404(ImmaculateGridBoard, date=game_date(), replaced_at__isnull=True)
+    viewer = ImmaculateGridPlay.objects.filter(board=board, user=request.user).only("guesses").first()
+    if not clues_visible(board) or viewer is None or len(solved_guesses(viewer.guesses)) != GUESS_LIMIT:
+        return HttpResponseForbidden("Solve all nine squares on today's board to view other players' boards.")
+    play = get_object_or_404(ImmaculateGridPlay.objects.select_related("user"), board=board, user_id=player_id)
+    if not play.guesses:
+        return redirect("core:immaculate_grid_leaderboard")
+    correct = _correct_answers(board, play.guesses)
+    rarity, penalty = score_guesses(play.guesses)
+    return render(request, "immaculate_grid/player_board.html", {
+        "day": board.date, "player_name": player_name(play.user), "solved": len(correct),
+        "attempts": len(play.guesses), "score": rarity - penalty, "columns": board.columns,
+        "rows": _board_rows(board, correct), "read_only": True,
     })
 
 
@@ -116,13 +159,14 @@ def answers(request):
     if board is None:
         return JsonResponse({"error": "This grid is unavailable."}, status=404)
     play = ImmaculateGridPlay.objects.filter(board=board, user=request.user).first()
-    if play is None or len({item["cell"] for item in play.guesses if item["score"] is not None}) != GUESS_LIMIT:
+    if play is None or len(solved_guesses(play.guesses)) != GUESS_LIMIT:
         return JsonResponse({"error": "Solve all nine squares to view valid answers."}, status=403)
     if not clues_visible(board):
         return JsonResponse({"error": "This grid is unavailable."}, status=503)
 
     cell = form.cleaned_data["cell"]
     scores = board.answers[cell]
+    square_best = max(scores.values(), default=None)
     profile_ids = [int(pk) for pk, person in board.aliases.items() if person in scores]
     profiles = Debater.objects.filter(pk__in=profile_ids).select_related("school").order_by("pk")
     seen = set()
@@ -137,7 +181,7 @@ def answers(request):
             "name": profile.name,
             "school": profile.school.name if profile.school else "",
             "score": scores[person],
-            "tier": rarity_tier(scores[person]),
+            "tier": rarity_tier(scores[person], square_best),
         })
     options.sort(key=lambda option: (-option["score"], option["name"].casefold()))
     return JsonResponse({"answers": options})

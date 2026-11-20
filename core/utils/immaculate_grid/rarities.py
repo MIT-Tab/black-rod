@@ -9,7 +9,9 @@ RARITY_TIERS = (
 )
 
 
-def rarity_tier(score):
+def rarity_tier(score, square_best=None):
+    if score == square_best:
+        score = max(50, score)
     for tier in reversed(RARITY_TIERS):
         if score >= tier["minimum"]:
             return tier
