@@ -47,8 +47,8 @@ def test_network_deduplicates_tournaments_and_combines_filters():
     assert build_partnership_network({"schools": [other_school]})["nodes"] == []
 
     speaker_event = Tournament.objects.create(host=school, season="2023", date=date(2023, 1, 1))
-    for person in [first, second]:
-        SpeakerResult.objects.create(debater=person, tournament=speaker_event)
+    for place, person in enumerate([first, second], start=1):
+        SpeakerResult.objects.create(debater=person, tournament=speaker_event, place=place)
     assert len(build_partnership_network({"min_tournaments": 3})["nodes"]) == 2
     assert build_partnership_network({})["edges"][0]["tournaments"] == 2
 
