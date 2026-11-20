@@ -3,7 +3,8 @@
 import random
 from collections import defaultdict
 from datetime import timedelta, timezone as fixed_timezone
-from itertools import combinations, product
+from heapq import nlargest
+from itertools import combinations, pairwise, product
 from math import log2
 
 from django.db import transaction
@@ -26,10 +27,11 @@ GRID_WIDTH = 3
 MINIMUM_CLUE_KINDS = 4
 GUESS_LIMIT = GRID_WIDTH ** 2
 EXTRA_GUESS_PENALTY = 5
-MAXIMUM_SQUARE_BONUS = 3
-POINTS_PER_BONUS_POINT = 4
 REPEAT_CLUE_DISCOUNT = 2
 REPEAT_PARTNER_DISCOUNT = 8
+MINIMUM_RAW_TOP_SCORES = (20, 15)
+MINIMUM_FINAL_TOP_SCORES = (35, 25)
+POINT_CURVE = ((0, 0), (25, 30), (35, 45), (50, 65), (65, 85), (75, 95), (100, 100))
 
 
 class NoCompatibleBoard(Exception):
@@ -83,9 +85,10 @@ def compatible_pairs(clues, rarity, recent_people):
             continue
         if not partnered and overlap in (first.people, second.people):
             continue
-        scores = answer_rarities(overlap, rarity, (first, second)).values()
-        if min(scores) < max(scores):
-            pairs[pair_key(first.key, second.key)] = overlap
+        raw = answer_rarities(overlap, rarity, (first, second))
+        best, second_best = nlargest(2, raw.values())
+        if best >= MINIMUM_RAW_TOP_SCORES[0] and second_best >= MINIMUM_RAW_TOP_SCORES[1] and min(raw.values()) < best:
+            pairs[pair_key(first.key, second.key)] = raw
     return pairs
 
 
@@ -100,13 +103,25 @@ def answer_rarities(people, rarity, clues):
     }
 
 
-def scale_scores(people, rarity, clues=()):
-    scores = answer_rarities(people, rarity, clues)
-    minimum = min(scores.values())
+def _curve_points(raw):
+    raw = max(0, raw)
+    for (low, left), (high, right) in pairwise(POINT_CURVE):
+        if raw <= high:
+            return left + (right - left) * (raw - low) / (high - low)
+    return 100
+
+
+def scale_scores(scores):
+    best, second_best = nlargest(2, scores.values())
+    targets = zip((best, second_best), MINIMUM_FINAL_TOP_SCORES)
+    floors = [(anchor, target) for anchor, target in targets if _curve_points(anchor) < target]
     points = {}
     for person, raw in sorted(scores.items()):
-        bonus = min(MAXIMUM_SQUARE_BONUS, (raw - minimum) / POINTS_PER_BONUS_POINT)
-        points[person] = min(100, max(1, round(raw + bonus)))
+        # Lift close contenders where necessary, with the lift tapering toward
+        # easier answers. Every component is monotonic in raw rarity.
+        floor = max((target - 2 * max(0, anchor - raw) for anchor, target in floors), default=1)
+        cap = 100 if raw >= 100 else 99
+        points[person] = min(cap, round(max(1, _curve_points(raw), floor)))
     return points
 
 
@@ -172,10 +187,7 @@ def build_board(day, catalog, history):
     clues = {key: clue for key, clue in catalog.clues.items() if key not in blocked_clues}
     pairs = compatible_pairs(clues, catalog.rarity, catalog.recent_people)
     rows, columns = choose_clues(day, clues, pairs, blocked_clues, blocked_pairs)
-    answers = [
-        scale_scores(pairs[pair_key(row, column)], catalog.rarity, (clues[row], clues[column]))
-        for row, column in product(rows, columns)
-    ]
+    answers = [scale_scores(pairs[pair_key(row, column)]) for row, column in product(rows, columns)]
     eligible = set().union(*(cell.keys() for cell in answers))
     return ImmaculateGridBoard(
         date=day,

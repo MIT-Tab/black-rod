@@ -1,0 +1,16 @@
+{% extends "base/base.html" %}
+{% block title %}
+    Immaculate Grid Leaderboard · APDA Standings
+{% endblock title %}
+{% block extra_head %}
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+{% endblock extra_head %}
+{% block content %}
+    <main class="immaculate-grid mx-auto my-4 my-md-5">
+        <a href="{% url 'core:immaculate_grid' %}">Back to Immaculate Grid</a>
+        <h1 class="mt-2">Immaculate Grid Leaderboard</h1>
+        <p class="text-muted">Weekly totals run from Monday through today. Points include guess penalties.</p>
+        {% if not can_view_boards %}<p>Solve today's grid to view other players' boards.</p>{% endif %}
+        {% include "immaculate_grid/leaderboard_tables.html" %}
+    </main>
+{% endblock content %}

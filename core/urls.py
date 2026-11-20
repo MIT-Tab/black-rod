@@ -55,6 +55,9 @@ urlpatterns = [
     path("immaculate-grid/guess/", immaculate_grid_views.guess, name="immaculate_grid_guess"),
     path("immaculate-grid/search/", immaculate_grid_views.search, name="immaculate_grid_search"),
     path("immaculate-grid/answers/", immaculate_grid_views.answers, name="immaculate_grid_answers"),
+    path("immaculate-grid/leaderboard/", immaculate_grid_views.leaderboard, name="immaculate_grid_leaderboard"),
+    path("immaculate-grid/leaderboard/<int:player_id>/", immaculate_grid_views.player_board,
+         name="immaculate_grid_player_board"),
     path("core/schools/", school_views.SchoolListView.as_view(), name="school_list"),
     path(
         "core/schools/<int:pk>",

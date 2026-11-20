@@ -6,7 +6,7 @@ import pytest
 
 from core.utils.immaculate_grid.boards import (
     MAXIMUM_ANSWERS, MAXIMUM_CLUE_ANSWERS, NoCompatibleBoard, build_board, cooldowns,
-    game_date, pair_key, scale_scores,
+    answer_rarities, game_date, pair_key, scale_scores,
 )
 from core.utils.immaculate_grid.catalog import Catalog, Clue, rarity_score
 from core.utils.immaculate_grid.rarities import rarity_tier
@@ -36,7 +36,7 @@ def _catalog(overlap_size, recent_count=10, keys=None):
         clues[key] = Clue(key, key, key, people=overlap | {f"unique{i}"})
     people = set().union(*(clue.people for clue in clues.values()))
     recent = {f"person{i}" for i in range(recent_count)} | {f"unique{i}" for i in range(len(clues))}
-    return Catalog({}, clues, {person: i for i, person in enumerate(sorted(people))}, recent_people=recent)
+    return Catalog({}, clues, {person: i + 10 for i, person in enumerate(sorted(people))}, recent_people=recent)
 
 
 def test_board_selection_is_stable_and_scores_use_the_shared_range():
@@ -111,8 +111,8 @@ def test_rarity_rises_with_older_results_fewer_points_and_less_prestige():
 def test_age_is_a_small_factor_for_recent_careers_and_a_large_one_for_older_eras():
     scores = [rarity_score(age, 100, 10) for age in range(17)]
     assert scores[2] - scores[0] == pytest.approx(1)
-    assert scores[4] - scores[0] == pytest.approx(2)
-    assert scores[6] - scores[4] > 35
+    assert scores[4] - scores[0] > 25
+    assert scores[6] - scores[4] > 15
     assert scores[13] - scores[6] > 30
     assert scores == sorted(scores)
 
@@ -128,36 +128,45 @@ def test_recent_champions_stay_less_rare_than_current_debaters_with_fewer_achiev
         "recent_champion": rarity_score(2, 300, 20, career_span=4),
         "older_champion": rarity_score(10, 300, 20, career_span=4),
     }
-    scores = scale_scores(set(rarity), rarity)
+    scores = scale_scores(rarity)
     assert scores["recent_champion"] < scores["current"] < scores["older_champion"]
 
 
 def test_more_frequent_qualifying_results_receive_fewer_points():
     clue = Clue("partner:d1", "Partnered with One", "partner:d1")
     clue.occurrences = {"frequent": set(range(20)), "once": {1}}
-    scores = scale_scores({"frequent", "once"}, {"frequent": 50, "once": 50}, (clue,))
-    assert scores["frequent"] < scores["once"] < 60
+    scores = scale_scores(answer_rarities({"frequent", "once"}, {"frequent": 50, "once": 50}, (clue,)))
+    assert scores["frequent"] < scores["once"] == 65
 
 
-def test_recent_partners_and_older_answers_score_on_same_scale():
-    rarity = {
-        "recent_regular": rarity_score(3, 51, 10, career_span=3, attended_tournaments=23),
-        "recent_champion": rarity_score(2, 280, 9, career_span=2, attended_tournaments=1),
-        "recent_low_standings": rarity_score(3, 2, 6, career_span=1, attended_tournaments=6),
-        "older_regular": rarity_score(6, 90, 10, career_span=3, attended_tournaments=19),
-        "older_champion": rarity_score(13, 446, 16, career_span=3, attended_tournaments=58),
-        "historical": rarity_score(22, 0, 8, attended_tournaments=11),
-    }
-    clue = Clue("partner:d1", "Partnered with One", "partner:d1")
-    clue.occurrences = {"recent_regular": {1, 2}, "recent_champion": {1}, "recent_low_standings": {1}}
-    recent = set(clue.occurrences)
-    partner = scale_scores(recent, rarity, (clue,))
-    broad = scale_scores(rarity, rarity)
-    assert partner["recent_champion"] <= 10
-    assert 1 <= partner["recent_regular"] <= 15
-    assert 45 <= partner["recent_low_standings"] <= 60
-    assert 50 <= broad["older_regular"] < broad["older_champion"] <= 85
-    assert broad["historical"] == 100
+def test_score_curve_spreads_middle_scores_without_granting_extra_hundreds():
+    values = (0, 25, 35, 50, 65, 75, 99.9, 100)
+    scores = scale_scores(dict(enumerate(values)))
+    assert list(scores.values()) == [1, 30, 45, 65, 85, 95, 99, 100]
+
+
+@pytest.mark.parametrize("best,second", [(19.9, 19), (30, 14.9)])
+def test_generation_rejects_intersections_without_two_viable_answers(best, second):
+    catalog = _catalog(15)
+    catalog.rarity = dict.fromkeys(catalog.rarity, 1)
+    catalog.rarity.update(person0=best, person1=second)
+    with pytest.raises(NoCompatibleBoard):
+        build_board(date(2026, 11, 18), catalog, [])
+
+
+def test_board_lifts_low_scoring_square_to_minimums_without_lifting_easy_answers():
+    catalog = _catalog(15)
+    catalog.rarity = dict.fromkeys(catalog.rarity, 1)
+    catalog.rarity.update(person0=20, person1=15)
+    board = build_board(date(2026, 11, 18), catalog, [])
+    for square in board.answers:
+        assert (square["person0"], square["person1"], square["person2"]) == (35, 25, 1)
+
+
+def test_four_seasons_away_offsets_attendance_and_standings_for_a_familiar_career():
+    rarity = rarity_score(4, 150, 10, career_span=4, attended_tournaments=36)
+    scores = scale_scores({"answer": rarity - 2, "older": 55, "common": 10})
+    assert 25 <= scores["answer"] <= 35
 
 
 def test_frequent_attendance_lowers_rarity_without_standings_points():
@@ -167,17 +176,10 @@ def test_frequent_attendance_lowers_rarity_without_standings_points():
     assert 0 < historical_discount < recent_discount / 2
 
 
-def test_square_bonus_does_not_stretch_a_narrow_pool():
-    rarity = dict(enumerate((23, 23.2, 23.5, 23.7, 24, 24.2)))
-    narrow = scale_scores(rarity, rarity)
-    broad = scale_scores(rarity | {6: 0, 7: 95}, rarity | {6: 0, 7: 95})
-    assert max(narrow.values()) - min(narrow.values()) <= 2
-    assert all(0 <= broad[person] - narrow[person] <= 3 for person in rarity)
-
-
 def test_partner_squares_allow_five_answers_including_three_recent():
     catalog = _catalog(15)
     catalog.clues["partner:d1"].people = {f"person{i}" for i in (0, 1, 2, 13, 14)}
+    catalog.rarity.update(person13=20, person14=21)
     board = build_board(date(2026, 11, 18), catalog, [])
     assert sorted(len(cell) for cell in board.answers) == [5, 5, 5, 15, 15, 15, 15, 15, 15]
     catalog.clues["partner:d1"].people.remove("person14")

@@ -55,54 +55,10 @@
                     {% endif %}
                 {% endif %}
             </div>
-            <table class="immaculate-board" aria-label="Today's Immaculate Grid">
-                <thead>
-                    <tr>
-                        <td></td>
-                        {% for column in columns %}<th scope="col">{{ column.label }}</th>{% endfor %}
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for row in rows %}
-                        <tr>
-                            <th scope="row">{{ row.label }}</th>
-                            {% for cell in row.cells %}
-                                <td>
-                                    {% if cell.answer %}
-                                        {% if finished %}
-                                            <button type="button"
-                                                    class="immaculate-square immaculate-correct immaculate-rarity-{{ cell.answer.tier.key }}"
-                                                    data-review-cell="{{ cell.index }}"
-                                                    disabled
-                                                    aria-label="View valid answers for {{ row.label }} and {{ cell.column }}">
-                                                <span>{{ cell.answer.name }}</span>
-                                                <small>{{ cell.answer.tier.label }} · {{ cell.answer.score }} pts</small>
-                                            </button>
-                                        {% else %}
-                                            <div class="immaculate-square immaculate-correct immaculate-rarity-{{ cell.answer.tier.key }}">
-                                                <span>{{ cell.answer.name }}</span>
-                                                <small>{{ cell.answer.tier.label }} · {{ cell.answer.score }} pts</small>
-                                            </div>
-                                        {% endif %}
-                                    {% else %}
-                                        <button class="immaculate-square immaculate-open"
-                                                type="button"
-                                                disabled
-                                                data-cell="{{ cell.index }}"
-                                                data-clue="{{ row.label }} × {{ cell.column }}"
-                                                aria-label="Guess for {{ row.label }} and {{ cell.column }}">
-                                            <span aria-hidden="true">+</span>
-                                        </button>
-                                    {% endif %}
-                                </td>
-                            {% endfor %}
-                        </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-            <ul class="immaculate-rarity-legend list-unstyled d-flex flex-wrap mt-3 mb-0" aria-label="Rarity points">
+            {% include "immaculate_grid/board_cells.html" %}
+            <ul class="immaculate-rarity-legend list-unstyled d-flex flex-wrap mt-3 mb-0" aria-label="Rarity colors">
                 {% for tier in rarity_tiers %}
-                    <li class="immaculate-rarity-{{ tier.key }}">{{ tier.label }} {{ tier.minimum }}–{{ tier.maximum }}</li>
+                    <li class="immaculate-rarity-{{ tier.key }}">{{ tier.label }}</li>
                 {% endfor %}
             </ul>
             <div class="d-flex flex-wrap align-items-center mt-3">
@@ -190,6 +146,13 @@
                     </form>
                 </dialog>
             {% endif %}
+            <section class="mt-4" aria-labelledby="grid-leaders">
+                <div class="d-flex align-items-center justify-content-between mb-2">
+                    <h2 id="grid-leaders" class="h5 mb-0">Leaderboard</h2>
+                    <a href="{% url 'core:immaculate_grid_leaderboard' %}">Full leaderboard</a>
+                </div>
+                {% include "immaculate_grid/leaderboard_tables.html" %}
+            </section>
         {% endif %}
     </main>
 {% endblock content %}

@@ -1,0 +1,47 @@
+<table class="immaculate-board" aria-label="Today's Immaculate Grid">
+    <thead>
+        <tr>
+            <td></td>
+            {% for column in columns %}<th scope="col">{{ column.label }}</th>{% endfor %}
+        </tr>
+    </thead>
+    <tbody>
+        {% for row in rows %}
+            <tr>
+                <th scope="row">{{ row.label }}</th>
+                {% for cell in row.cells %}
+                    <td>
+                        {% if cell.answer %}
+                            {% if finished and not read_only %}
+                                <button type="button"
+                                        class="immaculate-square immaculate-correct immaculate-rarity-{{ cell.answer.tier.key }}"
+                                        data-review-cell="{{ cell.index }}"
+                                        disabled
+                                        aria-label="View valid answers for {{ row.label }} and {{ cell.column }}">
+                                    <span>{{ cell.answer.name }}</span>
+                                    <small>{{ cell.answer.tier.label }} · {{ cell.answer.score }} pts</small>
+                                </button>
+                            {% else %}
+                                <div class="immaculate-square immaculate-correct immaculate-rarity-{{ cell.answer.tier.key }}">
+                                    <span>{{ cell.answer.name }}</span>
+                                    <small>{{ cell.answer.tier.label }} · {{ cell.answer.score }} pts</small>
+                                </div>
+                            {% endif %}
+                        {% elif read_only %}
+                            <div class="immaculate-square immaculate-open" aria-label="Unsolved">—</div>
+                        {% else %}
+                            <button class="immaculate-square immaculate-open"
+                                    type="button"
+                                    disabled
+                                    data-cell="{{ cell.index }}"
+                                    data-clue="{{ row.label }} × {{ cell.column }}"
+                                    aria-label="Guess for {{ row.label }} and {{ cell.column }}">
+                                <span aria-hidden="true">+</span>
+                            </button>
+                        {% endif %}
+                    </td>
+                {% endfor %}
+            </tr>
+        {% endfor %}
+    </tbody>
+</table>

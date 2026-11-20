@@ -223,6 +223,64 @@ class ImmaculateGridTests(TestCase):
         self.assertContains(response, "View valid answers")
         self.assertContains(response, "immaculate-rarity-galaxy")
 
+    def test_square_best_below_fifty_shares_rare_label_in_grid_and_answer_review(self):
+        self._finish_grid()
+        play = ImmaculateGridPlay.objects.get(board=self.board, user=self.player)
+        self.board.answers[0] = {self.identity: 35}
+        self.board.save(update_fields=["answers"])
+        play.guesses[0]["score"] = 35
+        play.save(update_fields=["guesses"])
+        response = self.client.get(self.grid_url)
+        self.assertContains(response, "Rare · 35 pts")
+        assert "🟪 35" in response.context["share_results"]
+        review = self.client.get(self.answers_url, {"board": self.board.pk, "day": self.day, "cell": 0})
+        assert review.json()["answers"][0]["tier"]["key"] == "rare"
+
+    def test_leaderboard_previews_top_three_and_sums_only_this_weeks_active_boards(self):
+        leaderboard_url = reverse("core:immaculate_grid_leaderboard")
+        monday = self.day - timedelta(days=self.day.weekday())
+        previous, this_week = [
+            ImmaculateGridBoard.objects.create(date=day, rows=[], columns=[], answers=[])
+            for day in (monday - timedelta(days=1), monday)
+        ]
+        archived = ImmaculateGridBoard.objects.create(
+            date=self.day, rows=[], columns=[], answers=[], replaced_at=self.player.date_joined,
+        )
+        for index in range(4):
+            user = User.objects.create_user(f"leader-{index}", first_name=f"Leaderboard {index}")
+            ImmaculateGridPlay.objects.create(board=self.board, user=user, guesses=[{"cell": 0, "score": 50 + index}])
+        for board, score in ((previous, 500), (this_week, 70), (archived, 500), (self.board, 20)):
+            guesses = [{"cell": 0, "score": score}]
+            if board == self.board:
+                guesses.extend({"cell": 1, "score": None} for _ in range(9))
+            ImmaculateGridPlay.objects.create(board=board, user=self.player, guesses=guesses)
+
+        self.client.force_login(self.player)
+        preview = self.client.get(self.grid_url)
+        assert [row["score"] for row in preview.context["today_leaders"]] == [53, 52, 51]
+        assert preview.context["week_leaders"][0]["score"] == 85
+        full = self.client.get(leaderboard_url)
+        assert len(full.context["today_leaders"]) == 5
+        you = full.context["today_leaders"][-1]
+        assert you["is_viewer"] and you["rank"] == 5 and you["score"] == 15
+        self.assertContains(full, 'class="table-primary"')
+
+    def test_viewing_other_players_board_requires_solving_todays_grid(self):
+        other_board = reverse("core:immaculate_grid_player_board", args=(self.other.pk,))
+        ImmaculateGridPlay.objects.create(board=self.board, user=self.other, guesses=[
+            {"cell": 0, "name": "Public correct answer", "score": 60},
+            {"cell": 1, "name": "Private missed guess", "score": None},
+        ])
+        assert self.client.get(other_board).status_code == 302
+        self.client.force_login(self.player)
+        assert self.client.get(other_board).status_code == 403
+        self._finish_grid()
+        self.assertContains(self.client.get(self.grid_url), other_board)
+        response = self.client.get(other_board)
+        self.assertContains(response, "Public correct answer")
+        self.assertNotContains(response, "Private missed guess")
+        self.assertNotContains(response, "data-cell=")
+
     def test_hidden_debaters_remain_searchable_and_scorable(self):
         self.client.force_login(self.player)
         ImmaculateGridHiddenDebater.objects.create(debater=self.alias)

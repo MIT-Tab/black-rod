@@ -16,9 +16,9 @@ from core.utils.rounds import visible_canonical_rounds
 
 DEBATER_ACTIVITY_YEARS = 4
 HOST_ACTIVITY_YEARS = 3
-# Recent careers age slowly. Once outside the recent window, older eras earn
-# much more even when the debater was prominent in their own era.
-AGE_POINTS = ((0, 0), (4, 2), (6, 49), (10, 74), (13, 87), (17, 94), (18, 101), (24, 117))
+# Keep current and very recent careers close together, then let age start
+# offsetting career achievements and attendance from the third season away.
+AGE_POINTS = ((0, 0), (2, 1), (3, 12), (4, 29), (6, 49), (10, 74), (13, 87), (17, 94), (18, 101), (24, 117))
 # Qualification and speaker points have a wider combined scale than SOTY/TOTY.
 POINTS_FOR_HALF_DISCOUNT = 120
 
