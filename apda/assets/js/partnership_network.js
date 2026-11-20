@@ -93,6 +93,8 @@ async function initPartnershipNetwork() {
         physics: false,
         interaction: {
           hover: true,
+          hoverConnectedEdges: false,
+          selectConnectedEdges: false,
           hideEdgesOnDrag: true,
           keyboard: { enabled: true, bindToWindow: false },
         },
@@ -111,6 +113,7 @@ async function initPartnershipNetwork() {
           borderWidth: 0.7,
           font: { size: 12 / scale, strokeWidth: 1.4 / scale },
         },
+        edges: { selectionWidth: 1 / scale, hoverWidth: 0.6 / scale },
       });
       nodes.update(
         data.nodes.map((node) => ({
@@ -137,7 +140,7 @@ async function initPartnershipNetwork() {
                 partnershipWidth(edge.tournaments, maximumPartnerships),
                 highlighted ? 3.5 : 0,
               ) / scale,
-            color: { color, inherit: false },
+            color: { color, highlight: color, hover: color, inherit: false },
           };
         }),
       );
@@ -166,7 +169,6 @@ async function initPartnershipNetwork() {
       const bottom = Math.max(...positions.map((point) => point.y));
       const scale =
         Math.min(
-          1.3,
           canvas.clientWidth / (right - left + 80),
           canvas.clientHeight / (bottom - top + 80),
         ) * 0.9;
