@@ -1,0 +1,66 @@
+{% extends "base/base.html" %}
+{% load crispy_forms_tags %}
+{% block title %}Partnership Stats by Debater{% endblock title %}
+{% block extra_head %}
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+{% endblock extra_head %}
+{% block content %}
+    <main class="container py-4">
+        <h1>Partnership Stats by Debater</h1>
+        {% include "debaters/_partnership_nav.html" %}
+        <p>Choose a debater to find their furthest connections and most interconnected pairs. Linked profiles count as one person.</p>
+        <form method="get" class="card card-body mb-4">
+            {{ form.media }}
+            {{ form.debater|as_crispy_field }}
+            <div>
+                <button type="submit" class="btn btn-primary">Show connections</button>
+            </div>
+        </form>
+        {% if selected_debater %}
+            <h2 class="h4">Furthest from {{ selected_debater.name }}</h2>
+            {% if furthest_debaters %}
+                <p>The longest shortest path spans <strong>{{ distance }} partnership{{ distance|pluralize }}</strong>.</p>
+                <ul class="list-group mb-4">
+                    {% for debater in furthest_debaters %}
+                        <li class="list-group-item">
+                            <a href="{% url 'core:partnership_paths' %}?first_debater={{ selected_debater.pk }}&amp;second_debater={{ debater.pk }}">{{ debater.name }}</a>
+                        </li>
+                    {% endfor %}
+                </ul>
+            {% else %}
+                <p>No other debaters are connected to {{ selected_debater.name }}.</p>
+            {% endif %}
+            <h2 class="h4">Most interconnected with {{ selected_debater.name }}</h2>
+            <p>Top five people by shared partners, three-hop paths, and four-hop paths. A path cannot revisit a debater.</p>
+            <div class="row">
+                {% for ranking in personal_rankings %}
+                    <div class="col-md-6 col-lg-4 mb-3">
+                        <div class="card h-100">
+                            <div class="card-header">
+                                <h3 class="h6 mb-0">
+                                    {% if forloop.first %}
+                                        Shared partners
+                                    {% else %}
+                                        {{ forloop.counter|add:"1" }}-hop paths
+                                    {% endif %}
+                                </h3>
+                            </div>
+                            {% if ranking %}
+                                <ol class="list-group list-group-flush">
+                                    {% for debater, count in ranking %}
+                                        <li class="list-group-item d-flex justify-content-between align-items-baseline">
+                                            <a href="{% url 'core:partnership_paths' %}?first_debater={{ selected_debater.pk }}&amp;second_debater={{ debater.pk }}">{{ debater.name }}</a>
+                                            <span class="ml-3">{{ count }}</span>
+                                        </li>
+                                    {% endfor %}
+                                </ol>
+                            {% else %}
+                                <div class="card-body text-muted">No paths of this length.</div>
+                            {% endif %}
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        {% endif %}
+    </main>
+{% endblock content %}

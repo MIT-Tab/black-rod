@@ -43,14 +43,14 @@ def _top_debaters(counts, limit):
     return nlargest(limit, counts.items(), key=lambda row: (row[1], -row[0]))
 
 
-def _pair_path_counts(graph, source):
-    """Count simple paths of lengths 2 through 4 from the smaller endpoint."""
+def _pair_path_counts(graph, source, unique_pairs=True):
+    """Count simple paths of lengths 2 through 4, optionally once per pair."""
     counts = [Counter() for _ in range(3)]
     visited = {source}
 
     def visit(vertex, distance):
         for neighbor in graph[vertex] - visited:
-            if distance >= 2 and neighbor > source:
+            if distance >= 2 and (not unique_pairs or neighbor > source):
                 counts[distance - 2][neighbor] += 1
             if distance < 4:
                 visited.add(neighbor)
@@ -112,5 +112,32 @@ def calculate_partnership_stats():
                 if left in debaters and right in debaters
             ]
             for ranking in interconnection_leaders
+        ],
+    }
+
+
+def calculate_debater_partnership_stats(debater):
+    representatives, graph = build_partnership_graph()
+    source = representatives[debater.pk]
+    distance = 0
+    furthest = set()
+    for distance, furthest in enumerate(_distance_layers(graph, source), start=1):
+        pass
+
+    rankings = [
+        _top_debaters(counts, 5)
+        for counts in _pair_path_counts(graph, source, unique_pairs=False)
+    ]
+    ids = furthest | {vertex for ranking in rankings for vertex, _ in ranking}
+    debaters = Debater.objects.in_bulk(ids)
+    return {
+        "selected_debater": debater,
+        "distance": distance,
+        "furthest_debaters": [
+            debaters[vertex] for vertex in sorted(furthest) if vertex in debaters
+        ],
+        "personal_rankings": [
+            [(debaters[vertex], count) for vertex, count in ranking if vertex in debaters]
+            for ranking in rankings
         ],
     }

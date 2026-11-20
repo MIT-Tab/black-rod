@@ -122,3 +122,52 @@ def test_only_superuser_can_clear_stats_cache_with_csrf(client, django_user_mode
             calculate.assert_called_once_with()
     finally:
         cache.delete_many([old_key, _stats_cache_key(), STATS_GENERATION_KEY, "other-cache-key"])
+
+
+@pytest.mark.django_db
+def test_personal_stats_include_all_furthest_and_both_endpoint_orders(client):
+    from core.models import Debater, DebaterAliasGroup, Team
+    from core.utils.partnership_stats import calculate_debater_partnership_stats
+
+    group = DebaterAliasGroup.objects.create()
+    people = [
+        Debater.objects.create(first_name=name)
+        for name in ("Alex", "Blair", "Casey", "Drew", "Erin")
+    ]
+    people[0].alias_group = group
+    people[0].save()
+    alias = Debater.objects.create(first_name="Alex Alias", alias_group=group)
+    for first, second in [(0, 1), (1, 2), (1, 3), (2, 4), (3, 4)]:
+        team = Team.objects.create(name="Partners")
+        team.debaters.add(alias if first == 0 else people[first], people[second])
+
+    result = calculate_debater_partnership_stats(people[4])
+    assert result["distance"] == 3
+    assert result["furthest_debaters"] == [people[0]]
+    assert result["personal_rankings"] == [
+        [(people[1], 2)],
+        [(people[0], 2), (people[2], 1), (people[3], 1)],
+        [],
+    ]
+    alias_result = calculate_debater_partnership_stats(alias)
+    assert alias_result["furthest_debaters"] == [people[4]]
+
+    tied = calculate_debater_partnership_stats(people[2])
+    assert tied["distance"] == 2
+    assert tied["furthest_debaters"] == [people[0], people[3]]
+
+    url = reverse("core:debater_partnership_stats")
+    assert client.get(url).status_code == 200
+    response = client.get(url, {"debater": people[4].pk})
+    assert response.status_code == 200
+    assert response.context["selected_debater"] == people[4]
+    assert b"3 partnerships" in response.content
+    assert b"Shared partners" in response.content
+    assert b"3-hop paths" in response.content
+    assert b"4-hop paths" in response.content
+    assert client.get(url, {"debater": "invalid"}).context["form"].errors
+
+    isolated = Debater.objects.create(first_name="Isolated")
+    empty = calculate_debater_partnership_stats(isolated)
+    assert empty["furthest_debaters"] == []
+    assert empty["personal_rankings"] == [[], [], []]
