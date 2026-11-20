@@ -1,15 +1,17 @@
 import "../css/partnership_network.scss";
 
-function tournamentLabel(count) {
-  return `${count} recorded tournament${count === 1 ? "" : "s"}`;
-}
+import {
+  attendanceRadius,
+  partnershipWidth,
+} from "./partnership_network_styles";
+import setupSelection from "./partnership_network_selection";
+import setupMotion from "./partnership_network_motion";
 
 async function initPartnershipNetwork() {
   const root = document.getElementById("partnership-network");
   if (!root) return;
   const status = root.querySelector("[data-network-status]");
   const canvas = root.querySelector(".partnership-network-canvas");
-  const details = root.querySelector("[data-network-details]");
   const pause = root.querySelector("[data-network-pause]");
   try {
     const [response, { Network, DataSet }] = await Promise.all([
@@ -22,12 +24,11 @@ async function initPartnershipNetwork() {
     const pairCount = data.edges.length.toLocaleString();
     status.textContent = `${peopleCount} people · ${pairCount} partnerships`;
     if (!data.nodes.length) {
-      details.textContent =
+      root.querySelector("[data-network-details]").textContent =
         "No partnerships match these filters. Try a wider season range or fewer filters.";
       canvas.hidden = true;
       return;
     }
-    const byId = new Map(data.nodes.map((node) => [node.id, node]));
     const schools = [...new Set(data.nodes.map((node) => node.school_id))].sort(
       (a, b) => a - b,
     );
@@ -37,13 +38,24 @@ async function initPartnershipNetwork() {
         `hsl(${(index * 137.508) % 360}, 66%, 44%)`,
       ]),
     );
-    const degree = new Map(data.nodes.map((node) => [node.id, 0]));
-    data.edges.forEach((edge) => {
-      degree.set(edge.from, degree.get(edge.from) + 1);
-      degree.set(edge.to, degree.get(edge.to) + 1);
-    });
-    const labelOrder = [...data.nodes].sort(
-      (a, b) => degree.get(b.id) - degree.get(a.id),
+    const maximumAttendance = Math.max(
+      1,
+      ...data.nodes.map((node) => node.tournaments),
+    );
+    const maximumPartnerships = Math.max(
+      1,
+      ...data.edges.map((edge) => edge.tournaments),
+    );
+    const radii = new Map(
+      data.nodes.map((node) => [
+        node.id,
+        attendanceRadius(node.tournaments, maximumAttendance),
+      ]),
+    );
+    const edgeColors = data.edges.map((edge) =>
+      edge.tournaments >= 5
+        ? "#111827"
+        : `rgba(55, 65, 81, ${0.2 + Math.min(4, edge.tournaments) * 0.16})`,
     );
     const nodes = new DataSet(
       data.nodes.map((node) => ({
@@ -57,14 +69,8 @@ async function initPartnershipNetwork() {
         id: index,
         from: edge.from,
         to: edge.to,
-        color: {
-          color:
-            edge.tournaments >= 5
-              ? "#111827"
-              : `rgba(55, 65, 81, ${0.2 + Math.min(4, edge.tournaments) * 0.16})`,
-          inherit: false,
-        },
-        width: 0.6 + Math.min(5, edge.tournaments) * 0.5,
+        color: { color: edgeColors[index], inherit: false },
+        width: partnershipWidth(edge.tournaments, maximumPartnerships),
       })),
     );
     const network = new Network(
@@ -87,13 +93,16 @@ async function initPartnershipNetwork() {
         physics: false,
         interaction: {
           hover: true,
+          hoverConnectedEdges: false,
+          selectConnectedEdges: false,
           hideEdgesOnDrag: true,
           keyboard: { enabled: true, bindToWindow: false },
         },
       },
     );
     const labels = root.querySelector("[data-network-labels]");
-    let hovered = null;
+    let selectionState = null;
+    let motion = null;
     let animationFrame = null;
     let animationBounds = null;
     const refreshSizes = () => {
@@ -104,60 +113,36 @@ async function initPartnershipNetwork() {
           borderWidth: 0.7,
           font: { size: 12 / scale, strokeWidth: 1.4 / scale },
         },
+        edges: { selectionWidth: 1 / scale, hoverWidth: 0.6 / scale },
       });
-      const positions = network.getPositions();
-      const occupied = [];
-      const visibleLabels = new Set();
-      const ordered =
-        hovered === null
-          ? labelOrder
-          : [
-              byId.get(hovered),
-              ...labelOrder.filter((node) => node.id !== hovered),
-            ];
-      if (labels.checked) {
-        ordered.forEach((node) => {
-          const point = network.canvasToDOM(positions[node.id]);
-          const fontSize = 12;
-          const halfWidth = node.label.length * fontSize * 0.29 + 4;
-          const top = point.y + 6;
-          const box = {
-            left: point.x - halfWidth,
-            right: point.x + halfWidth,
-            top,
-            bottom: top + fontSize + 4,
-          };
-          if (
-            box.left < 4 ||
-            box.right > canvas.clientWidth - 4 ||
-            box.top < 0 ||
-            box.bottom > canvas.clientHeight
-          )
-            return;
-          const overlaps = occupied.some(
-            (other) =>
-              box.left < other.right &&
-              box.right > other.left &&
-              box.top < other.bottom &&
-              box.bottom > other.top,
-          );
-          if (!overlaps || node.id === hovered) {
-            occupied.push(box);
-            visibleLabels.add(node.id);
-          }
-        });
-      }
       nodes.update(
         data.nodes.map((node) => ({
           id: node.id,
-          label: visibleLabels.has(node.id) ? node.label : "",
+          size: radii.get(node.id) / scale,
+          label:
+            labels.checked &&
+            (!selectionState?.visibleNames ||
+              selectionState.visibleNames.has(node.id))
+              ? node.label
+              : "",
         })),
       );
       edges.update(
-        data.edges.map((edge, index) => ({
-          id: index,
-          width: (0.45 + Math.min(5, edge.tournaments) * 0.24) / scale,
-        })),
+        data.edges.map((edge, index) => {
+          const highlighted = selectionState?.isPathEdge(edge);
+          let color = edgeColors[index];
+          if (selectionState?.pathEdges) color = "rgba(55,65,81,0.15)";
+          if (highlighted) color = "#e86b16";
+          return {
+            id: index,
+            width:
+              Math.max(
+                partnershipWidth(edge.tournaments, maximumPartnerships),
+                highlighted ? 3.5 : 0,
+              ) / scale,
+            color: { color, highlight: color, hover: color, inherit: false },
+          };
+        }),
       );
     };
     root
@@ -174,14 +159,16 @@ async function initPartnershipNetwork() {
       });
     const fit = () => {
       const positions =
-        animationBounds || Object.values(network.getPositions());
+        animationBounds ||
+        (motion?.getPositions().length
+          ? motion.getPositions()
+          : Object.values(network.getPositions()));
       const left = Math.min(...positions.map((point) => point.x));
       const right = Math.max(...positions.map((point) => point.x));
       const top = Math.min(...positions.map((point) => point.y));
       const bottom = Math.max(...positions.map((point) => point.y));
       const scale =
         Math.min(
-          1.3,
           canvas.clientWidth / (right - left + 80),
           canvas.clientHeight / (bottom - top + 80),
         ) * 0.9;
@@ -193,20 +180,15 @@ async function initPartnershipNetwork() {
       refreshSizes();
     };
     network.on("zoom", refreshSizes);
-    network.on("dragEnd", refreshSizes);
-    network.on("hoverNode", ({ node }) => {
-      hovered = node;
-      refreshSizes();
-    });
-    network.on("blurNode", () => {
-      hovered = null;
-      refreshSizes();
-    });
+    selectionState = setupSelection(root, network, data, refreshSizes, radii);
+    motion = setupMotion(root, network, nodes, refreshSizes);
     root.querySelector("[data-network-fit]").addEventListener("click", fit);
     labels.addEventListener("change", refreshSizes);
     let worker = null;
+    let interrupted = false;
     let seed = 0;
     const arrange = () => {
+      motion.suspend();
       pause.disabled = true;
       pause.textContent = "Arranging…";
       status.textContent = "Arranging connections…";
@@ -253,6 +235,7 @@ async function initPartnershipNetwork() {
             animationFrame = null;
             animationBounds = null;
             refreshSizes();
+            motion.start(finalPositions);
             status.textContent = `${peopleCount} people · ${pairCount} partnerships`;
             pause.textContent = "Rearrange";
             pause.disabled = false;
@@ -271,35 +254,19 @@ async function initPartnershipNetwork() {
     };
     pause.addEventListener("click", arrange);
     window.addEventListener("pagehide", () => {
+      interrupted = worker !== null || animationFrame !== null;
       if (worker) worker.terminate();
       if (animationFrame !== null) window.cancelAnimationFrame(animationFrame);
+      worker = null;
+      animationFrame = null;
     });
-    arrange();
-    network.on("click", (selection) => {
-      details.replaceChildren();
-      if (selection.nodes.length) {
-        const node = byId.get(selection.nodes[0]);
-        const link = document.createElement("a");
-        link.href = node.url;
-        link.textContent = node.label;
-        details.append(
-          link,
-          document.createTextNode(
-            [
-              ` · ${node.schools.join(" / ") || "Unaffiliated"}`,
-              ` · ${tournamentLabel(node.tournaments)}`,
-              node.qualified ? " · Nationals qualified" : "",
-            ].join(""),
-          ),
-        );
-      } else if (selection.edges.length) {
-        const edge = data.edges[selection.edges[0]];
-        const names = `${byId.get(edge.from).label} and ${byId.get(edge.to).label}`;
-        details.textContent = `${names} · ${tournamentLabel(edge.tournaments)} together`;
-      } else {
-        details.textContent = "Select a person or partnership to explore.";
+    window.addEventListener("pageshow", (event) => {
+      if (event.persisted && interrupted) {
+        interrupted = false;
+        arrange();
       }
     });
+    arrange();
   } catch {
     status.textContent = "Could not load the network. Reload to try again.";
     canvas.hidden = true;

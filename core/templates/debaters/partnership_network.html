@@ -24,16 +24,19 @@
             <small class="text-muted mt-2">Filters combine. Seasons limit recorded partnerships, tournament totals, and qualifications. Linked profiles count as one person. Only people with a partner in the filtered network appear.</small>
         </form>
         {% if network_url %}
-            <section id="partnership-network" data-url="{{ network_url }}" aria-label="Interactive partnership network">
+            <section id="partnership-network" data-url="{{ network_url }}"
+                     data-paths-url="{% url 'core:partnership_network_paths' %}" aria-label="Interactive partnership network">
                 <div class="d-flex flex-wrap align-items-center mb-2">
                     <button type="button" class="btn btn-outline-secondary btn-sm mr-2 mb-2" data-network-fit>Fit graph</button>
                     <button type="button" class="btn btn-outline-secondary btn-sm mr-2 mb-2" data-network-zoom-in aria-label="Zoom in">+</button>
                     <button type="button" class="btn btn-outline-secondary btn-sm mr-2 mb-2" data-network-zoom-out aria-label="Zoom out">−</button>
                     <button type="button" class="btn btn-outline-secondary btn-sm mr-2 mb-2" data-network-pause disabled>Arranging…</button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm mr-2 mb-2" data-network-motion disabled>Pause motion</button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm mr-2 mb-2" data-network-clear>Clear selection</button>
                     <label class="mr-3 mb-2"><input type="checkbox" data-network-labels checked> Names</label>
                     <span class="text-muted mb-2" data-network-status role="status">Loading connections…</span>
                 </div>
-                <p class="small text-muted">Drag people to rearrange. Scroll or pinch to zoom. Click a person or line for details. Zoom in for more names. Colors group schools. Darker lines mean more recorded tournaments together.</p>
+                <p class="small text-muted">Click a person to show their partners’ names. Shift-click two people for up to five fastest paths in the filtered graph. Click blank space to restore all names. Drag to rearrange and scroll or pinch to zoom. Colors group schools. Larger dots mean more tournaments; thicker, darker lines mean more tournaments together.</p>
                 <div class="partnership-network-canvas border rounded" tabindex="0" role="img" aria-label="Debaters connected by partnership lines. Select a person to see their profile and tournament total."></div>
                 <div class="card card-body mt-2" data-network-details aria-live="polite">
                     Select a person or partnership to explore.

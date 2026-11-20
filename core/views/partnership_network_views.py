@@ -5,8 +5,8 @@ from django.urls import reverse
 from django.views.decorators.http import require_safe
 from django.views.generic import TemplateView
 
-from core.models import School, Tournament
-from core.utils.partnership_network import build_partnership_network
+from core.models import Debater, School, Tournament
+from core.utils.partnership_network import build_partnership_network, find_network_paths
 
 
 class PartnershipNetworkForm(forms.Form):
@@ -61,3 +61,20 @@ def partnership_network_data(request):
     if not form.is_valid():
         return JsonResponse({"errors": form.errors}, status=400)
     return JsonResponse(build_partnership_network(form.cleaned_data))
+
+
+class NetworkPathForm(PartnershipNetworkForm):
+    first_debater = forms.ModelChoiceField(queryset=Debater.objects.all())
+    second_debater = forms.ModelChoiceField(queryset=Debater.objects.all())
+
+
+@require_safe
+def partnership_network_paths(request):
+    form = NetworkPathForm(request.GET)
+    if not form.is_valid():
+        return JsonResponse({"errors": form.errors}, status=400)
+    return JsonResponse({"paths": find_network_paths(
+        form.cleaned_data,
+        form.cleaned_data["first_debater"],
+        form.cleaned_data["second_debater"],
+    )})

@@ -145,6 +145,11 @@ urlpatterns = [
         name="partnership_network",
     ),
     path(
+        "core/debaters/partnership-paths/network/paths/",
+        partnership_network_views.partnership_network_paths,
+        name="partnership_network_paths",
+    ),
+    path(
         "core/debaters/partnership-paths/network/data/",
         partnership_network_views.partnership_network_data,
         name="partnership_network_data",
