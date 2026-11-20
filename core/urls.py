@@ -12,6 +12,7 @@ from core.views import (
     debater_profile_views,
     noty_views,
     partnership_path_views,
+    partnership_network_views,
     results_import_views,
     school_admin_views,
     school_views,
@@ -137,6 +138,16 @@ urlpatterns = [
         "core/debaters/partnership-paths/person/",
         partnership_path_views.DebaterPartnershipStatsView.as_view(),
         name="debater_partnership_stats",
+    ),
+    path(
+        "core/debaters/partnership-paths/network/",
+        partnership_network_views.PartnershipNetworkView.as_view(),
+        name="partnership_network",
+    ),
+    path(
+        "core/debaters/partnership-paths/network/data/",
+        partnership_network_views.partnership_network_data,
+        name="partnership_network_data",
     ),
     path(
         "core/debaters/partnership-paths/stats/",

@@ -1,6 +1,7 @@
 {% url 'core:partnership_paths' as paths_url %}
 {% url 'core:partnership_stats' as stats_url %}
 {% url 'core:debater_partnership_stats' as personal_url %}
+{% url 'core:partnership_network' as network_tab_url %}
 <nav class="nav nav-tabs mb-3" aria-label="Debater partnership tools">
     <a class="nav-link {% if request.path == paths_url %}active{% endif %}"
        href="{{ paths_url }}"{% if request.path == paths_url %} aria-current="page"{% endif %}>Find paths</a>
@@ -8,4 +9,6 @@
        href="{{ stats_url }}"{% if request.path == stats_url %} aria-current="page"{% endif %}>Stats</a>
     <a class="nav-link {% if request.path == personal_url %}active{% endif %}"
        href="{{ personal_url }}"{% if request.path == personal_url %} aria-current="page"{% endif %}>By debater</a>
+    <a class="nav-link {% if request.path == network_tab_url %}active{% endif %}"
+       href="{{ network_tab_url }}"{% if request.path == network_tab_url %} aria-current="page"{% endif %}>Network</a>
 </nav>
