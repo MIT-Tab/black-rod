@@ -7,6 +7,7 @@ from .round import Round, RoundStats
 from .round_import import (
     ImportBatch,
     ImportedRoundJudge,
+    Judge,
     ImportedRoundMetadata,
     TournamentImport,
 )
@@ -57,6 +58,7 @@ __all__ = [
     "TournamentImport",
     "ImportedRoundMetadata",
     "ImportedRoundJudge",
+    "Judge",
     "Round",
     "RoundStats",
     "SpeakerResult",

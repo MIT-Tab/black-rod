@@ -146,7 +146,7 @@ def test_ranking_ties_have_bounded_queries(django_assert_max_num_queries):
 @pytest.mark.django_db
 @override_settings(CURRENT_SEASON="2026", ONLINE_SEASONS=())
 def test_review_save_imports_rounds_and_corrected_identity_without_network(client, django_user_model):
-    from core.models import Round, SpeakerResult
+    from core.models import Judge, Round, SpeakerResult
 
     host = School.objects.create(pk=1, name="MIT", short_name="MIT")
     people = [Debater.objects.create(first_name="Known", last_name=str(i), school=host) for i in range(3)]
@@ -175,7 +175,15 @@ def test_review_save_imports_rounds_and_corrected_identity_without_network(clien
                     "division": None, "elim_size": None, "victor": Round.GOV,
                     "gov": {"debater_ids": [101, 102], "source_names": ["Misspelled Speaker", people[0].name]},
                     "opp": {"debater_ids": [103, 104], "source_names": [person.name for person in people[1:]]},
-                    "judges": [{"original_name": "Public Judge", "is_chair": True}]}],
+                    "judges": [{"id": 1, "original_name": "Public Judge", "is_chair": True}]}],
+        "tab_cards": [{
+            "speakers": [{"name": "Misspelled Speaker", "status": "V"}, {"name": people[0].name, "status": "V"}],
+            "rounds": [{
+                "side": "G", "result": "W", "opponents": [person.name for person in people[1:]],
+                "judges": "Public Judge", "scores": [[29.0, 1.0], [28.0, 2.0], [57.0, 3.0]],
+            }],
+            "totals": [[29.0, 1.0], [28.0, 2.0], [57.0, 3.0]],
+        }],
     }
     token = save_review(snapshot, tournament.pk, admin.pk)
     url = reverse("core:tournament_dataentry")
@@ -201,7 +209,12 @@ def test_review_save_imports_rounds_and_corrected_identity_without_network(clien
     imported_round = Round.objects.get(tournament=tournament)
     assert corrected in imported_round.gov.debaters.all()
     assert not Debater.all_objects.filter(first_name="Misspelled").exists()
-    assert not Debater.all_objects.filter(synthetic=True).exclude(first_name="Public", last_name="Judge").exists()
+    assert not Debater.all_objects.filter(synthetic=True).exists()
+    assert imported_round.imported_metadata.judges.get().judge == Judge.objects.get(name="Public Judge")
+    client.logout()
+    cards_response = client.get(reverse("core:tournament_tab_cards", args=[tournament.pk]))
+    assert cards_response.status_code == 200
+    assert "(57.00,3.00)" in cards_response.content.decode()
 
 
 def test_successful_refresh_replaces_entire_snapshot_and_resets_disappearance():

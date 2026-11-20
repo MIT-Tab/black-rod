@@ -1,11 +1,22 @@
 from datetime import date
+from importlib import import_module
+from types import SimpleNamespace
+
+from django.apps import apps
+from django.db import connection
+from django.urls import reverse
+
 import pytest
 
-from core.models import Debater, ImportedRoundJudge, Round, School, Team, TeamResult, Tournament, TournamentImport
+from core.models import (
+    Debater, DebaterAlias, ImportedRoundJudge, ImportedRoundMetadata, Judge,
+    Round, School, Team, TeamResult, Tournament, TournamentImport,
+)
 from core.utils.mittab_bundle_import import (
     MittabBundleImportError,
     import_mittab_bundle,
 )
+from core.utils.round_amendments import apply_round_amendments
 
 
 pytestmark = pytest.mark.django_db
@@ -84,7 +95,7 @@ def _round_payload(import_key="prelim:1", label="Round 1", judges=None):
     }
 
 
-def test_import_creates_synthetic_debaters_and_alias_backed_judges():
+def test_import_creates_synthetic_competitors_and_separate_judges():
     tournament = _make_tournament()
     school = School.objects.create(name="Existing School", short_name="ES")
     canonical = Debater.objects.create(first_name="Gov", last_name="One", school=school)
@@ -107,13 +118,14 @@ def test_import_creates_synthetic_debaters_and_alias_backed_judges():
     synthetic_names = {
         debater.name for debater in Debater.all_objects.filter(synthetic=True)
     }
-    assert {"Gov Two", "Opp One", "Opp Two", "Judge Prime"} <= synthetic_names
+    assert synthetic_names == {"Gov Two", "Opp One", "Opp Two"}
 
     imported_judge = ImportedRoundJudge.objects.get(round_metadata=created_round.imported_metadata)
     assert imported_judge.original_name == "Judge Prime"
-    assert imported_judge.debater_alias is not None
-    assert imported_judge.debater_alias.debater.synthetic is True
-    assert imported_judge.debater_alias.debater.temporary is False
+    assert imported_judge.debater_alias is None
+    assert imported_judge.judge.name == "Judge Prime"
+    assert imported_judge.judge.source_tournament == tournament
+    assert imported_judge.is_chair
 
 
 def test_import_reuses_unique_exact_name_match():
@@ -309,3 +321,126 @@ def test_import_requires_existing_results():
         import_mittab_bundle(_make_loaded_bundle(document), tournament)
 
     assert "Results must be imported" in str(excinfo.value)
+
+
+@pytest.fixture
+def card_bundle():
+    debaters = [
+        {"id": ref, "name": name} for ref, name in
+        ((101, "Gov One"), (102, "Gov Two"), (201, "Opp One"), (202, "Opp Two"))
+    ]
+    cards = [{
+        "speakers": [{"name": "Gov One", "status": "V"}, {"name": "Gov Two", "status": "N"}],
+        "rounds": [
+            {
+                "side": "G", "result": "WF", "opponents": ["Opp One", "Opp Two"],
+                "judges": "Judge Prime", "scores": [[28.5, 1.0], [27.0, 2.0], [55.5, 3.0]],
+            },
+            {"side": "BYE", "result": "", "opponents": [], "judges": "", "scores": [None, None, [55.5, 3.0]]},
+        ],
+        "totals": [[28.5, 1.0], [27.0, 2.0], [55.5, 3.0]],
+    }]
+    return _bundle_document(debaters=debaters, rounds=[_round_payload()]) | {"tab_cards": cards}
+
+
+def test_tournament_pages_show_latest_published_tab_cards(client, card_bundle):
+    tournament = _make_tournament()
+    url = reverse("core:tournament_tab_cards", args=[tournament.pk])
+    detail_url = reverse("core:tournament_detail", args=[tournament.pk])
+    assert client.get(url).status_code == 404
+
+    import_mittab_bundle(_make_loaded_bundle(card_bundle), tournament)
+    assert url in client.get(detail_url).content.decode()
+    response = client.get(url)
+    assert response.status_code == 200
+    html = response.content.decode()
+    for expected in ("Gov Two (N)", "Opp One &amp; Opp Two", "Judge Prime", "WF", "BYE", "(55.50,3.00)"):
+        assert expected in html
+    assert "Result Team" not in html
+
+    import_mittab_bundle(_make_loaded_bundle(card_bundle | {"tab_cards": None}), tournament)
+    assert client.get(url).status_code == 404
+    assert url not in client.get(detail_url).content.decode()
+
+    latest = tournament.tournament_imports.first()
+    apply_round_amendments({"actions": [{"type": "delete_tournament_import", "id": latest.pk}]})
+    assert client.get(url).status_code == 404
+
+
+def test_legacy_bundle_shows_only_recoverable_round_data(client, card_bundle):
+    tournament = _make_tournament()
+    card_bundle.pop("tab_cards")
+    import_mittab_bundle(_make_loaded_bundle(card_bundle), tournament)
+    response = client.get(reverse("core:tournament_tab_cards", args=[tournament.pk]))
+    assert response.status_code == 200
+    html = response.content.decode()
+    for expected in ("Opp One &amp; Opp Two", "Judge Prime", "Some details may be missing"):
+        assert expected in html
+    assert "(0.00,0.00)" not in html
+
+
+def test_malformed_tab_cards_do_not_replace_an_existing_import(card_bundle):
+    tournament = _make_tournament()
+    import_mittab_bundle(_make_loaded_bundle(card_bundle), tournament)
+    with pytest.raises(MittabBundleImportError, match="invalid tab card"):
+        import_mittab_bundle(_make_loaded_bundle(card_bundle | {"tab_cards": [{}]}), tournament)
+    assert tournament.tournament_imports.count() == 1
+    assert tournament.tournament_imports.get().tab_cards["cards"] == card_bundle["tab_cards"]
+
+
+def test_ironman_import_and_same_name_judges(card_bundle):
+    tournament = _make_tournament()
+    speaker = Debater.objects.create(first_name="Gov", last_name="One")
+    partner = Debater.objects.create(first_name="Gov", last_name="Two")
+    existing_team = Team.objects.create(name="Existing partnership")
+    existing_team.debaters.add(speaker, partner)
+    judge_rows = [
+        {"id": 1, "original_name": "Same Name", "is_chair": True},
+        {"id": 2, "original_name": "Same Name", "is_chair": False},
+    ]
+    round_payload = _round_payload(judges=judge_rows) | {
+        "gov": {"debater_ids": [101], "source_names": ["Gov One"]},
+    }
+    card_bundle["rounds"] = [round_payload, round_payload | {
+        "import_key": "prelim:2", "round_number": 2, "judges": judge_rows[1:],
+    }]
+    import_mittab_bundle(_make_loaded_bundle(card_bundle), tournament)
+    round_obj = tournament.rounds.get(import_key="prelim:1")
+    assert list(round_obj.gov.debaters.all()) == [speaker]
+    assert round_obj.imported_metadata.gov_2_alias is None
+    judges = Judge.objects.filter(source_tournament=tournament, name="Same Name")
+    assert judges.count() == 2
+    assert judges.get(source_key="id:2").round_assignments.count() == 2
+
+
+def test_judge_migration_removes_only_mittab_judge_only_synthetic_debaters():
+    tournament = _make_tournament()
+    team = tournament.team_results.first().team
+    won = Round.objects.create(tournament=tournament, gov=team, opp=team, import_origin="mittab_bundle")
+    metadata = ImportedRoundMetadata.objects.create(round=won)
+    names = ("Judge Only", "Judge Competitor", "Canonical Judge", "Unattached Synthetic", "Other Source Judge")
+    people = {}
+    for name in names:
+        first, last = name.split(maxsplit=1)
+        people[name] = Debater.all_objects.create(first_name=first, last_name=last, synthetic=name != "Canonical Judge")
+    team.debaters.add(people["Judge Competitor"])
+    other_round = Round.objects.create(tournament=tournament, gov=team, opp=team, import_origin="forum_post")
+    other_metadata = ImportedRoundMetadata.objects.create(round=other_round)
+    for name in names:
+        alias = DebaterAlias.objects.create(debater=people[name], source_name=name, normalized_name=name.lower())
+        if name != "Unattached Synthetic":
+            ImportedRoundJudge.objects.create(
+                original_name=name, debater_alias=alias,
+                round_metadata=other_metadata if name == "Other Source Judge" else metadata,
+            )
+
+    migration = import_module("core.migrations.0078_migrate_imported_judges")
+    migration.migrate_mittab_judges(apps, SimpleNamespace(connection=connection))
+
+    assert not Debater.all_objects.filter(pk=people["Judge Only"].pk).exists()
+    assignment = metadata.judges.get(original_name="Judge Only")
+    assert assignment.judge.name == "Judge Only"
+    assert assignment.debater_alias is None
+    for name in names[1:]:
+        assert Debater.all_objects.filter(pk=people[name].pk).exists()
+    assert other_metadata.judges.get().judge is None

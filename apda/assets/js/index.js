@@ -4,6 +4,7 @@ import "bootstrap-datepicker/build/build.less";
 import "../css/app.scss";
 import "../css/navigation.scss";
 import "../css/immaculate-grid.scss";
+import "../css/tab-cards.scss";
 
 import "bootstrap-datepicker";
 

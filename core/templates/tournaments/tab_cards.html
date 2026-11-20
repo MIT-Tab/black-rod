@@ -1,0 +1,64 @@
+{% extends "base/base.html" %}
+{% block title %}{{ tournament }} Tab Cards{% endblock title %}
+{% block extra_head %}
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+{% endblock extra_head %}
+{% block content %}
+    <main class="container tab-cards rounded shadow-lg mt-3 p-3">
+        <div class="tab-cards__intro">
+            <a class="d-print-none" href="{% url 'core:tournament_detail' tournament.pk %}">{{ tournament }}</a>
+            <h1 class="h3 mt-2">Tab Cards</h1>
+            {% if legacy_cards %}
+                <p>This tournament was imported before tab cards were included. Some details may be missing.</p>
+            {% else %}
+                <p class="d-print-none">Round results and speaker scores for every team. Scores are shown as (speaks, ranks).</p>
+            {% endif %}
+            <button type="button" class="btn btn-secondary d-print-none" onclick="window.print()">Print tab cards</button>
+        </div>
+        {% for card in cards %}
+            <section class="tab-cards__card" aria-labelledby="tab-card-{{ forloop.counter }}">
+                <h2 id="tab-card-{{ forloop.counter }}">
+                    {{ card.speakers.0.name }}
+                    {% if card.speakers.0.name != card.speakers.1.name %}&amp; {{ card.speakers.1.name }}{% endif %}
+                </h2>
+                <div class="table-responsive">
+                    <table class="tab-card table-bordered table">
+                        <thead>
+                            <tr>
+                                <th scope="col">R</th>
+                                <th scope="col">G/O</th>
+                                <th scope="col">W/L</th>
+                                <th scope="col">Opponent</th>
+                                <th scope="col">Judge</th>
+                                {% for speaker in card.speakers %}
+                                    <th scope="col">{{ speaker.name }}{% if speaker.status %} ({{ speaker.status }}){% endif %}</th>
+                                {% endfor %}
+                                <th scope="col">Total</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in card.rounds %}
+                                <tr>
+                                    <td>{{ forloop.counter }}</td>
+                                    <td>{{ row.side }}</td>
+                                    <td>{{ row.result }}</td>
+                                    <td>{% for opponent in row.opponents %}{{ opponent }}{% if not forloop.last %} &amp; {% endif %}{% endfor %}</td>
+                                    <td>{{ row.judges }}</td>
+                                    {% for score in row.scores %}
+                                        <td>{% if score %}({{ score.0 }}, {{ score.1 }}){% endif %}</td>
+                                    {% endfor %}
+                                </tr>
+                            {% endfor %}
+                            <tr>
+                                <td colspan="5">Tournament Totals:</td>
+                                {% for score in card.totals %}
+                                    <td>{% if score %}({{ score.0|floatformat:2 }},{{ score.1|floatformat:2 }}){% endif %}</td>
+                                {% endfor %}
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        {% endfor %}
+    </main>
+{% endblock content %}
