@@ -15,6 +15,7 @@ import "./sortable-formset";
 import "./school_admin_management";
 import "./data-entry";
 import "./replay";
+import initPartnershipNetwork from "./partnership_network";
 import "./immaculate_grid";
 import initPartnershipStats from "./partnership_stats";
 import initSchedulingBrowserRunner from "./scheduling_browser_runner";
@@ -107,5 +108,6 @@ $(document).ready(() => {
 
   $("#teams").on("keyup", teamSearch);
   initSchedulingBrowserRunner();
+  initPartnershipNetwork();
   initPartnershipStats();
 });
