@@ -1,16 +1,5 @@
 import "../css/partnership_network.scss";
 
-const palette = [
-  "#31688e",
-  "#8b5bb1",
-  "#29a18c",
-  "#e08b35",
-  "#c45978",
-  "#629447",
-  "#697fc4",
-  "#a67548",
-];
-
 function tournamentLabel(count) {
   return `${count} recorded tournament${count === 1 ? "" : "s"}`;
 }
@@ -39,49 +28,63 @@ async function initPartnershipNetwork() {
       return;
     }
     const byId = new Map(data.nodes.map((node) => [node.id, node]));
-    const maximum = data.edges.reduce(
-      (highest, edge) => Math.max(highest, edge.tournaments),
-      1,
+    const schools = [...new Set(data.nodes.map((node) => node.school_id))].sort(
+      (a, b) => a - b,
+    );
+    const colors = new Map(
+      schools.map((school, index) => [
+        school,
+        `hsl(${(index * 137.508) % 360}, 66%, 44%)`,
+      ]),
+    );
+    const degree = new Map(data.nodes.map((node) => [node.id, 0]));
+    data.edges.forEach((edge) => {
+      degree.set(edge.from, degree.get(edge.from) + 1);
+      degree.set(edge.to, degree.get(edge.to) + 1);
+    });
+    const labelOrder = [...data.nodes].sort(
+      (a, b) => degree.get(b.id) - degree.get(a.id),
     );
     const nodes = new DataSet(
       data.nodes.map((node) => ({
         id: node.id,
         label: node.label,
-        color: palette[node.school_id % palette.length],
+        color: { background: colors.get(node.school_id), border: "#ffffff" },
       })),
     );
-    const edges = data.edges.map((edge, index) => {
-      const darkness =
-        0.16 + (0.74 * Math.log1p(edge.tournaments)) / Math.log1p(maximum);
-      return {
+    const edges = new DataSet(
+      data.edges.map((edge, index) => ({
         id: index,
         from: edge.from,
         to: edge.to,
-        color: { color: `rgba(42, 57, 72, ${darkness})`, inherit: false },
-        width: 0.6 + (2 * Math.log1p(edge.tournaments)) / Math.log1p(maximum),
-      };
-    });
+        color: {
+          color:
+            edge.tournaments >= 5
+              ? "#111827"
+              : `rgba(55, 65, 81, ${0.2 + Math.min(4, edge.tournaments) * 0.16})`,
+          inherit: false,
+        },
+        width: 0.6 + Math.min(5, edge.tournaments) * 0.5,
+      })),
+    );
     const network = new Network(
       canvas,
       { nodes, edges },
       {
         nodes: {
           shape: "dot",
-          size: 5,
-          borderWidth: 1,
-          font: { size: 12, color: "#233747" },
+          size: 10,
+          borderWidth: 1.2,
+          font: {
+            size: 17,
+            color: "#182535",
+            strokeWidth: 3,
+            strokeColor: "#ffffff",
+          },
         },
         edges: { smooth: false, selectionWidth: 2 },
-        layout: { improvedLayout: false, randomSeed: 42 },
-        physics: {
-          solver: "barnesHut",
-          barnesHut: {
-            gravitationalConstant: -3500,
-            springLength: 85,
-            avoidOverlap: 0.4,
-          },
-          stabilization: { iterations: 150 },
-        },
+        layout: { improvedLayout: false },
+        physics: false,
         interaction: {
           hover: true,
           hideEdgesOnDrag: true,
@@ -89,36 +92,149 @@ async function initPartnershipNetwork() {
         },
       },
     );
+    const labels = root.querySelector("[data-network-labels]");
+    let hovered = null;
+    const refreshSizes = () => {
+      const scale = Math.max(0.02, network.getScale());
+      network.setOptions({
+        nodes: {
+          size: Math.max(10, 2.8 / scale),
+          font: { size: Math.max(17, 11 / scale) },
+        },
+      });
+      const positions = network.getPositions();
+      const occupied = [];
+      const visibleLabels = new Set();
+      const ordered =
+        hovered === null
+          ? labelOrder
+          : [
+              byId.get(hovered),
+              ...labelOrder.filter((node) => node.id !== hovered),
+            ];
+      if (labels.checked) {
+        ordered.forEach((node) => {
+          const point = network.canvasToDOM(positions[node.id]);
+          const fontSize = Math.max(11, 17 * scale);
+          const halfWidth = node.label.length * fontSize * 0.29 + 4;
+          const top = point.y + Math.max(10 * scale, 2.8) + 2;
+          const box = {
+            left: point.x - halfWidth,
+            right: point.x + halfWidth,
+            top,
+            bottom: top + fontSize + 4,
+          };
+          if (
+            box.left < 4 ||
+            box.right > canvas.clientWidth - 4 ||
+            box.top < 0 ||
+            box.bottom > canvas.clientHeight
+          )
+            return;
+          const overlaps = occupied.some(
+            (other) =>
+              box.left < other.right &&
+              box.right > other.left &&
+              box.top < other.bottom &&
+              box.bottom > other.top,
+          );
+          if (!overlaps || node.id === hovered) {
+            occupied.push(box);
+            visibleLabels.add(node.id);
+          }
+        });
+      }
+      nodes.update(
+        data.nodes.map((node) => ({
+          id: node.id,
+          label: visibleLabels.has(node.id) ? node.label : "",
+        })),
+      );
+      edges.update(
+        data.edges.map((edge, index) => ({
+          id: index,
+          width: Math.max(
+            (0.35 + Math.min(5, edge.tournaments) * 0.12) / scale,
+            0.6 + Math.min(5, edge.tournaments) * 0.5,
+          ),
+        })),
+      );
+    };
     root
       .querySelector("[data-network-zoom-in]")
       .addEventListener("click", () => {
         network.moveTo({ scale: network.getScale() * 1.5 });
+        refreshSizes();
       });
     root
       .querySelector("[data-network-zoom-out]")
       .addEventListener("click", () => {
         network.moveTo({ scale: network.getScale() / 1.5 });
+        refreshSizes();
       });
-    let moving = true;
-    pause.disabled = false;
-    pause.addEventListener("click", () => {
-      moving = !moving;
-      network.setOptions({ physics: { enabled: moving } });
-      pause.textContent = moving ? "Pause motion" : "Resume motion";
+    const fit = () => {
+      const positions = Object.values(network.getPositions());
+      const left = Math.min(...positions.map((point) => point.x));
+      const right = Math.max(...positions.map((point) => point.x));
+      const top = Math.min(...positions.map((point) => point.y));
+      const bottom = Math.max(...positions.map((point) => point.y));
+      const scale =
+        Math.min(
+          1.3,
+          canvas.clientWidth / (right - left + 80),
+          canvas.clientHeight / (bottom - top + 80),
+        ) * 0.9;
+      network.moveTo({
+        position: { x: (left + right) / 2, y: (top + bottom) / 2 },
+        scale,
+        animation: false,
+      });
+      refreshSizes();
+    };
+    network.on("zoom", refreshSizes);
+    network.on("dragEnd", refreshSizes);
+    network.on("hoverNode", ({ node }) => {
+      hovered = node;
+      refreshSizes();
     });
-    root
-      .querySelector("[data-network-fit]")
-      .addEventListener("click", () => network.fit());
-    root
-      .querySelector("[data-network-labels]")
-      .addEventListener("change", (event) => {
-        nodes.update(
-          data.nodes.map((node) => ({
-            id: node.id,
-            label: event.target.checked ? node.label : "",
-          })),
-        );
-      });
+    network.on("blurNode", () => {
+      hovered = null;
+      refreshSizes();
+    });
+    root.querySelector("[data-network-fit]").addEventListener("click", fit);
+    labels.addEventListener("change", refreshSizes);
+    let worker = null;
+    let seed = 0;
+    const arrange = () => {
+      pause.disabled = true;
+      pause.textContent = "Arranging…";
+      status.textContent = "Arranging connections…";
+      worker = new Worker(
+        new URL("./partnership_layout_worker.js", import.meta.url),
+      );
+      worker.onmessage = ({ data: positions }) => {
+        nodes.update(positions);
+        worker.terminate();
+        worker = null;
+        fit();
+        status.textContent = `${peopleCount} people · ${pairCount} partnerships`;
+        pause.textContent = "Rearrange";
+        pause.disabled = false;
+      };
+      worker.onerror = () => {
+        worker.terminate();
+        worker = null;
+        status.textContent =
+          "Could not arrange the network. Reload to try again.";
+      };
+      worker.postMessage({ ...data, seed });
+      seed += 0.2;
+    };
+    pause.addEventListener("click", arrange);
+    window.addEventListener("pagehide", () => {
+      if (worker) worker.terminate();
+    });
+    arrange();
     network.on("click", (selection) => {
       details.replaceChildren();
       if (selection.nodes.length) {
@@ -144,7 +260,6 @@ async function initPartnershipNetwork() {
         details.textContent = "Select a person or partnership to explore.";
       }
     });
-    network.on("stabilizationIterationsDone", () => network.fit());
   } catch {
     status.textContent = "Could not load the network. Reload to try again.";
     canvas.hidden = true;
