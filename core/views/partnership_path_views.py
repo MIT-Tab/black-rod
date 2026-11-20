@@ -16,7 +16,9 @@ from django.views.generic import TemplateView
 
 from core.models import Debater
 from core.utils.partnership_paths import find_partnership_paths
-from core.utils.partnership_stats import calculate_partnership_stats
+from core.utils.partnership_stats import (
+    calculate_debater_partnership_stats, calculate_partnership_stats,
+)
 
 STATS_CACHE_KEY = "public-partnership-stats:v3"
 STATS_CACHE_TIMEOUT = 24 * 60 * 60
@@ -128,3 +130,19 @@ def clear_partnership_stats_cache(request):
     cache.delete(previous_key)
     messages.success(request, "Partnership statistics cache cleared.")
     return redirect("core:partnership_stats")
+
+
+class DebaterPartnershipStatsForm(forms.Form):
+    debater = PartnershipDebaterField()
+
+
+class DebaterPartnershipStatsView(TemplateView):
+    template_name = "debaters/personal_partnership_stats.html"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        form = DebaterPartnershipStatsForm(self.request.GET or None)
+        context["form"] = form
+        if form.is_valid():
+            context.update(calculate_debater_partnership_stats(form.cleaned_data["debater"]))
+        return context

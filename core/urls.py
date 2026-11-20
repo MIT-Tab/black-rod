@@ -134,6 +134,11 @@ urlpatterns = [
         name="alias_group_autocomplete",
     ),
     path(
+        "core/debaters/partnership-paths/person/",
+        partnership_path_views.DebaterPartnershipStatsView.as_view(),
+        name="debater_partnership_stats",
+    ),
+    path(
         "core/debaters/partnership-paths/stats/",
         partnership_path_views.PartnershipStatsView.as_view(),
         name="partnership_stats",
