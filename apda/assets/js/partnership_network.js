@@ -73,12 +73,12 @@ async function initPartnershipNetwork() {
       {
         nodes: {
           shape: "dot",
-          size: 10,
+          size: 4,
           borderWidth: 1.2,
           font: {
-            size: 17,
+            size: 12,
             color: "#182535",
-            strokeWidth: 3,
+            strokeWidth: 1.4,
             strokeColor: "#ffffff",
           },
         },
@@ -94,12 +94,15 @@ async function initPartnershipNetwork() {
     );
     const labels = root.querySelector("[data-network-labels]");
     let hovered = null;
+    let animationFrame = null;
+    let animationBounds = null;
     const refreshSizes = () => {
       const scale = Math.max(0.02, network.getScale());
       network.setOptions({
         nodes: {
-          size: Math.max(10, 2.8 / scale),
-          font: { size: Math.max(17, 11 / scale) },
+          size: 4 / scale,
+          borderWidth: 0.7,
+          font: { size: 12 / scale, strokeWidth: 1.4 / scale },
         },
       });
       const positions = network.getPositions();
@@ -115,9 +118,9 @@ async function initPartnershipNetwork() {
       if (labels.checked) {
         ordered.forEach((node) => {
           const point = network.canvasToDOM(positions[node.id]);
-          const fontSize = Math.max(11, 17 * scale);
+          const fontSize = 12;
           const halfWidth = node.label.length * fontSize * 0.29 + 4;
-          const top = point.y + Math.max(10 * scale, 2.8) + 2;
+          const top = point.y + 6;
           const box = {
             left: point.x - halfWidth,
             right: point.x + halfWidth,
@@ -153,10 +156,7 @@ async function initPartnershipNetwork() {
       edges.update(
         data.edges.map((edge, index) => ({
           id: index,
-          width: Math.max(
-            (0.35 + Math.min(5, edge.tournaments) * 0.12) / scale,
-            0.6 + Math.min(5, edge.tournaments) * 0.5,
-          ),
+          width: (0.45 + Math.min(5, edge.tournaments) * 0.24) / scale,
         })),
       );
     };
@@ -173,7 +173,8 @@ async function initPartnershipNetwork() {
         refreshSizes();
       });
     const fit = () => {
-      const positions = Object.values(network.getPositions());
+      const positions =
+        animationBounds || Object.values(network.getPositions());
       const left = Math.min(...positions.map((point) => point.x));
       const right = Math.max(...positions.map((point) => point.x));
       const top = Math.min(...positions.map((point) => point.y));
@@ -212,14 +213,52 @@ async function initPartnershipNetwork() {
       worker = new Worker(
         new URL("./partnership_layout_worker.js", import.meta.url),
       );
-      worker.onmessage = ({ data: positions }) => {
-        nodes.update(positions);
+      worker.onmessage = ({ data: { frames } }) => {
         worker.terminate();
         worker = null;
+        const finalPositions = frames[frames.length - 1];
+        animationBounds = finalPositions;
+        nodes.update(frames[0]);
         fit();
-        status.textContent = `${peopleCount} people · ${pairCount} partnerships`;
-        pause.textContent = "Rearrange";
-        pause.disabled = false;
+        pause.textContent = "Settling…";
+        const duration = window.matchMedia("(prefers-reduced-motion: reduce)")
+          .matches
+          ? 0
+          : 2800;
+        let start = null;
+        let lastDraw = 0;
+        const animate = (time) => {
+          if (start === null) start = time;
+          const progress = duration
+            ? Math.min(1, (time - start) / duration)
+            : 1;
+          if (time - lastDraw >= 32 || progress === 1) {
+            const frameIndex = progress * (frames.length - 1);
+            const first = frames[Math.floor(frameIndex)];
+            const second =
+              frames[Math.min(frames.length - 1, Math.floor(frameIndex) + 1)];
+            const fraction = frameIndex % 1;
+            nodes.update(
+              first.map((node, index) => ({
+                id: node.id,
+                x: node.x + (second[index].x - node.x) * fraction,
+                y: node.y + (second[index].y - node.y) * fraction,
+              })),
+            );
+            lastDraw = time;
+          }
+          if (progress < 1) {
+            animationFrame = window.requestAnimationFrame(animate);
+          } else {
+            animationFrame = null;
+            animationBounds = null;
+            refreshSizes();
+            status.textContent = `${peopleCount} people · ${pairCount} partnerships`;
+            pause.textContent = "Rearrange";
+            pause.disabled = false;
+          }
+        };
+        animationFrame = window.requestAnimationFrame(animate);
       };
       worker.onerror = () => {
         worker.terminate();
@@ -233,6 +272,7 @@ async function initPartnershipNetwork() {
     pause.addEventListener("click", arrange);
     window.addEventListener("pagehide", () => {
       if (worker) worker.terminate();
+      if (animationFrame !== null) window.cancelAnimationFrame(animationFrame);
     });
     arrange();
     network.on("click", (selection) => {

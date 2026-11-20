@@ -1,3 +1,5 @@
+import { packEnclose, packSiblings } from "d3-hierarchy";
+
 import {
   forceCollide,
   forceLink,
@@ -82,12 +84,17 @@ function arrange(members, edges, seed) {
     )
     .velocityDecay(0.65)
     .stop();
-  simulation.tick(240);
+  const frames = [];
+  simulation.tick(20);
+  for (let step = 0; step < 24; step += 1) {
+    simulation.tick(10);
+    frames.push(nodes.map((node) => ({ id: node.id, x: node.x, y: node.y })));
+  }
   const left = Math.min(...nodes.map((node) => node.x)) - 8;
   const top = Math.min(...nodes.map((node) => node.y)) - 8;
   const width = Math.max(...nodes.map((node) => node.x)) - left + 8;
   const height = Math.max(...nodes.map((node) => node.y)) - top + 8;
-  return { nodes, left, top, width, height };
+  return { nodes, frames, left, top, width, height };
 }
 
 // eslint-disable-next-line no-restricted-globals
@@ -110,34 +117,32 @@ workerScope.onmessage = ({ data }) => {
       data.seed,
     ),
   );
-  layouts.sort((first, second) => second.height - first.height);
-  const area = layouts.reduce(
-    (sum, layout) => sum + (layout.width + 8) * (layout.height + 8),
-    0,
-  );
-  const rowWidth = Math.max(
-    Math.sqrt(area) * 1.2,
-    ...layouts.map((layout) => layout.width),
-  );
-  let x = 0;
-  let y = 0;
-  let rowHeight = 0;
-  const positions = [];
-  layouts.forEach((layout) => {
-    if (x + layout.width > rowWidth && x > 0) {
-      x = 0;
-      y += rowHeight + 8;
-      rowHeight = 0;
-    }
-    layout.nodes.forEach((node) =>
-      positions.push({
-        id: node.id,
-        x: node.x - layout.left + x,
-        y: node.y - layout.top + y,
-      }),
+  const circles = layouts.map((layout) => {
+    const centerX = layout.left + layout.width / 2;
+    const centerY = layout.top + layout.height / 2;
+    const radius = Math.max(
+      ...layout.nodes.map((node) =>
+        Math.hypot(node.x - centerX, node.y - centerY),
+      ),
     );
-    x += layout.width + 8;
-    rowHeight = Math.max(rowHeight, layout.height);
+    return { r: radius + 16, layout };
   });
-  workerScope.postMessage(positions);
+  packSiblings(circles);
+  const center = packEnclose(circles);
+  const frames = Array.from({ length: 24 }, () => []);
+  circles.forEach((circle) => {
+    const { layout } = circle;
+    const offsetX = circle.x - center.x - layout.left - layout.width / 2;
+    const offsetY = circle.y - center.y - layout.top - layout.height / 2;
+    layout.frames.forEach((frame, index) => {
+      frame.forEach((node) =>
+        frames[index].push({
+          id: node.id,
+          x: node.x + offsetX,
+          y: node.y + offsetY,
+        }),
+      );
+    });
+  });
+  workerScope.postMessage({ frames });
 };
