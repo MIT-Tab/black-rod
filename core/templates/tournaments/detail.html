@@ -18,6 +18,10 @@
     {% endif %}
 {% endblock extra_buttons %}
 {% block detail_view %}
+    {% if imported_tab_cards_available %}
+        <a href="{% url 'core:tournament_tab_cards' object.pk %}"
+           class="btn btn-outline-primary mb-3">Tab Cards</a>
+    {% endif %}
     {% if object.autoqual_recipients.exists %}
         <h4>Individual Autoqual Recipients</h4>
         <ul>

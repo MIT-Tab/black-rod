@@ -60,6 +60,7 @@ from core.models import (
     ImportBatch,
     ImmaculateGridHiddenDebater,
     ImportedRoundJudge,
+    Judge,
     ImportedRoundMetadata,
     SyntheticResolutionLog,
 )
@@ -1112,9 +1113,17 @@ class ImportedRoundMetadataAdmin(admin.ModelAdmin):
         ) or "-"
 
 
+@admin.register(Judge)
+class JudgeAdmin(admin.ModelAdmin):
+    list_display = ("name", "source_tournament", "source_key")
+    search_fields = ("name", "source_tournament__name")
+    list_select_related = ("source_tournament",)
+    raw_id_fields = ("source_tournament",)
+
+
 @admin.register(ImportedRoundJudge)
 class ImportedRoundJudgeAdmin(admin.ModelAdmin):
-    list_display = ("id", "original_name", "round_metadata", "debater_alias", "is_chair")
+    list_display = ("id", "original_name", "judge", "round_metadata", "debater_alias", "is_chair")
     list_filter = ("is_chair",)
     search_fields = (
         "original_name",
@@ -1128,8 +1137,8 @@ class ImportedRoundJudgeAdmin(admin.ModelAdmin):
         "round_metadata__round__round_number",
         "id",
     )
-    list_select_related = ("round_metadata__round__tournament", "debater_alias__debater")
-    raw_id_fields = ("round_metadata", "debater_alias")
+    list_select_related = ("round_metadata__round__tournament", "judge", "debater_alias__debater")
+    raw_id_fields = ("round_metadata", "judge", "debater_alias")
 
 
 @admin.register(SyntheticResolutionLog)

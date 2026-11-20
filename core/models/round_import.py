@@ -42,6 +42,8 @@ class TournamentImport(models.Model):
     )
     original_file_name = models.CharField(max_length=255, blank=True)
     source_hash = models.CharField(max_length=64, blank=True, db_index=True)
+    # Older bundles omitted the cards key. Explicit null means MIT-Tab withheld the cards.
+    tab_cards = models.JSONField(default=dict, blank=True)
     imported_at = models.DateTimeField(auto_now_add=True, db_index=True)
 
     class Meta:
@@ -130,6 +132,28 @@ class ImportedRoundMetadata(models.Model):
         return f"Imported metadata for round {self.round_id}"
 
 
+class Judge(models.Model):
+    name = models.CharField(max_length=128)
+    source_tournament = models.ForeignKey(
+        Tournament,
+        on_delete=models.SET_NULL,
+        related_name="imported_judges",
+        null=True,
+    )
+    source_key = models.CharField(max_length=133)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["source_tournament", "source_key"],
+                name="unique_judge_source_tournament_key",
+            ),
+        ]
+
+    def __str__(self):
+        return self.name
+
+
 class ImportedRoundJudge(models.Model):
     round_metadata = models.ForeignKey(
         ImportedRoundMetadata,
@@ -137,6 +161,13 @@ class ImportedRoundJudge(models.Model):
         related_name="judges",
     )
     original_name = models.CharField(max_length=128)
+    judge = models.ForeignKey(
+        Judge,
+        on_delete=models.SET_NULL,
+        related_name="round_assignments",
+        null=True,
+        blank=True,
+    )
     debater_alias = models.ForeignKey(
         DebaterAlias,
         on_delete=models.SET_NULL,

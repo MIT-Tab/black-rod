@@ -309,6 +309,11 @@ urlpatterns = [
         name="tournament_detail",
     ),
     path(
+        "core/tournaments/<int:pk>/tab-cards/",
+        tournament_views.tournament_tab_cards,
+        name="tournament_tab_cards",
+    ),
+    path(
         "core/tournaments/<int:pk>/edit",
         tournament_views.TournamentUpdateView.as_view(),
         name="tournament_update",

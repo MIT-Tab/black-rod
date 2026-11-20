@@ -13,7 +13,8 @@ from django.db.models import (
     When,
 )
 from django.core.cache import cache
-from django.http import HttpResponse, QueryDict
+from django.http import Http404, HttpResponse, QueryDict
+from django.shortcuts import get_object_or_404, render
 from django.urls import reverse_lazy
 from django.utils import timezone
 from django.utils.decorators import method_decorator
@@ -46,6 +47,27 @@ from core.utils.rounds import (
     get_tab_card_data,
     visible_canonical_rounds,
 )
+
+from core.utils.tournament_tab_cards import (
+    get_tournament_tab_cards,
+    has_tab_cards,
+    latest_mittab_import,
+)
+
+
+def tournament_tab_cards(request, pk):
+    tournament = get_object_or_404(Tournament, pk=pk)
+    source = latest_mittab_import(tournament)
+    if source is None:
+        raise Http404
+    cards = get_tournament_tab_cards(tournament, source)
+    if not cards:
+        raise Http404
+    return render(request, "tournaments/tab_cards.html", {
+        "tournament": tournament,
+        "cards": cards,
+        "legacy_cards": "cards" not in source.tab_cards,
+    })
 
 
 class TournamentFilter(FilterSet):
@@ -470,6 +492,8 @@ class TournamentDetailView(CustomDetailView):
         context["novice_speaker_results"] = nspeakers
 
         context["novice_speaker_results"] = nspeakers
+
+        context["imported_tab_cards_available"] = has_tab_cards(obj, latest_mittab_import(obj))
 
         context["tab_cards_search_enabled"] = getattr(
             settings,

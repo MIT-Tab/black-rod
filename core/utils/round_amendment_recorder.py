@@ -274,6 +274,7 @@ def _serialize_imported_metadata(round_obj):
             {
                 "original_name": str(judge.original_name or ""),
                 "is_chair": bool(judge.is_chair),
+                "judge_id": judge.judge_id,
                 "debater_id": int(judge.debater_alias.debater_id)
                 if judge.debater_alias_id
                 else None,

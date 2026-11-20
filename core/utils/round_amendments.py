@@ -9,6 +9,7 @@ from core.models import (
     DebaterAlias,
     ImportedRoundJudge,
     ImportedRoundMetadata,
+    Judge,
     Round,
     RoundStats,
     School,
@@ -79,6 +80,7 @@ def apply_round_amendments(document, *, actor=None, source_context=None):
         Team.DoesNotExist,
         Tournament.DoesNotExist,
         TournamentImport.DoesNotExist,
+        Judge.DoesNotExist,
     ) as exc:
         raise RoundAmendmentError(str(exc)) from exc
 
@@ -353,14 +355,14 @@ def _resolve_team(action, prefix):
 
     if debater_ids is None:
         return None
-    if not isinstance(debater_ids, list) or len(debater_ids) != 2:
-        raise RoundAmendmentError(f"'{prefix}_debater_ids' must contain exactly two debater ids.")
+    if not isinstance(debater_ids, list) or len(debater_ids) not in (1, 2):
+        raise RoundAmendmentError(f"'{prefix}_debater_ids' must contain one or two debater ids.")
 
     debaters = [
         Debater.all_objects.get(pk=int(debater_id))
         for debater_id in debater_ids
     ]
-    return get_or_create_team_for_debaters(debaters[0], debaters[1])
+    return get_or_create_team_for_debaters(debaters[0], debaters[-1])
 
 
 def _apply_round_fields(round_obj, action, *, partial):
@@ -535,6 +537,7 @@ def _apply_imported_metadata(round_obj, payload):
                 ImportedRoundJudge(
                     round_metadata=metadata_row,
                     original_name=original_name,
+                    judge=_resolve_judge(round_obj, judge_payload, original_name),
                     debater_alias=debater_alias,
                     is_chair=_coerce_bool(judge_payload.get("is_chair", False)),
                 )
@@ -544,6 +547,31 @@ def _apply_imported_metadata(round_obj, payload):
     if legacy_slot_roles:
         _backfill_legacy_metadata_roles(round_obj, metadata_row, legacy_slot_roles)
     return metadata_row
+
+
+def _resolve_judge(round_obj, payload, name):
+    if len(name) > 128:
+        raise RoundAmendmentError("Judge names must be at most 128 characters.")
+    if payload.get("judge_id") is not None:
+        return Judge.objects.get(pk=int(payload["judge_id"]))
+
+    source_id = payload.get("source_judge_id")
+    if source_id is not None and (
+        not isinstance(source_id, int) or isinstance(source_id, bool) or source_id < 1
+    ):
+        raise RoundAmendmentError("A source judge id must be a positive integer.")
+    source_key = f"id:{source_id}" if source_id is not None else f"name:{name}"
+    if len(source_key) > 133:
+        raise RoundAmendmentError("Source judge id is too long.")
+    judge, _ = Judge.objects.get_or_create(
+        source_tournament_id=round_obj.tournament_id,
+        source_key=source_key,
+        defaults={"name": name},
+    )
+    if judge.name != name:
+        judge.name = name
+        judge.save(update_fields=["name"])
+    return judge
 
 
 def _backfill_legacy_metadata_roles(round_obj, metadata_row, slot_roles):

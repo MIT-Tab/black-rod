@@ -54,7 +54,7 @@ RESOURCES = {
     ),
     "round_judges": (
         "ImportedRoundJudge",
-        "round_metadata_id original_name debater_alias_id is_chair".split(),
+        "round_metadata_id original_name judge_id debater_alias_id is_chair".split(),
     ),
     "imports": (
         "TournamentImport",

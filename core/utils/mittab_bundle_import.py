@@ -4,8 +4,9 @@ from dataclasses import dataclass
 
 from django.db import transaction
 
-from core.models import Debater, DebaterAlias, Round, School, TournamentImport
+from core.models import Debater, Round, School, Tournament, TournamentImport
 from core.utils.round_amendments import RoundAmendmentError, apply_round_amendments
+from core.utils.tournament_tab_cards import validate_tab_cards
 
 
 class MittabBundleImportError(ValueError):
@@ -39,24 +40,29 @@ def load_mittab_bundle(uploaded_file):
 def import_mittab_bundle(loaded_bundle, tournament, *, actor=None):
     document = loaded_bundle.document
     _validate_top_level_document(document)
-    _ensure_results_exist(tournament)
-
-    existing_duplicate = TournamentImport.objects.filter(
-        tournament=tournament,
-        import_type=TournamentImport.ImportType.MITTAB_BUNDLE,
-        source_hash=loaded_bundle.source_hash,
-    ).exists()
-    if existing_duplicate:
-        raise MittabBundleImportError(
-            "This exact Mit-Tab bundle was already uploaded for the selected tournament."
-        )
+    tab_cards = {}
+    if "tab_cards" in document:
+        try:
+            tab_cards["cards"] = validate_tab_cards(document["tab_cards"])
+        except ValueError as exc:
+            raise MittabBundleImportError(str(exc)) from exc
 
     with transaction.atomic():
+        Tournament.objects.select_for_update().get(pk=tournament.pk)
+        _ensure_results_exist(tournament)
+        if tournament.tournament_imports.filter(
+            import_type=TournamentImport.ImportType.MITTAB_BUNDLE,
+            source_hash=loaded_bundle.source_hash,
+        ).exists():
+            raise MittabBundleImportError(
+                "This exact Mit-Tab bundle was already uploaded for the selected tournament."
+            )
         import_row = TournamentImport.objects.create(
             tournament=tournament,
             import_type=TournamentImport.ImportType.MITTAB_BUNDLE,
             original_file_name=loaded_bundle.original_file_name,
             source_hash=loaded_bundle.source_hash,
+            tab_cards=tab_cards,
         )
         importer = _MittabBundleImporter(document, tournament, import_row)
         actions = importer.build_actions()
@@ -105,7 +111,6 @@ def _ensure_results_exist(tournament):
 class _MittabBundleImporter:
     def __init__(self, document, tournament, import_row):
         self._competitor_cache = {}
-        self._judge_cache = {}
         self.document = document
         self.tournament = tournament
         self.import_row = import_row
@@ -204,13 +209,13 @@ class _MittabBundleImporter:
 
         debater_refs = side_payload.get("debater_ids")
         source_names = side_payload.get("source_names")
-        if not isinstance(debater_refs, list) or len(debater_refs) != 2:
+        if not isinstance(debater_refs, list) or len(debater_refs) not in (1, 2):
             raise MittabBundleImportError(
-                f"Round '{import_key}' side '{side_key}' must contain exactly two debater ids."
+                f"Round '{import_key}' side '{side_key}' must contain one or two debater ids."
             )
-        if not isinstance(source_names, list) or len(source_names) != 2:
+        if not isinstance(source_names, list) or len(source_names) != len(debater_refs):
             raise MittabBundleImportError(
-                f"Round '{import_key}' side '{side_key}' must contain exactly two source names."
+                f"Round '{import_key}' side '{side_key}' must contain one source name per debater id."
             )
 
         resolved_ids = []
@@ -224,7 +229,7 @@ class _MittabBundleImporter:
                     "source_name": str(source_name or "").strip() or debater.name,
                 }
             )
-        return resolved_ids, aliases
+        return resolved_ids, (aliases + [None])[:2]
 
     def _resolve_competitor(self, bundle_debater_id):
         if bundle_debater_id not in self._competitor_cache:
@@ -320,55 +325,17 @@ class _MittabBundleImporter:
             is_chair = bool(judge_payload.get("is_chair"))
             if is_chair:
                 chair_seen += 1
-            debater = self._resolve_judge_identity(original_name)
             resolved.append(
                 {
                     "original_name": original_name,
                     "is_chair": is_chair,
-                    "debater_id": debater.id,
-                    "source_name": original_name,
+                    "source_judge_id": judge_payload.get("id"),
                 }
             )
 
         if chair_seen > 1:
             raise MittabBundleImportError(f"Round '{import_key}' includes more than one chair judge.")
         return resolved
-
-    def _resolve_judge_identity(self, name):
-        if name not in self._judge_cache:
-            self._judge_cache[name] = self._resolve_judge_identity_uncached(name)
-        return self._judge_cache[name]
-
-    def _resolve_judge_identity_uncached(self, name):
-        exact_matches = self._exact_name_matches(name)
-        if len(exact_matches) == 1:
-            return exact_matches[0]
-
-        alias_matches = list(
-            DebaterAlias.objects.filter(
-                source_name__iexact=name,
-                debater__synthetic=True,
-            )
-            .select_related("debater")
-            .order_by("id")
-        )
-        unique_alias_debaters = []
-        seen_ids = set()
-        for alias in alias_matches:
-            if alias.debater_id in seen_ids:
-                continue
-            seen_ids.add(alias.debater_id)
-            unique_alias_debaters.append(alias.debater)
-        if len(unique_alias_debaters) == 1:
-            return unique_alias_debaters[0]
-
-        first_name, last_name = _split_name(name)
-        return Debater.all_objects.create(
-            first_name=first_name,
-            last_name=last_name,
-            synthetic=True,
-            temporary=False,
-        )
 
     def _exact_name_matches(self, full_name):
         first_name, last_name = _split_name(full_name)
