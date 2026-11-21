@@ -65,16 +65,30 @@ def capture(driver, full):
     return base64.b64decode(data["data"])
 
 
-def write_preview(png_path, preview_dir):
-    try:
-        from PIL import Image
-    except ImportError:
-        return None
+def write_preview(driver, png_path, preview_dir):
+    driver.get("about:blank")
+    png_base64 = base64.b64encode(png_path.read_bytes()).decode("ascii")
+    jpeg = driver.execute_async_script(
+        """
+        const [png, done] = arguments;
+        const image = new Image();
+        image.onerror = () => done(null);
+        image.onload = () => {
+            const scale = Math.min(1, 900 / image.width, 2400 / image.height);
+            const canvas = document.createElement("canvas");
+            canvas.width = Math.max(1, Math.round(image.width * scale));
+            canvas.height = Math.max(1, Math.round(image.height * scale));
+            canvas.getContext("2d").drawImage(image, 0, 0, canvas.width, canvas.height);
+            done(canvas.toDataURL("image/jpeg", 0.7));
+        };
+        image.src = "data:image/png;base64," + png;
+        """,
+        png_base64,
+    )
+    if not jpeg or not jpeg.startswith("data:image/jpeg;base64,"):
+        raise RuntimeError(f"Could not create JPEG preview for {png_path}")
     preview = Path(preview_dir) / f"preview-{png_path.stem}.jpg"
-    with Image.open(png_path) as image:
-        image = image.convert("RGB")
-        image.thumbnail((900, 2400))
-        image.save(preview, "JPEG", quality=70)
+    preview.write_bytes(base64.b64decode(jpeg.split(",", 1)[1]))
     return preview
 
 
@@ -123,9 +137,9 @@ def main():
                 out.write_bytes(element.screenshot_as_png)
             else:
                 out.write_bytes(capture(driver, args.full))
-            preview = write_preview(out, args.preview_dir)
-            note = f"  preview: {preview}" if preview else ""
-            print(f"{out} ({os.path.getsize(out) // 1024} KB, page: {driver.current_url}){note}")
+            page_url = driver.current_url
+            preview = write_preview(driver, out, args.preview_dir)
+            print(f"{out} ({os.path.getsize(out) // 1024} KB, page: {page_url})  preview: {preview}")
     finally:
         driver.quit()
 
