@@ -3,4 +3,4 @@
 - Work in a dedicated sibling worktree from fresh `origin/master`; preserve the starting checkout's uncommitted work. Continue in an existing dedicated task worktree rather than creating nested worktrees.
 - Use `venv/bin/python` and the repo's `requirements.txt`/`constraints.txt`. Use the skill's `br`/`br-test` helpers for isolated development and test databases. Do not copy production databases or modify the starting checkout's SQLite files.
 - Before handoff, run the checks documented in the skill, matching `.github/workflows/pr-checks.yml`. Verify visible UI changes with desktop/mobile screenshots and include commit-pinned images in authorized PRs.
-- Never manually poll CI. Run the skill's `ci-watch --detach` once and end the turn; completion is delivered to the current Codex thread when supported. See the skill for notification prerequisites and other-agent background completion support.
+- Never manually poll CI. Run the skill's `ci-watch --detach` once and end the turn; failures are delivered to the current Codex thread when supported. See the skill for notification prerequisites and other-agent background completion support.
