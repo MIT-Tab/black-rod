@@ -252,7 +252,8 @@ class ImmaculateGridTests(TestCase):
         for board, score in ((previous, 500), (this_week, 70), (archived, 500), (self.board, 20)):
             guesses = [{"cell": 0, "score": score}]
             if board == self.board:
-                guesses.extend({"cell": 1, "score": None} for _ in range(9))
+                guesses = [{"cell": 0, "score": 13}, {"cell": 1, "score": 7}]
+                guesses.extend({"cell": 2, "score": None} for _ in range(8))
             ImmaculateGridPlay.objects.create(board=board, user=self.player, guesses=guesses)
 
         self.client.force_login(self.player)
@@ -263,7 +264,11 @@ class ImmaculateGridTests(TestCase):
         assert len(full.context["today_leaders"]) == 5
         you = full.context["today_leaders"][-1]
         assert you["is_viewer"] and you["rank"] == 5 and you["score"] == 15
+        assert (you["attempts"], you["penalty"], you["best"], you["worst"]) == (10, 5, 13, 7)
+        assert full.context["week_leaders"][0]["past_days"] == [monday]
         self.assertContains(full, 'class="table-primary"')
+        self.assertContains(full, f"?day={monday.isoformat()}")
+        self.assertNotContains(full, f"?day={previous.date.isoformat()}")
 
     def test_viewing_other_players_board_requires_solving_todays_grid(self):
         other_board = reverse("core:immaculate_grid_player_board", args=(self.other.pk,))
@@ -274,12 +279,36 @@ class ImmaculateGridTests(TestCase):
         assert self.client.get(other_board).status_code == 302
         self.client.force_login(self.player)
         assert self.client.get(other_board).status_code == 403
+        assert self.client.get(other_board, {"day": self.day}).status_code == 403
         self._finish_grid()
         self.assertContains(self.client.get(self.grid_url), other_board)
         response = self.client.get(other_board)
         self.assertContains(response, "Public correct answer")
         self.assertNotContains(response, "Private missed guess")
         self.assertNotContains(response, "data-cell=")
+
+    def test_past_player_boards_require_login_and_stay_within_current_week(self):
+        url = reverse("core:immaculate_grid_player_board", args=(self.other.pk,))
+        yesterday = self.day - timedelta(days=1)
+        previous_sunday = self.day - timedelta(days=self.day.weekday() + 1)
+        tomorrow = self.day + timedelta(days=1)
+        for day in (yesterday, previous_sunday, tomorrow):
+            board = ImmaculateGridBoard.objects.create(
+                date=day, rows=self.board.rows, columns=self.board.columns, answers=self.board.answers,
+            )
+            ImmaculateGridPlay.objects.create(board=board, user=self.other, guesses=[
+                {"cell": 0, "name": "Past correct answer", "score": 60},
+                {"cell": 1, "name": "Past missed guess", "score": None},
+            ])
+
+        assert self.client.get(url, {"day": yesterday}).status_code == 302
+        self.client.force_login(self.player)
+        response = self.client.get(url, {"day": yesterday})
+        self.assertContains(response, "Past correct answer")
+        self.assertNotContains(response, "Past missed guess")
+        self.assertContains(response, "Best square 60 · Worst square 60")
+        for invalid in (previous_sunday, tomorrow, "2026-02-30"):
+            assert self.client.get(url, {"day": invalid}).status_code == 404
 
     def test_hidden_debaters_remain_searchable_and_scorable(self):
         self.client.force_login(self.player)

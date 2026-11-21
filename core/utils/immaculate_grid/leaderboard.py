@@ -17,10 +17,22 @@ def solved_guesses(guesses):
     return {item["cell"]: item for item in guesses if item["score"] is not None}
 
 
-def score_guesses(guesses):
-    rarity = sum(item["score"] for item in solved_guesses(guesses).values())
+def score_breakdown(guesses):
+    scores = [item["score"] for item in solved_guesses(guesses).values()]
+    rarity = sum(scores)
     penalty = max(0, len(guesses) - GUESS_LIMIT) * EXTRA_GUESS_PENALTY
-    return rarity, penalty
+    return {
+        "attempts": len(guesses),
+        "rarity": rarity,
+        "penalty": penalty,
+        "best": max(scores, default=None),
+        "worst": min(scores, default=None),
+        "score": rarity - penalty,
+    }
+
+
+def week_start(day):
+    return day - timedelta(days=day.weekday())
 
 
 def _rank(entries, viewer_id):
@@ -36,9 +48,8 @@ def _rank(entries, viewer_id):
 
 
 def rankings(day, viewer_id):
-    week_start = day - timedelta(days=day.weekday())
     plays = ImmaculateGridPlay.objects.filter(
-        board__date__range=(week_start, day), board__replaced_at__isnull=True,
+        board__date__range=(week_start(day), day), board__replaced_at__isnull=True,
     ).select_related("user", "board").only(
         "guesses", "user__username", "user__first_name", "user__last_name", "board__date",
     )
@@ -46,10 +57,14 @@ def rankings(day, viewer_id):
     for play in plays.iterator():
         if not play.guesses:
             continue
-        rarity, penalty = score_guesses(play.guesses)
-        row = {"name": player_name(play.user), "id": play.user_id, "score": rarity - penalty}
-        total = week.setdefault(play.user_id, {**row, "score": 0})
-        total["score"] += row["score"]
+        breakdown = score_breakdown(play.guesses)
+        player = {"name": player_name(play.user), "id": play.user_id}
+        total = week.setdefault(play.user_id, {**player, "score": 0, "past_days": []})
+        total["score"] += breakdown["score"]
         if play.board.date == day:
-            today[play.user_id] = row
+            today[play.user_id] = {**player, **breakdown}
+        else:
+            total["past_days"].append(play.board.date)
+    for total in week.values():
+        total["past_days"].sort(reverse=True)
     return _rank(today, viewer_id), _rank(week, viewer_id)

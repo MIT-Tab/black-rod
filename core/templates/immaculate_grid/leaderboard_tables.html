@@ -6,7 +6,7 @@
                 <tr>
                     <th scope="col">Rank</th>
                     <th scope="col">Player</th>
-                    <th scope="col" class="text-right">Points</th>
+                    <th scope="col" class="text-right">Total</th>
                 </tr>
             </thead>
             <tbody>
@@ -20,6 +20,12 @@
                                 {{ entry.name }}
                             {% endif %}
                             {% if entry.is_viewer %}<span class="small ml-1">(you)</span>{% endif %}
+                            <small class="d-block text-muted">
+                                Guesses {{ entry.attempts }} · Penalty {{ entry.penalty }} pts
+                            </small>
+                            <small class="d-block text-muted">
+                                Best square {{ entry.best|default_if_none:"—" }} · Worst square {{ entry.worst|default_if_none:"—" }}
+                            </small>
                         </td>
                         <td class="text-right">{{ entry.score }}</td>
                     </tr>
@@ -48,6 +54,15 @@
                         <td>
                             {{ entry.name }}
                             {% if entry.is_viewer %}<span class="small ml-1">(you)</span>{% endif %}
+                            {% if entry.past_days %}
+                                <div class="small">
+                                    {% for past_day in entry.past_days %}
+                                        <a class="text-nowrap d-inline-block mr-2 py-1"
+                                           href="{% url 'core:immaculate_grid_player_board' entry.id %}?day={{ past_day|date:'Y-m-d' }}"
+                                           aria-label="View {{ entry.name }}’s grid for {{ past_day|date:'F j' }}">{{ past_day|date:"D, M j" }}</a>
+                                    {% endfor %}
+                                </div>
+                            {% endif %}
                         </td>
                         <td class="text-right">{{ entry.score }}</td>
                     </tr>

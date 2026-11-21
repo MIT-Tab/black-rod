@@ -10,7 +10,11 @@
         <a href="{% url 'core:immaculate_grid_leaderboard' %}">Back to leaderboard</a>
         <p class="immaculate-date mt-3 mb-2">{{ day|date:"F j, Y" }}</p>
         <h1>{{ player_name }}’s grid</h1>
-        <p>{{ solved }}/9 solved · {{ attempts }} guesses · {{ score }} points</p>
+        <p class="mb-1">{{ solved }}/9 solved · {{ attempts }} guesses · {{ score }} total points</p>
+        <p class="text-muted">
+            {{ rarity }} rarity points − {{ penalty }} penalty points.
+            Best square {{ best|default_if_none:"—" }} · Worst square {{ worst|default_if_none:"—" }}
+        </p>
         {% include "immaculate_grid/board_cells.html" %}
     </main>
 {% endblock content %}

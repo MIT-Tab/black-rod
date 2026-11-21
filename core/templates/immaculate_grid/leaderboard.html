@@ -10,7 +10,7 @@
         <a href="{% url 'core:immaculate_grid' %}">Back to Immaculate Grid</a>
         <h1 class="mt-2">Immaculate Grid Leaderboard</h1>
         <p class="text-muted">Weekly totals run from Monday through today. Points include guess penalties.</p>
-        {% if not can_view_boards %}<p>Solve today's grid to view other players' boards.</p>{% endif %}
+        {% if not can_view_boards %}<p>Solve today's grid to see how other players answered it.</p>{% endif %}
         {% include "immaculate_grid/leaderboard_tables.html" %}
     </main>
 {% endblock content %}
