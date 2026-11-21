@@ -36,6 +36,20 @@
                         <input type="hidden" name="review" value="{{ review_token }}">
                         {% if current_api_url %}
                             <input type="hidden" name="api_url" value="{{ current_api_url }}">
+                        {% elif forum_publication_enabled %}
+                            <div class="form-group">
+                                <label for="forum-publication-id">MIT-Tab forum posting ID (optional)</label>
+                                <input type="text"
+                                       id="forum-publication-id"
+                                       name="forum_publication_id"
+                                       class="form-control"
+                                       maxlength="32"
+                                       value="{{ forum_publication_id|default:'' }}"
+                                       aria-describedby="forum-publication-id-help">
+                                <small id="forum-publication-id-help" class="form-text text-muted">
+                                    Find this ID on the tournament's Forum Post Results page.
+                                </small>
+                            </div>
                         {% endif %}
                         {% for tab_key in selected_api_tabs %}
                             <input type="hidden" name="import_{{ tab_key }}" value="1">

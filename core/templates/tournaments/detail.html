@@ -151,9 +151,9 @@
         {% endfor %}
     {% endif %}
     {% if tab_cards_search_enabled and tab_cards_available and user.is_authenticated %}
-        <div class="card mt-3 mb-3">
+        <div id="tab-cards" class="card mt-3 mb-3">
             <div class="card-body">
-                <h5 class="card-title pb-2">Teams</h5>
+                <h5 class="card-title pb-2">Tab cards</h5>
                 <div class="form-group">
                     <label>Search Tab Cards</label>
                     <input type="text" class="form-control" id="teams" placeholder="Team Name">
@@ -170,6 +170,14 @@
                         </tr>
                     {% endfor %}
                 </table>
+            </div>
+        </div>
+    {% elif object.forum_publication_id and tab_cards_available %}
+        <div id="tab-cards" class="card my-3">
+            <div class="card-body">
+                <a href="{% url 'account_login' %}?next={{ request.path|urlencode }}%23tab-cards">
+                    Sign in to view tab cards
+                </a>
             </div>
         </div>
     {% endif %}

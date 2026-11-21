@@ -15,6 +15,8 @@ from core.utils.points import (
 
 class Tournament(models.Model):
     name = models.CharField(max_length=128, blank=False)
+    forum_publication_id = models.CharField(max_length=32, unique=True, null=True, editable=False)
+    forum_tab_cards_synced = models.BooleanField(default=False, editable=False)
     short_name = models.CharField(max_length=128, blank=False, default="")
 
     manual_name = models.CharField(
