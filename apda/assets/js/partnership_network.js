@@ -52,16 +52,30 @@ async function initPartnershipNetwork() {
         attendanceRadius(node.tournaments, maximumAttendance),
       ]),
     );
-    const edgeColors = data.edges.map((edge) =>
-      edge.tournaments >= 5
-        ? "#111827"
-        : `rgba(55, 65, 81, ${0.2 + Math.min(4, edge.tournaments) * 0.16})`,
-    );
+    const getTheme = () => {
+      const styles = window.getComputedStyle(canvas);
+      return {
+        label: styles.getPropertyValue("--network-label").trim(),
+        outline: styles.getPropertyValue("--network-outline").trim(),
+        edge: styles.getPropertyValue("--network-edge").trim(),
+        strongEdge: styles.getPropertyValue("--network-strong-edge").trim(),
+      };
+    };
+    let theme = getTheme();
+    const edgeColor = (edge) => {
+      const opacity = 0.2 + Math.min(4, edge.tournaments) * 0.16;
+      return edge.tournaments >= 5
+        ? theme.strongEdge
+        : `rgba(${theme.edge}, ${opacity})`;
+    };
     const nodes = new DataSet(
       data.nodes.map((node) => ({
         id: node.id,
         label: node.label,
-        color: { background: colors.get(node.school_id), border: "#ffffff" },
+        color: {
+          background: colors.get(node.school_id),
+          border: theme.outline,
+        },
       })),
     );
     const edges = new DataSet(
@@ -69,7 +83,7 @@ async function initPartnershipNetwork() {
         id: index,
         from: edge.from,
         to: edge.to,
-        color: { color: edgeColors[index], inherit: false },
+        color: { color: edgeColor(edge), inherit: false },
         width: partnershipWidth(edge.tournaments, maximumPartnerships),
       })),
     );
@@ -83,9 +97,9 @@ async function initPartnershipNetwork() {
           borderWidth: 1.2,
           font: {
             size: 12,
-            color: "#182535",
+            color: theme.label,
             strokeWidth: 1.4,
-            strokeColor: "#ffffff",
+            strokeColor: theme.outline,
           },
         },
         edges: { smooth: false, selectionWidth: 2 },
@@ -130,8 +144,8 @@ async function initPartnershipNetwork() {
       edges.update(
         data.edges.map((edge, index) => {
           const highlighted = selectionState?.isPathEdge(edge);
-          let color = edgeColors[index];
-          if (selectionState?.pathEdges) color = "rgba(55,65,81,0.15)";
+          let color = edgeColor(edge);
+          if (selectionState?.pathEdges) color = `rgba(${theme.edge}, 0.15)`;
           if (highlighted) color = "#e86b16";
           return {
             id: index,
@@ -179,6 +193,22 @@ async function initPartnershipNetwork() {
       });
       refreshSizes();
     };
+    document.addEventListener("standings:themechange", () => {
+      theme = getTheme();
+      network.setOptions({
+        nodes: { font: { color: theme.label, strokeColor: theme.outline } },
+      });
+      nodes.update(
+        data.nodes.map((node) => ({
+          id: node.id,
+          color: {
+            background: colors.get(node.school_id),
+            border: theme.outline,
+          },
+        })),
+      );
+      refreshSizes();
+    });
     network.on("zoom", refreshSizes);
     selectionState = setupSelection(root, network, data, refreshSizes, radii);
     motion = setupMotion(root, network, nodes, refreshSizes);

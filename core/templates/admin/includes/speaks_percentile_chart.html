@@ -9,7 +9,7 @@
         <title id="{{ season.chart_id }}-title">Speaks percentile distribution for {{ season.season_display }}</title>
         <desc id="{{ season.chart_id }}-description">Cumulative percentage of {{ season.round_speaks.sample_size }} individual scores at or below each speaks value. Exact values are available in the correspondence table below.</desc>
         {% for tick in season.round_speaks.chart.y_ticks %}
-            <line x1="56" y1="{{ tick.y }}" x2="700" y2="{{ tick.y }}" stroke="#dee2e6" />
+            <line x1="56" y1="{{ tick.y }}" x2="700" y2="{{ tick.y }}" stroke="var(--line)" />
             <text x="46" y="{{ tick.y }}" text-anchor="end" dominant-baseline="middle" font-size="18">{{ tick.value }}</text>
         {% endfor %}
         {% for tick in season.round_speaks.chart.x_ticks %}
@@ -17,9 +17,9 @@
         {% endfor %}
         <text x="378" y="297" text-anchor="middle" font-size="18">Speaks</text>
         <text x="15" y="135" text-anchor="middle" font-size="18" transform="rotate(-90 15 135)">Percentile</text>
-        <path d="{{ season.round_speaks.chart.path }}" fill="none" stroke="#045fb0" stroke-width="3" />
+        <path d="{{ season.round_speaks.chart.path }}" fill="none" stroke="var(--link)" stroke-width="3" />
         {% for point in season.round_speaks.chart.points %}
-            <circle cx="{{ point.x }}" cy="{{ point.y }}" r="3" fill="#045fb0">
+            <circle cx="{{ point.x }}" cy="{{ point.y }}" r="3" fill="var(--link)">
                 <title>{{ point.score|floatformat:2 }} speaks: percentile {{ point.percentile|floatformat:2 }}; n={{ point.sample_size }} at this score, {{ point.cumulative_count }} at or below.</title>
             </circle>
         {% endfor %}

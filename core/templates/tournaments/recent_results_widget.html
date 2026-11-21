@@ -3,15 +3,23 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    {% include "base/_theme_head.html" %}
     <title>APDA Weekly Results</title>
     <style>
         :root {
-            --white: #ffffff;
+            --widget-surface: var(--surface);
             --blue: #045fb0;
             --blue-soft: #eaf3fc;
             --text: #1f2937;
             --muted: #6b7280;
             --border: #dbe4ef;
+        }
+        :root[data-theme="dark"] {
+            --blue: var(--link);
+            --blue-soft: #253b55;
+            --text: var(--ink);
+            --muted: var(--muted-ink);
+            --border: var(--line);
         }
         * { box-sizing: border-box; }
         html {
@@ -32,7 +40,7 @@
             border: 0;
             border-radius: 0;
             padding: 16px;
-            background: var(--white);
+            background: var(--widget-surface);
         }
         .header {
             display: flex;
@@ -70,7 +78,7 @@
             border: 1px solid var(--border);
             border-radius: 10px;
             padding: 12px;
-            background: var(--white);
+            background: var(--widget-surface);
         }
         .card-top {
             display: flex;
@@ -154,7 +162,7 @@
             border: 1px solid var(--border);
             border-radius: 8px;
             padding: 6px 8px;
-            background: var(--white);
+            background: var(--widget-surface);
         }
         .place {
             min-width: 38px;
