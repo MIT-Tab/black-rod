@@ -91,23 +91,24 @@ gh pr create -R MIT-Tab/black-rod --base master --head "$(git branch --show-curr
 
 ## CI: detach once and end the turn
 
-Run `"$S/ci-watch" --detach` once and **end the turn**. Never manually poll CI,
-call `gh pr checks`, or repeatedly read watcher output/status. The helper quietly
-checks GitHub every 60 seconds, waits for two stable completed snapshots of the
-PR head, and includes failed GitHub Actions log tails in the final result.
-A head change resets stability. It times out after three hours by default.
+After opening or updating the PR, run `"$S/ci-watch" --detach` once and give the user the
+handoff with the PR link. Do not manually poll CI or start a second watcher for
+the same PR.
 
-With `CODEX_THREAD_ID` (or explicit `--thread <id>`) and `codex queue`, completion
-is queued to that thread. Never guess a different session ID. If notification
-support is unavailable, report that limitation: detached mode without a thread
-only saves a result at the printed path and cannot wake an agent. Agents with
-native background completion notifications can instead run `"$S/ci-watch"` once
-as a background task and end the turn. Plain terminal users can run it once in
-foreground. Do not start parallel watchers; a new detached watch replaces the
-previous watcher for the same checkout and PR.
+The watcher checks GitHub every 60 seconds and reports the first completed failing
+check it sees, even while other checks are running. It sends the check names and
+links before fetching log tails. Two matching successful snapshots of the current
+PR head end the watch quietly. The default timeout is three hours.
 
-On failure, use the reported logs, reproduce locally, fix, push, detach one new
-watcher, and end the turn. On pass, give the final summary and PR link.
+With `CODEX_THREAD_ID` and `codex queue`, the watcher alerts the current chat
+on failure or if it stops before reaching a result. You can also supply the
+current chat explicitly with `--thread`. Without notification support, detach
+without a thread and tell the user where the result file will be saved. Use
+foreground mode for an explicit terminal check.
+
+When a failure alert arrives, tell the user which check failed right away.
+Use the check link or the watcher log to investigate. After a fix, push and
+start one new watcher.
 
 Save verbose output to logs and report failure tails. Give long-running commands
 a 30-second initial wait; do not repeatedly poll running tools or rerun unchanged
