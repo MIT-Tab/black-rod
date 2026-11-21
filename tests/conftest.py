@@ -40,6 +40,7 @@ def pytest_configure():
             "django.middleware.common.CommonMiddleware",
             "django.middleware.csrf.CsrfViewMiddleware",
             "django.contrib.auth.middleware.AuthenticationMiddleware",
+            "allauth.account.middleware.AccountMiddleware",
             "django.contrib.messages.middleware.MessageMiddleware",
         ],
         INSTALLED_APPS=[
@@ -77,8 +78,8 @@ def pytest_configure():
         ],
         # Add allauth settings for testing
         ACCOUNT_EMAIL_VERIFICATION="none",
-        ACCOUNT_EMAIL_REQUIRED=False,
-        ACCOUNT_AUTHENTICATION_METHOD="username",
+        ACCOUNT_LOGIN_METHODS={"username"},
+        ACCOUNT_SIGNUP_FIELDS=["username*", "email", "password1*", "password2*"],
         ACCOUNT_USER_MODEL_USERNAME_FIELD="username",
         SOCIALACCOUNT_AUTO_SIGNUP=True,
         SOCIALACCOUNT_EMAIL_VERIFICATION="none",

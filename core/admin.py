@@ -653,7 +653,6 @@ class VideoAdmin(admin.ModelAdmin):
     )
     autocomplete_fields = ("pm", "lo", "mg", "mo", "tournament")
     readonly_fields = ("get_absolute_url",)
-    filter_horizontal = ("tags",)
     fieldsets = (
         ("Debaters", {"fields": ("pm", "lo", "mg", "mo")}),
         ("Tournament & Round", {"fields": ("tournament", "round")}),
@@ -674,7 +673,6 @@ class MotionAdmin(admin.ModelAdmin):
     list_filter = ("date_set", "tournament", "tags")
     search_fields = ("text", "background_slide", "tournament__name", "tags__name")
     autocomplete_fields = ("tournament",)
-    filter_horizontal = ("tags",)
     readonly_fields = ("created_at", "updated_at", "get_absolute_url")
     date_hierarchy = "date_set"
     ordering = ("-date_set", "-pk")
@@ -780,7 +778,7 @@ class ResourceAdmin(admin.ModelAdmin):
         "authors__first_name",
         "authors__last_name",
     )
-    filter_horizontal = ("authors", "tags")
+    filter_horizontal = ("authors",)
     readonly_fields = ("created_at", "updated_at", "get_absolute_url")
     fieldsets = (
         ("Basic Information", {"fields": ("title", "resource_type", "authors")}),

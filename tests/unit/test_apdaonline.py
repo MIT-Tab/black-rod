@@ -1,10 +1,12 @@
 from types import SimpleNamespace
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 from allauth.socialaccount.adapter import DefaultSocialAccountAdapter
-from allauth.socialaccount.models import SocialAccount
-from allauth.socialaccount.providers.oauth2.provider import OAuth2Provider
+from allauth.socialaccount.models import SocialAccount, SocialApp
+from allauth.socialaccount.providers.oauth2.client import OAuth2Client
 from django.contrib.auth import get_user_model
+from django.urls import reverse
 
 from apdaonline.adapter import APDAOnlineAdapter
 from apdaonline.provider import APDAOnlineProvider
@@ -29,7 +31,7 @@ def test_adapter_populate_user_propagates_private_video_flag(monkeypatch):
 
 
 def test_provider_extracts_uid_and_fields():
-    provider = APDAOnlineProvider(request=None)
+    provider = APDAOnlineProvider(request=None, app=SocialApp())
     payload = {
         "ID": 42,
         "user_nicename": "testuser",
@@ -53,18 +55,41 @@ def test_provider_extracts_uid_and_fields():
     assert provider.extract_common_fields(payload)["can_view_private_videos"] is False
 
 
-def test_provider_sociallogin_uses_oauth_base(monkeypatch):
-    provider = APDAOnlineProvider(request=None)
-    sentinel = object()
+def test_apdaonline_oauth_login(client, monkeypatch):
+    user = get_user_model().objects.create_user(username="linked-user")
+    SocialAccount.objects.create(user=user, provider="apdaonline", uid="42")
+    monkeypatch.setattr(
+        OAuth2Client, "get_access_token",
+        lambda *args, **kwargs: {"access_token": "test-token"},
+    )
+    monkeypatch.setattr(
+        "apdaonline.views.requests.get",
+        lambda *args, **kwargs: SimpleNamespace(json=lambda: {
+            "ID": 42,
+            "user_nicename": "linked-user",
+            "user_email": "user@example.com",
+            "display_name": "Linked User",
+            "user_roles": ["private_side_viewer"],
+        }),
+    )
 
-    def fake_sociallogin(self, request, response):  # pylint: disable=unused-argument
-        return sentinel
+    response = client.post(reverse("apdaonline_login"))
 
-    monkeypatch.setattr(OAuth2Provider, "sociallogin_from_response", fake_sociallogin)
+    assert response.status_code == 302
+    redirect = urlsplit(response["Location"])
+    assert (redirect.scheme, redirect.netloc, redirect.path) == (
+        "https", "apda.online", "/oauth/authorize",
+    )
+    params = parse_qs(redirect.query)
+    assert params["redirect_uri"] == [f"http://testserver{reverse('apdaonline_callback')}"]
+    callback = client.get(
+        reverse("apdaonline_callback"), {"code": "test-code", "state": params["state"][0]},
+    )
 
-    result = provider.sociallogin_from_response(None, {"ID": 1})
-
-    assert result is sentinel
+    assert callback.status_code == 302
+    assert client.session["_auth_user_id"] == str(user.pk)
+    user.refresh_from_db()
+    assert user.can_view_private_videos is True
 
 
 def test_sync_apda_permissions_grants_and_revokes_access():
