@@ -1,4 +1,4 @@
-astroid==3.2.4
+astroid==4.0.4
 beautifulsoup4==4.15.0
 black==26.10.1
 bs4==0.0.2
@@ -44,7 +44,7 @@ json5==0.17.3
 MarkupPy==1.18
 mccabe==0.7.0
 mypy_extensions==1.1.0
-oauthlib==4.0.0
+oauthlib==4.0.1
 odfpy==1.4.1
 openpyxl==3.1.5
 packaging==25.0
@@ -53,7 +53,7 @@ platformdirs==4.12.4
 psycopg2-binary==2.9.13
 pycparser==2.23
 PyJWT==2.15.1
-pylint==3.2.7
+pylint==4.0.9
 pylint-django==2.8.0
 pylint-plugin-utils==0.9.0
 pymemcache==4.0.0

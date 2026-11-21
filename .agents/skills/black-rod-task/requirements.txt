@@ -1,3 +1,2 @@
 # Optional agent screenshot tooling; separate from production requirements.
 selenium==4.49.0
-Pillow==12.3.0
