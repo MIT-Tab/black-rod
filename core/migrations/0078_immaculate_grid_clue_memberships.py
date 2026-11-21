@@ -2,10 +2,7 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-    dependencies = [
-        ("core", "0075_align_taggit_slug_fields"),
-        ("core", "0076_immaculate_grid_replacements"),
-    ]
+    dependencies = [("core", "0077_merge_taggit_and_grid_migrations")]
 
     operations = [
         migrations.AddField(
