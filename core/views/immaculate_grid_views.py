@@ -1,11 +1,12 @@
 import logging
+from datetime import date
 
 from django import forms
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db.models import Case, Value, When
 from django.db.models.functions import Concat, Lower, Trim
-from django.http import HttpResponseForbidden, JsonResponse
+from django.http import Http404, HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET, require_POST
@@ -16,7 +17,7 @@ from core.utils.immaculate_grid.boards import (
     GRID_WIDTH, GUESS_LIMIT, NoCompatibleBoard, clues_visible, daily_board, game_date,
 )
 from core.utils.immaculate_grid.catalog import person_key
-from core.utils.immaculate_grid.leaderboard import player_name, rankings, score_guesses, solved_guesses
+from core.utils.immaculate_grid.leaderboard import player_name, rankings, score_breakdown, solved_guesses, week_start
 from core.utils.immaculate_grid.rarities import RARITY_TIERS, rarity_tier
 
 logger = logging.getLogger(__name__)
@@ -88,8 +89,7 @@ def grid(request):
     play = ImmaculateGridPlay.objects.filter(board=board, user=request.user).first()
     guesses = play.guesses if play else []
     correct = _correct_answers(board, guesses)
-    rarity, penalty = score_guesses(guesses)
-    score = rarity - penalty
+    breakdown = score_breakdown(guesses)
     today, week = rankings(day, request.user.pk)
     return render(request, "immaculate_grid/grid.html", {
         "day": day,
@@ -97,12 +97,9 @@ def grid(request):
         "columns": board.columns,
         "rows": _board_rows(board, correct),
         "solved": len(correct),
-        "attempts": len(guesses),
         "finished": len(correct) == GUESS_LIMIT,
-        "rarity": rarity,
-        "penalty": penalty,
-        "score": score,
-        "share_results": _share_results(day, correct, len(guesses), score, penalty),
+        **breakdown,
+        "share_results": _share_results(day, correct, len(guesses), breakdown["score"], breakdown["penalty"]),
         "rarity_tiers": RARITY_TIERS,
         "latest_guess": guesses[-1] if guesses else None,
         "today_leaders": today[:3],
@@ -130,18 +127,27 @@ def leaderboard(request):
 @login_required
 @require_GET
 def player_board(request, player_id):
-    board = get_object_or_404(ImmaculateGridBoard, date=game_date(), replaced_at__isnull=True)
-    viewer = ImmaculateGridPlay.objects.filter(board=board, user=request.user).only("guesses").first()
-    if not clues_visible(board) or viewer is None or len(solved_guesses(viewer.guesses)) != GUESS_LIMIT:
-        return HttpResponseForbidden("Solve all nine squares on today's board to view other players' boards.")
+    today = game_date()
+    try:
+        day = date.fromisoformat(request.GET.get("day", today.isoformat()))
+    except ValueError as exc:
+        raise Http404("This grid is unavailable.") from exc
+    if not week_start(today) <= day <= today:
+        raise Http404("This grid is outside the current week.")
+    board = get_object_or_404(ImmaculateGridBoard, date=day, replaced_at__isnull=True)
+    if not clues_visible(board):
+        raise Http404("This grid is unavailable.")
+    if day == today:
+        viewer = ImmaculateGridPlay.objects.filter(board=board, user=request.user).only("guesses").first()
+        if viewer is None or len(solved_guesses(viewer.guesses)) != GUESS_LIMIT:
+            return HttpResponseForbidden("Solve all nine squares on today's board to view other players' boards.")
     play = get_object_or_404(ImmaculateGridPlay.objects.select_related("user"), board=board, user_id=player_id)
     if not play.guesses:
         return redirect("core:immaculate_grid_leaderboard")
     correct = _correct_answers(board, play.guesses)
-    rarity, penalty = score_guesses(play.guesses)
     return render(request, "immaculate_grid/player_board.html", {
         "day": board.date, "player_name": player_name(play.user), "solved": len(correct),
-        "attempts": len(play.guesses), "score": rarity - penalty, "columns": board.columns,
+        **score_breakdown(play.guesses), "columns": board.columns,
         "rows": _board_rows(board, correct), "read_only": True,
     })
 
