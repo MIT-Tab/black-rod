@@ -1,14 +1,8 @@
-.appearance-theme {
-  width: auto;
-  flex-shrink: 0;
-}
-
-@media (max-width: 991.98px) {
-  .navbar .appearance-theme {
-    align-self: flex-start;
-    max-width: 100%;
-    height: auto;
-    font-size: clamp(1rem, 3vw, 2.4rem);
+@media (min-width: 992px) {
+  .navbar-expand-lg .navbar-collapse {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    row-gap: 0.5rem;
   }
 }
 
@@ -150,10 +144,9 @@
       .nav-link {
         display: flex;
         align-items: center;
-        justify-content: space-between;
         gap: 0.65rem;
         padding: 0.75rem 1rem;
-        font-size: 2.7rem;
+        font-size: clamp(1.125rem, 4vw, 2.7rem);
         font-weight: 600;
         color: rgba(255, 255, 255, 1);
         background: transparent;
@@ -204,7 +197,7 @@
 
     .dropdown-item {
       padding: 0.75rem 1rem;
-      font-size: 2.4rem;
+      font-size: clamp(1rem, 3.5vw, 2.4rem);
       font-weight: 500;
       color: rgba(255, 255, 255, 1);
       white-space: normal;
@@ -237,23 +230,30 @@
         
         .form-control {
           flex: 1;
-          font-size: 2.4rem;
-          padding: 1rem 1.3rem;
-          border-radius: .5rem !important;
         }
 
+        .form-control,
         .btn {
-          font-size: 2.4rem;
-          padding: 1rem 1.3rem;
-          border-radius: .5rem !important;
-        }
-
-        .input-group-append {
-          .btn {
-            border-radius: .5rem !important;
-          }
+          font-size: clamp(1rem, 3vw, 2.4rem);
+          padding: 0.5rem 0.75rem;
         }
       }
+    }
+  }
+}
+
+@media (max-width: 575.98px) {
+  .navbar .form-inline .input-group {
+    flex-direction: column;
+    gap: 0.5rem;
+
+    .form-control,
+    .btn {
+      width: 100%;
+    }
+
+    .input-group-append {
+      margin-left: 0;
     }
   }
 }
