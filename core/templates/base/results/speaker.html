@@ -9,7 +9,7 @@
             <tr>
                 <td>
                     {{ result.place }}
-                    {% if result.tie %}<span style="color: red; font-weight: bold;">(Tie)</span>{% endif %}
+                    {% if result.tie %}<span class="font-weight-bold text-danger">(Tie)</span>{% endif %}
                 </td>
                 <td>
                     <a href="{% url 'core:debater_detail' pk=result.debater.id %}">{{ result.debater.name }}</a>

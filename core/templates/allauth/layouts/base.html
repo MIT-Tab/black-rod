@@ -1,0 +1,15 @@
+{% extends "allauth/layouts/base.html" %}
+{% load render_bundle from webpack_loader %}
+
+{% block extra_head %}
+    {% include "base/_theme_head.html" %}
+    {% render_bundle 'main' %}
+    {{ block.super }}
+{% endblock extra_head %}
+
+{% block body %}
+    <main class="container-fluid account-content py-3">
+        {{ block.super }}
+        <div class="mt-3">{% include "base/_theme_picker.html" %}</div>
+    </main>
+{% endblock body %}

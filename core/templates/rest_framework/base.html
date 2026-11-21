@@ -1,0 +1,8 @@
+{% extends "rest_framework/base.html" %}
+{% load static %}
+
+{% block style %}
+    {% include "base/_theme_head.html" %}
+    {{ block.super }}
+    <link rel="stylesheet" href="{% static 'css/api-theme.css' %}">
+{% endblock style %}

@@ -16,7 +16,11 @@ $theme-colors: (
     .rounded-l#{$i} {
         border-radius: $i * 3px !important;
         overflow: hidden;
-        border : 1px solid lightgray !important;
+        border: 1px solid lightgray !important;
+
+        [data-theme="dark"] & {
+            border-color: var(--line) !important;
+        }
     }
 }
 

@@ -4,6 +4,8 @@ import "bootstrap-datepicker/build/build.less";
 import "../css/app.scss";
 import "../css/navigation.scss";
 import "../css/immaculate-grid.scss";
+import "../css/dark-mode.scss";
+import "../css/editor-theme.css";
 
 import "bootstrap-datepicker";
 

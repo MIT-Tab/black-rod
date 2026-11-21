@@ -28,41 +28,45 @@ class LoginSessionsTest(TestCase):
         })
         self.assertRedirects(response, '/', fetch_redirect_response=False)
 
-    def test_oauth_starts_on_first_post_and_preserves_next(self):
-        response = self.client.post('/auth/login/', {
-            'provider': 'apdaonline', 'remember': 'on', 'next': '/core/debaters/42',
-        })
-        self.assertEqual(response.status_code, 302)
-        url = urlparse(response.url)
-        self.assertEqual(url.netloc, 'apda.online')
-        self.assertEqual(url.path, '/oauth/authorize')
-        query = parse_qs(url.query)
-        self.assertIn('state', query)
-        self.assertEqual(query['response_type'], ['code'])
-        self.assertEqual(self.client.session['socialaccount_state'][0]['next'], '/core/debaters/42')
-        self.assertTrue(self.client.session['apda_remember_login'])
-
-    def test_linked_oauth_callback_finishes_without_second_login(self):
+    def test_first_oauth_post_and_callback_preserve_destination_and_expiry(self):
         from allauth.socialaccount.models import SocialAccount
+
         SocialAccount.objects.create(user=self.user, provider='apdaonline', uid='42')
-        response = self.client.post('/auth/login/', {
-            'provider': 'apdaonline', 'remember': 'on', 'next': '/core/debaters/42',
-        })
-        state = parse_qs(urlparse(response.url).query)['state'][0]
+        destination = '/core/debaters/42'
         profile = Mock()
         profile.json.return_value = {
             'ID': 42, 'user_nicename': self.user.username, 'user_email': '',
             'display_name': 'Example Member', 'user_roles': [],
         }
-        with patch('allauth.socialaccount.providers.oauth2.client.OAuth2Client.get_access_token',
-                   return_value={'access_token': 'test-only-token', 'token_type': 'Bearer'}), \
-                patch('apdaonline.views.requests.get', return_value=profile):
-            result = self.client.get('/accounts/apdaonline/login/callback/', {
-                'code': 'test-only-code', 'state': state,
-            })
-        self.assertRedirects(result, '/core/debaters/42', fetch_redirect_response=False)
-        self.assertEqual(self.client.session['_auth_user_id'], str(self.user.pk))
-        self.assertFalse(self.client.session.get_expire_at_browser_close())
+
+        for remember in (True, False):
+            with self.subTest(remember=remember):
+                client = Client()
+                response = client.post('/auth/login/', {
+                    'provider': 'apdaonline', 'remember': 'on' if remember else '',
+                    'next': destination,
+                })
+                self.assertEqual(response.status_code, 302)
+                url = urlparse(response.url)
+                self.assertEqual(url.netloc, 'apda.online')
+                self.assertEqual(url.path, '/oauth/authorize')
+                query = parse_qs(url.query)
+                self.assertEqual(query['response_type'], ['code'])
+
+                with (
+                    patch('allauth.socialaccount.providers.oauth2.client.OAuth2Client.get_access_token',
+                          return_value={'access_token': 'test-only-token', 'token_type': 'Bearer'}),
+                    patch('apdaonline.views.requests.get', return_value=profile),
+                ):
+                    result = client.get('/accounts/apdaonline/login/callback/', {
+                        'code': 'test-only-code', 'state': query['state'][0],
+                    })
+
+                self.assertRedirects(result, destination, fetch_redirect_response=False)
+                self.assertEqual(result.wsgi_request.user.pk, self.user.pk)
+                self.assertEqual(client.session.get_expire_at_browser_close(), not remember)
+                cookie = result.cookies[settings.SESSION_COOKIE_NAME]
+                self.assertEqual(cookie['max-age'], settings.SESSION_COOKIE_AGE if remember else '')
 
     def test_oauth_login_signal_applies_browser_only_choice(self):
         request = type('Request', (), {'session': self.client.session})()
@@ -76,7 +80,8 @@ class LoginSessionsTest(TestCase):
         self.assertEqual(client.post('/auth/login/', {'provider': 'apdaonline'}).status_code, 403)
         response = client.get('/auth/login/?next=/core/debaters/42')
         self.assertEqual(response.status_code, 200)
-        self.assertNotIn('socialaccount_state', client.session)
+        self.assertNotIn(settings.SESSION_COOKIE_NAME, response.cookies)
+        self.assertIsNone(response.wsgi_request.session.session_key)
         self.assertContains(response, 'Keep me signed in for 30 days')
 
     @override_settings(SESSION_ENGINE='django.contrib.sessions.backends.db')
