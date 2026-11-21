@@ -1,0 +1,8 @@
+{% extends "base/standalone.html" %}
+
+{% block title %}Page not found{% endblock title %}
+{% block content %}
+    <h1>Page not found</h1>
+    <p>The page you requested could not be found.</p>
+    <a href="{% url 'core:index' %}">Return to standings</a>
+{% endblock content %}

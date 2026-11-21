@@ -1,0 +1,8 @@
+{% extends "base/standalone.html" %}
+
+{% block title %}Permission denied{% endblock title %}
+{% block content %}
+    <h1>Permission denied</h1>
+    <p>You do not have access to this page.</p>
+    <a href="{% url 'core:index' %}">Return to standings</a>
+{% endblock content %}

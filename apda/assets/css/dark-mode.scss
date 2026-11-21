@@ -1,3 +1,5 @@
+@use "sass:color";
+
 [data-theme="dark"] {
   body,
   .jumbotron {
@@ -5,13 +7,13 @@
     color: var(--ink);
   }
 
-  a,
+  a:where(:not(.btn)),
   .btn-link,
   .page-link {
     color: var(--link);
   }
 
-  a:hover,
+  a:where(:not(.btn)):hover,
   .btn-link:hover {
     color: var(--link-hover);
   }
@@ -60,11 +62,17 @@
     border-color: var(--line) !important;
   }
 
+  pre,
   .text-body,
   .text-dark {
     color: var(--ink) !important;
   }
 
+  code {
+    color: #ffaacf;
+  }
+
+  caption,
   .text-muted,
   .text-black-50,
   .page-item.disabled .page-link {
@@ -115,14 +123,6 @@
     border-color: var(--line);
   }
 
-  .note-editor.note-frame,
-  .note-editor .note-toolbar,
-  .note-editor .note-editable,
-  .note-editor .note-btn,
-  .note-editor .note-statusbar,
-  .note-editor .note-dropdown-menu,
-  .note-editor .note-modal-content,
-  .note-editor .note-input,
   .form-control,
   .custom-select,
   .custom-control-label::before,
@@ -136,6 +136,17 @@
     background-color: var(--surface);
     border-color: var(--line);
     color: var(--ink);
+  }
+
+  .form-control,
+  .custom-select,
+  .custom-control-label::before,
+  .custom-file-label {
+    border-color: #8296ac;
+  }
+
+  #debater-search-input {
+    border: 1px solid #8296ac !important;
   }
 
   .custom-select {
@@ -256,6 +267,24 @@
         background-color: $background !important;
         border-color: $foreground !important;
       }
+    }
+  }
+
+  $filled-colors: (secondary: #4b6467, success: #3e6844);
+
+  @each $name, $background in $filled-colors {
+    .btn-#{$name},
+    .badge-#{$name} {
+      background-color: $background;
+      border-color: $background;
+      color: #fff;
+    }
+
+    .btn-#{$name}:not(:disabled):not(.disabled):is(:hover, :focus, :active, .active),
+    a.badge-#{$name}:is(:hover, :focus) {
+      background-color: color.scale($background, $lightness: -12%);
+      border-color: color.scale($background, $lightness: -12%);
+      color: #fff;
     }
   }
 

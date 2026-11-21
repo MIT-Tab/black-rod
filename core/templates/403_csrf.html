@@ -1,0 +1,8 @@
+{% extends "base/standalone.html" %}
+
+{% block title %}Request verification failed{% endblock title %}
+{% block content %}
+    <h1>Request verification failed</h1>
+    <p>Reload the page and try again.</p>
+    <a href="{% url 'core:index' %}">Return to standings</a>
+{% endblock content %}

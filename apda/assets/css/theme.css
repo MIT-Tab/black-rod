@@ -29,3 +29,18 @@
 html[data-theme="dark"] {
   background-color: var(--page-background);
 }
+
+.standalone-page {
+  background: var(--page-background);
+  color: var(--ink);
+  margin: 1.5rem;
+}
+
+.standalone-page a {
+  color: var(--link);
+}
+
+.standalone-page pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

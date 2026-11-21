@@ -1,0 +1,33 @@
+[data-theme="dark"] body {
+  background: var(--page-background);
+  color: var(--ink);
+}
+
+[data-theme="dark"] a:not(.btn),
+[data-theme="dark"] .breadcrumb > .active > a {
+  color: var(--link);
+}
+
+[data-theme="dark"] .navbar,
+[data-theme="dark"] .navbar .dropdown-menu {
+  background: var(--nav-background);
+}
+
+[data-theme="dark"] :is(.breadcrumb, .dropdown-menu, .form-control, .modal-content, pre) {
+  background: var(--surface);
+  color: var(--ink);
+  border-color: var(--line);
+}
+
+[data-theme="dark"] .dropdown-menu > li > a:is(:hover, :focus) {
+  background: var(--surface-hover);
+}
+
+[data-theme="dark"] .prettyprint span,
+[data-theme="dark"] .muted {
+  color: var(--muted-ink);
+}
+
+[data-theme="dark"] .prettyprint :is(.str, .kwd, .lit) {
+  color: var(--link);
+}
