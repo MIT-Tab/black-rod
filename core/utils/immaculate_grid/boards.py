@@ -195,6 +195,7 @@ def build_board(day, catalog, history):
         columns=[clues[key].display() for key in columns],
         answers=answers,
         aliases={str(pk): key for pk, key in catalog.aliases.items() if key in eligible},
+        clue_memberships={key: sorted(clues[key].people) for key in (*rows, *columns)},
     )
 
 

@@ -182,6 +182,15 @@
   overflow-y: auto;
 }
 
+.immaculate-square .immaculate-miss-count {
+  font-size: 0.7rem;
+}
+
+.immaculate-miss-results {
+  max-height: 28vh;
+  overflow-y: auto;
+}
+
 .immaculate-answer-score {
   flex-shrink: 0;
   margin-left: 0.7rem;

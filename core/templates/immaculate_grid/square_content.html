@@ -1,0 +1,7 @@
+{% if cell.answer %}
+    <span>{{ cell.answer.name }}</span>
+    <small>{{ cell.answer.tier.label }} · {{ cell.answer.score }} pts</small>
+{% else %}
+    <span aria-label="Unsolved">—</span>
+{% endif %}
+<small class="immaculate-miss-count">{{ cell.miss_count }} incorrect</small>

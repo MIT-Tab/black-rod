@@ -1,0 +1,36 @@
+<dialog class="immaculate-picker"
+        id="immaculate-answers"
+        aria-labelledby="immaculate-answers-title"
+        {% if finished %}data-answer-key{% endif %}>
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2 id="immaculate-answers-title" class="modal-title h5">{% if finished %}Answer key{% else %}Guess history{% endif %}</h2>
+            <button type="button" class="close" data-close-answers aria-label="Close">
+                <span aria-hidden="true">×</span>
+            </button>
+        </div>
+        <div class="modal-body">
+            <label for="immaculate-answer-cell">Square</label>
+            <select id="immaculate-answer-cell" class="form-control">
+                {% for row in rows %}
+                    {% for cell in row.cells %}
+                        <option value="{{ cell.index }}" data-clue="{{ row.label }} × {{ cell.column }}">Row {{ forloop.parentloop.counter }}, column {{ forloop.counter }}</option>
+                    {% endfor %}
+                {% endfor %}
+            </select>
+            <p class="small mt-2 mb-0" data-answer-clue></p>
+            <section class="mt-3" aria-label="Your incorrect guesses">
+                <h3 class="h6">Your incorrect guesses</h3>
+                <p class="small text-muted mb-1" data-miss-note></p>
+                <ul class="list-group immaculate-miss-results" data-miss-results></ul>
+            </section>
+            {% if finished %}
+                <section class="mt-3" aria-label="Valid answers">
+                    <h3 class="h6 mb-1">Valid answers</h3>
+                    <p class="small text-muted mb-2" data-answer-status role="status"></p>
+                    <ul class="list-group immaculate-answer-results" data-answer-results></ul>
+                </section>
+            {% endif %}
+        </div>
+    </div>
+</dialog>

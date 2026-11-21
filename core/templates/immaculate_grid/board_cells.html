@@ -11,32 +11,27 @@
                 <th scope="row">{{ row.label }}</th>
                 {% for cell in row.cells %}
                     <td>
-                        {% if cell.answer %}
-                            {% if finished and not read_only %}
-                                <button type="button"
-                                        class="immaculate-square immaculate-correct immaculate-rarity-{{ cell.answer.tier.key }}"
-                                        data-review-cell="{{ cell.index }}"
-                                        disabled
-                                        aria-label="View valid answers for {{ row.label }} and {{ cell.column }}">
-                                    <span>{{ cell.answer.name }}</span>
-                                    <small>{{ cell.answer.tier.label }} · {{ cell.answer.score }} pts</small>
-                                </button>
-                            {% else %}
-                                <div class="immaculate-square immaculate-correct immaculate-rarity-{{ cell.answer.tier.key }}">
-                                    <span>{{ cell.answer.name }}</span>
-                                    <small>{{ cell.answer.tier.label }} · {{ cell.answer.score }} pts</small>
-                                </div>
-                            {% endif %}
-                        {% elif read_only %}
-                            <div class="immaculate-square immaculate-open" aria-label="Unsolved">—</div>
+                        {% if read_only and not own_board %}
+                            <div class="immaculate-square {% if cell.answer %}immaculate-correct immaculate-rarity-{{ cell.answer.tier.key }}{% else %}immaculate-open{% endif %}">
+                                {% include "immaculate_grid/square_content.html" %}
+                            </div>
+                        {% elif cell.answer or read_only %}
+                            <button type="button"
+                                    class="immaculate-square {% if cell.answer %}immaculate-correct immaculate-rarity-{{ cell.answer.tier.key }}{% else %}immaculate-open{% endif %}"
+                                    data-review-cell="{{ cell.index }}"
+                                    disabled
+                                    aria-label="Review {{ row.label }} and {{ cell.column }}{% if cell.answer %}, {{ cell.answer.name }}, {{ cell.answer.score }} points{% endif %}, {{ cell.miss_count }} incorrect guesses">
+                                {% include "immaculate_grid/square_content.html" %}
+                            </button>
                         {% else %}
                             <button class="immaculate-square immaculate-open"
                                     type="button"
                                     disabled
                                     data-cell="{{ cell.index }}"
                                     data-clue="{{ row.label }} × {{ cell.column }}"
-                                    aria-label="Guess for {{ row.label }} and {{ cell.column }}">
+                                    aria-label="Guess for {{ row.label }} and {{ cell.column }}, {{ cell.miss_count }} incorrect guesses">
                                 <span aria-hidden="true">+</span>
+                                <small class="immaculate-miss-count">{{ cell.miss_count }} incorrect</small>
                             </button>
                         {% endif %}
                     </td>

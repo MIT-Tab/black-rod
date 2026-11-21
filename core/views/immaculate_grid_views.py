@@ -16,7 +16,7 @@ from core.utils.debater_aliases import load_linked_debater_ids
 from core.utils.immaculate_grid.boards import (
     GRID_WIDTH, GUESS_LIMIT, NoCompatibleBoard, clues_visible, daily_board, game_date,
 )
-from core.utils.immaculate_grid.catalog import person_key
+from core.utils.immaculate_grid.catalog import load_catalog, person_key
 from core.utils.immaculate_grid.leaderboard import player_name, rankings, score_breakdown, solved_guesses, week_start
 from core.utils.immaculate_grid.rarities import RARITY_TIERS, rarity_tier
 
@@ -38,7 +38,19 @@ class AnswerReviewForm(forms.Form):
     cell = forms.IntegerField(min_value=0, max_value=GUESS_LIMIT - 1)
 
 
-def _board_rows(board, correct):
+def _misses_by_cell(guesses):
+    misses = {}
+    for guess in guesses:
+        if guess["score"] is None:
+            misses.setdefault(guess["cell"], []).append(guess)
+    return misses
+
+
+def _miss_names(misses):
+    return {cell: [guess["name"] for guess in items] for cell, items in misses.items()}
+
+
+def _board_rows(board, correct, misses):
     return [
         {
             "label": row["label"],
@@ -47,6 +59,7 @@ def _board_rows(board, correct):
                     "index": index,
                     "column": column["label"],
                     "answer": correct.get(index),
+                    "miss_count": len(misses.get(index, ())),
                 }
                 for index, column in enumerate(board.columns, start=row_index * GRID_WIDTH)
             ],
@@ -89,13 +102,15 @@ def grid(request):
     play = ImmaculateGridPlay.objects.filter(board=board, user=request.user).first()
     guesses = play.guesses if play else []
     correct = _correct_answers(board, guesses)
+    misses = _misses_by_cell(guesses)
     breakdown = score_breakdown(guesses)
     today, week = rankings(day, request.user.pk)
     return render(request, "immaculate_grid/grid.html", {
         "day": day,
         "board_id": board.pk,
         "columns": board.columns,
-        "rows": _board_rows(board, correct),
+        "rows": _board_rows(board, correct, misses),
+        "miss_names": _miss_names(misses),
         "solved": len(correct),
         "finished": len(correct) == GUESS_LIMIT,
         **breakdown,
@@ -145,11 +160,41 @@ def player_board(request, player_id):
     if not play.guesses:
         return redirect("core:immaculate_grid_leaderboard")
     correct = _correct_answers(board, play.guesses)
+    misses = _misses_by_cell(play.guesses)
+    own_board = play.user_id == request.user.pk
     return render(request, "immaculate_grid/player_board.html", {
         "day": board.date, "player_name": player_name(play.user), "solved": len(correct),
         **score_breakdown(play.guesses), "columns": board.columns,
-        "rows": _board_rows(board, correct), "read_only": True,
+        "rows": _board_rows(board, correct, misses), "read_only": True,
+        "board_id": board.pk, "own_board": own_board, "finished": len(correct) == GUESS_LIMIT,
+        "miss_names": _miss_names(misses) if own_board else None,
     })
+
+
+def _miss_review(board, guesses, cell):
+    row, column = divmod(cell, GRID_WIDTH)
+    clues = (board.rows[row], board.columns[column])
+    memberships = board.clue_memberships
+    approximate = not memberships and bool(guesses)
+    aliases = {}
+    if approximate:
+        catalog = load_catalog(board.date)
+        aliases = catalog.aliases
+        memberships = {clue["key"]: catalog.clues[clue["key"]].people
+                       for clue in clues if clue["key"] in catalog.clues}
+    people = [memberships.get(clue["key"]) for clue in clues]
+    misses = []
+    for guess in guesses:
+        identity = aliases.get(guess.get("debater_id"), guess["person"])
+        misses.append({
+            "name": guess["name"],
+            "matches": [identity in members if members is not None else None for members in people],
+        })
+    return {
+        "misses": misses,
+        "clues": [clue["label"] for clue in clues],
+        "approximate": approximate,
+    }
 
 
 @never_cache
@@ -190,7 +235,10 @@ def answers(request):
             "tier": rarity_tier(scores[person], square_best),
         })
     options.sort(key=lambda option: (-option["score"], option["name"].casefold()))
-    return JsonResponse({"answers": options})
+    return JsonResponse({
+        "answers": options,
+        **_miss_review(board, _misses_by_cell(play.guesses).get(cell, ()), cell),
+    })
 
 
 @never_cache

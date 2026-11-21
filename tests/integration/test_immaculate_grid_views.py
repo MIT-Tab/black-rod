@@ -8,7 +8,7 @@ from core.models import (
     Debater, DebaterAliasGroup, ImmaculateGridBoard, ImmaculateGridHiddenDebater,
     ImmaculateGridPlay, QualPoints, Round, School, SOTY, SpeakerResult, Team, TeamResult, TOTY, Tournament, User,
 )
-from core.utils.immaculate_grid.catalog import load_catalog, person_key, rarity_score
+from core.utils.immaculate_grid.catalog import Catalog, Clue, load_catalog, person_key, rarity_score
 from core.utils.immaculate_grid.boards import daily_board
 from core.utils.merge import merge_debaters
 
@@ -183,7 +183,7 @@ class ImmaculateGridTests(TestCase):
                 first = daily_board(self.day)
                 second = daily_board(self.day)
             assert first.pk == second.pk == self.board.pk
-            assert first.get_deferred_fields() == {"answers", "aliases", "replaced_at"}
+            assert first.get_deferred_fields() == {"answers", "aliases", "replaced_at", "clue_memberships"}
             self.client.force_login(self.player)
             assert self.client.get(self.grid_url).status_code == 200
         self.board.refresh_from_db()
@@ -196,7 +196,13 @@ class ImmaculateGridTests(TestCase):
         self._guess(self.answer, 0, 0)
         response = self.client.get(self.answers_url, request)
         assert response.status_code == 403 and "answers" not in response.json()
+        self._guess(self.miss, 1, 1)
+        grid = self.client.get(self.grid_url)
+        assert grid.context["miss_names"] == {1: [self.miss.name]}
+        assert grid.context["rows"][0]["cells"][1]["miss_count"] == 1
+        assert "matches" not in response.json()
         assert self.client.get(self.answers_url, {"day": self.day, "board": self.board.pk, "cell": 9}).status_code == 400
+        ImmaculateGridPlay.objects.filter(board=self.board, user=self.player).delete()
         self._finish_grid()
         self.client.force_login(self.other)
         assert self.client.get(self.answers_url, request).status_code == 403
@@ -222,6 +228,37 @@ class ImmaculateGridTests(TestCase):
             assert fragment in text
         self.assertContains(response, "View valid answers")
         self.assertContains(response, "immaculate-rarity-galaxy")
+
+    def test_completed_review_uses_both_published_clues_for_own_misses(self):
+        self._finish_grid()
+        play = ImmaculateGridPlay.objects.get(user=self.player, board=self.board)
+        misses = [
+            {"cell": 0, "person": "d101", "name": "Row only", "score": None},
+            {"cell": 0, "person": "d102", "name": "Column only", "score": None},
+            {"cell": 1, "person": "d103", "name": "Different square", "score": None},
+        ]
+        play.guesses = misses + play.guesses
+        play.save(update_fields=["guesses"])
+        self.board.clue_memberships = {"row0": ["d101"], "column0": ["d102"]}
+        self.board.save(update_fields=["clue_memberships"])
+        lookup = {"day": self.day, "board": self.board.pk, "cell": 0}
+        with patch("core.views.immaculate_grid_views.load_catalog", side_effect=AssertionError):
+            data = self.client.get(self.answers_url, lookup).json()
+        assert data["clues"] == ["Row 0", "Column 0"]
+        assert data["misses"] == [
+            {"name": "Row only", "matches": [True, False]},
+            {"name": "Column only", "matches": [False, True]},
+        ]
+        assert data["approximate"] is False
+        self.board.clue_memberships = {}
+        self.board.save(update_fields=["clue_memberships"])
+        catalog = Catalog({}, {"row0": Clue("row0", "Row 0", "row0", people={"d101"})})
+        with patch("core.views.immaculate_grid_views.load_catalog", return_value=catalog):
+            legacy = self.client.get(self.answers_url, lookup).json()
+        assert legacy["approximate"] is True
+        assert legacy["misses"][0]["matches"] == [True, None]
+        self.client.force_login(self.other)
+        assert self.client.get(self.answers_url, lookup).status_code == 403
 
     def test_square_best_below_fifty_shares_rare_label_in_grid_and_answer_review(self):
         self._finish_grid()
@@ -253,7 +290,7 @@ class ImmaculateGridTests(TestCase):
             guesses = [{"cell": 0, "score": score}]
             if board == self.board:
                 guesses = [{"cell": 0, "score": 13}, {"cell": 1, "score": 7}]
-                guesses.extend({"cell": 2, "score": None} for _ in range(8))
+                guesses.extend({"cell": 2, "name": "Missed answer", "score": None} for _ in range(8))
             ImmaculateGridPlay.objects.create(board=board, user=self.player, guesses=guesses)
 
         self.client.force_login(self.player)
@@ -285,6 +322,8 @@ class ImmaculateGridTests(TestCase):
         response = self.client.get(other_board)
         self.assertContains(response, "Public correct answer")
         self.assertNotContains(response, "Private missed guess")
+        self.assertContains(response, "1 incorrect")
+        self.assertNotContains(response, "immaculate-miss-names")
         self.assertNotContains(response, "data-cell=")
 
     def test_past_player_boards_require_login_and_stay_within_current_week(self):
@@ -309,6 +348,10 @@ class ImmaculateGridTests(TestCase):
         self.assertContains(response, "Best square 60 · Worst square 60")
         for invalid in (previous_sunday, tomorrow, "2026-02-30"):
             assert self.client.get(url, {"day": invalid}).status_code == 404
+        self.client.force_login(self.other)
+        own = self.client.get(url, {"day": yesterday})
+        self.assertContains(own, "Past missed guess")
+        self.assertContains(own, "Guess history")
 
     def test_hidden_debaters_remain_searchable_and_scorable(self):
         self.client.force_login(self.player)
