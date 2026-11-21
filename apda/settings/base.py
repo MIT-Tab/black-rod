@@ -100,7 +100,7 @@ ROOT_URLCONF = "apda.urls"
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": [],
+        "DIRS": [os.path.join(PROJECT_ROOT, "core", "templates")],
         "APP_DIRS": False, 
         "OPTIONS": {
             "context_processors": [

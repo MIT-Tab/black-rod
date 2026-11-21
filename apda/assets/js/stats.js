@@ -1,13 +1,20 @@
 /* global Chart */
 
-const chartColors = {
-  primary: "#045fb0",
-  success: "#70A363",
-  danger: "#dc3545",
-  warning: "#668586",
-  purple: "#6f42c1",
-  teal: "#20c997",
-};
+function getChartColors() {
+  const styles = window.getComputedStyle(document.documentElement);
+  const dark = document.documentElement.dataset.theme === "dark";
+  return {
+    primary: styles.getPropertyValue("--link").trim(),
+    success: "#70A363",
+    warning: dark ? "#9eb8bb" : "#668586",
+    purple: dark ? "#b695f3" : "#6f42c1",
+    teal: "#20c997",
+    text: styles.getPropertyValue("--muted-ink").trim(),
+    grid: dark
+      ? styles.getPropertyValue("--line").trim()
+      : "rgba(0, 0, 0, 0.05)",
+  };
+}
 
 document.addEventListener("DOMContentLoaded", () => {
   // Get data from window object (passed from Django template)
@@ -26,6 +33,9 @@ document.addEventListener("DOMContentLoaded", () => {
     pane.classList.add("show", "active");
   });
 
+  let chartColors = getChartColors();
+  const charts = [];
+
   const commonOptions = {
     responsive: true,
     maintainAspectRatio: true,
@@ -37,15 +47,17 @@ document.addEventListener("DOMContentLoaded", () => {
     },
     scales: {
       x: {
+        ticks: { color: () => chartColors.text },
         grid: {
           display: false,
         },
         offset: true,
       },
       y: {
+        ticks: { color: () => chartColors.text },
         beginAtZero: true,
         grid: {
-          color: "rgba(0, 0, 0, 0.05)",
+          color: () => chartColors.grid,
         },
       },
     },
@@ -58,8 +70,7 @@ document.addEventListener("DOMContentLoaded", () => {
   };
 
   const createChart = (elementId, config) => {
-    const chart = new Chart(document.getElementById(elementId), config);
-    return chart;
+    charts.push(new Chart(document.getElementById(elementId), config));
   };
 
   const formatSeasonLabel = (d) =>
@@ -73,8 +84,8 @@ document.addEventListener("DOMContentLoaded", () => {
         {
           label: "Debaters",
           data: debatersData.map((d) => d.count),
-          borderColor: chartColors.primary,
-          backgroundColor: `${chartColors.primary}20`,
+          borderColor: () => chartColors.primary,
+          backgroundColor: () => `${chartColors.primary}20`,
           fill: true,
           tension: 0.4,
         },
@@ -91,8 +102,8 @@ document.addEventListener("DOMContentLoaded", () => {
         {
           label: "Unique Teams",
           data: teamsData.map((d) => d.count),
-          borderColor: chartColors.warning,
-          backgroundColor: `${chartColors.warning}20`,
+          borderColor: () => chartColors.warning,
+          backgroundColor: () => `${chartColors.warning}20`,
           fill: true,
           tension: 0.4,
         },
@@ -109,7 +120,7 @@ document.addEventListener("DOMContentLoaded", () => {
         {
           label: "Total TOTY Points",
           data: totyData.map((d) => d.total_points),
-          backgroundColor: chartColors.success,
+          backgroundColor: () => chartColors.success,
         },
       ],
     },
@@ -124,7 +135,7 @@ document.addEventListener("DOMContentLoaded", () => {
         {
           label: "Tournaments",
           data: tournamentsData.map((d) => d.tournament_count),
-          backgroundColor: chartColors.primary,
+          backgroundColor: () => chartColors.primary,
         },
       ],
     },
@@ -139,8 +150,8 @@ document.addEventListener("DOMContentLoaded", () => {
         {
           label: "Median Tournament Size (teams)",
           data: medianStatsData.map((d) => d.median_size),
-          borderColor: chartColors.teal,
-          backgroundColor: `${chartColors.teal}20`,
+          borderColor: () => chartColors.teal,
+          backgroundColor: () => `${chartColors.teal}20`,
           fill: true,
           tension: 0.4,
         },
@@ -157,14 +168,19 @@ document.addEventListener("DOMContentLoaded", () => {
         {
           label: "Median Novices per Tournament",
           data: medianStatsData.map((d) => d.median_novices),
-          borderColor: chartColors.purple,
-          backgroundColor: `${chartColors.purple}20`,
+          borderColor: () => chartColors.purple,
+          backgroundColor: () => `${chartColors.purple}20`,
           fill: true,
           tension: 0.4,
         },
       ],
     },
     options: commonOptions,
+  });
+
+  document.addEventListener("standings:themechange", () => {
+    chartColors = getChartColors();
+    charts.forEach((chart) => chart.update("none"));
   });
 
   tabPanes.forEach((pane, index) => {

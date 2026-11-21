@@ -1,0 +1,8 @@
+{% extends "base/standalone.html" %}
+
+{% block title %}Server error{% endblock title %}
+{% block content %}
+    <h1>Server error</h1>
+    <p>Something went wrong. Please try again later.</p>
+    <a href="{% url 'core:index' %}">Return to standings</a>
+{% endblock content %}

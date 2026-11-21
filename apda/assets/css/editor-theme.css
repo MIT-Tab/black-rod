@@ -1,0 +1,10 @@
+[data-theme="dark"] .note-editor :is(.note-toolbar, .note-editable, .note-btn, .note-statusbar, .note-dropdown-menu, .note-modal-content, .note-input),
+[data-theme="dark"] .note-editor.note-frame {
+  background-color: var(--surface);
+  border-color: var(--line);
+  color: var(--ink);
+}
+
+[data-theme="dark"] .note-editor .note-btn:is(:hover, :focus) {
+  background-color: var(--surface-hover);
+}

@@ -1,0 +1,12 @@
+{% extends "base/standalone.html" %}
+
+{% block title %}{{ title }}{% endblock title %}
+{% block content %}
+    {% if payload is not None %}
+        <pre>{{ payload }}</pre>
+    {% else %}
+        <h1>{{ title }}</h1>
+        <p>{{ message }}</p>
+        {% if details %}<p>{{ details }}</p>{% endif %}
+    {% endif %}
+{% endblock content %}

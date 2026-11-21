@@ -1,7 +1,6 @@
 from collections import defaultdict
 from datetime import date as date_class, timedelta
 from functools import lru_cache
-import html
 import json
 import logging
 from pathlib import Path
@@ -11,6 +10,7 @@ from django.conf import settings
 from django.core.cache import cache
 from django.db.models import Count, F, Max, Prefetch, Q
 from django.http import Http404, HttpResponse
+from django.shortcuts import render
 from django.test import RequestFactory
 from django.urls import resolve, reverse, Resolver404
 from django.utils.crypto import constant_time_compare
@@ -2442,56 +2442,23 @@ class LLMProxyView(View):
     """
 
     def get(self, request):
-        # Get the endpoint parameter
         endpoint = request.GET.get('endpoint', '')
+        example = "Example: /llm?endpoint=/api/standings"
 
-        # Security: Validate that endpoint is provided and starts with /
         if not endpoint:
-            return HttpResponse(
-                '<!DOCTYPE html><html><head><title>Error</title></head><body>'
-                '<h1>Error: Missing endpoint parameter</h1>'
-                '<p>Usage: /llm?endpoint=/api/standings</p>'
-                '</body></html>',
-                content_type='text/html',
-                status=400
-            )
+            return self.error(request, "Missing endpoint parameter", 400, "Usage: /llm?endpoint=/api/standings")
 
-        # Security: Only allow relative paths starting with / to prevent SSRF
         if not endpoint.startswith('/'):
-            return HttpResponse(
-                '<!DOCTYPE html><html><head><title>Error</title></head><body>'
-                '<h1>Error: Invalid endpoint</h1>'
-                '<p>Endpoint must start with / (relative path only)</p>'
-                '<p>Example: /llm?endpoint=/api/standings</p>'
-                '</body></html>',
-                content_type='text/html',
-                status=400
-            )
+            return self.error(request, "Endpoint must start with / (relative path only)", 400, example)
 
-        # Additional security: Only allow whitelisted paths (/api/ and /.well-known/)
         allowed_prefix = any(endpoint.startswith(prefix) for prefix in LLM_PROXY_ALLOWED_PREFIXES)
-        allowed_path = endpoint in LLM_PROXY_ALLOWED_PATHS
-        if not allowed_prefix and not allowed_path:
-            return HttpResponse(
-                '<!DOCTYPE html><html><head><title>Error</title></head><body>'
-                '<h1>Error: Invalid endpoint</h1>'
-                '<p>Only /api/ and whitelisted /.well-known/ endpoints are allowed</p>'
-                '<p>Example: /llm?endpoint=/api/standings or /llm?endpoint=/.well-known/openapi.json</p>'
-                '</body></html>',
-                content_type='text/html',
-                status=400
+        if not allowed_prefix and endpoint not in LLM_PROXY_ALLOWED_PATHS:
+            return self.error(
+                request, "Only /api/ and whitelisted /.well-known/ endpoints are allowed", 400, example
             )
 
-        # Security: Prevent path traversal attacks
         if '..' in endpoint or '//' in endpoint:
-            return HttpResponse(
-                '<!DOCTYPE html><html><head><title>Error</title></head><body>'
-                '<h1>Error: Invalid endpoint</h1>'
-                '<p>Path traversal patterns are not allowed</p>'
-                '</body></html>',
-                content_type='text/html',
-                status=400
-            )
+            return self.error(request, "Path traversal patterns are not allowed", 400)
 
         # Make an internal request to the endpoint
         factory = RequestFactory()
@@ -2532,80 +2499,49 @@ class LLMProxyView(View):
                     response.status_code,
                     endpoint,
                 )
-                escaped_endpoint = html.escape(endpoint)
-                return HttpResponse(
-                    f'<!DOCTYPE html><html><head><title>Unable to fetch endpoint</title></head><body>'
-                    f'<h1>Unable to fetch endpoint</h1>'
-                    f'<p>The API returned status {response.status_code} while requesting {escaped_endpoint}. '
-                    f'Please verify the path or try again later.</p>'
-                    f'</body></html>',
-                    content_type='text/html',
-                    status=response.status_code
+                return self.error(
+                    request,
+                    f"The API returned status {response.status_code} while requesting {endpoint}. "
+                    "Please verify the path or try again later.",
+                    response.status_code,
                 )
 
-            # Parse the JSON response
             json_data = _extract_json_payload(response)
-
-            # Pretty-print the JSON with indent=2
-            pretty_json = json.dumps(json_data, indent=2, ensure_ascii=False)
-
-            # Escape HTML to prevent XSS
-            escaped_endpoint = html.escape(endpoint)
-            escaped_json = html.escape(pretty_json)
-
-            # Return HTML with JSON in a <pre> tag
-            html_content = f'''<!DOCTYPE html>
-<html>
-<head>
-    <title>API Response: {escaped_endpoint}</title>
-    <meta charset="utf-8">
-</head>
-<body>
-<pre>{escaped_json}</pre>
-</body>
-</html>'''
-
-            return HttpResponse(html_content, content_type='text/html')
+            return render(request, "api/llm_proxy.html", {
+                "title": f"API Response: {endpoint}",
+                "payload": json.dumps(json_data, indent=2, ensure_ascii=False),
+            })
 
         except Resolver404:
-            escaped_endpoint = html.escape(endpoint)
-            return HttpResponse(
-                f'<!DOCTYPE html><html><head><title>Unable to fetch endpoint</title></head><body>'
-                f'<h1>Unable to fetch endpoint</h1>'
-                f'<p>The path {escaped_endpoint} could not be found.</p>'
-                f'</body></html>',
-                content_type='text/html',
-                status=404
-            )
+            return self.error(request, f"The path {endpoint} could not be found.", 404)
         except LLMProxyPayloadError as exc:
             LOGGER.warning(
                 "LLM proxy received a non-JSON success response for %s: %s",
                 endpoint,
                 exc,
             )
-            escaped_endpoint = html.escape(endpoint)
-            escaped_reason = html.escape(str(exc))
-            return HttpResponse(
-                f'<!DOCTYPE html><html><head><title>Unable to fetch endpoint</title></head><body>'
-                f'<h1>Unable to fetch endpoint</h1>'
-                f'<p>The endpoint {escaped_endpoint} returned a successful response, but it was not JSON.</p>'
-                f'<p>{escaped_reason}</p>'
-                f'</body></html>',
-                content_type='text/html',
-                status=502
+            return self.error(
+                request,
+                f"The endpoint {endpoint} returned a successful response, but it was not JSON.",
+                502,
+                str(exc),
             )
         except Exception:
             LOGGER.exception("LLM proxy encountered an unexpected error for %s", endpoint)
-            escaped_endpoint = html.escape(endpoint)
-            return HttpResponse(
-                f'<!DOCTYPE html><html><head><title>Unable to fetch endpoint</title></head><body>'
-                f'<h1>Unable to fetch endpoint</h1>'
-                f'<p>An unexpected error occurred while fetching {escaped_endpoint}. '
-                f'Please try again later.</p>'
-                f'</body></html>',
-                content_type='text/html',
-                status=500
+            return self.error(
+                request,
+                f"An unexpected error occurred while fetching {endpoint}. Please try again later.",
+                500,
             )
+
+    @staticmethod
+    def error(request, message, status_code, details=""):
+        return render(request, "api/llm_proxy.html", {
+            "title": "Unable to fetch endpoint",
+            "message": message,
+            "details": details,
+            "payload": None,
+        }, status=status_code)
 
 
 class LLMDocumentationView(View):

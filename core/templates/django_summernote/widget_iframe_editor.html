@@ -1,0 +1,20 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <title>Rich text editor</title>
+        {% include "base/_theme_head.html" %}
+        {% for url in css %}<link href="{{ url }}" rel="stylesheet">{% endfor %}
+        <link rel="stylesheet" href="{% static 'css/editor-theme.css' %}">
+        {% for url in js %}<script src="{{ url }}"></script>{% endfor %}
+        <style>
+            html, body { margin: 0; }
+            .note-editor { margin-bottom: 0; }
+        </style>
+    </head>
+    <body>
+        <div id="summernote"></div>
+        {% include "django_summernote/widget_common.html" with iframe=True %}
+        <script>initSummernote_{{ id_safe }}();</script>
+    </body>
+</html>

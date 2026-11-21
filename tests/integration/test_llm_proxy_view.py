@@ -93,8 +93,8 @@ class LLMProxyViewTest(TestCase):
         # Check for HTML structure
         content = response.content.decode('utf-8')
         self.assertIn('<!DOCTYPE html>', content)
-        self.assertIn('<html>', content)
-        self.assertIn('<body>', content)
+        self.assertIn('<html lang="en">', content)
+        self.assertTemplateUsed(response, "base/standalone.html")
         self.assertIn('<pre>', content)
         self.assertIn('</pre>', content)
         self.assertIn('</body>', content)

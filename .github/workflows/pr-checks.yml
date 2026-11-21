@@ -135,6 +135,19 @@ jobs:
           source venv/bin/activate
           pytest
 
+      - name: Check dark mode and text contrast in Chrome
+        env:
+          LIVE_MITTAB_DIRECTORY_URL: http://127.0.0.1:1
+        run: |
+          scripts=.agents/skills/black-rod-task/scripts
+          venv/bin/python -m venv venv/screenshots
+          venv/screenshots/bin/python -m pip install -r .agents/skills/black-rod-task/requirements.txt
+          trap '"$scripts/dev-down"' EXIT
+          "$scripts/dev-up"
+          source "$scripts/_env.sh"
+          BR_BROWSER_URL="http://127.0.0.1:$(cat "$BR_STATE/port")" \
+            venv/screenshots/bin/python tests/browser/test_dark_theme.py -v
+
       - name: Upload coverage reports
         uses: codecov/codecov-action@v4
         if: always()

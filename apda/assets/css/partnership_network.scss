@@ -1,4 +1,8 @@
 .partnership-network-canvas {
+  --network-label: #182535;
+  --network-outline: #fff;
+  --network-edge: 55, 65, 81;
+  --network-strong-edge: #111827;
   height: 72vh;
   min-height: 420px;
   background: #fafdff;
@@ -10,4 +14,12 @@
     min-height: 360px;
     height: 62vh;
   }
+}
+
+[data-theme="dark"] .partnership-network-canvas {
+  --network-label: var(--ink);
+  --network-outline: var(--page-background);
+  --network-edge: 133, 164, 193;
+  --network-strong-edge: #aec7df;
+  background-color: var(--page-background);
 }
