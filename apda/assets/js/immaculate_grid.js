@@ -21,7 +21,28 @@ function initResultsSharing(grid) {
   });
 }
 
-function initAnswerReview(grid) {
+function renderMisses(list, misses, clues = []) {
+  list.replaceChildren();
+  misses.forEach((miss) => {
+    const item = document.createElement("li");
+    item.className = "list-group-item";
+    const name = document.createElement("strong");
+    name.textContent = miss.name;
+    item.append(name);
+    clues.forEach((label, index) => {
+      const check = document.createElement("small");
+      check.className = "d-block";
+      const matched = miss.matches[index];
+      let result = "Unknown";
+      if (matched !== null) result = matched ? "Matches" : "Does not match";
+      check.textContent = `${label} · ${result}`;
+      item.append(check);
+    });
+    list.append(item);
+  });
+}
+
+function initAnswerReview(grid, missNames) {
   const modal = grid.querySelector("#immaculate-answers");
   if (!modal) return;
 
@@ -29,15 +50,25 @@ function initAnswerReview(grid) {
   const results = modal.querySelector("[data-answer-results]");
   const status = modal.querySelector("[data-answer-status]");
   const clue = modal.querySelector("[data-answer-clue]");
+  const missResults = modal.querySelector("[data-miss-results]");
+  const missNote = modal.querySelector("[data-miss-note]");
+  const hasAnswerKey = modal.hasAttribute("data-answer-key");
   let opener;
   let activeRequest;
 
   async function loadAnswers() {
+    clue.textContent = select.selectedOptions[0].dataset.clue;
+    const misses = missNames[select.value] ?? [];
+    renderMisses(
+      missResults,
+      misses.map((name) => ({ name })),
+    );
+    missNote.textContent = misses.length ? "" : "No incorrect guesses.";
+    if (!hasAnswerKey) return;
     if (activeRequest) activeRequest.abort();
     const request = new AbortController();
     activeRequest = request;
     results.replaceChildren();
-    clue.textContent = select.selectedOptions[0].dataset.clue;
     status.textContent = "Loading answers…";
     const url = new URL(grid.dataset.answersUrl, window.location.href);
     url.searchParams.set("day", grid.dataset.day);
@@ -49,6 +80,10 @@ function initAnswerReview(grid) {
         throw new Error("Answers unavailable");
       const data = await response.json();
       if (activeRequest !== request) return;
+      renderMisses(missResults, data.misses, data.clues);
+      if (data.approximate)
+        missNote.textContent =
+          "Clue matches use the tournament records available now.";
       data.answers.forEach((answer) => {
         const item = document.createElement("li");
         item.className =
@@ -99,8 +134,11 @@ function initAnswerReview(grid) {
 function initImmaculateGrid() {
   const grid = document.querySelector("[data-immaculate-grid]");
   if (!grid) return;
+  const missNames = JSON.parse(
+    grid.querySelector("#immaculate-miss-names")?.textContent ?? "{}",
+  );
   initResultsSharing(grid);
-  initAnswerReview(grid);
+  initAnswerReview(grid, missNames);
 
   const modal = grid.querySelector("#immaculate-guess");
   if (!modal) return;
@@ -113,6 +151,7 @@ function initImmaculateGrid() {
   const status = modal.querySelector("[data-search-status]");
   const results = modal.querySelector("[data-search-results]");
   const submit = modal.querySelector("[type=submit]");
+  const pickerMisses = modal.querySelector("[data-picker-misses]");
   let opener;
   let timer;
   let searchNumber = 0;
@@ -187,6 +226,12 @@ function initImmaculateGrid() {
       opener = button;
       cell.value = button.dataset.cell;
       clue.textContent = button.dataset.clue;
+      const misses = missNames[cell.value] ?? [];
+      pickerMisses.hidden = misses.length === 0;
+      renderMisses(
+        pickerMisses.querySelector("[data-miss-results]"),
+        misses.map((name) => ({ name })),
+      );
       input.value = "";
       clearSearch();
       modal.showModal();

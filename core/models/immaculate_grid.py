@@ -23,6 +23,7 @@ class ImmaculateGridBoard(models.Model):
     columns = models.JSONField()
     answers = models.JSONField()
     aliases = models.JSONField(default=dict, blank=True)
+    clue_memberships = models.JSONField(default=dict, blank=True)
 
     class Meta:
         constraints = [

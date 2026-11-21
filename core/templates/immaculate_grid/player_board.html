@@ -6,7 +6,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
 {% endblock extra_head %}
 {% block content %}
-    <main class="immaculate-grid mx-auto my-4 my-md-5">
+    <main class="immaculate-grid mx-auto my-4 my-md-5"
+          {% if own_board %}
+              data-immaculate-grid
+              data-day="{{ day|date:'Y-m-d' }}"
+              data-board="{{ board_id }}"
+              data-answers-url="{% url 'core:immaculate_grid_answers' %}"
+          {% endif %}>
         <a href="{% url 'core:immaculate_grid_leaderboard' %}">Back to leaderboard</a>
         <p class="immaculate-date mt-3 mb-2">{{ day|date:"F j, Y" }}</p>
         <h1>{{ player_name }}’s grid</h1>
@@ -16,5 +22,9 @@
             Best square {{ best|default_if_none:"—" }} · Worst square {{ worst|default_if_none:"—" }}
         </p>
         {% include "immaculate_grid/board_cells.html" %}
+        {% if own_board %}
+            {{ miss_names|json_script:"immaculate-miss-names" }}
+            {% include "immaculate_grid/review_dialog.html" %}
+        {% endif %}
     </main>
 {% endblock content %}
