@@ -20,6 +20,7 @@ from django.views import View
 from haystack import connections
 import requests
 
+from core import forum_publication
 from core.import_sources import (
     fetch_import_source, fresh_or_cached_source, load_review, save_review, source_index, source_key,
 )
@@ -758,6 +759,16 @@ class TournamentDataEntryView(PermissionRequiredMixin, View):
             )
             return render(request, self.template_name, context)
 
+        if use_api_results:
+            payload = self.get_api_handler().payload or {}
+            publication_id = payload.get("forum_publication_id")
+            if not forum_publication.valid_publication_id(publication_id):
+                publication_id = None
+        else:
+            publication_id = request.POST.get("forum_publication_id", "").strip()
+            if publication_id and not forum_publication.valid_publication_id(publication_id):
+                return HttpResponseBadRequest("Enter a valid MIT-Tab forum posting ID.")
+
         try:
             self.persist_results(
                 tournament,
@@ -765,8 +776,9 @@ class TournamentDataEntryView(PermissionRequiredMixin, View):
                 use_api_results,
                 import_counts_from_api=self.should_import_counts_from_api(),
                 autoqual_form=autoqual_form,
+                forum_publication_id=publication_id,
             )
-        except MittabBundleImportError as exc:
+        except (MittabBundleImportError, forum_publication.ForumPublicationConflict) as exc:
             return HttpResponseBadRequest(f"No results were saved: {exc}")
         return redirect("core:tournament_detail", pk=tournament.id)
 
@@ -917,6 +929,8 @@ class TournamentDataEntryView(PermissionRequiredMixin, View):
             "debater_form": DebaterForm(include_temporary_schools=has_api_data),
             "school_form": SchoolForm(),
             "has_api_data": has_api_data,
+            "forum_publication_enabled": forum_publication.configured(),
+            "forum_publication_id": self.request.POST.get("forum_publication_id") or tournament.forum_publication_id,
             "review_token": self.request.GET.get("review") or self.request.POST.get("review", ""),
             "current_api_url": current_api_url,
             "error_tab": error_tab,
@@ -988,6 +1002,7 @@ class TournamentDataEntryView(PermissionRequiredMixin, View):
         use_api: bool,
         import_counts_from_api: bool = False,
         autoqual_form=None,
+        forum_publication_id=None,
     ) -> None:
         with transaction.atomic(), preserve_profile_result_visibility(tournament):
             resolution = ImportResolution(
@@ -1093,6 +1108,7 @@ class TournamentDataEntryView(PermissionRequiredMixin, View):
             )
             # Entity resolution removes source rows explicitly. A global cleanup
             # here would delete temporary rows in another admin's open review.
+            forum_publication.schedule_tab_cards(tournament, forum_publication_id)
 
     def update_tournament_counts_from_api(self, tournament: Tournament) -> None:
         counts = self.get_api_handler().get_debater_counts_from_api() or {}

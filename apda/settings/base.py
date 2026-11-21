@@ -47,6 +47,10 @@ LIVE_MITTAB_DIRECTORY_URL = os.environ.get(
     "LIVE_MITTAB_DIRECTORY_URL", "https://nu-tab.com/api/tournaments"
 )
 LIVE_MITTAB_SOURCES = os.environ.get("LIVE_MITTAB_SOURCES", "")
+APDA_FORUM_URL = os.environ.get("APDA_FORUM_URL", "").rstrip("/")
+APDA_BLACK_ROD_FORUM_TOKEN = os.environ.get("APDA_BLACK_ROD_FORUM_TOKEN", "")
+APDA_RESULTS_ORIGIN = os.environ.get("APDA_RESULTS_ORIGIN", "https://results.apda.online").rstrip("/")
+
 
 
 # Application definition
