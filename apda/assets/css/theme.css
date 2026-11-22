@@ -44,3 +44,10 @@ html[data-theme="dark"] {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+
+@media (max-width: 991.98px) and (pointer: coarse) {
+  .site-footer #appearance-theme {
+    height: auto;
+    font-size: clamp(1rem, 3vw, 2.4rem);
+  }
+}
