@@ -17,11 +17,15 @@
                 <div class="col-md-2">{{ form.min_tournaments|as_crispy_field }}</div>
                 <div class="col-md-2">{{ form.qualified|as_crispy_field }}</div>
             </div>
+            <div class="form-row">
+                <div class="col-md-6">{{ form.x_axis|as_crispy_field }}</div>
+                <div class="col-md-6">{{ form.y_axis|as_crispy_field }}</div>
+            </div>
             <div>
                 <button type="submit" class="btn btn-primary">Apply filters</button>
                 <a class="btn btn-link" href="{% url 'core:partnership_network' %}">Reset</a>
             </div>
-            <small class="text-muted mt-2">Filters combine. Seasons limit recorded partnerships, tournament totals, and qualifications. Linked profiles count as one person. Only people with a partner in the filtered network appear.</small>
+            <small class="text-muted mt-2">Filters combine. Seasons limit partnerships, tournament totals, point totals, and qualifications. Career years span linked profiles; missing years appear under Unknown. Linked profiles count as one person. Only people with a partner in the filtered network appear.</small>
         </form>
         {% if network_url %}
             <section id="partnership-network" data-url="{{ network_url }}"

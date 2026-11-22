@@ -6,6 +6,7 @@ import {
 } from "./partnership_network_styles";
 import setupSelection from "./partnership_network_selection";
 import setupMotion from "./partnership_network_motion";
+import setupAxes from "./partnership_network_axes";
 
 async function initPartnershipNetwork() {
   const root = document.getElementById("partnership-network");
@@ -117,6 +118,9 @@ async function initPartnershipNetwork() {
     const labels = root.querySelector("[data-network-labels]");
     let selectionState = null;
     let motion = null;
+    let axes = null;
+    let freePositions = null;
+    let worker = null;
     let animationFrame = null;
     let animationBounds = null;
     const refreshSizes = () => {
@@ -172,27 +176,55 @@ async function initPartnershipNetwork() {
         refreshSizes();
       });
     const fit = () => {
-      const positions =
+      const base =
         animationBounds ||
         (motion?.getPositions().length
           ? motion.getPositions()
           : Object.values(network.getPositions()));
+      const positions = [...base, ...(axes?.extent() || [])];
+      const gutters = axes?.gutters() || { left: 0, right: 0, bottom: 0 };
       const left = Math.min(...positions.map((point) => point.x));
       const right = Math.max(...positions.map((point) => point.x));
       const top = Math.min(...positions.map((point) => point.y));
       const bottom = Math.max(...positions.map((point) => point.y));
       const scale =
         Math.min(
-          canvas.clientWidth / (right - left + 80),
-          canvas.clientHeight / (bottom - top + 80),
+          (canvas.clientWidth - gutters.left - gutters.right) /
+            (right - left + 80),
+          (canvas.clientHeight - gutters.bottom) / (bottom - top + 80),
         ) * 0.9;
       network.moveTo({
-        position: { x: (left + right) / 2, y: (top + bottom) / 2 },
+        position: {
+          x: (left + right) / 2 - (gutters.left - gutters.right) / (2 * scale),
+          y: (top + bottom) / 2 + gutters.bottom / (2 * scale),
+        },
         scale,
         animation: false,
       });
       refreshSizes();
     };
+    axes = setupAxes(
+      network,
+      data,
+      () => theme,
+      () => {
+        if (!freePositions || worker !== null) return;
+        if (animationFrame !== null)
+          window.cancelAnimationFrame(animationFrame);
+        animationFrame = null;
+        motion.suspend();
+        axes.setBase(freePositions);
+        const positions = axes.project(freePositions);
+        animationBounds = positions;
+        nodes.update(positions);
+        fit();
+        animationBounds = null;
+        motion.start(positions, axes.constraints());
+        pause.textContent = "Rearrange";
+        pause.disabled = false;
+        status.textContent = `${peopleCount} people · ${pairCount} partnerships`;
+      },
+    );
     document.addEventListener("standings:themechange", () => {
       theme = getTheme();
       network.setOptions({
@@ -214,7 +246,6 @@ async function initPartnershipNetwork() {
     motion = setupMotion(root, network, nodes, refreshSizes);
     root.querySelector("[data-network-fit]").addEventListener("click", fit);
     labels.addEventListener("change", refreshSizes);
-    let worker = null;
     let interrupted = false;
     let seed = 0;
     const arrange = () => {
@@ -225,18 +256,23 @@ async function initPartnershipNetwork() {
       worker = new Worker(
         new URL("./partnership_layout_worker.js", import.meta.url),
       );
-      worker.onmessage = ({ data: { frames } }) => {
+      worker.onmessage = ({ data: { frames: rawFrames } }) => {
         worker.terminate();
         worker = null;
+        freePositions = rawFrames[rawFrames.length - 1];
+        axes.setBase(freePositions);
+        const frames = rawFrames.map((frame) => axes.project(frame));
         const finalPositions = frames[frames.length - 1];
         animationBounds = finalPositions;
         nodes.update(frames[0]);
         fit();
         pause.textContent = "Settling…";
-        const duration = window.matchMedia("(prefers-reduced-motion: reduce)")
-          .matches
-          ? 0
-          : 2800;
+        const constraints = axes.constraints();
+        const fixed = constraints.x && constraints.y;
+        const duration =
+          fixed || window.matchMedia("(prefers-reduced-motion: reduce)").matches
+            ? 0
+            : 2800;
         let start = null;
         let lastDraw = 0;
         const animate = (time) => {
@@ -265,7 +301,7 @@ async function initPartnershipNetwork() {
             animationFrame = null;
             animationBounds = null;
             refreshSizes();
-            motion.start(finalPositions);
+            motion.start(finalPositions, axes.constraints());
             status.textContent = `${peopleCount} people · ${pairCount} partnerships`;
             pause.textContent = "Rearrange";
             pause.disabled = false;

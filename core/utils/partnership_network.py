@@ -3,9 +3,10 @@
 from collections import defaultdict
 from itertools import combinations
 
-from core.models import Debater, QUAL, Round, SpeakerResult, Team, TeamResult
+from core.models import Debater, QUAL, QualPoints, Round, SpeakerResult, Team, TeamResult, TOTY
 from core.utils.debater_aliases import build_representative_debater_maps
 from core.utils.partnership_paths import _shortest_paths
+from core.utils.elo_runtime_engine.constants import season_to_int
 
 
 def _season_filter(queryset, filters, prefix="tournament__"):
@@ -14,6 +15,27 @@ def _season_filter(queryset, filters, prefix="tournament__"):
     if filters.get("to_season"):
         queryset = queryset.filter(**{f"{prefix}season__lte": filters["to_season"]})
     return queryset
+
+
+
+def _axis_totals(filters, representatives, memberships):
+    toty_points = defaultdict(float)
+    qual_points = defaultdict(float)
+    qualifications = defaultdict(set)
+    for team_id, points in _season_filter(
+        TOTY.objects.filter(team_id__in=memberships, points__gte=0), filters, prefix=""
+    ).values_list("team_id", "points"):
+        for person_id in memberships[team_id]:
+            toty_points[person_id] += points
+    for person_id, points in _season_filter(
+        QualPoints.objects.filter(debater_id__in=representatives), filters, prefix=""
+    ).values_list("debater_id", "points"):
+        qual_points[representatives[person_id]] += points
+    for person_id, season in _season_filter(
+        QUAL.objects.filter(debater_id__in=representatives), filters, prefix=""
+    ).values_list("debater_id", "season"):
+        qualifications[representatives[person_id]].add(season)
+    return toty_points, qual_points, qualifications
 
 
 def build_partnership_network(filters):
@@ -64,12 +86,8 @@ def build_partnership_network(filters):
     for person_id, tournament_id in speaker_results.values_list("debater_id", "tournament_id"):
         tournaments[representatives[person_id]].add(tournament_id)
 
-    qualified = {
-        representatives[person_id]
-        for person_id in _season_filter(
-            QUAL.objects.filter(debater_id__in=representatives), filters, prefix=""
-        ).values_list("debater_id", flat=True)
-    }
+    toty_points, qual_points, qualifications = _axis_totals(filters, representatives, memberships)
+    qualified = set(qualifications)
     selected_schools = {school.pk for school in filters.get("schools", [])}
     eligible = set()
     for person_id, member_ids in groups.items():
@@ -88,6 +106,10 @@ def build_partnership_network(filters):
         if left in eligible and right in eligible
     ]
     connected = {person_id for edge in edges for person_id in (edge["from"], edge["to"])}
+    partners = defaultdict(set)
+    for edge in edges:
+        partners[edge["from"]].add(edge["to"])
+        partners[edge["to"]].add(edge["from"])
     nodes = []
     for person_id in sorted(connected):
         person = people_by_id[person_id]
@@ -95,6 +117,12 @@ def build_partnership_network(filters):
             people_by_id[member].school.name
             for member in groups[person_id] if people_by_id[member].school
         })
+        first_years = [
+            season_to_int(people_by_id[member].first_season) for member in groups[person_id]
+        ]
+        final_years = [
+            season_to_int(people_by_id[member].latest_season) for member in groups[person_id]
+        ]
         nodes.append({
             "id": person_id,
             "label": person.name,
@@ -103,6 +131,12 @@ def build_partnership_network(filters):
             "tournaments": len(tournaments[person_id]),
             "qualified": person_id in qualified,
             "url": person.get_absolute_url(),
+            "toty_points": toty_points[person_id],
+            "qual_points": qual_points[person_id],
+            "qualification_count": len(qualifications[person_id]),
+            "partner_count": len(partners[person_id]),
+            "first_year": min((year for year in first_years if year is not None), default=None),
+            "final_year": max((year for year in final_years if year is not None), default=None),
         })
     return {"nodes": nodes, "edges": edges}
 
