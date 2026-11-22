@@ -107,6 +107,12 @@ class Catalog:
     clues: dict = field(default_factory=dict)
     rarity: dict = field(default_factory=dict)
     recent_people: set = field(default_factory=set)
+    progress: dict = field(default_factory=dict)
+
+    def measure(self, topic, person, value):
+        if topic in self.progress:
+            measurements = self.progress[topic]
+            measurements[person] = max(value, measurements.get(person, value))
 
     def add(self, key, label, person, topic=None, subject=None, host_result_date=None, occurrences=()):
         if key not in self.clues:
@@ -211,6 +217,10 @@ def _team_members():
 
 
 def _placing_clues(catalog, person, place, host, kind, schools, event_day, tournament_id):
+    if host in schools:
+        catalog.measure(f"host:{host}", person, -place)
+    if kind in EVENT_TYPES:
+        catalog.measure(f"event:{EVENT_TYPES[kind]}", person, -place)
     for cutoff, label in ELIMINATION_PLACES.items():
         if place <= cutoff:
             if host in schools:
@@ -245,7 +255,7 @@ def _record_partnership(catalog, careers, members, affiliations, placing, partne
                 careers[person].partner_schools.add(affiliations[partner_profile])
 
 
-def _record_team_results(day, catalog, careers, schools, affiliations, teams, redacted):
+def _record_team_results(day, catalog, careers, schools, affiliations, teams, redacted, profile_ids=None):
     partners = defaultdict(lambda: defaultdict(set))
     rows = TeamResult.objects.filter(
         tournament__date__lte=day, team__synthetic=False, hidden_from_debaters__isnull=True
@@ -253,6 +263,8 @@ def _record_team_results(day, catalog, careers, schools, affiliations, teams, re
         "team_id", "place", "type_of_place", "tournament__season", "tournament__date",
         "tournament__host_id", "tournament__qual_type", "tournament_id",
     )
+    if profile_ids is not None:
+        rows = rows.filter(team__debaters__in=profile_ids).distinct()
     for team, place, division, season, event_day, host, kind, tournament_id in rows.iterator():
         members = teams[team]
         placing = place > 0
@@ -281,13 +293,15 @@ def _record_team_results(day, catalog, careers, schools, affiliations, teams, re
     return partners
 
 
-def _record_speaker_results(day, catalog, careers, schools, affiliations):
+def _record_speaker_results(day, catalog, careers, schools, affiliations, profile_ids=None):
     rows = SpeakerResult.objects.filter(
         tournament__date__lte=day, place__gt=0, hidden_from_profile=False, debater__in=Debater.objects.all()
     ).values_list(
         "debater_id", "place", "tie", "type_of_place", "tournament__season",
         "tournament__date", "tournament__host_id", "tournament__qual_type", "tournament_id",
     )
+    if profile_ids is not None:
+        rows = rows.filter(debater_id__in=profile_ids)
     for pk, place, tie, division, season, event_day, host, kind, tournament_id in rows.iterator():
         person = catalog.aliases[pk]
         career = careers[person]
@@ -302,9 +316,11 @@ def _record_speaker_results(day, catalog, careers, schools, affiliations):
         if year is not None:
             career.varsity_seasons.add(year)
             career.speaker_seasons.add(year)
+        catalog.measure("top_speaker", person, -rank)
         if rank == 1:
             catalog.add("top_speaker", "Won at least one varsity top speak", person, occurrences=(tournament_id,))
         if host in schools:
+            catalog.measure(f"speaker:{host}", person, -rank)
             for cutoff in (5, 10):
                 if rank <= cutoff:
                     catalog.add(
@@ -315,19 +331,27 @@ def _record_speaker_results(day, catalog, careers, schools, affiliations):
         career.prestige = max(career.prestige, prominence)
 
 
-def _record_standings(year, catalog, careers, teams, redacted):
-    qual_rows = QualPoints.objects.filter(season__lte=str(year), points__gt=0).values_list(
+def _record_qual_points(year, catalog, careers):
+    rows = QualPoints.objects.filter(season__lte=str(year), points__gt=0).values_list(
         "debater_id", "season", "points"
     )
-    for pk, season, points in qual_rows.iterator():
+    for pk, season, points in rows.iterator():
         person = catalog.aliases.get(pk)
         if person is not None:
             careers[person].record_points("QUAL", season, points)
+
+
+def _record_standings(year, catalog, careers, teams, redacted, profile_ids=None):
+    if profile_ids is None:
+        _record_qual_points(year, catalog, careers)
 
     for model, award, member_field in ((SOTY, "SOTY", "debater_id"), (TOTY, "TOTY", "team_id")):
         rows = model.objects.filter(season__lte=str(year), place__gt=0).values_list(
             member_field, "season", "place", "points"
         )
+        if profile_ids is not None:
+            lookup = "debater_id__in" if award == "SOTY" else "team__debaters__in"
+            rows = rows.filter(**{lookup: profile_ids}).distinct()
         for pk, season, place, points in rows.iterator():
             members = (pk,) if award == "SOTY" else (() if pk in redacted else teams[pk])
             for member in members:
@@ -338,6 +362,7 @@ def _record_standings(year, catalog, careers, teams, redacted):
                 if award == "SOTY":
                     career.record_points(award, season, points)
                 career.record_standing(place)
+                catalog.measure(award, person, -place)
                 for cutoff in (10, 20):
                     if place <= cutoff:
                         catalog.add(
@@ -365,6 +390,7 @@ def _career_clues(catalog, person, career, schools):
             occurrences=career.winning_speaker_tournaments,
         )
     most_hosts = max(map(len, career.semifinal_hosts_by_season.values()), default=0)
+    catalog.measure("placed_hosts", person, most_hosts)
     for cutoff in range(3, 7):
         if most_hosts >= cutoff:
             qualifying_seasons = {
@@ -375,6 +401,7 @@ def _career_clues(catalog, person, career, schools):
                 person, topic="placed_hosts",
                 occurrences=qualifying_seasons,
             )
+    catalog.measure("multiple_finals", person, len(career.finalist_seasons))
     if len(career.finalist_seasons) >= 2:
         catalog.add(
             "multiple_finals", "Varsity team finalist or better in at least 2 seasons", person,
@@ -386,6 +413,7 @@ def _career_clues(catalog, person, career, schools):
         ("placed_partners", career.placed_partners, (3, 4, 5, 6), "Placed with {}+ different partners"),
         ("partner_schools", career.partner_schools, (2, 3, 4), "Placed with partners from {}+ schools"),
     ):
+        catalog.measure(key, person, len(records))
         for cutoff in cutoffs:
             if len(records) >= cutoff:
                 catalog.add(f"{key}:{cutoff}", label.format(cutoff), person, topic=key, occurrences=records)
@@ -409,20 +437,32 @@ def _record_round_attendance(day, careers, aliases, teams, redacted_pairs):
                 careers[aliases[pk]].attended_tournaments.add(tournament_id)
 
 
-def load_catalog(day):
+def load_catalog(day, progress_topics=(), review_guesses=None):
+    """Load public records, optionally limited to the people in a completed square's guess history."""
     year = day.year - (day.month < 8)
     schools = _schools()
     aliases, careers, affiliations = _profiles(year, schools)
-    catalog = Catalog(aliases)
+    catalog = Catalog(aliases, progress={topic: {} for topic in progress_topics})
+    profile_ids = None
+    if review_guesses is not None:
+        review_people = {aliases.get(guess.get("debater_id"), guess["person"]) for guess in review_guesses}
+        profile_ids = {pk for pk, person in aliases.items() if person in review_people}
     teams = _team_members()
     redacted_pairs = set(
         TeamResult.objects.filter(hidden_from_debaters__isnull=False).values_list("team_id", "tournament_id")
     )
     redacted = {team_id for team_id, _ in redacted_pairs}
-    partners = _record_team_results(day, catalog, careers, schools, affiliations, teams, redacted)
-    _record_speaker_results(day, catalog, careers, schools, affiliations)
+    partners = _record_team_results(
+        day, catalog, careers, schools, affiliations, teams, redacted, profile_ids=profile_ids,
+    )
+    _record_speaker_results(day, catalog, careers, schools, affiliations, profile_ids=profile_ids)
+    _record_standings(year, catalog, careers, teams, redacted, profile_ids=profile_ids)
+    if profile_ids is not None:
+        for person in review_people & careers.keys():
+            _career_clues(catalog, person, careers[person], schools)
+        return catalog
+
     _record_round_attendance(day, careers, aliases, teams, redacted_pairs)
-    _record_standings(year, catalog, careers, teams, redacted)
     hidden = hidden_people()
     cutoff = _years_before(day, DEBATER_ACTIVITY_YEARS)
     for person, career in careers.items():

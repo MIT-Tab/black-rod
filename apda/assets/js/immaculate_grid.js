@@ -44,10 +44,17 @@ function renderMissTable(table, misses, clues) {
     name.scope = "row";
     name.textContent = miss.name;
     row.append(name);
-    miss.matches.forEach((matched) => {
+    miss.matches.forEach((matched, index) => {
       const cell = row.insertCell();
       const result = matched ? "Yes" : "No";
       cell.textContent = matched === null ? "Unknown" : result;
+      const detail = miss.details?.[index];
+      if (detail) {
+        const note = document.createElement("small");
+        note.className = "d-block text-muted";
+        note.textContent = detail;
+        cell.append(note);
+      }
     });
   });
 }

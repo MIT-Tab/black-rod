@@ -260,6 +260,62 @@ class ImmaculateGridTests(TestCase):
         self.client.force_login(self.other)
         assert self.client.get(self.answers_url, lookup).status_code == 403
 
+    def test_answer_review_explains_placement_and_season_shortfalls_from_public_records(self):
+        self._finish_grid()
+        host = School.objects.create(name="Near Miss Host")
+        older, recent, hidden, future = [
+            Tournament.objects.create(host=host, date=day, season=season)
+            for day, season in (
+                (date(2024, 10, 1), "2024"), (date(2025, 10, 1), "2025"),
+                (date(2023, 10, 1), "2023"), (self.day + timedelta(days=1), "2026"),
+            )
+        ]
+        team = Team.objects.create(name="Quarterfinalist")
+        team.debaters.add(self.alias)
+        TeamResult.objects.create(tournament=older, team=team, place=8)
+        TeamResult.objects.create(tournament=recent, team=team, place=5)
+        TeamResult.objects.create(tournament=future, team=team, place=1)
+        redacted = TeamResult.objects.create(tournament=hidden, team=team, place=1)
+        redacted.hidden_from_debaters.add(self.alias)
+        SpeakerResult.objects.create(tournament=older, debater=self.answer, place=8)
+        SpeakerResult.objects.create(tournament=recent, debater=self.alias, place=9)
+        SpeakerResult.objects.create(tournament=hidden, debater=self.alias, place=1, hidden_from_profile=True)
+        SpeakerResult.objects.create(tournament=future, debater=self.answer, place=1)
+
+        placement = f"host:{host.pk}:4"
+        seasons = "speaks_seasons:3"
+        person = self.identity
+        self.board.rows[0] = {"key": placement, "label": "Semis or better at Near Miss Host"}
+        self.board.columns[0] = {"key": seasons, "label": "Varsity speaker awards in 3+ seasons"}
+        self.board.clue_memberships = {placement: [], seasons: []}
+        self.board.save(update_fields=["rows", "columns", "clue_memberships"])
+        play = ImmaculateGridPlay.objects.get(user=self.player, board=self.board)
+        play.guesses = [{
+            "cell": 0, "person": person, "name": self.alias.name,
+            "debater_id": self.alias.pk, "score": None,
+        }, {
+            "cell": 0, "person": f"d{self.miss.pk}", "name": self.miss.name,
+            "debater_id": self.miss.pk, "score": None,
+        }, *play.guesses]
+        play.save(update_fields=["guesses"])
+
+        lookup = {"day": self.day, "board": self.board.pk, "cell": 0}
+        data = self.client.get(self.answers_url, lookup).json()
+        assert data["misses"] == [
+            {
+                "name": self.alias.name,
+                "matches": [False, False],
+                "details": ["Reached quarterfinals", "Varsity speaker awards in 2 seasons"],
+            },
+            {"name": self.miss.name, "matches": [False, False]},
+        ]
+
+        self.board.clue_memberships[placement] = [person]
+        self.board.save(update_fields=["clue_memberships"])
+        first_miss = self.client.get(self.answers_url, lookup).json()["misses"][0]
+        assert first_miss["matches"] == [True, False]
+        assert first_miss["details"] == [None, "Varsity speaker awards in 2 seasons"]
+
     def test_square_best_below_fifty_shares_rare_label_in_grid_and_answer_review(self):
         self._finish_grid()
         play = ImmaculateGridPlay.objects.get(board=self.board, user=self.player)

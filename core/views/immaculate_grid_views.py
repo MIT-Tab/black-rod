@@ -18,6 +18,7 @@ from core.utils.immaculate_grid.boards import (
 )
 from core.utils.immaculate_grid.catalog import load_catalog, person_key
 from core.utils.immaculate_grid.leaderboard import player_name, rankings, score_breakdown, solved_guesses, week_start
+from core.utils.immaculate_grid.near_misses import shortfall, threshold_for_clue
 from core.utils.immaculate_grid.rarities import RARITY_TIERS, rarity_tier
 
 logger = logging.getLogger(__name__)
@@ -176,20 +177,35 @@ def _miss_review(board, guesses, cell):
     clues = (board.rows[row], board.columns[column])
     memberships = board.clue_memberships
     approximate = not memberships and bool(guesses)
-    aliases = {}
+    thresholds = [threshold_for_clue(clue["key"]) for clue in clues]
+    topics = {
+        threshold[0] for clue, threshold in zip(clues, thresholds)
+        if threshold and (
+            approximate or any(guess["person"] not in memberships.get(clue["key"], ()) for guess in guesses)
+        )
+    }
+    catalog = None
+    if approximate or topics:
+        catalog = load_catalog(board.date, progress_topics=topics, review_guesses=None if approximate else guesses)
     if approximate:
-        catalog = load_catalog(board.date)
-        aliases = catalog.aliases
         memberships = {clue["key"]: catalog.clues[clue["key"]].people
                        for clue in clues if clue["key"] in catalog.clues}
     people = [memberships.get(clue["key"]) for clue in clues]
     misses = []
     for guess in guesses:
-        identity = aliases.get(guess.get("debater_id"), guess["person"])
-        misses.append({
-            "name": guess["name"],
-            "matches": [identity in members if members is not None else None for members in people],
-        })
+        person = guess["person"]
+        current_person = catalog.aliases.get(guess.get("debater_id"), person) if catalog else person
+        identity = current_person if approximate else person
+        matches = [identity in members if members is not None else None for members in people]
+        miss = {"name": guess["name"], "matches": matches}
+        if topics:
+            details = [
+                shortfall(catalog.progress, threshold, current_person) if matched is False else None
+                for matched, threshold in zip(matches, thresholds)
+            ]
+            if any(details):
+                miss["details"] = details
+        misses.append(miss)
     return {
         "misses": misses,
         "clues": [clue["label"] for clue in clues],
