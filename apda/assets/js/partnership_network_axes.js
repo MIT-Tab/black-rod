@@ -9,6 +9,20 @@ const metrics = {
   qualification_count: "Nationals-qualified seasons",
 };
 
+export function describeAxisValue(key, node) {
+  if (!key) return "None";
+  let value = node[key];
+  if (key === "school") value = node.schools.join(" / ") || "Unaffiliated";
+  if (value === null || value === undefined) value = "Unknown";
+  if (typeof value === "number") {
+    value = value.toLocaleString(undefined, {
+      maximumFractionDigits: 2,
+      useGrouping: !key.endsWith("year"),
+    });
+  }
+  return `${metrics[key]}: ${value}`;
+}
+
 function makeScale(key, nodes, start, end) {
   const value = (node) =>
     key === "school" ? node.schools.join(" / ") || "Unaffiliated" : node[key];
