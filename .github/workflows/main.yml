@@ -4,6 +4,11 @@ on:
   push:
     branches: [ master ]
 
+# Deploys share a checkout and virtualenv on Linode.
+concurrency:
+  group: black-rod-linode-production
+  cancel-in-progress: false
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -28,14 +33,17 @@ jobs:
             cd /home/rodda/black-rod
             # Update only this integration's key before deploy.sh restarts Django.
             # Never print the token or the rest of the production configuration.
+            if [ -n "${FORUM_PROFILE_API_TOKEN:-}" ] && ! venv/bin/python -c 'from dotenv import set_key'; then
+              venv/bin/python -m pip install 'python-dotenv==1.2.4'
+            fi
             venv/bin/python - <<'PYTHON'
             import os
             import re
-            from dotenv import set_key
             token = os.environ.get("FORUM_PROFILE_API_TOKEN", "")
             if token:
                 if not re.fullmatch(r"[a-f0-9]{64}", token):
                     raise SystemExit("Invalid forum integration credential format")
+                from dotenv import set_key
                 path = os.environ.get("DOT_ENV_FILE", ".env")
                 metadata = os.stat(path)
                 set_key(path, "FORUM_PROFILE_API_TOKEN", token)
