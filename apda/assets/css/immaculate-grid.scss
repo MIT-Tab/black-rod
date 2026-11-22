@@ -267,7 +267,10 @@
 }
 
 .immaculate-rankings-scroll {
+  max-width: 100%;
+  contain: inline-size paint;
   overflow-x: auto;
+  overscroll-behavior-x: none;
 
   &:focus-visible {
     outline: 2px solid var(--grid-blue);
@@ -320,6 +323,11 @@
 }
 
 @media (max-width: 575.98px) {
+  html:has(.immaculate-rankings-scroll) {
+    overflow-x: clip;
+    overscroll-behavior-x: none;
+  }
+
   .immaculate-rankings-table {
     th,
     td {
