@@ -1,74 +1,88 @@
-<div class="row">
-    <div class="col-md-6">
-        <h3 class="h6 mt-2" id="leaders-today">Today</h3>
-        <table class="table table-sm" aria-labelledby="leaders-today">
-            <thead>
+<div class="immaculate-rankings">
+    <p class="d-sm-none mb-2">Scroll across the tables for more columns.</p>
+    <div class="immaculate-rankings-scroll" role="region" aria-labelledby="leaders-today" tabindex="0">
+        <table class="table immaculate-rankings-table mb-0">
+            <caption id="leaders-today">Today</caption>
+            <thead class="thead-light">
                 <tr>
                     <th scope="col">Rank</th>
-                    <th scope="col">Player</th>
-                    <th scope="col" class="text-right">Total</th>
+                    <th scope="col" class="immaculate-ranking-player">Player</th>
+                    <th scope="col" class="text-right">Score</th>
+                    <th scope="col" class="text-right">Guesses</th>
+                    <th scope="col" class="text-right">Penalty</th>
+                    <th scope="col" class="text-right">Best square</th>
+                    <th scope="col" class="text-right">Worst square</th>
                 </tr>
             </thead>
             <tbody>
                 {% for entry in today_leaders %}
                     <tr {% if entry.is_viewer %}class="table-primary"{% endif %}>
                         <td>{{ entry.rank }}</td>
-                        <td>
+                        <th scope="row" class="immaculate-ranking-player">
                             {% if can_view_boards %}
                                 <a href="{% url 'core:immaculate_grid_player_board' entry.id %}">{{ entry.name }}</a>
                             {% else %}
                                 {{ entry.name }}
                             {% endif %}
-                            {% if entry.is_viewer %}<span class="small ml-1">(you)</span>{% endif %}
-                            <small class="d-block text-muted">
-                                Guesses {{ entry.attempts }} · Penalty {{ entry.penalty }} pts
-                            </small>
-                            <small class="d-block text-muted">
-                                Best square {{ entry.best|default_if_none:"—" }} · Worst square {{ entry.worst|default_if_none:"—" }}
-                            </small>
-                        </td>
-                        <td class="text-right">{{ entry.score }}</td>
+                            {% if entry.is_viewer %}<span class="font-weight-normal">(you)</span>{% endif %}
+                        </th>
+                        <td class="text-right font-weight-bold">{{ entry.score }}</td>
+                        <td class="text-right">{{ entry.attempts }}</td>
+                        <td class="text-right">{{ entry.penalty }}</td>
+                        <td class="text-right">{{ entry.best|default_if_none:"—" }}</td>
+                        <td class="text-right">{{ entry.worst|default_if_none:"—" }}</td>
                     </tr>
                 {% empty %}
                     <tr>
-                        <td colspan="3">No scores today yet.</td>
+                        <td colspan="7">No scores today yet.</td>
                     </tr>
                 {% endfor %}
             </tbody>
         </table>
     </div>
-    <div class="col-md-6">
-        <h3 class="h6 mt-2" id="leaders-week">This week</h3>
-        <table class="table table-sm" aria-labelledby="leaders-week">
-            <thead>
+    <div class="immaculate-rankings-scroll mt-4" role="region" aria-labelledby="leaders-week" tabindex="0">
+        <table class="table immaculate-rankings-table mb-0">
+            <caption id="leaders-week">This week</caption>
+            <thead class="thead-light">
                 <tr>
                     <th scope="col">Rank</th>
-                    <th scope="col">Player</th>
-                    <th scope="col" class="text-right">Points</th>
+                    <th scope="col" class="immaculate-ranking-player">Player</th>
+                    <th scope="col" class="text-right">Total</th>
+                    {% for score_day in week_days %}
+                        <th scope="col" class="text-right">
+                            <time datetime="{{ score_day|date:'Y-m-d' }}">
+                                {{ score_day|date:"D" }}
+                                <span class="d-block font-weight-normal">{{ score_day|date:"M j" }}</span>
+                            </time>
+                        </th>
+                    {% endfor %}
                 </tr>
             </thead>
             <tbody>
                 {% for entry in week_leaders %}
                     <tr {% if entry.is_viewer %}class="table-primary"{% endif %}>
                         <td>{{ entry.rank }}</td>
-                        <td>
+                        <th scope="row" class="immaculate-ranking-player">
                             {{ entry.name }}
-                            {% if entry.is_viewer %}<span class="small ml-1">(you)</span>{% endif %}
-                            {% if entry.past_days %}
-                                <div class="small">
-                                    {% for past_day in entry.past_days %}
-                                        <a class="text-nowrap d-inline-block mr-2 py-1"
-                                           href="{% url 'core:immaculate_grid_player_board' entry.id %}?day={{ past_day|date:'Y-m-d' }}"
-                                           aria-label="View {{ entry.name }}’s grid for {{ past_day|date:'F j' }}">{{ past_day|date:"D, M j" }}</a>
-                                    {% endfor %}
-                                </div>
-                            {% endif %}
-                        </td>
-                        <td class="text-right">{{ entry.score }}</td>
+                            {% if entry.is_viewer %}<span class="font-weight-normal">(you)</span>{% endif %}
+                        </th>
+                        <td class="text-right font-weight-bold">{{ entry.score }}</td>
+                        {% for score_day, score in entry.daily_scores %}
+                            <td class="text-right">
+                                {% if score is None %}
+                                    <span aria-hidden="true">—</span><span class="sr-only">No score</span>
+                                {% elif score_day != day or can_view_boards %}
+                                    <a href="{% url 'core:immaculate_grid_player_board' entry.id %}?day={{ score_day|date:'Y-m-d' }}"
+                                       aria-label="{{ score }} points. View {{ entry.name }}’s grid for {{ score_day|date:'F j' }}">{{ score }}</a>
+                                {% else %}
+                                    {{ score }}
+                                {% endif %}
+                            </td>
+                        {% endfor %}
                     </tr>
                 {% empty %}
                     <tr>
-                        <td colspan="3">No scores this week yet.</td>
+                        <td colspan="{{ week_days|length|add:3 }}">No scores this week yet.</td>
                     </tr>
                 {% endfor %}
             </tbody>

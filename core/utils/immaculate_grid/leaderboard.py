@@ -48,8 +48,10 @@ def _rank(entries, viewer_id):
 
 
 def rankings(day, viewer_id):
+    monday = week_start(day)
+    week_days = [monday + timedelta(days=offset) for offset in range(day.weekday() + 1)]
     plays = ImmaculateGridPlay.objects.filter(
-        board__date__range=(week_start(day), day), board__replaced_at__isnull=True,
+        board__date__range=(monday, day), board__replaced_at__isnull=True,
     ).select_related("user", "board").only(
         "guesses", "user__username", "user__first_name", "user__last_name", "board__date",
     )
@@ -59,12 +61,12 @@ def rankings(day, viewer_id):
             continue
         breakdown = score_breakdown(play.guesses)
         player = {"name": player_name(play.user), "id": play.user_id}
-        total = week.setdefault(play.user_id, {**player, "score": 0, "past_days": []})
+        total = week.setdefault(play.user_id, {**player, "score": 0, "daily_scores": {}})
         total["score"] += breakdown["score"]
+        total["daily_scores"][play.board.date] = breakdown["score"]
         if play.board.date == day:
             today[play.user_id] = {**player, **breakdown}
-        else:
-            total["past_days"].append(play.board.date)
-    for total in week.values():
-        total["past_days"].sort(reverse=True)
-    return _rank(today, viewer_id), _rank(week, viewer_id)
+    for entry in week.values():
+        scores = entry["daily_scores"]
+        entry["daily_scores"] = [(score_day, scores.get(score_day)) for score_day in week_days]
+    return _rank(today, viewer_id), _rank(week, viewer_id), week_days

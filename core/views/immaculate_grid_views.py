@@ -105,7 +105,7 @@ def grid(request):
     correct = _correct_answers(board, guesses)
     misses = _misses_by_cell(guesses)
     breakdown = score_breakdown(guesses)
-    today, week = rankings(day, request.user.pk)
+    today, week, week_days = rankings(day, request.user.pk)
     return render(request, "immaculate_grid/grid.html", {
         "day": day,
         "board_id": board.pk,
@@ -120,6 +120,7 @@ def grid(request):
         "latest_guess": guesses[-1] if guesses else None,
         "today_leaders": today[:3],
         "week_leaders": week[:3],
+        "week_days": week_days,
         "can_view_boards": len(correct) == GUESS_LIMIT,
     })
 
@@ -129,12 +130,12 @@ def grid(request):
 @require_GET
 def leaderboard(request):
     day = game_date()
-    today, week = rankings(day, request.user.pk)
+    today, week, week_days = rankings(day, request.user.pk)
     play = ImmaculateGridPlay.objects.filter(
         board__date=day, board__replaced_at__isnull=True, user=request.user,
     ).only("guesses").first()
     return render(request, "immaculate_grid/leaderboard.html", {
-        "day": day, "today_leaders": today, "week_leaders": week,
+        "day": day, "today_leaders": today, "week_leaders": week, "week_days": week_days,
         "can_view_boards": bool(play and len(solved_guesses(play.guesses)) == GUESS_LIMIT),
     })
 

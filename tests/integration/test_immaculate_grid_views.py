@@ -332,9 +332,10 @@ class ImmaculateGridTests(TestCase):
     def test_leaderboard_previews_top_three_and_sums_only_this_weeks_active_boards(self):
         leaderboard_url = reverse("core:immaculate_grid_leaderboard")
         monday = self.day - timedelta(days=self.day.weekday())
-        previous, this_week = [
+        tuesday = monday + timedelta(days=1)
+        previous, this_week, midweek = [
             ImmaculateGridBoard.objects.create(date=day, rows=[], columns=[], answers=[])
-            for day in (monday - timedelta(days=1), monday)
+            for day in (monday - timedelta(days=1), monday, tuesday)
         ]
         archived = ImmaculateGridBoard.objects.create(
             date=self.day, rows=[], columns=[], answers=[], replaced_at=self.player.date_joined,
@@ -342,6 +343,7 @@ class ImmaculateGridTests(TestCase):
         for index in range(4):
             user = User.objects.create_user(f"leader-{index}", first_name=f"Leaderboard {index}")
             ImmaculateGridPlay.objects.create(board=self.board, user=user, guesses=[{"cell": 0, "score": 50 + index}])
+        ImmaculateGridPlay.objects.create(board=midweek, user=user, guesses=[{"cell": 0, "score": None}])
         for board, score in ((previous, 500), (this_week, 70), (archived, 500), (self.board, 20)):
             guesses = [{"cell": 0, "score": score}]
             if board == self.board:
@@ -358,9 +360,16 @@ class ImmaculateGridTests(TestCase):
         you = full.context["today_leaders"][-1]
         assert you["is_viewer"] and you["rank"] == 5 and you["score"] == 15
         assert (you["attempts"], you["penalty"], you["best"], you["worst"]) == (10, 5, 13, 7)
-        assert full.context["week_leaders"][0]["past_days"] == [monday]
+        assert full.context["week_days"] == [monday, tuesday, self.day]
+        leader, runner_up = full.context["week_leaders"][:2]
+        assert leader["daily_scores"] == [(monday, 70), (tuesday, None), (self.day, 15)]
+        assert runner_up["daily_scores"] == [(monday, None), (tuesday, 0), (self.day, 53)]
         self.assertContains(full, 'class="table-primary"')
+        self.assertContains(full, '<th scope="col" class="text-right">Worst square</th>', html=True)
         self.assertContains(full, f"?day={monday.isoformat()}")
+        self.assertContains(full, f"?day={tuesday.isoformat()}")
+        self.assertContains(full, "0 points. View Leaderboard 3’s grid")
+        self.assertNotContains(full, f"?day={self.day.isoformat()}")
         self.assertNotContains(full, f"?day={previous.date.isoformat()}")
 
     def test_viewing_other_players_board_requires_solving_todays_grid(self):
@@ -374,7 +383,9 @@ class ImmaculateGridTests(TestCase):
         assert self.client.get(other_board).status_code == 403
         assert self.client.get(other_board, {"day": self.day}).status_code == 403
         self._finish_grid()
-        self.assertContains(self.client.get(self.grid_url), other_board)
+        grid = self.client.get(self.grid_url)
+        self.assertContains(grid, other_board)
+        self.assertContains(grid, f"{other_board}?day={self.day.isoformat()}")
         response = self.client.get(other_board)
         self.assertContains(response, "Public correct answer")
         self.assertNotContains(response, "Private missed guess")
