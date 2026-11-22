@@ -3,6 +3,7 @@ export default function setupMotion(root, network, nodes, onDragEnd) {
   let anchors = [];
   let handle = null;
   let dragging = false;
+  let locked = { x: false, y: false };
   let active = true;
   let lastDraw = 0;
 
@@ -18,8 +19,16 @@ export default function setupMotion(root, network, nodes, onDragEnd) {
       nodes.update(
         anchors.map((node) => ({
           id: node.id,
-          x: node.x + (Math.sin(time / 1400 + node.id * 1.7) * 2.2) / scale,
-          y: node.y + (Math.cos(time / 1700 + node.id * 2.3) * 2.2) / scale,
+          x:
+            node.x +
+            (locked.x
+              ? 0
+              : (Math.sin(time / 1400 + node.id * 1.7) * 2.2) / scale),
+          y:
+            node.y +
+            (locked.y
+              ? 0
+              : (Math.cos(time / 1700 + node.id * 2.3) * 2.2) / scale),
         })),
       );
       lastDraw = time;
@@ -29,8 +38,15 @@ export default function setupMotion(root, network, nodes, onDragEnd) {
 
   function schedule() {
     cancel();
-    if (active && anchors.length) handle = window.requestAnimationFrame(tick);
+    const fixed = locked.x && locked.y;
+    if (active && anchors.length && !fixed)
+      handle = window.requestAnimationFrame(tick);
+    button.disabled = fixed;
     button.textContent = active ? "Pause motion" : "Resume motion";
+    if (fixed) button.textContent = "Axes fixed";
+    button.title = fixed
+      ? "Both selected axes fix the dots to their values."
+      : "";
   }
 
   button.addEventListener("click", () => {
@@ -44,8 +60,18 @@ export default function setupMotion(root, network, nodes, onDragEnd) {
     if (event.nodes.length) {
       const positions = network.getPositions(event.nodes);
       anchors = anchors.map((node) =>
-        positions[node.id] ? { id: node.id, ...positions[node.id] } : node,
+        positions[node.id]
+          ? {
+              id: node.id,
+              x: locked.x ? node.x : positions[node.id].x,
+              y: locked.y ? node.y : positions[node.id].y,
+            }
+          : node,
       );
+    }
+    if (locked.x || locked.y) {
+      const dragged = new Set(event.nodes);
+      nodes.update(anchors.filter((node) => dragged.has(node.id)));
     }
     dragging = false;
     onDragEnd();
@@ -63,8 +89,9 @@ export default function setupMotion(root, network, nodes, onDragEnd) {
       cancel();
       button.disabled = true;
     },
-    start: (positions) => {
+    start: (positions, constraints = { x: false, y: false }) => {
       anchors = positions;
+      locked = constraints;
       button.disabled = false;
       schedule();
     },

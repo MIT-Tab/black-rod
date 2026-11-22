@@ -9,7 +9,28 @@ from core.models import Debater, School, Tournament
 from core.utils.partnership_network import build_partnership_network, find_network_paths
 
 
+NETWORK_AXIS_CHOICES = [
+    ("", "None"),
+    ("toty_points", "TOTY points"),
+    ("qual_points", "Qual points"),
+    ("first_year", "First year in league"),
+    ("final_year", "Final year in league"),
+    ("tournaments", "Tournaments attended"),
+    ("partner_count", "Partners"),
+    ("school", "School"),
+    ("qualification_count", "Nationals-qualified seasons"),
+]
+
+
 class PartnershipNetworkForm(forms.Form):
+    x_axis = forms.ChoiceField(
+        label="X axis", choices=NETWORK_AXIS_CHOICES, required=False,
+        widget=forms.Select(attrs={"data-network-axis": "x"}),
+    )
+    y_axis = forms.ChoiceField(
+        label="Y axis", choices=NETWORK_AXIS_CHOICES, required=False,
+        widget=forms.Select(attrs={"data-network-axis": "y"}),
+    )
     schools = forms.ModelMultipleChoiceField(
         queryset=School.objects.order_by("name"),
         required=False,
