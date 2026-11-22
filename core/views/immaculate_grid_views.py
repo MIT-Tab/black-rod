@@ -1,5 +1,6 @@
 import logging
 from datetime import date
+from uuid import uuid4
 
 from django import forms
 from django.contrib import messages
@@ -9,20 +10,24 @@ from django.db.models.functions import Concat, Lower, Trim
 from django.http import Http404, HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.cache import never_cache
-from django.views.decorators.http import require_GET, require_POST
+from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
 from core.models import Debater, ImmaculateGridBoard, ImmaculateGridPlay
 from core.utils.debater_aliases import load_linked_debater_ids
 from core.utils.immaculate_grid.boards import (
-    GRID_WIDTH, GUESS_LIMIT, NoCompatibleBoard, clues_visible, daily_board, game_date,
+    GRID_WIDTH, GUESS_LIMIT, NoCompatibleBoard, build_board, clues_visible, daily_board, game_date,
 )
 from core.utils.immaculate_grid.catalog import load_catalog, person_key
-from core.utils.immaculate_grid.leaderboard import player_name, rankings, score_breakdown, solved_guesses, week_start
+from core.utils.immaculate_grid.leaderboard import (
+    all_time_rankings, player_name, rankings, score_breakdown, solved_guesses, week_start,
+)
 from core.utils.immaculate_grid.near_misses import shortfall, threshold_for_clue
 from core.utils.immaculate_grid.rarities import RARITY_TIERS, rarity_tier
 
 logger = logging.getLogger(__name__)
 GRID_URL = "core:immaculate_grid"
+INFINITE_URL = "core:immaculate_grid_infinite"
+PRACTICE_SESSION_KEY = "immaculate_grid_practice"
 
 
 class GuessForm(forms.Form):
@@ -69,14 +74,14 @@ def _board_rows(board, correct, misses):
     ]
 
 
-def _share_results(day, correct, attempts, score, penalty):
+def _share_results(day, correct, attempts, score, penalty, *, infinite=False):
     squares = [
         f"{correct[index]['tier']['emoji']} {correct[index]['score']}" if index in correct else "⬜ —"
         for index in range(GUESS_LIMIT)
     ]
     rows = [" | ".join(squares[start:start + GRID_WIDTH]) for start in range(0, GUESS_LIMIT, GRID_WIDTH)]
     return "\n".join([
-        f"APDA Immaculate Grid · {day.isoformat()}",
+        f"APDA Immaculate Grid · {'Infinite mode' if infinite else day.isoformat()}",
         *rows,
         f"{len(correct)}/9 solved · {score} points",
         f"{attempts} guesses · {penalty} penalty points",
@@ -102,27 +107,76 @@ def grid(request):
         return render(request, "immaculate_grid/grid.html", {"day": day}, status=503)
     play = ImmaculateGridPlay.objects.filter(board=board, user=request.user).first()
     guesses = play.guesses if play else []
+    today, week, week_days = rankings(day, request.user.pk)
+    return render(request, "immaculate_grid/grid.html", {
+        **_grid_context(board, guesses),
+        "today_leaders": today[:3],
+        "week_leaders": week[:3],
+        "week_days": week_days,
+    })
+
+
+def _grid_context(board, guesses, *, infinite=False):
     correct = _correct_answers(board, guesses)
     misses = _misses_by_cell(guesses)
     breakdown = score_breakdown(guesses)
-    today, week, week_days = rankings(day, request.user.pk)
-    return render(request, "immaculate_grid/grid.html", {
-        "day": day,
+    finished = len(correct) == GUESS_LIMIT
+    return {
+        "day": board.date,
         "board_id": board.pk,
         "columns": board.columns,
         "rows": _board_rows(board, correct, misses),
         "miss_names": _miss_names(misses),
         "solved": len(correct),
-        "finished": len(correct) == GUESS_LIMIT,
+        "finished": finished,
         **breakdown,
-        "share_results": _share_results(day, correct, len(guesses), breakdown["score"], breakdown["penalty"]),
+        "share_results": _share_results(
+            board.date, correct, len(guesses), breakdown["score"], breakdown["penalty"], infinite=infinite,
+        ),
         "rarity_tiers": RARITY_TIERS,
         "latest_guess": guesses[-1] if guesses else None,
-        "today_leaders": today[:3],
-        "week_leaders": week[:3],
-        "week_days": week_days,
-        "can_view_boards": len(correct) == GUESS_LIMIT,
-    })
+        "can_view_boards": finished,
+        "infinite": infinite,
+    }
+
+
+def _practice_board(request):
+    state = request.session.get(PRACTICE_SESSION_KEY)
+    if not state:
+        return None
+    data = state["board"]
+    return ImmaculateGridBoard(**{**data, "date": date.fromisoformat(data["date"])})
+
+
+@never_cache
+@login_required
+@require_http_methods(["GET", "POST"])
+def infinite_grid(request):
+    day = game_date()
+    board = _practice_board(request)
+    if request.method == "POST":
+        board_id = uuid4().int
+        try:
+            board = build_board(day, load_catalog(day), (), seed=board_id)
+            if not clues_visible(board):
+                raise NoCompatibleBoard("Practice board clues are unavailable.")
+        except NoCompatibleBoard as exc:
+            logger.warning("%s", exc)
+            return render(request, "immaculate_grid/grid.html", {"day": day, "infinite": True}, status=503)
+        request.session[PRACTICE_SESSION_KEY] = {
+            "board": {
+                "id": board_id, "date": day.isoformat(), "rows": board.rows, "columns": board.columns,
+                "answers": board.answers, "aliases": board.aliases, "clue_memberships": board.clue_memberships,
+            },
+            "guesses": [],
+        }
+        return redirect(INFINITE_URL)
+
+    if board is None or not clues_visible(board):
+        return render(request, "immaculate_grid/grid.html", {"day": day, "infinite": True})
+    return render(request, "immaculate_grid/grid.html", _grid_context(
+        board, request.session[PRACTICE_SESSION_KEY]["guesses"], infinite=True,
+    ))
 
 
 @never_cache
@@ -136,6 +190,7 @@ def leaderboard(request):
     ).only("guesses").first()
     return render(request, "immaculate_grid/leaderboard.html", {
         "day": day, "today_leaders": today, "week_leaders": week, "week_days": week_days,
+        "all_time_leaders": all_time_rankings(day, request.user.pk),
         "can_view_boards": bool(play and len(solved_guesses(play.guesses)) == GUESS_LIMIT),
     })
 
@@ -221,13 +276,21 @@ def answers(request):
     form = AnswerReviewForm(request.GET)
     if not form.is_valid():
         return JsonResponse({"error": "Choose a grid and a square."}, status=400)
-    board = ImmaculateGridBoard.objects.filter(
-        date=form.cleaned_data["day"], pk=form.cleaned_data["board"], replaced_at__isnull=True,
-    ).first()
-    if board is None:
-        return JsonResponse({"error": "This grid is unavailable."}, status=404)
-    play = ImmaculateGridPlay.objects.filter(board=board, user=request.user).first()
-    if play is None or len(solved_guesses(play.guesses)) != GUESS_LIMIT:
+    data = form.cleaned_data
+    if request.GET.get("mode") == "infinite":
+        board = _practice_board(request)
+        if board is None or board.pk != data["board"] or board.date != data["day"]:
+            return JsonResponse({"error": "This grid is unavailable."}, status=404)
+        guesses = request.session[PRACTICE_SESSION_KEY]["guesses"]
+    else:
+        board = ImmaculateGridBoard.objects.filter(
+            date=data["day"], pk=data["board"], replaced_at__isnull=True,
+        ).first()
+        if board is None:
+            return JsonResponse({"error": "This grid is unavailable."}, status=404)
+        play = ImmaculateGridPlay.objects.filter(board=board, user=request.user).first()
+        guesses = play.guesses if play else []
+    if len(solved_guesses(guesses)) != GUESS_LIMIT:
         return JsonResponse({"error": "Solve all nine squares to view valid answers."}, status=403)
     if not clues_visible(board):
         return JsonResponse({"error": "This grid is unavailable."}, status=503)
@@ -254,7 +317,7 @@ def answers(request):
     options.sort(key=lambda option: (-option["score"], option["name"].casefold()))
     return JsonResponse({
         "answers": options,
-        **_miss_review(board, _misses_by_cell(play.guesses).get(cell, ()), cell),
+        **_miss_review(board, _misses_by_cell(guesses).get(cell, ()), cell),
     })
 
 
@@ -294,10 +357,10 @@ def search(request):
     return JsonResponse({"results": results})
 
 
-def _guess_issue(play, attempts, cell, people, profile_ids):
-    if len(play.guesses) != attempts:
+def _guess_issue(guesses, attempts, cell, people, profile_ids):
+    if len(guesses) != attempts:
         return "Your grid was updated. Choose a square to continue."
-    for item in play.guesses:
+    for item in guesses:
         if item["cell"] == cell and item["score"] is not None:
             return "That square is already solved."
         same_person = item["person"] in people or item.get("debater_id") in profile_ids
@@ -327,26 +390,53 @@ def guess(request):
         messages.info(request, "This grid has changed. Choose a square on the latest board.")
         return redirect(GRID_URL)
     play, _ = ImmaculateGridPlay.objects.get_or_create(board=board, user=request.user)
-    debater = data["debater"]
-    person = board.aliases.get(str(debater.pk)) or person_key(debater.pk, debater.alias_group_id)
-    profile_ids = load_linked_debater_ids([debater.pk]) if debater.alias_group_id else {debater.pk}
-    people = {f"d{pk}" for pk in profile_ids} | {person_key(debater.pk, debater.alias_group_id)}
-    people.update(board.aliases[str(pk)] for pk in profile_ids if str(pk) in board.aliases)
-    cell = data["cell"]
-    issue = _guess_issue(play, data["attempts"], cell, people, profile_ids)
+    issue, item = _evaluate_guess(board, play.guesses, data)
     if issue:
         messages.info(request, issue)
         return redirect(GRID_URL)
     if day != game_date():
         messages.info(request, "A new daily grid is ready.")
         return redirect(GRID_URL)
-
-    item = {
-        "cell": cell, "person": person, "debater_id": debater.pk,
-        "name": debater.name, "score": board.answers[cell].get(person),
-    }
     if not ImmaculateGridPlay.objects.filter(pk=play.pk, guesses=play.guesses).update(
         guesses=[*play.guesses, item]
     ):
         messages.info(request, "Your grid was updated. Choose a square to continue.")
     return redirect(GRID_URL)
+
+
+def _evaluate_guess(board, guesses, data):
+    debater = data["debater"]
+    person = board.aliases.get(str(debater.pk)) or person_key(debater.pk, debater.alias_group_id)
+    profile_ids = load_linked_debater_ids([debater.pk]) if debater.alias_group_id else {debater.pk}
+    people = {f"d{pk}" for pk in profile_ids} | {person_key(debater.pk, debater.alias_group_id)}
+    people.update(board.aliases[str(pk)] for pk in profile_ids if str(pk) in board.aliases)
+    cell = data["cell"]
+    issue = _guess_issue(guesses, data["attempts"], cell, people, profile_ids)
+    return issue, {
+        "cell": cell, "person": person, "debater_id": debater.pk,
+        "name": debater.name, "score": board.answers[cell].get(person),
+    }
+
+
+@never_cache
+@login_required
+@require_POST
+def infinite_guess(request):
+    form = GuessForm(request.POST)
+    if not form.is_valid():
+        messages.error(request, "Choose a square and select a debater from the search results.")
+        return redirect(INFINITE_URL)
+
+    board = _practice_board(request)
+    data = form.cleaned_data
+    if board is None or board.pk != data["board"] or board.date != data["day"] or not clues_visible(board):
+        messages.info(request, "This grid has changed. Choose a square on the current board.")
+        return redirect(INFINITE_URL)
+
+    state = request.session[PRACTICE_SESSION_KEY]
+    issue, item = _evaluate_guess(board, state["guesses"], data)
+    if issue:
+        messages.info(request, issue)
+    else:
+        request.session[PRACTICE_SESSION_KEY] = {**state, "guesses": [*state["guesses"], item]}
+    return redirect(INFINITE_URL)

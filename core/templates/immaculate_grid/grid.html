@@ -6,14 +6,25 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
 {% endblock extra_head %}
 {% block content %}
+    {% if infinite %}
+        {% url 'core:immaculate_grid_infinite' as play_url %}
+        {% url 'core:immaculate_grid_infinite_guess' as guess_url %}
+    {% else %}
+        {% url 'core:immaculate_grid' as play_url %}
+        {% url 'core:immaculate_grid_guess' as guess_url %}
+    {% endif %}
     <main class="immaculate-grid mx-auto my-4 my-md-5"
           data-immaculate-grid
           data-day="{{ day|date:'Y-m-d' }}"
           data-board="{{ board_id }}"
-          data-answers-url="{% url 'core:immaculate_grid_answers' %}"
-          data-play-url="{% url 'core:immaculate_grid' %}">
+          data-answers-url="{% url 'core:immaculate_grid_answers' %}{% if infinite %}?mode=infinite{% endif %}"
+          data-play-url="{{ play_url }}">
         <header class="immaculate-heading mb-4">
-            <p class="immaculate-date mb-2">{{ day|date:"F j, Y" }} · New grid at midnight EST</p>
+            {% if infinite %}
+                <p class="immaculate-date mb-2">Infinite mode · Unranked</p>
+            {% else %}
+                <p class="immaculate-date mb-2">{{ day|date:"F j, Y" }} · New grid at midnight EST</p>
+            {% endif %}
             <div class="immaculate-title mb-2">
                 <h1 class="mb-0">Immaculate Grid</h1>
                 <span class="immaculate-beta">Beta</span>
@@ -22,8 +33,33 @@
                 <p class="mb-0">Find a debater who matches both clues in each square. Each debater can solve one square.</p>
             {% endif %}
         </header>
+        <div class="d-flex flex-wrap align-items-center mb-3">
+            {% if infinite %}
+                <form method="post" action="{{ play_url }}" class="mr-3">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-primary">
+                        {% if rows %}
+                            New random board
+                        {% else %}
+                            Play random board
+                        {% endif %}
+                    </button>
+                </form>
+                <a href="{% url 'core:immaculate_grid' %}">Back to daily grid</a>
+            {% else %}
+                <a class="btn btn-outline-primary" href="{% url 'core:immaculate_grid_infinite' %}">Infinite mode</a>
+            {% endif %}
+        </div>
         {% if not rows %}
-            <div class="alert alert-secondary" role="status">Today's grid is unavailable.</div>
+            {% if not infinite or request.method == "POST" %}
+                <div class="alert alert-secondary" role="status">
+                    {% if infinite %}
+                        A random board is unavailable. Please try again.
+                    {% else %}
+                        Today's grid is unavailable.
+                    {% endif %}
+                </div>
+            {% endif %}
         {% else %}
             <div class="immaculate-summary mb-3">
                 <div>
@@ -86,7 +122,7 @@
                         aria-labelledby="immaculate-guess-title">
                     <form class="modal-content"
                           method="post"
-                          action="{% url 'core:immaculate_grid_guess' %}"
+                          action="{{ guess_url }}"
                           data-search-url="{% url 'core:immaculate_grid_search' %}">
                         {% csrf_token %}
                         <input name="day" type="hidden" value="{{ day|date:'Y-m-d' }}">
@@ -126,13 +162,15 @@
                     </form>
                 </dialog>
             {% endif %}
-            <section class="mt-4" aria-labelledby="grid-leaders">
-                <div class="d-flex align-items-center justify-content-between mb-2">
-                    <h2 id="grid-leaders" class="h5 mb-0">Leaderboard</h2>
-                    <a href="{% url 'core:immaculate_grid_leaderboard' %}">Full leaderboard</a>
-                </div>
-                {% include "immaculate_grid/leaderboard_tables.html" %}
-            </section>
+            {% if not infinite %}
+                <section class="mt-4" aria-labelledby="grid-leaders">
+                    <div class="d-flex align-items-center justify-content-between mb-2">
+                        <h2 id="grid-leaders" class="h5 mb-0">Leaderboard</h2>
+                        <a href="{% url 'core:immaculate_grid_leaderboard' %}">Full leaderboard</a>
+                    </div>
+                    {% include "immaculate_grid/leaderboard_tables.html" %}
+                </section>
+            {% endif %}
         {% endif %}
     </main>
 {% endblock content %}

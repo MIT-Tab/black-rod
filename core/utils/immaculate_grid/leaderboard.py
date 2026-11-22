@@ -1,6 +1,7 @@
-"""Display scores and ranks for the current game day and week."""
+"""Display scores and ranks for the daily, weekly, and all-time leaderboards."""
 
 from datetime import timedelta
+from heapq import nsmallest
 
 from core.models import ImmaculateGridPlay
 from core.utils.immaculate_grid.boards import EXTRA_GUESS_PENALTY, GUESS_LIMIT
@@ -70,3 +71,27 @@ def rankings(day, viewer_id):
         scores = entry["daily_scores"]
         entry["daily_scores"] = [(score_day, scores.get(score_day)) for score_day in week_days]
     return _rank(today, viewer_id), _rank(week, viewer_id), week_days
+
+
+def all_time_rankings(day, viewer_id):
+    """Return the ten highest individual completed daily games."""
+    plays = ImmaculateGridPlay.objects.filter(
+        board__date__lte=day, board__replaced_at__isnull=True,
+    ).select_related("user", "board").only(
+        "guesses", "user__username", "user__first_name", "user__last_name", "board__date",
+    )
+
+    def completed_scores():
+        for play in plays.iterator():
+            if len(solved_guesses(play.guesses)) == GUESS_LIMIT:
+                yield {
+                    "id": play.user_id,
+                    "name": player_name(play.user),
+                    "day": play.board.date,
+                    "score": score_breakdown(play.guesses)["score"],
+                }
+
+    entries = nsmallest(10, completed_scores(), key=lambda row: (
+        -row["score"], row["name"].casefold(), row["id"], row["day"],
+    ))
+    return _rank(dict(enumerate(entries)), viewer_id)

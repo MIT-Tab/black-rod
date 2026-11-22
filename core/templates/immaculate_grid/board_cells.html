@@ -1,4 +1,4 @@
-<table class="immaculate-board" aria-label="Immaculate Grid for {{ day|date:'F j' }}">
+<table class="immaculate-board" aria-label="{% if infinite %}Immaculate Grid practice board{% else %}Immaculate Grid for {{ day|date:'F j' }}{% endif %}">
     <thead>
         <tr>
             <td></td>

@@ -12,5 +12,35 @@
         <p>Points include guess penalties. Weekly totals start on Monday.</p>
         {% if not can_view_boards %}<p>Solve today's grid to see how other players answered it.</p>{% endif %}
         {% include "immaculate_grid/leaderboard_tables.html" %}
+        <div class="immaculate-rankings-scroll mt-4" role="region" aria-labelledby="leaders-all-time" tabindex="0">
+            <table class="table immaculate-rankings-table mb-0">
+                <caption id="leaders-all-time">All-time top 10 · Completed daily grids</caption>
+                <thead class="thead-light">
+                    <tr>
+                        <th scope="col">Rank</th>
+                        <th scope="col" class="immaculate-ranking-player">Player</th>
+                        <th scope="col">Grid date</th>
+                        <th scope="col" class="text-right">Score</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for entry in all_time_leaders %}
+                        <tr {% if entry.is_viewer %}class="table-primary"{% endif %}>
+                            <td>{{ entry.rank }}</td>
+                            <th scope="row" class="immaculate-ranking-player">
+                                {{ entry.name }}
+                                {% if entry.is_viewer %}<span class="font-weight-normal">(you)</span>{% endif %}
+                            </th>
+                            <td><time datetime="{{ entry.day|date:'Y-m-d' }}">{{ entry.day|date:"M j, Y" }}</time></td>
+                            <td class="text-right font-weight-bold">{{ entry.score }}</td>
+                        </tr>
+                    {% empty %}
+                        <tr>
+                            <td colspan="4">No completed daily grids yet.</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
     </main>
 {% endblock content %}

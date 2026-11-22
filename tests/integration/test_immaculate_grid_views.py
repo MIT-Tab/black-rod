@@ -3,6 +3,7 @@ from unittest.mock import patch
 
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 
 from core.models import (
     Debater, DebaterAliasGroup, ImmaculateGridBoard, ImmaculateGridHiddenDebater,
@@ -664,3 +665,74 @@ class ImmaculateGridTests(TestCase):
         ImmaculateGridHiddenDebater.objects.create(debater=self.alias)
         merge_debaters(self.answer, self.alias)
         assert ImmaculateGridHiddenDebater.objects.filter(debater=self.answer).exists()
+
+    def test_infinite_grid_keeps_daily_progress_and_rankings_separate(self):
+        self.client.force_login(self.player)
+        self._guess(self.answer, 0, 0)
+        grid_url = reverse("core:immaculate_grid_infinite")
+        guess_url = reverse("core:immaculate_grid_infinite_guess")
+        self.assertContains(self.client.get(grid_url), "Play random board")
+
+        people = [self.answer, *Debater.objects.bulk_create([
+            Debater(first_name="Practice", last_name=str(index)) for index in range(8)
+        ])]
+        aliases = {str(person.pk): person_key(person.pk, person.alias_group_id) for person in people}
+        practice = ImmaculateGridBoard(
+            date=self.day, rows=self.board.rows, columns=self.board.columns, aliases=aliases,
+            answers=[{key: 100 for key in aliases.values()} for _ in range(9)],
+        )
+        with (
+            patch("core.views.immaculate_grid_views.load_catalog"),
+            patch("core.views.immaculate_grid_views.build_board", return_value=practice) as build,
+        ):
+            response = self.client.post(grid_url, follow=True)
+            board_id = response.context["board_id"]
+            self.assertContains(response, f'value="{board_id}"')
+            self.assertContains(response, "Infinite mode · Unranked")
+            review = {"day": self.day, "board": board_id, "cell": 0, "mode": "infinite"}
+            assert self.client.get(self.answers_url, review).status_code == 403
+            for cell, person in enumerate(people):
+                self.client.post(guess_url, {
+                    "day": self.day, "board": board_id, "cell": cell, "attempts": cell, "debater": person.pk,
+                })
+            assert self.client.get(grid_url).context["score"] == 900
+            assert self.client.get(self.answers_url, review).status_code == 200
+            assert ImmaculateGridBoard.objects.count() == ImmaculateGridPlay.objects.count() == 1
+            assert len(self._progress()) == 1
+            leaderboard = self.client.get(reverse("core:immaculate_grid_leaderboard"))
+            assert not leaderboard.context["all_time_leaders"]
+            assert leaderboard.context["today_leaders"][0]["score"] == 60
+            assert leaderboard.context["week_leaders"][0]["score"] == 60
+
+            response = self.client.post(grid_url, follow=True)
+            assert response.context["board_id"] != board_id
+            assert response.context["attempts"] == 0
+            assert self.client.get(self.answers_url, review).status_code == 404
+            assert build.call_args_list[0].kwargs["seed"] != build.call_args_list[1].kwargs["seed"]
+
+    def test_all_time_leaderboard_caps_completed_daily_scores_and_excludes_replacements(self):
+        self.client.force_login(self.player)
+        for index in range(11):
+            board = ImmaculateGridBoard.objects.create(
+                date=self.day - timedelta(days=index + 14), rows=[], columns=[], answers=[],
+            )
+            guesses = [{"cell": cell, "score": 100 - index} for cell in range(9)]
+            if index == 0:
+                guesses.insert(0, {"cell": 0, "score": None})
+            ImmaculateGridPlay.objects.create(board=board, user=self.player, guesses=guesses)
+
+        replaced = ImmaculateGridBoard.objects.create(
+            date=self.day - timedelta(days=14), rows=[], columns=[], answers=[],
+            replaced_at=timezone.now(),
+        )
+        ImmaculateGridPlay.objects.create(
+            board=replaced, user=self.other, guesses=[{"cell": cell, "score": 100} for cell in range(9)],
+        )
+        ImmaculateGridPlay.objects.create(
+            board=self.board, user=self.other, guesses=[{"cell": 0, "score": 100}],
+        )
+        response = self.client.get(reverse("core:immaculate_grid_leaderboard"))
+        self.assertContains(response, "All-time top 10")
+        leaders = response.context["all_time_leaders"]
+        assert [entry["score"] for entry in leaders] == [895, *(900 - 9 * index for index in range(1, 10))]
+        assert all(entry["is_viewer"] for entry in leaders)

@@ -144,7 +144,7 @@ def _column_choices(shared, order, clues, kinds, row_topics, row_kinds):
     return None
 
 
-def choose_clues(day, clues, pairs, blocked_clues, blocked_pairs):
+def choose_clues(day, clues, pairs, blocked_clues, blocked_pairs, *, seed=None):
     neighbors = defaultdict(set)
     for first, second in pairs.keys() - blocked_pairs:
         if first not in blocked_clues and second not in blocked_clues:
@@ -152,7 +152,7 @@ def choose_clues(day, clues, pairs, blocked_clues, blocked_pairs):
             neighbors[second].add(first)
 
     keys = sorted(key for key, adjacent in neighbors.items() if len(adjacent) >= GRID_WIDTH)
-    rng = random.Random(f"black-rod-immaculate-grid:{day.isoformat()}")
+    rng = random.Random(seed if seed is not None else f"black-rod-immaculate-grid:{day.isoformat()}")
     rng.shuffle(keys)
     order = {key: index for index, key in enumerate(keys)}
     kinds = {key: clues[key].kind for key in keys}
@@ -182,11 +182,11 @@ def choose_clues(day, clues, pairs, blocked_clues, blocked_pairs):
     raise NoCompatibleBoard(f"No compatible Immaculate Grid board for {day}.")
 
 
-def build_board(day, catalog, history):
+def build_board(day, catalog, history, *, seed=None):
     blocked_clues, blocked_pairs = cooldowns(day, history)
     clues = {key: clue for key, clue in catalog.clues.items() if key not in blocked_clues}
     pairs = compatible_pairs(clues, catalog.rarity, catalog.recent_people)
-    rows, columns = choose_clues(day, clues, pairs, blocked_clues, blocked_pairs)
+    rows, columns = choose_clues(day, clues, pairs, blocked_clues, blocked_pairs, seed=seed)
     answers = [scale_scores(pairs[pair_key(row, column)]) for row, column in product(rows, columns)]
     eligible = set().union(*(cell.keys() for cell in answers))
     return ImmaculateGridBoard(
