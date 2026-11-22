@@ -11,7 +11,8 @@
         <h1 class="mt-2">Immaculate Grid Leaderboard</h1>
         <p>Points include guess penalties. Weekly totals start on Monday.</p>
         {% if not can_view_boards %}<p>Solve today's grid to see how other players answered it.</p>{% endif %}
-        <div class="immaculate-rankings-scroll mb-4" role="region" aria-labelledby="leaders-all-time" tabindex="0">
+        {% include "immaculate_grid/leaderboard_tables.html" %}
+        <div class="immaculate-rankings-scroll mt-4" role="region" aria-labelledby="leaders-all-time" tabindex="0">
             <table class="table immaculate-rankings-table mb-0">
                 <caption id="leaders-all-time">All-time top 10 · Completed daily grids</caption>
                 <thead class="thead-light">
@@ -41,6 +42,5 @@
                 </tbody>
             </table>
         </div>
-        {% include "immaculate_grid/leaderboard_tables.html" %}
     </main>
 {% endblock content %}
