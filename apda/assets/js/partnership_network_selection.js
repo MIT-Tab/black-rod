@@ -1,3 +1,5 @@
+import { describeAxisValue } from "./partnership_network_axes";
+
 function tournamentLabel(count) {
   return `${count} recorded tournament${count === 1 ? "" : "s"}`;
 }
@@ -17,6 +19,34 @@ export default function setupSelection(root, network, data, onChange, radii) {
   const state = { visibleNames: null, pathEdges: null };
   let firstEndpoint = null;
   let request = null;
+  let axisDetails = null;
+  let selectedPerson = null;
+  const axisFields = ["x", "y"].map((axis) =>
+    document.querySelector(`[data-network-axis="${axis}"]`),
+  );
+
+  function refreshAxisDetails() {
+    if (!axisDetails?.isConnected) return;
+    axisDetails.replaceChildren();
+    axisFields.forEach((field, index) => {
+      const line = document.createElement("div");
+      line.textContent = `${index === 0 ? "X" : "Y"} axis · ${describeAxisValue(field.value, selectedPerson)}`;
+      axisDetails.append(line);
+    });
+  }
+
+  function appendAxisDetails(node) {
+    selectedPerson = node;
+    axisDetails = document.createElement("div");
+    axisDetails.className = "mt-2";
+    axisDetails.dataset.networkAxisValues = "";
+    details.append(axisDetails);
+    refreshAxisDetails();
+  }
+
+  axisFields.forEach((field) =>
+    field.addEventListener("change", refreshAxisDetails),
+  );
 
   function cancelRequest() {
     if (request) request.abort();
@@ -120,6 +150,7 @@ export default function setupSelection(root, network, data, onChange, radii) {
           state.pathEdges = null;
           state.visibleNames = null;
           details.textContent = `Shift-click a second person to find paths from ${byId.get(id).label}.`;
+          appendAxisDetails(byId.get(id));
           network.selectNodes([id], false);
         } else {
           const first = firstEndpoint;
@@ -141,6 +172,7 @@ export default function setupSelection(root, network, data, onChange, radii) {
           ` · ${node.schools.join(" / ") || "Unaffiliated"} · ${tournamentLabel(node.tournaments)}`,
           node.qualified ? " · Nationals qualified" : "",
         );
+        appendAxisDetails(node);
       }
       onChange();
     } else if (selection.edges.length) {
