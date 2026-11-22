@@ -191,6 +191,24 @@
   overflow-y: auto;
 }
 
+.immaculate-miss-table {
+  table-layout: fixed;
+  overflow-wrap: anywhere;
+  font-size: 0.85rem;
+
+  thead th {
+    vertical-align: top;
+
+    &:first-child {
+      width: 28%;
+    }
+  }
+
+  td {
+    text-align: center;
+  }
+}
+
 .immaculate-answer-score {
   flex-shrink: 0;
   margin-left: 0.7rem;

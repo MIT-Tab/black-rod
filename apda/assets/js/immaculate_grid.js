@@ -21,24 +21,41 @@ function initResultsSharing(grid) {
   });
 }
 
-function renderMisses(list, misses, clues = []) {
+function renderMissNames(list, names) {
   list.replaceChildren();
-  misses.forEach((miss) => {
+  names.forEach((name) => {
     const item = document.createElement("li");
-    item.className = "list-group-item";
-    const name = document.createElement("strong");
-    name.textContent = miss.name;
-    item.append(name);
-    clues.forEach((label, index) => {
-      const check = document.createElement("small");
-      check.className = "d-block";
-      const matched = miss.matches[index];
-      let result = "Unknown";
-      if (matched !== null) result = matched ? "Matches" : "Does not match";
-      check.textContent = `${label} · ${result}`;
-      item.append(check);
-    });
+    item.className = "list-group-item font-weight-bold";
+    item.textContent = name;
     list.append(item);
+  });
+}
+
+function renderMissTable(table, misses, clues) {
+  const headers = table.querySelectorAll("[data-miss-clue]");
+  clues.forEach((clue, index) => {
+    headers[index].textContent = clue;
+  });
+  table.tBodies[0]?.remove();
+  const body = table.createTBody();
+  misses.forEach((miss) => {
+    const row = body.insertRow();
+    const name = document.createElement("th");
+    name.scope = "row";
+    name.textContent = miss.name;
+    row.append(name);
+    miss.matches.forEach((matched, index) => {
+      const cell = row.insertCell();
+      const result = matched ? "Yes" : "No";
+      cell.textContent = matched === null ? "Unknown" : result;
+      const detail = miss.details?.[index];
+      if (detail) {
+        const note = document.createElement("small");
+        note.className = "d-block text-muted";
+        note.textContent = detail;
+        cell.append(note);
+      }
+    });
   });
 }
 
@@ -51,6 +68,7 @@ function initAnswerReview(grid, missNames) {
   const status = modal.querySelector("[data-answer-status]");
   const clue = modal.querySelector("[data-answer-clue]");
   const missResults = modal.querySelector("[data-miss-results]");
+  const missTable = modal.querySelector("[data-miss-table]");
   const missNote = modal.querySelector("[data-miss-note]");
   const hasAnswerKey = modal.hasAttribute("data-answer-key");
   let opener;
@@ -59,10 +77,10 @@ function initAnswerReview(grid, missNames) {
   async function loadAnswers() {
     clue.textContent = select.selectedOptions[0].dataset.clue;
     const misses = missNames[select.value] ?? [];
-    renderMisses(
-      missResults,
-      misses.map((name) => ({ name })),
-    );
+    clue.hidden = false;
+    missResults.hidden = false;
+    if (missTable) missTable.hidden = true;
+    renderMissNames(missResults, misses);
     missNote.textContent = misses.length ? "" : "No incorrect guesses.";
     if (!hasAnswerKey) return;
     if (activeRequest) activeRequest.abort();
@@ -80,10 +98,18 @@ function initAnswerReview(grid, missNames) {
         throw new Error("Answers unavailable");
       const data = await response.json();
       if (activeRequest !== request) return;
-      renderMisses(missResults, data.misses, data.clues);
-      if (data.approximate)
-        missNote.textContent =
-          "Clue matches use the tournament records available now.";
+      if (data.misses.length) {
+        renderMissTable(missTable, data.misses, data.clues);
+        missTable.hidden = false;
+        missResults.hidden = true;
+        clue.hidden = true;
+        missNote.textContent = data.approximate
+          ? "Clue matches use the tournament records available now."
+          : "";
+      } else {
+        renderMissNames(missResults, []);
+        missNote.textContent = "No incorrect guesses.";
+      }
       data.answers.forEach((answer) => {
         const item = document.createElement("li");
         item.className =
@@ -228,9 +254,9 @@ function initImmaculateGrid() {
       clue.textContent = button.dataset.clue;
       const misses = missNames[cell.value] ?? [];
       pickerMisses.hidden = misses.length === 0;
-      renderMisses(
+      renderMissNames(
         pickerMisses.querySelector("[data-miss-results]"),
-        misses.map((name) => ({ name })),
+        misses,
       );
       input.value = "";
       clearSearch();
