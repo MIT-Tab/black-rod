@@ -261,3 +261,73 @@
     border: 0;
   }
 }
+
+.immaculate-leaderboard {
+  max-width: 68rem;
+}
+
+.immaculate-rankings-scroll {
+  overflow-x: auto;
+
+  &:focus-visible {
+    outline: 2px solid var(--grid-blue);
+    outline-offset: 2px;
+  }
+}
+
+.immaculate-rankings-table {
+  font-size: 1rem;
+  font-variant-numeric: tabular-nums;
+
+  caption {
+    caption-side: top;
+    padding: 0 0 0.5rem;
+    color: var(--grid-ink);
+    font-size: 1.15rem;
+    font-weight: 700;
+  }
+
+  th,
+  td {
+    padding: 0.65rem 0.75rem;
+    vertical-align: middle;
+  }
+
+  thead th {
+    white-space: nowrap;
+  }
+
+  .immaculate-ranking-player {
+    position: sticky;
+    left: 0;
+    min-width: 8rem;
+    overflow-wrap: anywhere;
+  }
+
+  tbody tr:not(.table-primary) > .immaculate-ranking-player {
+    background: var(--page-background);
+  }
+
+  time {
+    display: block;
+    min-width: 2.8rem;
+  }
+
+  a {
+    text-decoration: underline;
+    text-underline-offset: 0.15em;
+  }
+}
+
+@media (max-width: 575.98px) {
+  .immaculate-rankings-table {
+    th,
+    td {
+      padding-inline: 0.5rem;
+    }
+
+    .immaculate-ranking-player {
+      min-width: 7rem;
+    }
+  }
+}

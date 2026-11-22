@@ -6,10 +6,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
 {% endblock extra_head %}
 {% block content %}
-    <main class="immaculate-grid mx-auto my-4 my-md-5">
+    <main class="immaculate-grid immaculate-leaderboard mx-auto my-4 my-md-5">
         <a href="{% url 'core:immaculate_grid' %}">Back to Immaculate Grid</a>
         <h1 class="mt-2">Immaculate Grid Leaderboard</h1>
-        <p class="text-muted">Weekly totals run from Monday through today. Points include guess penalties.</p>
+        <p>Points include guess penalties. Weekly totals start on Monday.</p>
         {% if not can_view_boards %}<p>Solve today's grid to see how other players answered it.</p>{% endif %}
         {% include "immaculate_grid/leaderboard_tables.html" %}
     </main>
