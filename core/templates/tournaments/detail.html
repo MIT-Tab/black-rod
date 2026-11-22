@@ -18,6 +18,11 @@
     {% endif %}
 {% endblock extra_buttons %}
 {% block detail_view %}
+    {% for message in messages %}
+        <div class="alert alert-{{ message.tags|default:'info' }}"
+             style="clear: both"
+             role="status">{{ message }}</div>
+    {% endfor %}
     {% if object.autoqual_recipients.exists %}
         <h4>Individual Autoqual Recipients</h4>
         <ul>

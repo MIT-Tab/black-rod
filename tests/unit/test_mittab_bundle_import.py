@@ -273,6 +273,39 @@ def test_reupload_replaces_prior_bundle_rounds_missing_from_new_file():
     ).count() == 2
 
 
+@pytest.mark.parametrize("has_valid_round", [True, False])
+def test_import_preserves_existing_round_with_incomplete_roster(has_valid_round):
+    tournament = _make_tournament()
+    debaters = [
+        {"id": person_id, "name": name}
+        for person_id, name in [(101, "Gov One"), (102, "Gov Two"), (201, "Opp One"), (202, "Opp Two")]
+    ]
+    original = _round_payload(import_key="prelim:27")
+    valid = _round_payload()
+    import_mittab_bundle(
+        _make_loaded_bundle(_bundle_document(debaters=debaters, rounds=[original, valid])),
+        tournament,
+    )
+    broken = {
+        **original, "gov": {"debater_ids": [101], "source_names": ["Gov One"]},
+        "victor": Round.OPP,
+    }
+    rounds = [broken, valid] if has_valid_round else [broken]
+
+    summary = import_mittab_bundle(
+        _make_loaded_bundle(_bundle_document(debaters=debaters, rounds=rounds)),
+        tournament,
+    )
+
+    assert summary["rounds_updated"] == int(has_valid_round)
+    assert summary["rounds_deleted"] == 0
+    assert summary["skipped_rounds"] == [
+        "Round 'prelim:27' side 'gov' needs 2 debater IDs, but the export lists 1."
+    ]
+    assert tournament.rounds.get(import_key="prelim:27").victor == Round.GOV
+    assert tournament.rounds.filter(import_key="prelim:1").exists()
+
+
 def test_duplicate_bundle_hash_is_rejected():
     tournament = _make_tournament()
     document = _bundle_document(

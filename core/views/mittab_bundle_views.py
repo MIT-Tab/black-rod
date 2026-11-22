@@ -9,6 +9,7 @@ from core.utils.mittab_bundle_import import (
     MittabBundleImportError,
     import_mittab_bundle,
     load_mittab_bundle,
+    skipped_rounds_message,
 )
 
 
@@ -71,7 +72,10 @@ class TournamentMittabBundleUploadView(UserPassesTestMixin, View):
                 },
             )
 
-        messages.success(request, self._build_success_message(summary))
+        if summary["skipped_rounds"]:
+            messages.warning(request, skipped_rounds_message(summary["skipped_rounds"]))
+        else:
+            messages.success(request, self._build_success_message(summary))
         return redirect("core:tournament_detail", pk=tournament.id)
 
     @staticmethod
