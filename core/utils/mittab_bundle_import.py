@@ -12,6 +12,10 @@ class MittabBundleImportError(ValueError):
     pass
 
 
+class _IncompleteRosterError(MittabBundleImportError):
+    pass
+
+
 @dataclass(frozen=True)
 class LoadedMittabBundle:
     document: dict
@@ -60,22 +64,44 @@ def import_mittab_bundle(loaded_bundle, tournament, *, actor=None):
         )
         importer = _MittabBundleImporter(document, tournament, import_row)
         actions = importer.build_actions()
-        try:
-            summary = apply_round_amendments(
-                {"actions": actions},
-                actor=actor,
-                source_context={
-                    "source": "mittab_bundle_upload",
-                    "file_name": loaded_bundle.original_file_name,
-                    "import_id": import_row.id,
-                },
-            )
-        except RoundAmendmentError as exc:
-            raise MittabBundleImportError(str(exc)) from exc
+        summary = {
+            "actions_applied": 0, "rounds_created": 0, "rounds_updated": 0, "rounds_deleted": 0,
+        }
+        if actions:
+            summary = _apply_bundle_actions(actions, actor, import_row)
 
-    result = dict(summary)
-    result["tournament_import_id"] = import_row.id
-    return result
+    return {
+        **summary,
+        "tournament_import_id": import_row.id,
+        "skipped_rounds": importer.skipped_rounds,
+    }
+
+
+def _apply_bundle_actions(actions, actor, import_row):
+    try:
+        return apply_round_amendments(
+            {"actions": actions},
+            actor=actor,
+            source_context={
+                "source": "mittab_bundle_upload",
+                "file_name": import_row.original_file_name,
+                "import_id": import_row.id,
+            },
+        )
+    except RoundAmendmentError as exc:
+        raise MittabBundleImportError(str(exc)) from exc
+
+
+def skipped_rounds_message(skipped_rounds):
+    count = len(skipped_rounds)
+    noun = "round" if count == 1 else "rounds"
+    details = " ".join(skipped_rounds[:5])
+    if count > 5:
+        details += f" {count - 5} more skipped."
+    return (
+        f"Skipped {count} {noun} with incomplete rosters. {details} "
+        "Check the team rosters in MIT-Tab and import again."
+    )
 
 
 def _validate_top_level_document(document):
@@ -109,17 +135,31 @@ class _MittabBundleImporter:
         self.document = document
         self.tournament = tournament
         self.import_row = import_row
+        self.skipped_rounds = []
         self.schools_by_id = self._index_rows("schools")
         self.debaters_by_id = self._index_rows("debaters")
 
     def build_actions(self):
-        import_keys = []
+        import_keys = set()
         actions = []
 
         for round_payload in self.document["rounds"]:
-            action = self._build_round_action(round_payload)
-            import_keys.append(action["import_key"])
-            actions.append(action)
+            if not isinstance(round_payload, dict):
+                raise MittabBundleImportError("Each round entry must be an object.")
+            import_key = str(round_payload.get("import_key") or "").strip()
+            if not import_key:
+                raise MittabBundleImportError("Each round entry requires an import_key.")
+            if import_key in import_keys:
+                raise MittabBundleImportError(f"Duplicate round import key '{import_key}'.")
+            # Keep any existing copy of a round whose incoming roster is incomplete.
+            import_keys.add(import_key)
+            try:
+                actions.append(self._build_round_action(round_payload, import_key))
+            except _IncompleteRosterError as exc:
+                self.skipped_rounds.append(str(exc))
+
+        if not actions:
+            return actions
 
         stale_rounds = (
             Round.objects.filter(
@@ -141,14 +181,7 @@ class _MittabBundleImporter:
 
         return actions
 
-    def _build_round_action(self, round_payload):
-        if not isinstance(round_payload, dict):
-            raise MittabBundleImportError("Each round entry must be an object.")
-
-        import_key = str(round_payload.get("import_key") or "").strip()
-        if not import_key:
-            raise MittabBundleImportError("Each round entry requires an import_key.")
-
+    def _build_round_action(self, round_payload, import_key):
         stage = str(round_payload.get("stage") or "").strip()
         if stage not in {Round.Stage.PRELIM, Round.Stage.OUTROUND}:
             raise MittabBundleImportError(f"Round '{import_key}' has an unsupported stage.")
@@ -157,6 +190,8 @@ class _MittabBundleImporter:
         if division not in (None, "", Round.Division.VARSITY, Round.Division.NOVICE):
             raise MittabBundleImportError(f"Round '{import_key}' has an unsupported division.")
 
+        gov_roster = self._read_roster(round_payload, "gov", import_key)
+        opp_roster = self._read_roster(round_payload, "opp", import_key)
         existing = Round.objects.filter(
             tournament=self.tournament,
             import_key=import_key,
@@ -181,15 +216,15 @@ class _MittabBundleImporter:
             "stats": None,
         }
 
-        gov_ids, gov_aliases = self._resolve_side(round_payload, "gov", import_key)
-        opp_ids, opp_aliases = self._resolve_side(round_payload, "opp", import_key)
+        gov_ids, gov_aliases = self._resolve_side(gov_roster)
+        opp_ids, opp_aliases = self._resolve_side(opp_roster)
         action["gov"] = {"debater_ids": gov_ids}
         action["opp"] = {"debater_ids": opp_ids}
         action["imported_metadata"] = {
             "gov_1": gov_aliases[0],
-            "gov_2": gov_aliases[1],
+            "gov_2": gov_aliases[1] if len(gov_aliases) == 2 else None,
             "opp_1": opp_aliases[0],
-            "opp_2": opp_aliases[1],
+            "opp_2": opp_aliases[1] if len(opp_aliases) == 2 else None,
             "raw_result_code": str(round_payload.get("victor") or ""),
             "raw_outcome_text": str(round_payload.get("label") or ""),
             "source_import_ids": [self.import_row.id],
@@ -197,25 +232,31 @@ class _MittabBundleImporter:
         }
         return action
 
-    def _resolve_side(self, round_payload, side_key, import_key):
+    @staticmethod
+    def _read_roster(round_payload, side_key, import_key):
         side_payload = round_payload.get(side_key)
         if not isinstance(side_payload, dict):
-            raise MittabBundleImportError(f"Round '{import_key}' is missing side '{side_key}'.")
+            raise _IncompleteRosterError(f"Round '{import_key}' is missing side '{side_key}'.")
 
         debater_refs = side_payload.get("debater_ids")
         source_names = side_payload.get("source_names")
-        if not isinstance(debater_refs, list) or len(debater_refs) != 2:
-            raise MittabBundleImportError(
-                f"Round '{import_key}' side '{side_key}' must contain exactly two debater ids."
+        if not isinstance(debater_refs, list):
+            raise _IncompleteRosterError(f"Round '{import_key}' side '{side_key}' has no debater list.")
+        if len(debater_refs) not in (1, 2):
+            raise _IncompleteRosterError(
+                f"Round '{import_key}' side '{side_key}' needs 1 or 2 debater IDs, "
+                f"but the export lists {len(debater_refs)}."
             )
-        if not isinstance(source_names, list) or len(source_names) != 2:
-            raise MittabBundleImportError(
-                f"Round '{import_key}' side '{side_key}' must contain exactly two source names."
+        if not isinstance(source_names, list) or len(source_names) != len(debater_refs):
+            raise _IncompleteRosterError(
+                f"Round '{import_key}' side '{side_key}' needs a source name for each debater ID."
             )
+        return list(zip(debater_refs, source_names))
 
+    def _resolve_side(self, roster):
         resolved_ids = []
         aliases = []
-        for bundle_debater_id, source_name in zip(debater_refs, source_names):
+        for bundle_debater_id, source_name in roster:
             debater = self._resolve_competitor(bundle_debater_id)
             resolved_ids.append(debater.id)
             aliases.append(

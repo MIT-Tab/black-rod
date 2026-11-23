@@ -7,6 +7,7 @@ from typing import Dict, List
 from urllib.parse import urlencode
 
 from django.conf import settings
+from django.contrib import messages
 from django.core.cache import cache
 from django.contrib.auth.mixins import PermissionRequiredMixin
 from django.db import transaction
@@ -24,7 +25,7 @@ from core.import_sources import (
     fetch_import_source, fresh_or_cached_source, load_review, save_review, source_index, source_key,
 )
 from core.utils.mittab_bundle_import import (
-    LoadedMittabBundle, MittabBundleImportError, import_mittab_bundle,
+    LoadedMittabBundle, MittabBundleImportError, import_mittab_bundle, skipped_rounds_message,
 )
 from core.forms import (
     DebaterForm,
@@ -759,7 +760,7 @@ class TournamentDataEntryView(PermissionRequiredMixin, View):
             return render(request, self.template_name, context)
 
         try:
-            self.persist_results(
+            skipped_rounds = self.persist_results(
                 tournament,
                 formsets,
                 use_api_results,
@@ -768,6 +769,8 @@ class TournamentDataEntryView(PermissionRequiredMixin, View):
             )
         except MittabBundleImportError as exc:
             return HttpResponseBadRequest(f"No results were saved: {exc}")
+        if skipped_rounds:
+            messages.warning(request, skipped_rounds_message(skipped_rounds))
         return redirect("core:tournament_detail", pk=tournament.id)
 
     def build_api_state(self, selected_api_tabs: List[str]) -> dict:
@@ -988,7 +991,8 @@ class TournamentDataEntryView(PermissionRequiredMixin, View):
         use_api: bool,
         import_counts_from_api: bool = False,
         autoqual_form=None,
-    ) -> None:
+    ) -> list[str]:
+        skipped_rounds = []
         with transaction.atomic(), preserve_profile_result_visibility(tournament):
             resolution = ImportResolution(
                 teams_to_update=list(Team.objects.filter(team_results__tournament=tournament).distinct()),
@@ -1074,8 +1078,11 @@ class TournamentDataEntryView(PermissionRequiredMixin, View):
                     # Reimporting unchanged round data is a no-op.
                     digest = hashlib.sha256(encoded).hexdigest()
                     if not TournamentImport.objects.filter(tournament=tournament, source_hash=digest).exists():
-                        import_mittab_bundle(LoadedMittabBundle(bundle, digest, "api-bundle.json"),
-                                            tournament, actor=self.request.user)
+                        summary = import_mittab_bundle(
+                            LoadedMittabBundle(bundle, digest, "api-bundle.json"),
+                            tournament, actor=self.request.user,
+                        )
+                        skipped_rounds = summary["skipped_rounds"]
             update_rankings(
                 tournament,
                 resolution.teams_to_update,
@@ -1093,6 +1100,7 @@ class TournamentDataEntryView(PermissionRequiredMixin, View):
             )
             # Entity resolution removes source rows explicitly. A global cleanup
             # here would delete temporary rows in another admin's open review.
+        return skipped_rounds
 
     def update_tournament_counts_from_api(self, tournament: Tournament) -> None:
         counts = self.get_api_handler().get_debater_counts_from_api() or {}

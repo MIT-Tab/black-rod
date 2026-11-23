@@ -145,7 +145,8 @@ def test_ranking_ties_have_bounded_queries(django_assert_max_num_queries):
 
 @pytest.mark.django_db
 @override_settings(CURRENT_SEASON="2026", ONLINE_SEASONS=())
-def test_review_save_imports_rounds_and_corrected_identity_without_network(client, django_user_model):
+@pytest.mark.parametrize("roster_size", [None, 0, 1])
+def test_review_save_imports_rounds_and_corrected_identity_without_network(client, django_user_model, roster_size):
     from core.models import Round, SpeakerResult
 
     host = School.objects.create(pk=1, name="MIT", short_name="MIT")
@@ -177,6 +178,13 @@ def test_review_save_imports_rounds_and_corrected_identity_without_network(clien
                     "opp": {"debater_ids": [103, 104], "source_names": [person.name for person in people[1:]]},
                     "judges": [{"original_name": "Public Judge", "is_chair": True}]}],
     }
+    if roster_size is not None:
+        extra_round = deepcopy(snapshot["bundle"]["rounds"][0])
+        extra_round["import_key"] = "prelim:27"
+        extra_round["gov"]["debater_ids"] = extra_round["gov"]["debater_ids"][:roster_size]
+        extra_round["gov"]["source_names"] = extra_round["gov"]["source_names"][:roster_size]
+        extra_round["stats"] = {str(ref["tournament_id"]): {"speaks": 28, "ranks": 1} for ref in refs}
+        snapshot["bundle"]["rounds"].insert(0, extra_round)
     token = save_review(snapshot, tournament.pk, admin.pk)
     url = reverse("core:tournament_dataentry")
     params = {"tournament": tournament.pk, "api_url": URL, "review": token}
@@ -195,10 +203,23 @@ def test_review_save_imports_rounds_and_corrected_identity_without_network(clien
         data["debaters-0-first_name"] = "Corrected"
         saved = client.post(url, data)
         assert saved.status_code == 302
+        detail = client.get(saved["Location"])
+        if roster_size == 0:
+            assert b"Skipped 1 round with incomplete rosters." in detail.content
+            assert b"prelim:27" in detail.content
+            assert f"the export lists {roster_size}.".encode() in detail.content
+        else:
+            assert b"incomplete rosters" not in detail.content
     corrected = Debater.objects.get(first_name="Corrected")
     assert not corrected.temporary
     assert SpeakerResult.objects.filter(tournament=tournament, debater=corrected).exists()
-    imported_round = Round.objects.get(tournament=tournament)
+    imported_round = Round.objects.get(tournament=tournament, import_key="prelim:1")
+    if roster_size == 1:
+        solo_round = Round.objects.get(tournament=tournament, import_key="prelim:27")
+        assert list(solo_round.gov.debaters.all()) == [corrected]
+        assert solo_round.imported_metadata.gov_2_alias_id is None
+    else:
+        assert not Round.objects.filter(tournament=tournament, import_key="prelim:27").exists()
     assert corrected in imported_round.gov.debaters.all()
     assert not Debater.all_objects.filter(first_name="Misspelled").exists()
     assert not Debater.all_objects.filter(synthetic=True).exclude(first_name="Public", last_name="Judge").exists()
