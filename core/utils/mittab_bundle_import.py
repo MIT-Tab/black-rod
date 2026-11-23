@@ -222,9 +222,9 @@ class _MittabBundleImporter:
         action["opp"] = {"debater_ids": opp_ids}
         action["imported_metadata"] = {
             "gov_1": gov_aliases[0],
-            "gov_2": gov_aliases[1],
+            "gov_2": gov_aliases[1] if len(gov_aliases) == 2 else None,
             "opp_1": opp_aliases[0],
-            "opp_2": opp_aliases[1],
+            "opp_2": opp_aliases[1] if len(opp_aliases) == 2 else None,
             "raw_result_code": str(round_payload.get("victor") or ""),
             "raw_outcome_text": str(round_payload.get("label") or ""),
             "source_import_ids": [self.import_row.id],
@@ -242,14 +242,14 @@ class _MittabBundleImporter:
         source_names = side_payload.get("source_names")
         if not isinstance(debater_refs, list):
             raise _IncompleteRosterError(f"Round '{import_key}' side '{side_key}' has no debater list.")
-        if len(debater_refs) != 2:
+        if len(debater_refs) not in (1, 2):
             raise _IncompleteRosterError(
-                f"Round '{import_key}' side '{side_key}' needs 2 debater IDs, "
+                f"Round '{import_key}' side '{side_key}' needs 1 or 2 debater IDs, "
                 f"but the export lists {len(debater_refs)}."
             )
-        if not isinstance(source_names, list) or len(source_names) != 2:
+        if not isinstance(source_names, list) or len(source_names) != len(debater_refs):
             raise _IncompleteRosterError(
-                f"Round '{import_key}' side '{side_key}' needs two source names."
+                f"Round '{import_key}' side '{side_key}' needs a source name for each debater ID."
             )
         return list(zip(debater_refs, source_names))
 

@@ -353,14 +353,14 @@ def _resolve_team(action, prefix):
 
     if debater_ids is None:
         return None
-    if not isinstance(debater_ids, list) or len(debater_ids) != 2:
-        raise RoundAmendmentError(f"'{prefix}_debater_ids' must contain exactly two debater ids.")
+    if not isinstance(debater_ids, list) or len(debater_ids) not in (1, 2):
+        raise RoundAmendmentError(f"'{prefix}_debater_ids' must contain one or two debater IDs.")
 
     debaters = [
         Debater.all_objects.get(pk=int(debater_id))
         for debater_id in debater_ids
     ]
-    return get_or_create_team_for_debaters(debaters[0], debaters[1])
+    return get_or_create_team_for_debaters(*debaters)
 
 
 def _apply_round_fields(round_obj, action, *, partial):

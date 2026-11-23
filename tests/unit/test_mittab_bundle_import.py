@@ -287,7 +287,7 @@ def test_import_preserves_existing_round_with_incomplete_roster(has_valid_round)
         tournament,
     )
     broken = {
-        **original, "gov": {"debater_ids": [101], "source_names": ["Gov One"]},
+        **original, "gov": {"debater_ids": [], "source_names": []},
         "victor": Round.OPP,
     }
     rounds = [broken, valid] if has_valid_round else [broken]
@@ -300,10 +300,48 @@ def test_import_preserves_existing_round_with_incomplete_roster(has_valid_round)
     assert summary["rounds_updated"] == int(has_valid_round)
     assert summary["rounds_deleted"] == 0
     assert summary["skipped_rounds"] == [
-        "Round 'prelim:27' side 'gov' needs 2 debater IDs, but the export lists 1."
+        "Round 'prelim:27' side 'gov' needs 1 or 2 debater IDs, but the export lists 0."
     ]
     assert tournament.rounds.get(import_key="prelim:27").victor == Round.GOV
     assert tournament.rounds.filter(import_key="prelim:1").exists()
+
+
+@pytest.mark.parametrize("side", ["gov", "opp"])
+def test_reimport_updates_a_round_to_a_solo_side_and_reuses_the_team(side):
+    tournament = _make_tournament()
+    debaters = []
+    for person_id, first_name, last_name in (
+        (101, "Gov", "One"), (102, "Gov", "Two"), (201, "Opp", "One"), (202, "Opp", "Two"),
+    ):
+        debater = Debater.objects.create(first_name=first_name, last_name=last_name)
+        debaters.append({"id": person_id, "name": debater.name, "apda_id": debater.pk})
+    round_payload = _round_payload()
+    document = _bundle_document(debaters=debaters, rounds=[round_payload])
+    import_mittab_bundle(_make_loaded_bundle(document), tournament)
+    original_round = tournament.rounds.get()
+    original_team = getattr(original_round, side)
+
+    round_payload[side]["debater_ids"] = round_payload[side]["debater_ids"][:1]
+    round_payload[side]["source_names"] = round_payload[side]["source_names"][:1]
+    summary = import_mittab_bundle(_make_loaded_bundle(document), tournament)
+
+    original_round.refresh_from_db()
+    solo_team = getattr(original_round, side)
+    assert summary["rounds_updated"] == 1
+    assert summary["skipped_rounds"] == []
+    assert solo_team.pk != original_team.pk
+    assert original_team.debaters.count() == 2
+    assert set(solo_team.debaters.values_list("first_name", "last_name")) == {
+        (side.title(), "One")
+    }
+    metadata = original_round.imported_metadata
+    assert getattr(metadata, f"{side}_1_alias").debater in solo_team.debaters.all()
+    assert getattr(metadata, f"{side}_2_alias_id") is None
+
+    round_payload["label"] = "Round 1 Revised"
+    import_mittab_bundle(_make_loaded_bundle(document), tournament)
+    original_round.refresh_from_db()
+    assert getattr(original_round, f"{side}_id") == solo_team.pk
 
 
 def test_duplicate_bundle_hash_is_rejected():
