@@ -1,15 +1,28 @@
 .appearance-theme {
-  width: auto;
-  flex-shrink: 0;
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 2.5rem;
+  height: 2.5rem;
+  padding: 0;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius);
+  background: transparent;
+  color: inherit;
+
+  &:hover { background: var(--ui-subtle); }
 }
 
-@media (max-width: 991.98px) {
-  .navbar .appearance-theme {
-    align-self: flex-start;
-    max-width: 100%;
-    height: auto;
-    font-size: 1rem;
-  }
+.navbar .appearance-theme {
+  border-color: rgb(255 255 255 / 42%);
+
+  &:hover { background: rgb(255 255 255 / 12%); }
+}
+
+.navbar .live-standings-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
 }
 
 @media (min-width: 992px) {
@@ -229,6 +242,8 @@
     }
 
     // Keep search form visible in mobile nav
+    .appearance-theme { align-self: flex-start; }
+
     .form-inline {
       width: 100%;
       margin: 1rem 0;

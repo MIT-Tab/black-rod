@@ -12,7 +12,7 @@ $tones: (
   dark: (#263241, #e8edf3),
 );
 
-.btn, .btn-sm, .btn-lg {
+.btn, .btn-sm, .btn-lg, :where(.account-content button:not(.btn)) {
   display: inline-block;
   padding: 0.375rem 0.75rem;
   border: 1px solid transparent;
@@ -29,6 +29,14 @@ $tones: (
     opacity: 0.6;
     pointer-events: none;
   }
+}
+
+.account-content button:not(.btn) {
+  color: var(--ui-ink);
+  background: var(--ui-subtle);
+  border-color: var(--ui-border);
+
+  &:hover:not(:disabled) { background: var(--ui-surface); }
 }
 
 .btn-sm, .btn-group-sm > .btn { padding: 0.25rem 0.5rem; font-size: 0.83rem; }
