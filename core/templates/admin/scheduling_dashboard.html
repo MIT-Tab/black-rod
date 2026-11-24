@@ -45,8 +45,7 @@
                         <div class="card-header bg-white">
                             <button class="btn btn-link text-dark font-weight-bold p-0"
                                     type="button"
-                                    data-toggle="collapse"
-                                    data-target="#scheduling-config-collapse"
+                                    data-ui-collapse="scheduling-config-collapse"
                                     aria-expanded="true"
                                     aria-controls="scheduling-config-collapse">
                                 Config and Instructions
@@ -124,8 +123,10 @@
                                                                 Not uploaded
                                                             {% endif %}
                                                         </span>
-                                                        <a class="btn btn-link btn-sm p-0 {% if not workspace.schools_csv %}disabled{% endif %}"
-                                                           href="{% url 'core:scheduling_download_csv' kind='schools' %}">Download</a>
+                                                        {% if workspace.schools_csv %}
+                                                            <a class="btn btn-link btn-sm p-0"
+                                                               href="{% url 'core:scheduling_download_csv' kind='schools' %}">Download</a>
+                                                        {% endif %}
                                                         <form method="post" enctype="multipart/form-data" class="scheduler-upload-form">
                                                             {% csrf_token %}
                                                             <input type="hidden" name="action" value="upload_csv">
@@ -149,8 +150,10 @@
                                                                 Not uploaded
                                                             {% endif %}
                                                         </span>
-                                                        <a class="btn btn-link btn-sm p-0 {% if not workspace.dates_csv %}disabled{% endif %}"
-                                                           href="{% url 'core:scheduling_download_csv' kind='dates' %}">Download</a>
+                                                        {% if workspace.dates_csv %}
+                                                            <a class="btn btn-link btn-sm p-0"
+                                                               href="{% url 'core:scheduling_download_csv' kind='dates' %}">Download</a>
+                                                        {% endif %}
                                                         <form method="post" enctype="multipart/form-data" class="scheduler-upload-form">
                                                             {% csrf_token %}
                                                             <input type="hidden" name="action" value="upload_csv">

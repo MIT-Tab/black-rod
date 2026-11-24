@@ -1,12 +1,12 @@
 {% extends "schools/detail.html" %}
-{% load crispy_forms_tags %}
+{% load ui_forms %}
 {% block added_information_view %}
     <div class="card">
         <div class="card-body">
             <h5 class="card-title">Edit {{ object }}</h5>
             <form action="" method="POST">
                 {% csrf_token %}
-                {{ form|crispy }}
+                {% render_form form %}
                 <input type="submit" class="btn btn-secondary" value="Save">
             </form>
         </div>

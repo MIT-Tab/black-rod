@@ -1,13 +1,13 @@
 {% extends "base/base.html" %}
-{% load crispy_forms_tags %}
+{% load ui_forms %}
 {% block content %}
     <div class="row mt-lg-5 mb-lg-5 mr-lg-2 ml-lg-2 m-1">
         <div class="col-lg-12">
             {% if messages %}
                 {% for message in messages %}
-                    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                    <div class="alert {% if message.level_tag == 'error' %}alert-danger{% else %}alert-{{ message.level_tag|default:'info' }}{% endif %} alert-dismissible" role="alert">
                         {{ message }}
-                        <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+                        <button type="button" class="close" data-ui-alert-close aria-label="Close">
                             <span aria-hidden="true">&times;</span>
                         </button>
                     </div>
@@ -20,7 +20,7 @@
                         <form action="" method="POST" novalidate>
                             {% csrf_token %}
                             {{ form.media }}
-                            {{ form|crispy }}
+                            {% render_form form %}
                             <input type="submit" class="btn btn-success" value="Create">
                         </form>
                     {% endblock form %}

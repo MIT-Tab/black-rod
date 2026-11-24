@@ -1,5 +1,3 @@
-from crispy_forms.helper import FormHelper
-from crispy_forms.layout import Column, Div, Layout, Row, Submit
 from dal import autocomplete, forward
 from django import forms
 from django.conf import settings
@@ -171,31 +169,6 @@ class VideoForm(forms.ModelForm):
             "tags": autocomplete.TaggitSelect2("core:tag_autocomplete"),
         }
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-        self.helper = FormHelper()
-        self.helper.layout = Layout(
-            Row(
-                Column("tournament", css_class="col-md-6"),
-                Column("round", css_class="col-md-6"),
-            ),
-            Div(css_class="border-top my-3"),
-            Row(
-                Column("pm", "mg", css_class="col-md-6"),
-                Column("lo", "mo", css_class="col-md-6"),
-            ),
-            Div(css_class="border-top my-3"),
-            Row(
-                Column("link", css_class="col-md-4"),
-                Column("password", css_class="col-md-4"),
-                Column("permissions", css_class="col-md-4"),
-            ),
-            Div(css_class="border-top my-3"),
-            Row("case", "description", "tags"),
-            Submit("Create", "Create"),
-        )
-
 
 class ResourceForm(forms.ModelForm):
     class Meta:
@@ -245,26 +218,6 @@ class ResourceForm(forms.ModelForm):
             if not self.instance.pk and self.user.claimed_debaters.exists():
                 self.fields["authors"].initial = self.user.claimed_debaters.all()
 
-        self.helper = FormHelper()
-        self.helper.layout = Layout(
-            Row(
-                Column("title", css_class="col-md-8"),
-                Column("resource_type", css_class="col-md-4"),
-            ),
-            Div(css_class="border-top my-3"),
-            "authors",
-            Div(css_class="border-top my-3"),
-            "content_link",
-            "description",
-            "usage_permissions",
-            Div(css_class="border-top my-3"),
-            Row(
-                Column("viewing_permission", css_class="col-md-6"),
-                Column("tags", css_class="col-md-6"),
-            ),
-            Submit("save", "Save"),
-        )
-
     def clean_authors(self):
         """Ensure at least one author is selected and non-superusers include themselves."""
         authors = self.cleaned_data.get("authors")
@@ -300,6 +253,9 @@ class TournamentForm(forms.ModelForm):
 
     class Meta:
         model = Tournament
+        widgets = {
+            "date": forms.DateInput(format="%Y-%m-%d", attrs={"type": "date"}),
+        }
         fields = (
             "host",
             "season",

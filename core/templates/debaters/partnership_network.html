@@ -1,9 +1,6 @@
 {% extends "base/base.html" %}
-{% load crispy_forms_tags %}
+{% load ui_forms %}
 {% block title %}Debater Partnership Network{% endblock title %}
-{% block extra_head %}
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-{% endblock extra_head %}
 {% block content %}
     <main class="container-fluid py-4">
         <h1>Debater Partnership Network</h1>
@@ -11,15 +8,15 @@
         <form method="get" class="card card-body mb-3">
             {{ form.media }}
             <div class="form-row align-items-end">
-                <div class="col-md-4">{{ form.schools|as_crispy_field }}</div>
-                <div class="col-6 col-md-2">{{ form.from_season|as_crispy_field }}</div>
-                <div class="col-6 col-md-2">{{ form.to_season|as_crispy_field }}</div>
-                <div class="col-md-2">{{ form.min_tournaments|as_crispy_field }}</div>
-                <div class="col-md-2">{{ form.qualified|as_crispy_field }}</div>
+                <div class="col-md-4">{% render_field form.schools %}</div>
+                <div class="col-6 col-md-2">{% render_field form.from_season %}</div>
+                <div class="col-6 col-md-2">{% render_field form.to_season %}</div>
+                <div class="col-md-2">{% render_field form.min_tournaments %}</div>
+                <div class="col-md-2">{% render_field form.qualified %}</div>
             </div>
             <div class="form-row">
-                <div class="col-md-6">{{ form.x_axis|as_crispy_field }}</div>
-                <div class="col-md-6">{{ form.y_axis|as_crispy_field }}</div>
+                <div class="col-md-6">{% render_field form.x_axis %}</div>
+                <div class="col-md-6">{% render_field form.y_axis %}</div>
             </div>
             <div>
                 <button type="submit" class="btn btn-primary">Apply filters</button>
@@ -40,7 +37,11 @@
                     <label class="mr-3 mb-2"><input type="checkbox" data-network-labels checked> Names</label>
                     <span class="text-muted mb-2" data-network-status role="status">Loading connections…</span>
                 </div>
-                <p class="small text-muted">Click a person to show their partners’ names. Shift-click two people for up to five fastest paths in the filtered graph. Click blank space to restore all names. Drag to rearrange and scroll or pinch to zoom. Colors group schools. Larger dots mean more tournaments; thicker, darker lines mean more tournaments together.</p>
+                <p class="mb-2">Select a person to see their partners. Shift-click two people to find paths between them.</p>
+                <details class="mb-3">
+                    <summary>Graph controls and legend</summary>
+                    <p class="mt-2 mb-0">Click empty space to restore all names. Drag a node to rearrange it. Scroll or pinch to zoom. Colors group schools, larger dots represent more tournaments, and thicker lines show more tournaments as partners.</p>
+                </details>
                 <div class="partnership-network-canvas border rounded" tabindex="0" role="img" aria-label="Debaters connected by partnership lines. Select a person to see their profile and tournament total."></div>
                 <div class="card card-body mt-2" data-network-details aria-live="polite">
                     Select a person or partnership to explore.

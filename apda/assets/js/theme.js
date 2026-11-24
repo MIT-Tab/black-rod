@@ -18,12 +18,21 @@
     }
   }
 
+  const nextMode = { auto: "light", light: "dark", dark: "auto" };
+  const names = { auto: "System", light: "Light", dark: "Dark" };
   let preference = "auto";
   let picker;
 
   function applyTheme(mode) {
     preference = mode === "light" || mode === "dark" ? mode : "auto";
-    if (picker) picker.value = preference;
+    if (picker) {
+      const label = `Appearance: ${names[preference]}. Switch to ${names[nextMode[preference]].toLowerCase()}.`;
+      picker.setAttribute("aria-label", label);
+      picker.title = label;
+      picker.querySelectorAll("[data-theme-icon]").forEach((icon) => {
+        icon.toggleAttribute("hidden", icon.dataset.themeIcon !== preference);
+      });
+    }
     const systemTheme = system.matches ? "dark" : "light";
     const theme = preference === "auto" ? systemTheme : preference;
     if (root.dataset.theme !== theme) {
@@ -49,10 +58,10 @@
   document.addEventListener("DOMContentLoaded", () => {
     picker = document.getElementById("appearance-theme");
     if (!picker) return;
-    picker.value = preference;
+    applyTheme(preference);
     picker.hidden = false;
-    picker.addEventListener("change", () => {
-      applyTheme(picker.value);
+    picker.addEventListener("click", () => {
+      applyTheme(nextMode[preference]);
       try {
         storage?.setItem(storageKey, preference);
       } catch {

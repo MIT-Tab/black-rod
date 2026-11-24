@@ -1,5 +1,5 @@
 {% extends "base/base.html" %}
-{% load crispy_forms_tags %}
+{% load ui_forms %}
 {% block content %}
 <div class="container my-5"><div class="card"><div class="card-body">
     <h4>Bulk import motions</h4>
@@ -11,7 +11,7 @@
         <form method="post">{% csrf_token %}<input type="hidden" name="confirm" value="1"><input type="hidden" name="rows" value="{{ signed_rows }}"><button class="btn btn-success">Import ready rows</button></form>
     {% else %}
         <p>Use <code>motion_text</code>, <code>background_slide</code>, <code>date_set</code>, <code>tournament</code>, and <code>tags</code> columns. Separate tags with commas. Tournament may be an exact name or numeric ID.</p>
-        <form method="post" enctype="multipart/form-data">{% csrf_token %}{{ form|crispy }}<button class="btn btn-info">Preview import</button></form>
+        <form method="post" enctype="multipart/form-data">{% csrf_token %}{% render_form form %}<button class="btn btn-info">Preview import</button></form>
     {% endif %}
 </div></div></div>
 {% endblock content %}

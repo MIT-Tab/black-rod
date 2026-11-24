@@ -1,6 +1,6 @@
 {% extends "base/base.html" %}
 {% load render_table from django_tables2 %}
-{% load crispy_forms_tags %}
+{% load ui_forms %}
 {% block content %}
     <div class="row mt-lg-5 ml-lg-2 mr-lg-2 mb-lg-5 m-1">
         <div class="col-lg-3">
@@ -11,7 +11,7 @@
                     <h5 class="card-title">Search</h5>
                     <form action="" method="GET">
                         {{ filter.form.media }}
-                        {{ filter.form|crispy }}
+                        {% render_form filter.form %}
                         <div class="d-flex align-items-center">
                             <input type="submit" class="btn btn-info" value="Search">
                             {% block search_actions %}

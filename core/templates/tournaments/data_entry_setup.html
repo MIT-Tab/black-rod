@@ -1,5 +1,5 @@
 {% extends "base/base.html" %}
-{% load crispy_forms_tags %}
+{% load ui_forms %}
 
 {% block content %}
 <div class="row mt-lg-5 mb-lg-5 mr-lg-2 ml-lg-2 m-1">
@@ -20,7 +20,7 @@
                         </div>
                     {% endif %}
 
-                    {{ form.api_url|as_crispy_field }}
+                    {% render_field form.api_url %}
 
                     <p class="text-muted">Imports include all team and speaker results, participant counts, and round data.</p>
 

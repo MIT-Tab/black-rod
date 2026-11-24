@@ -1,12 +1,9 @@
-$font-size-base: .9rem;
-
-$theme-colors: (
-    "primary":#045fb0,
-    "danger": #580000,
-    "success": #70A363,
-    "secondary": #668586,
-    "info": #E8E8E8,
-);
+@use "ui/foundation";
+@use "ui/layout";
+@use "ui/components";
+@use "ui/forms";
+@use "ui/overlays";
+@use "ui/utilities";
 
 .table>tbody>tr>td {
     vertical-align: middle;
@@ -24,7 +21,7 @@ $theme-colors: (
     }
 }
 
-nav {
+nav.navbar {
     border-bottom-left-radius: 25px;
     border-bottom-right-radius: 25px;
     padding-bottom : 20px !important;
@@ -67,8 +64,8 @@ nav {
 }
 
 .replay-controls-left {
-    flex: 1;
-    min-width: 320px;
+    flex: 1 1 14rem;
+    min-width: 0;
     display: flex;
     align-items: center;
     gap: 1rem;
@@ -86,16 +83,11 @@ nav {
 
 .replay-date-label {
     font-weight: 600;
-    min-width: 220px;
-    flex: 0 0 220px;
+    flex: 0 1 13rem;
 }
 
 .replay-speed-control {
     min-width: 150px;
-}
-
-.replay-speed-control label {
-    letter-spacing: 0.05em;
 }
 
 .replay-season-controls {
@@ -228,76 +220,24 @@ nav {
 }
 
 .mittab-dashboard {
-    .mittab-table-row:hover {
-        background-color: #f8f9fa !important;
-        transform: translateY(-1px);
-        transition: all 0.2s ease;
-    }
-    
+    .mittab-table-row:hover { background: var(--ui-subtle); }
+
     .mittab-tournament-icon {
-        width: 40px;
-        height: 40px;
-        background: #007bff;
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: white;
+        width: 2.5rem;
+        height: 2.5rem;
+        flex: 0 0 2.5rem;
+        border-radius: var(--ui-radius);
+        background: var(--ui-subtle);
+        color: var(--ui-accent);
+        display: grid;
+        place-items: center;
         font-size: 1.1rem;
     }
-    
-    .mittab-stat-item {
-        padding: 1rem;
-        border-radius: 8px;
-        transition: transform 0.2s ease;
-        
-        &:hover {
-            transform: translateY(-2px);
-        }
-    }
-    
-    .mittab-table {
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        border-radius: 8px;
-        overflow: hidden;
-    }
-    
-    .mittab-btn-primary {
-        background: #007bff;
-        transition: all 0.2s ease;
-        
-        &:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 4px 8px rgba(115, 29, 221, 0.3);
-            background: #731DDD;
-        }
-    }
-    
-    .mittab-refresh-btn {
-        transition: all 0.2s ease;
-        
-        &:hover {
-            transform: translateY(-1px);
-        }
-    }
+
+    .mittab-stat-item { padding: 1rem; }
 }
 
-.rankings-card {
-    border-radius: 8px;
-    
-    .rankings-warning {
-        border-left: 4px solid #ffc107;
-    }
-    
-    .form-control:focus {
-        border-color: #731DDD;
-        box-shadow: 0 0 0 0.2rem rgba(115, 29, 221, 0.25);
-    }
-    
-    .btn:hover:not(:disabled) {
-        transform: translateY(-1px);
-    }
-}
+.rankings-card .rankings-warning { border-left: 4px solid #a47b19; }
 
 .card {
     overflow: visible !important;
@@ -403,5 +343,87 @@ nav {
     }
 }
 
+@media (max-width: 575.98px) {
+    .replay-controls {
+        align-items: stretch;
+        gap: 0.6rem;
+    }
 
-@import "node_modules/bootstrap/scss/bootstrap";
+    .replay-controls-left { flex-basis: 100%; }
+    .replay-date-label { flex-basis: 100%; }
+    .replay-season-controls { align-items: stretch; }
+    .replay-speed-control label { text-align: left; }
+
+    .replay-home-controls {
+        justify-content: flex-start;
+        gap: 0.5rem;
+    }
+}
+
+@media (max-width: 575.98px) {
+    h1, .h1 { font-size: 1.8rem; }
+    .card-body { padding: 0.85rem; }
+    :is(.form-control, .custom-select) { font-size: 1rem; }
+}
+
+@media (max-width: 991.98px) {
+    .replay-toty-scroll > .table td:nth-child(2) { min-width: 10ch; }
+    .replay-toty-scroll > .table td:nth-child(3) { min-width: 12ch; }
+
+    .replay-toty-scroll > .table td > a {
+        word-break: normal;
+    }
+
+    .replay-toty-scroll > .table :is(th, td):nth-child(n+5) {
+        white-space: nowrap;
+        padding-inline: 0.5rem;
+    }
+
+    .replay-toty-scroll > .table td:nth-child(n+5) > a {
+        display: inline;
+        margin: 0;
+        font-size: inherit;
+    }
+}
+
+.statistics-page {
+    max-width: 68rem;
+    margin: 2rem auto;
+    padding-inline: clamp(0rem, 2vw, 1rem);
+
+    h1 { font-size: clamp(1.8rem, 4vw, 2.2rem); }
+    h2 { font-size: 1.3rem; margin-bottom: 1rem; }
+    h3 { font-size: 1.05rem; }
+}
+
+.statistics-section {
+    border-top: 1px solid var(--ui-line);
+    padding-top: 1.25rem;
+    margin-top: 1.5rem;
+}
+
+.statistics-columns {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem 2rem;
+}
+
+.statistics-totals {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-content: start;
+    margin: 0;
+
+    dt, dd {
+        margin: 0;
+        padding: 0.45rem 0;
+        border-bottom: 1px solid var(--ui-line);
+    }
+
+    dt { font-weight: 400; }
+    dd { padding-left: 1rem; text-align: right; font-variant-numeric: tabular-nums; }
+}
+
+@media (max-width: 767.98px) {
+    .statistics-columns { grid-template-columns: minmax(0, 1fr); }
+}

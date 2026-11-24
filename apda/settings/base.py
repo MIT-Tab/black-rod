@@ -64,7 +64,6 @@ INSTALLED_APPS = [
     "django.contrib.sites",
     "webpack_loader",
     "menu_generator",
-    "crispy_forms",
     "import_export",
     "django_tables2",
     "formtools",
@@ -81,7 +80,6 @@ INSTALLED_APPS = [
     "allauth.socialaccount",
 ]
 
-CRISPY_TEMPLATE_PACK = "bootstrap4"
 TAGGIT_STRIP_UNICODE_WHEN_SLUGIFYING = True
 
 MIDDLEWARE = [

@@ -3,8 +3,7 @@
     <a class="navbar-brand font-weight-bold" href="/">APDA Standings</a>
     <button class="navbar-toggler"
             type="button"
-            data-toggle="collapse"
-            data-target="#navbarSupportedContent"
+            data-ui-collapse="navbarSupportedContent"
             aria-controls="navbarSupportedContent"
             aria-expanded="false"
             aria-label="Toggle navigation">
@@ -19,7 +18,7 @@
             {% url 'core:live_standings' as live_standings_url %}
             <li class="nav-item {% if request.path == live_standings_url %}active{% endif %} mx-1">
                 <a class="nav-link" href="{{ live_standings_url }}">
-                    <span class="badge badge-warning text-uppercase mr-1">Live</span>Standings
+                    <span class="live-standings-label"><span class="badge badge-warning text-uppercase">Live</span>Standings</span>
                 </a>
             </li>
             {% get_menu "NAV_MENU_LEFT" as left_menu %}
@@ -29,7 +28,7 @@
                         <a class="nav-link dropdown-toggle"
                            href="#"
                            role="button"
-                           data-toggle="dropdown"
+                           data-ui-dropdown
                            aria-haspopup="true"
                            aria-expanded="false">
                            {{ item.name }}

@@ -2,7 +2,7 @@
 {% block font_awesome %}
     {% include "base/_font_awesome.html" %}
 {% endblock font_awesome %}
-{% load crispy_forms_tags %}
+{% load ui_forms %}
 {% load tags %}
 {% load render_bundle from webpack_loader %}
 
@@ -102,7 +102,7 @@
                         <div class="mt-4 pt-3 border-top">
                             <h5>Individual Autoquals</h5>
                             {{ autoqual_form.media }}
-                            {{ autoqual_form.autoqual_debaters|as_crispy_field }}
+                            {% render_field autoqual_form.autoqual_debaters %}
                         </div>
 
                         {# Submit Button #}
