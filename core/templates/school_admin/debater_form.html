@@ -1,5 +1,5 @@
 {% extends "base/base.html" %}
-{% load crispy_forms_tags %}
+{% load ui_forms %}
 
 {% block extra_head %}
     {{ block.super }}
@@ -25,7 +25,7 @@
                         {% for message in messages %}
                             <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
                                 {{ message }}
-                                <button type="button" class="close" data-dismiss="alert">
+                                <button type="button" class="close" data-ui-alert-close>
                                     <span>&times;</span>
                                 </button>
                             </div>
@@ -34,7 +34,7 @@
 
                     <form method="post">
                         {% csrf_token %}
-                        {{ form|crispy }}
+                        {% render_form form %}
                         
                         <div class="alert alert-info mt-3">
                             <strong>Note:</strong> Latest season must be within the last 6 years to maintain edit access. First season can be any past season.

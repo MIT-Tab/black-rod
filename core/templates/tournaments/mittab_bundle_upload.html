@@ -1,5 +1,5 @@
 {% extends "base/base.html" %}
-{% load crispy_forms_tags %}
+{% load ui_forms %}
 
 {% block content %}
 <div class="row mt-lg-5 mb-lg-5 mr-lg-2 ml-lg-2 m-1">
@@ -36,7 +36,7 @@
                         </div>
                     {% endif %}
 
-                    {{ form.bundle_file|as_crispy_field }}
+                    {% render_field form.bundle_file %}
 
                     <div class="mt-4">
                         <button type="submit" class="btn btn-primary" {% if not results_ready %}disabled{% endif %}>Upload Bundle</button>

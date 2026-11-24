@@ -110,49 +110,45 @@
 {% block left_column %}
     {% if tab_cards_search_enabled %}
         {% for team, tab_card in teams %}
-        <div class="modal fade" id="tournament_{{ team.id }}">
-            <div class="modal-dialog modal-lg">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <h4 class="modal-title">Results for {{ team.name }}</h4>
-                        <button type="button" class="close" data-dismiss="modal">&times;</button>
-                    </div>
-                    <div class="modal-body">
-                        <table class="table table-bordered">
-                            <thead>
-                                <th>Round Number</th>
-                                <th>Opponent</th>
-                                <th>W/L</th>
-                                {% for stat in tab_card.0.stats %}
-                                    <th>
-                                        <a href="{{ stat.debater.get_absolute_url }}">{{ stat.debater.name }}</a>
-                                    </th>
-                                {% endfor %}
-                            </thead>
-                            <tbody>
-                                {% for round in tab_card %}
-                                    <tr>
-                                        <td>
-                                            {{ round.round.round_number }}
-                                        </td>
-                                        <td>
-                                            <a href="{{ round.round|opponent_url:team }}">{{ round.round|opponent:team }}</a> ({{ round.round|opponent_side:team }})
-                                        </td>
-                                        <td>{{ round.round|wl:team }}</td>
-                                        {% for stat in round.stats %}
-                                            <td>{{ stat.debater_role|upper }} / {{ stat.speaks|number }} / {{ stat.ranks|number }}</td>
-                                        {% endfor %}
-                                    </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-danger" data-dismiss="modal">Close</button>
-                    </div>
-                </div>
+        <dialog class="modal" id="tournament_{{ team.id }}" aria-labelledby="tournament_{{ team.id }}-title" closedby="any">
+            <div class="modal-header">
+                <h4 class="modal-title" id="tournament_{{ team.id }}-title">Results for {{ team.name }}</h4>
+                <button type="button" class="close" data-ui-dialog-close aria-label="Close">&times;</button>
             </div>
-        </div>
+            <div class="modal-body">
+                <table class="table table-bordered">
+                    <thead>
+                        <th>Round Number</th>
+                        <th>Opponent</th>
+                        <th>W/L</th>
+                        {% for stat in tab_card.0.stats %}
+                            <th>
+                                <a href="{{ stat.debater.get_absolute_url }}">{{ stat.debater.name }}</a>
+                            </th>
+                        {% endfor %}
+                    </thead>
+                    <tbody>
+                        {% for round in tab_card %}
+                            <tr>
+                                <td>
+                                    {{ round.round.round_number }}
+                                </td>
+                                <td>
+                                    <a href="{{ round.round|opponent_url:team }}">{{ round.round|opponent:team }}</a> ({{ round.round|opponent_side:team }})
+                                </td>
+                                <td>{{ round.round|wl:team }}</td>
+                                {% for stat in round.stats %}
+                                    <td>{{ stat.debater_role|upper }} / {{ stat.speaks|number }} / {{ stat.ranks|number }}</td>
+                                {% endfor %}
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-danger" data-ui-dialog-close>Close</button>
+            </div>
+        </dialog>
         {% endfor %}
     {% endif %}
     {% if tab_cards_search_enabled and tab_cards_available and user.is_authenticated %}
@@ -169,8 +165,7 @@
                             <td>
                                 <button type="button"
                                         class="btn btn-link"
-                                        data-toggle="modal"
-                                        data-target="#tournament_{{ team.0.id }}">{{ team.0.name }}</button>
+                                        data-ui-dialog="tournament_{{ team.0.id }}">{{ team.0.name }}</button>
                             </td>
                         </tr>
                     {% endfor %}
@@ -185,12 +180,12 @@
             <div class="card-body">
                 <h5 class="card-title pb-2">
                     Team Results
-                    <ul class="nav nav-pills float-right" id="results_pills" roll="tablist">
+                    <ul class="nav nav-pills float-right" id="results_pills" role="tablist">
                         {% if varsity_team_results|length > 0 %}
                             <li class="nav-item">
                                 <a class="nav-link active"
                                    id="varsity_button"
-                                   data-toggle="tab"
+                                   data-ui-tab
                                    href="#varsity">Varsity</a>
                             </li>
                         {% endif %}
@@ -198,7 +193,7 @@
                             <li class="nav-item">
                                 <a class="nav-link {% if varsity_team_results|length == 0 %}active{% endif %}"
                                    id="novice_button"
-                                   data-toggle="tab"
+                                   data-ui-tab
                                    href="#novice">Novice</a>
                             </li>
                         {% endif %}
@@ -227,12 +222,12 @@
             <div class="card-body">
                 <h5 class="card-title pb-2">
                     Speaker Results
-                    <ul class="nav nav-pills float-right" id="results_pills" roll="tablist">
+                    <ul class="nav nav-pills float-right" id="results_pills" role="tablist">
                         {% if varsity_speaker_results|length > 0 %}
                             <li class="nav-item">
                                 <a class="nav-link active"
                                    id="speakers_varsity_button"
-                                   data-toggle="tab"
+                                   data-ui-tab
                                    href="#varsity_speakers">Varsity</a>
                             </li>
                         {% endif %}
@@ -240,7 +235,7 @@
                             <li class="nav-item">
                                 <a class="nav-link {% if varsity_speaker_results|length == 0 %}active{% endif %}"
                                    id="speakers_novice_button"
-                                   data-toggle="tab"
+                                   data-ui-tab
                                    href="#novice_speakers">Novice</a>
                             </li>
                         {% endif %}

@@ -1,4 +1,4 @@
-{% load crispy_forms_tags %}
+{% load ui_forms %}
 <div class="col-lg-3">
             <div class="card sticky-top mb-2" style="top: 30px;">
                 <div class="card-body">
@@ -12,7 +12,7 @@
                             <label>Name</label>
                             <input type="text" class="textinput textInput form-control" id="id_name">
                         </div>
-                        {{ debater_form.school|as_crispy_field }}
+                        {% render_field debater_form.school %}
                         <input class="btn btn-primary" id="create_debater" value="Create" type="submit">
                     </form>
                 </div>

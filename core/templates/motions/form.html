@@ -1,10 +1,10 @@
 {% extends "base/create.html" %}
-{% load crispy_forms_tags %}
+{% load ui_forms %}
 {% block form %}
     <form method="post">
         {% csrf_token %}
         {{ form.media }}
-        {{ form|crispy }}
+        {% render_form form %}
         <input type="submit" class="btn btn-success" value="Save">
     </form>
 {% endblock form %}

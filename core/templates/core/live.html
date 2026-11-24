@@ -16,18 +16,18 @@
             <h5 class="card-title text-white">
                 <ul class="nav nav-pills nav-fill" id="oty_pills" role="tablist">
                     <li class="nav-item pr-2">
-                        <a class="nav-link active" id="toty_button" data-toggle="tab" href="#toty">Team of the Year</a>
+                        <a class="nav-link active" id="toty_button" data-ui-tab href="#toty">Team of the Year</a>
                     </li>
                     <li class="nav-item pr-2">
-                        <a class="nav-link" id="soty_button" data-toggle="tab" href="#soty">Speaker of the Year</a>
+                        <a class="nav-link" id="soty_button" data-ui-tab href="#soty">Speaker of the Year</a>
                     </li>
                     {% if boards.noty %}
                         <li class="nav-item pr-2">
-                            <a class="nav-link" id="noty_button" data-toggle="tab" href="#noty">Novice of the Year</a>
+                            <a class="nav-link" id="noty_button" data-ui-tab href="#noty">Novice of the Year</a>
                         </li>
                     {% endif %}
                     <li class="nav-item pr-2">
-                        <a class="nav-link" id="coty_button" data-toggle="tab" href="#coty">Club of the Year</a>
+                        <a class="nav-link" id="coty_button" data-ui-tab href="#coty">Club of the Year</a>
                     </li>
                 </ul>
             </h5>
@@ -137,11 +137,7 @@
                                         <td>{% if school.url %}<a href="{{ school.url }}">{{ school.name }}</a>{% else %}{{ school.name }}{% endif %}</td>
                                         <td>{% if school.has_live %}<mark class="bg-warning">{{ school.points|number }}</mark>{% else %}{{ school.points|number }}{% endif %}</td>
                                         <td colspan="3">
-                                            <a href="#"
-                                               class="clickable"
-                                               data-toggle="collapse"
-                                               data-newtarget="#coty_{{ forloop.counter }}"
-                                               style="cursor: pointer">Click to expand / collapse</a>
+                                            <button type="button" class="btn btn-link p-0" data-ui-collapse="coty_{{ forloop.counter }}">School contributions</button>
                                         </td>
                                     </tr>
                                 </tbody>

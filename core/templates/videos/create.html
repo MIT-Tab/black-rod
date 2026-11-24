@@ -1,12 +1,49 @@
 {% extends "base/create.html" %}
-{% load crispy_forms_tags %}
+{% load ui_forms %}
 {% block content %}
     <div class="row mt-5 mb-5 mr-2 ml-2">
         <div class="col-lg-8">
             <div class="card mb-3">
                 <div class="card-body">
                     <h5 class="card-title pb-2">Create Video</h5>
-                    {% crispy form %}
+                    <form method="post">
+                        {% csrf_token %}
+                        {{ form.media }}
+                        {% include "ui/form_errors.html" %}
+                        <div class="form-row">
+                            <div class="col-md-6">
+                                {% render_field form.tournament %}
+                            </div>
+                            <div class="col-md-6">
+                                {% render_field form.round %}
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="col-md-6">
+                                {% render_field form.pm %}
+                                {% render_field form.mg %}
+                            </div>
+                            <div class="col-md-6">
+                                {% render_field form.lo %}
+                                {% render_field form.mo %}
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="col-md-4">
+                                {% render_field form.link %}
+                            </div>
+                            <div class="col-md-4">
+                                {% render_field form.password %}
+                            </div>
+                            <div class="col-md-4">
+                                {% render_field form.permissions %}
+                            </div>
+                        </div>
+                        {% render_field form.case %}
+                        {% render_field form.description %}
+                        {% render_field form.tags %}
+                        <button type="submit" class="btn btn-primary">Create</button>
+                    </form>
                 </div>
             </div>
         </div>
@@ -23,7 +60,7 @@
                             <label>Name</label>
                             <input type="text" class="textinput textInput form-control" id="id_name">
                         </div>
-                        {{ debater_form.school|as_crispy_field }}
+                        {% render_field debater_form.school %}
                         <input class="btn btn-primary"
                                id="create_debater"
                                value="Create"

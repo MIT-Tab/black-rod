@@ -1,5 +1,5 @@
 {% extends "base/base.html" %}
-{% load crispy_forms_tags %}
+{% load ui_forms %}
 {% block content %}
     <div class="row">
         <div class="col"></div>
@@ -13,12 +13,12 @@
                     <form method="post" action="{% url 'login' %}" novalidate>
                         {% csrf_token %}
                         <input type="hidden" name="next" value="{{ next }}">
-                        {{ form.remember|as_crispy_field }}
+                        {% render_field form.remember %}
                         <button class="btn btn-primary" type="submit" name="provider" value="apdaonline">Login with apda.online</button>
                         <hr>
                         {{ form.non_field_errors }}
-                        {{ form.username|as_crispy_field }}
-                        {{ form.password|as_crispy_field }}
+                        {% render_field form.username %}
+                        {% render_field form.password %}
                         <input class="btn btn-secondary" type="submit" value="Login">
                     </form>
                 </div>

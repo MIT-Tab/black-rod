@@ -1,0 +1,5 @@
+{% load ui_forms %}
+{% include "ui/form_errors.html" %}
+{% for field in form.visible_fields %}
+  {% render_field field %}
+{% endfor %}

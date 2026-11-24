@@ -1,5 +1,5 @@
 {% extends "base/create.html" %}
-{% load crispy_forms_tags %}
+{% load ui_forms %}
 {% block content %}
     <div class="row mt-5 mb-5 mr-2 ml-2">
         <div class="col-lg-12">
@@ -9,7 +9,32 @@
                     <p class="text-muted">
                         Share educational resources like cases, lectures, and write-ups with the APDA community.
                     </p>
-                    {% crispy form %}
+                    <form method="post">
+                        {% csrf_token %}
+                        {{ form.media }}
+                        {% include "ui/form_errors.html" %}
+                        <div class="form-row">
+                            <div class="col-md-8">
+                                {% render_field form.title %}
+                            </div>
+                            <div class="col-md-4">
+                                {% render_field form.resource_type %}
+                            </div>
+                        </div>
+                        {% render_field form.authors %}
+                        {% render_field form.content_link %}
+                        {% render_field form.description %}
+                        {% render_field form.usage_permissions %}
+                        <div class="form-row">
+                            <div class="col-md-6">
+                                {% render_field form.viewing_permission %}
+                            </div>
+                            <div class="col-md-6">
+                                {% render_field form.tags %}
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Save</button>
+                    </form>
                 </div>
             </div>
         </div>

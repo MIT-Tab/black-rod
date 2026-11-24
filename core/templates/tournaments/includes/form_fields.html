@@ -1,4 +1,4 @@
-{% load crispy_forms_tags %}
+{% load ui_forms %}
 {# Hidden management fields #}
 {% if form.id %}{{ form.id }}{% endif %}
 {% if form.ORDER %}{{ form.ORDER }}{% endif %}
@@ -25,47 +25,47 @@
     {{ form.included_in_oty }}
     <div class="row">
         <div class="col-md-5">
-            {{ form.name|as_crispy_field }}
+            {% render_field form.name %}
         </div>
         <div class="col-md-4">
-            {{ form.existing_school|as_crispy_field }}
+            {% render_field form.existing_school %}
         </div>
     </div>
 
 {% elif form_type == "debater" %}
     <div class="row">
         <div class="col-md-3">
-            {{ form.first_name|as_crispy_field }}
+            {% render_field form.first_name %}
         </div>
         <div class="col-md-3">
-            {{ form.last_name|as_crispy_field }}
+            {% render_field form.last_name %}
         </div>
         <div class="col-md-3">
-            {{ form.school|as_crispy_field }}
+            {% render_field form.school %}
         </div>
         <div class="col-md-3">
-            {{ form.existing_debater|as_crispy_field }}
+            {% render_field form.existing_debater %}
         </div>
     </div>
 
 {% elif form_type == "team" %}
     <div class="row">
         <div class="col-md-6">
-            {{ form.debater_one|as_crispy_field }}
+            {% render_field form.debater_one %}
         </div>
         <div class="col-md-6">
-            {{ form.debater_two|as_crispy_field }}
+            {% render_field form.debater_two %}
         </div>
     </div>
     <div class="form-row align-items-end">
         {% if has_ghost_points and form.ghost_points %}
             <div class="col-auto">
-                {{ form.ghost_points|as_crispy_field }}
+                {% render_field form.ghost_points %}
             </div>
         {% endif %}
         {% if form.counts_for_points %}
             <div class="col-auto">
-                {{ form.counts_for_points|as_crispy_field }}
+                {% render_field form.counts_for_points %}
             </div>
         {% endif %}
     </div>
@@ -73,22 +73,22 @@
 {% elif form_type == "speaker" %}
     <div class="row">
         <div class="col-md-12">
-            {{ form.speaker|as_crispy_field }}
+            {% render_field form.speaker %}
         </div>
     </div>
     <div class="form-row align-items-end">
         <div class="col-auto">
-            {{ form.tie|as_crispy_field }}
+            {% render_field form.tie %}
         </div>
         {% if form.counts_for_points %}
             <div class="col-auto">
-                {{ form.counts_for_points|as_crispy_field }}
+                {% render_field form.counts_for_points %}
             </div>
         {% endif %}
     </div>
     
 {% else %}
     {% for field in form.visible_fields %}
-        {{ field|as_crispy_field }}
+        {% render_field field %}
     {% endfor %}
 {% endif %}

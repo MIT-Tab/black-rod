@@ -23,12 +23,11 @@
   }
 
   .card,
-  .modal-content,
+  dialog.modal,
   .dropdown-menu,
   .list-group-item,
   .page-link,
   .popover,
-  .datepicker,
   .bg-white {
     background-color: var(--surface);
     color: var(--ink);
@@ -97,9 +96,6 @@
   .page-link:hover,
   .nav-tabs .nav-link.active,
   .nav-tabs .nav-item.show .nav-link,
-  .datepicker table tr td.day:hover,
-  .datepicker table tr td.focused,
-  .datepicker table tr td span:hover,
   .page-item.disabled .page-link,
   .popover-header {
     background-color: var(--surface-hover);
@@ -149,9 +145,6 @@
     border: 1px solid #8296ac !important;
   }
 
-  .custom-select {
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 4 5'%3E%3Cpath fill='%23aebccc' d='M2 0L0 2h4zm0 5L0 3h4z'/%3E%3C/svg%3E");
-  }
 
   .custom-control-input:checked ~ .custom-control-label::before {
     background-color: #045fb0;

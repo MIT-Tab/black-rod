@@ -21,38 +21,38 @@
     <div class="shadow-lg card m-lg-5 mt-2 m-1 rounded-l8">
         <div class="card-body">
             <h5 class="card-title text-white">
-                <ul class="nav nav-pills nav-fill" id="oty_pills" roll="tablist">
+                <ul class="nav nav-pills nav-fill" id="oty_pills" role="tablist">
                     <li class="nav-item pr-2">
                         <a class="nav-link {% if default == 'toty' %}active{% endif %}"
                            id="toty_button"
-                           data-toggle="tab"
+                           data-ui-tab
                            href="#toty">Team of the Year</a>
                     </li>
                     <li class="nav-item pr-2">
                         <a class="nav-link {% if default == 'soty' %}active{% endif %}"
                            id="soty_button"
-                           data-toggle="tab"
+                           data-ui-tab
                            href="#soty">Speaker of the Year</a>
                     </li>
                     {% if render_noty %}
                         <li class="nav-item pr-2">
                             <a class="nav-link {% if default == 'noty' %}active{% endif %}"
                                id="noty_button"
-                               data-toggle="tab"
+                               data-ui-tab
                                href="#noty">Novice of the Year</a>
                         </li>
                     {% endif %}
                     <li class="nav-item pr-2">
                         <a class="nav-link {% if default == 'coty' %}active{% endif %}"
                            id="coty_button"
-                           data-toggle="tab"
+                           data-ui-tab
                            href="#coty">Club of the Year</a>
                     </li>
                     {% if using_online_quals %}
                         <li class="nav-item pr-2">
                             <a class="nav-link {% if default == 'online_quals' %}active{% endif %}"
                                id="online_qual_button"
-                               data-toggle="tab"
+                               data-ui-tab
                                href="#online_quals">Online Qualifier Points</a>
                         </li>
                     {% endif %}
@@ -69,10 +69,10 @@
                                href="{% url 'core:standings_replay' %}?season={{ current_season }}">
                                 Watch the season replay
                             </a>
-                            <ul class="nav nav-pills pb-3 replay-season-picker" id="oty_pills" roll="tablist">
+                            <ul class="nav nav-pills pb-3 replay-season-picker" id="oty_pills" role="tablist">
                                 <li class="nav-item dropdown">
                                     <a class="nav-link dropdown-toggle active"
-                                       data-toggle="dropdown"
+                                       data-ui-dropdown
                                        href="#"
                                        role="button"
                                        aria-haspopup="true"
@@ -169,10 +169,10 @@
                  role="tabpanel">
                 {% cache None soty current_season %}
                 <h5>
-                    <ul class="nav nav-pills float-right pb-3" id="oty_pills" roll="tablist">
+                    <ul class="nav nav-pills float-right pb-3" id="oty_pills" role="tablist">
                         <li class="nav-item dropdown">
                             <a class="nav-link dropdown-toggle active"
-                               data-toggle="dropdown"
+                               data-ui-dropdown
                                href="#"
                                role="button"
                                aria-haspopup="true"
@@ -283,10 +283,10 @@
                    href="{% url 'core:standings_replay' %}?season={{ current_season }}&default=coty">
                     Watch the season replay
                 </a>
-                <ul class="nav nav-pills float-right pb-3" id="oty_pills" roll="tablist">
+                <ul class="nav nav-pills float-right pb-3" id="oty_pills" role="tablist">
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle active"
-                           data-toggle="dropdown"
+                           data-ui-dropdown
                            href="#"
                            role="button"
                            aria-haspopup="true"
@@ -326,11 +326,7 @@
                             </td>
                             <td>{{ school.points|number }}</td>
                             <td colspan="3">
-                                <a href="#"
-                                   class="clickable"
-                                   data-toggle="collapse"
-                                   data-newtarget="#coty_{{ forloop.counter }}"
-                                   style="cursor: pointer">Click to expand / collapse</a>
+                                <button type="button" class="btn btn-link p-0" data-ui-collapse="coty_{{ forloop.counter }}">School contributions</button>
                             </td>
                         </tr>
                     </tbody>
@@ -364,10 +360,10 @@
      role="tabpanel">
     {% cache None noty current_season %}
     <h5>
-        <ul class="nav nav-pills float-right pb-3" id="oty_pills" roll="tablist">
+        <ul class="nav nav-pills float-right pb-3" id="oty_pills" role="tablist">
             <li class="nav-item dropdown">
                 <a class="nav-link dropdown-toggle active"
-                   data-toggle="dropdown"
+                   data-ui-dropdown
                    href="#"
                    role="button"
                    aria-haspopup="true"
@@ -465,10 +461,10 @@
      role="tabpanel">
     {% cache None online_quals current_season %}
     <h5>
-        <ul class="nav nav-pills float-right pb-3" id="oty_pills" roll="tablist">
+        <ul class="nav nav-pills float-right pb-3" id="oty_pills" role="tablist">
             <li class="nav-item dropdown">
                 <a class="nav-link dropdown-toggle active"
-                   data-toggle="dropdown"
+                   data-ui-dropdown
                    href="#"
                    role="button"
                    aria-haspopup="true"

@@ -15,7 +15,6 @@ dill==0.4.1
 Django==5.2.19
 django-allauth==65.19.2
 django-autocomplete-light==3.12.1
-django-crispy-forms==1.14.0
 django-extensions==3.2.3
 django-filter==25.2
 django-formtools==2.5.1

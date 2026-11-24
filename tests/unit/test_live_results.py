@@ -319,7 +319,7 @@ def test_live_page_shows_coty_debater_breakdown():
 
     content = response.content.decode()
     assert 'id="expandAll"' in content
-    assert 'data-newtarget="#coty_1"' in content
+    assert 'data-ui-collapse="coty_1"' in content
     assert "Points (Contribution)" in content
     assert content.count('id="coty"') == 1
     assert content.count('id="toty"') == 1
