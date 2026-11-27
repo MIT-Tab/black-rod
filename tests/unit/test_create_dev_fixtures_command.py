@@ -30,6 +30,7 @@ class CreateDevFixturesCommandTest(TestCase):
             last_name="Example",
             school=school,
             user=requester,
+            email="private-registration@example.test",
         )
         claim_request = ClaimDebaterRequest.objects.create(
             requested_by=requester,
@@ -106,6 +107,9 @@ class CreateDevFixturesCommandTest(TestCase):
             [f"user_{reviewer.id}"],
         )
         self.assertEqual(debater_item["fields"]["user"], [f"user_{requester.id}"])
+        self.assertEqual(debater_item["fields"]["email"], f"debater-{debater.pk}@example.invalid")
+        debater.refresh_from_db()
+        self.assertEqual(debater.email, "private-registration@example.test")
         self.assertEqual(
             requester_user_item["fields"]["groups"],
             [["fixture-group"]],

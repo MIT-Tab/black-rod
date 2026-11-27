@@ -1588,7 +1588,7 @@ pub(super) async fn page(
                 query = query.bind(value);
             }
             let ids = query.fetch_all(&admin.state.pool).await?;
-            return super::records::delete(admin, model, &ids, true, confirmed).await;
+            return super::records::delete(admin, model, &ids, true, confirmed, false).await;
         }
         if (model.slug() == "motiontopic" || model.key == "taggit.tag")
             && values

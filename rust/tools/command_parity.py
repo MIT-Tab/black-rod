@@ -55,6 +55,7 @@ def verify_late_commands(databases):
     for path in databases.values():
         with sqlite3.connect(path) as connection:
             connection.execute("INSERT INTO core_qualpoints (points,season,debater_id) VALUES (9,'2026',5270)")
+            connection.execute("UPDATE core_debater SET email='private-registration@example.test' WHERE id=5270")
     output = [run("redo_rankings", path, engine).splitlines() for engine, path in databases.items()]
     assert output[0] and Counter(output[0]) == Counter(output[1]), "Different teams recomputed"
     for table, fields in (
@@ -77,6 +78,11 @@ def verify_late_commands(databases):
     for model in ("core.user", "core.video", "core.round", "auth.group", "taggit.taggeditem"):
         left, right = [[entry for entry in document if entry["model"] == model] for document in documents]
         assert left == right, f"Fixture data for {model} differs"
+    for document in documents:
+        debater = next(row for row in document if row["model"] == "core.debater" and row["pk"] == 5270)
+        assert debater["fields"]["email"] == "debater-5270@example.invalid"
+        assert all("private-registration@example.test" != row["fields"].get("email")
+                   for row in document if row["model"] == "core.debater")
     generated = [row["fields"]["code"] for row in documents[1] if row["model"] == "core.generatedcode"]
     assert len(generated) >= 2 and all(not code.startswith("PARITY") for code in generated)
 

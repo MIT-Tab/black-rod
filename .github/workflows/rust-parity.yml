@@ -111,6 +111,7 @@ jobs:
           '
           "$scripts/br" venv/bin/python rust/tools/compare.py
           "$scripts/br" venv/bin/python rust/tools/agent_write_parity.py
+          "$scripts/br" venv/bin/python rust/tools/qualification_rebuild_parity.py
       - name: Retain failing parity screenshots
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

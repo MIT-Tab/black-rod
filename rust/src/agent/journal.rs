@@ -183,6 +183,81 @@ impl Table {
         format!("CAST(CAST({marker} AS TEXT) AS {ty})")
     }
 
+    fn storage_param(field: &Field, value: &Value, sqlite: bool) -> Option<String> {
+        match value {
+            Value::Null => None,
+            Value::String(value) if field.kind() == "UUIDField" && sqlite => {
+                Some(value.replace('-', ""))
+            }
+            Value::String(value) if field.kind() == "DateTimeField" && sqlite => {
+                Some(value.trim_end_matches('Z').replace('T', " "))
+            }
+            value if field.kind() == "JSONField" => Some(value.to_string()),
+            Value::String(value) => Some(value.clone()),
+            Value::Bool(value) if sqlite => Some(if *value { "1" } else { "0" }.to_owned()),
+            value => Some(value.to_string()),
+        }
+    }
+
+    pub(crate) async fn insert_many(
+        &self,
+        conn: &mut AnyConnection,
+        rows: &[Map<String, Value>],
+    ) -> Result<(), ApiError> {
+        let Some(first) = rows.first().filter(|first| !first.is_empty()) else {
+            return Ok(());
+        };
+        let fields = first
+            .keys()
+            .map(|name| {
+                self.fields
+                    .get(name)
+                    .map(|field| (name, field))
+                    .ok_or(ApiError::Serialization)
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let columns = fields
+            .iter()
+            .map(|(_, field)| format!("\"{}\"", field.column))
+            .collect::<Vec<_>>()
+            .join(",");
+        let sqlite = conn.backend_name() == "SQLite";
+        let chunk_size = if sqlite {
+            (900 / fields.len()).max(1)
+        } else {
+            500
+        };
+        let base = format!("INSERT INTO \"{}\" ({columns}) VALUES ", self.table);
+        for chunk in rows.chunks(chunk_size) {
+            let mut statement = base.clone();
+            let mut bound = Vec::with_capacity(chunk.len() * fields.len());
+            for row in chunk {
+                if row.len() != fields.len() {
+                    return Err(ApiError::Serialization);
+                }
+                if !bound.is_empty() {
+                    statement.push(',');
+                }
+                statement.push('(');
+                for (index, (name, field)) in fields.iter().enumerate() {
+                    if index != 0 {
+                        statement.push(',');
+                    }
+                    statement.push_str(&Self::expression(field, bound.len() + 1, sqlite));
+                    let value = row.get(*name).ok_or(ApiError::Serialization)?;
+                    bound.push(Self::storage_param(field, value, sqlite));
+                }
+                statement.push(')');
+            }
+            let mut query = sqlx::query(AssertSqlSafe(statement));
+            for value in bound {
+                query = query.bind(value);
+            }
+            query.execute(&mut *conn).await.map_err(storage_error)?;
+        }
+        Ok(())
+    }
+
     pub(crate) async fn write(
         &self,
         conn: &mut AnyConnection,
@@ -230,19 +305,7 @@ impl Table {
         };
         let mut query = sqlx::query_scalar::<_, i64>(AssertSqlSafe(statement));
         for (field, value) in columns {
-            let stored = match value {
-                Value::Null => None,
-                Value::String(value) if field.kind() == "UUIDField" && sqlite => {
-                    Some(value.replace('-', ""))
-                }
-                Value::String(value) if field.kind() == "DateTimeField" && sqlite => {
-                    Some(value.trim_end_matches('Z').replace('T', " "))
-                }
-                value if field.kind() == "JSONField" => Some(value.to_string()),
-                Value::String(value) => Some(value.clone()),
-                Value::Bool(value) if sqlite => Some(if *value { "1" } else { "0" }.to_owned()),
-                value => Some(value.to_string()),
-            };
+            let stored = Self::storage_param(field, value, sqlite);
             query = query.bind(stored);
         }
         if let Some(id) = id {

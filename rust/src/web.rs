@@ -105,6 +105,10 @@ const VIEWS: &[(&str, &str)] = &[
         include_str!("../templates/site_admin/widget.html"),
     ),
     (
+        "site_admin/popup_response.html",
+        include_str!("../templates/site_admin/popup_response.html"),
+    ),
+    (
         "site_admin/agent_credential_issued.html",
         include_str!("../templates/site_admin/agent_credential_issued.html"),
     ),

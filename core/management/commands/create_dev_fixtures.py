@@ -67,6 +67,9 @@ class Command(BaseCommand):
             self._rewrite_sanitized_user_relations(payload)
             self._inject_sanitized_user_m2m(payload)
             self._inject_unfiltered_debater_m2m(payload)
+            for item in payload:
+                if item["model"] == "core.debater" and item["fields"].get("email"):
+                    item["fields"]["email"] = f"debater-{item['pk']}@example.invalid"
             data = json.dumps(payload, ensure_ascii=False, cls=DjangoJSONEncoder)
         except Exception as e:
             self.stdout.write(self.style.ERROR(f"Error serializing data: {e}"))

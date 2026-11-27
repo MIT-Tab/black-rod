@@ -4,7 +4,7 @@ mod tags;
 use std::collections::{BTreeMap, BTreeSet};
 
 use axum::{
-    body::{Body, Bytes, to_bytes},
+    body::{Bytes, to_bytes},
     extract::{FromRequest, Multipart, Request},
     http::{Method, StatusCode, header},
     response::{IntoResponse, Response},
@@ -1178,6 +1178,15 @@ async fn save(
             .insert(header::REFERRER_POLICY, "no-referrer".parse().unwrap());
         return Ok(Some(response));
     }
+    if values.contains_key("_popup") {
+        let value = record.to_string();
+        let data = if id.is_some() {
+            json!({"action":"change","value":value,"obj":name,"new_value":value})
+        } else {
+            json!({"value":value,"obj":name})
+        };
+        return Ok(Some(admin.popup_response(data)?));
+    }
     let model_url = model.url();
     let location = if values.contains_key("_continue") {
         format!("{model_url}{record}/change/")
@@ -1209,8 +1218,7 @@ pub(super) async fn page(
     admin: &AdminRequest<'_>,
     model: &Model,
     id: Option<i64>,
-    method: Method,
-    body: Body,
+    request: Request,
 ) -> Result<Response, ApiError> {
     if id.is_none() && !admin.viewer.allows(model, "add")
         || id.is_some() && !admin.viewer.read(model)
@@ -1244,19 +1252,19 @@ pub(super) async fn page(
     } else {
         Json::Null
     };
-    if method != Method::POST {
+    if *request.method() != Method::POST {
         return render_form(admin, model, id, &loaded, None, &Errors::new()).await;
     }
     if id.is_some() && !admin.viewer.allows(model, "change") {
         return Ok(StatusCode::FORBIDDEN.into_response());
     }
     let (mut parsed, uploaded) = if model.key == "django_summernote.attachment" {
-        match attachment_form(admin, body).await {
+        match attachment_form(request).await {
             Ok(values) => values,
             Err(response) => return Ok(*response),
         }
     } else {
-        let Ok(data) = to_bytes(body, 2_621_440).await else {
+        let Ok(data) = to_bytes(request.into_body(), 2_621_440).await else {
             return Ok(StatusCode::PAYLOAD_TOO_LARGE.into_response());
         };
         let mut parsed = Values::new();
@@ -1314,12 +1322,7 @@ pub(super) async fn page(
 
 type AttachmentForm = (Values, Option<(String, Bytes)>);
 
-async fn attachment_form(
-    admin: &AdminRequest<'_>,
-    body: Body,
-) -> Result<AttachmentForm, Box<Response>> {
-    let mut request = Request::new(body);
-    *request.headers_mut() = admin.headers.clone();
+async fn attachment_form(request: Request) -> Result<AttachmentForm, Box<Response>> {
     let mut multipart = Multipart::from_request(request, &())
         .await
         .map_err(|error| Box::new(error.into_response()))?;

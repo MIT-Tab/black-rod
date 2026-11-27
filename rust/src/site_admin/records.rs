@@ -144,7 +144,7 @@ pub(super) async fn delete_entry(
     if !admin.viewer.allows(model, "delete") {
         return Ok(StatusCode::FORBIDDEN.into_response());
     }
-    let confirmed = if method == Method::POST {
+    let (confirmed, popup) = if method == Method::POST {
         let Ok(contents) = to_bytes(body, 128 * 1024).await else {
             return Ok(StatusCode::PAYLOAD_TOO_LARGE.into_response());
         };
@@ -159,11 +159,11 @@ pub(super) async fn delete_entry(
         ) {
             return Ok(login::csrf_failure());
         }
-        values.contains_key("post")
+        (values.contains_key("post"), values.contains_key("_popup"))
     } else {
-        false
+        (false, false)
     };
-    delete(admin, model, &[id], false, confirmed).await
+    delete(admin, model, &[id], false, confirmed, popup).await
 }
 
 fn labels(table: &str) -> &'static (String, String, String) {
@@ -247,6 +247,7 @@ pub(super) async fn delete(
     ids: &[i64],
     bulk: bool,
     confirmed: bool,
+    popup: bool,
 ) -> Result<Response, ApiError> {
     if !admin.viewer.allows(model, "delete") {
         return Ok(StatusCode::FORBIDDEN.into_response());
@@ -342,6 +343,10 @@ pub(super) async fn delete(
         admin.state.search.invalidate_all();
         if removed.iter().any(|(table, _)| *table == "core_tournament") {
             crate::recent_results::invalidate(admin.state).await;
+        }
+        if popup {
+            return admin
+                .popup_response(serde_json::json!({"action":"delete","value":first.to_string()}));
         }
         let mut response = redirect(&model.url());
         if let Some(secret) = admin.state.secret.as_deref() {

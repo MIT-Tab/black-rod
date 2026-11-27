@@ -2067,6 +2067,73 @@ print(json.dumps(pairs))
         assert not driver.find_element("id", "id_dino_judge_contact_opt_in").is_selected()
         assert driver.find_element("id", "id_dino_to_contact_opt_in").is_selected()
         assert json.loads(driver.find_element("id", "id_region").get_attribute("value")) == ["west"]
+    for server, (_, debater) in zip((django, rust), pairs):
+        root = f"http://{HOST}:{server.port}"
+        route = "/admin/core/mergedebaterrequest/"
+        driver.get(root + route + "add/")
+        driver.find_element("id", "id_status").find_element("css selector", 'option[value="denied"]').click()
+        for name, value in (("primary_debater", debater), ("secondary_debater", next(
+                person for _, person in pairs if person != debater))):
+            driver.find_element("id", f"id_{name}").send_keys(str(value))
+        db = Path(os.environ["BR_STATE"]) / "dev.sqlite3"
+        with sqlite3.connect(f"{db.as_uri()}?mode=ro", uri=True) as connection:
+            user, = connection.execute("SELECT id FROM core_user WHERE username='tab'").fetchone()
+        driver.find_element("id", "id_requested_by").send_keys(str(user))
+        previous = driver.find_element("tag name", "html")
+        driver.find_element("name", "_continue").click()
+        WebDriverWait(driver, 10).until(document_replaced(previous))
+        assert urlsplit(driver.current_url).path.endswith("/change/"), server.name
+        for side in ("primary", "secondary"):
+            assert driver.find_element("id", f"id_{side}_name").get_attribute("value").endswith(" Speaker")
+            assert driver.find_element("id", f"id_{side}_school_name").get_attribute("value") == "Parity Model School"
+    driver.delete_all_cookies()
+
+
+def assert_admin_related_popups(driver, django, rust):
+    credential = django_session()
+    wait = WebDriverWait(driver, 10)
+
+    def open_popup(parent, link):
+        driver.find_element("id", link).click()
+        wait.until(lambda browser: len(browser.window_handles) == 2)
+        driver.switch_to.window(next(handle for handle in driver.window_handles if handle != parent))
+
+    def finish_popup(parent, selector):
+        driver.find_element("css selector", selector).click()
+        wait.until(lambda browser: browser.window_handles == [parent])
+        driver.switch_to.window(parent)
+        assert driver.find_element("id", "id_first_name").get_attribute("value") == "Unsaved parent"
+
+    for server in (django, rust):
+        root = f"http://{HOST}:{server.port}"
+        driver.get(root + "/robots.txt")
+        driver.delete_all_cookies()
+        driver.add_cookie({"name": "sessionid", "value": credential})
+        driver.get(root + "/admin/core/debater/add/")
+        parent = driver.current_window_handle
+        driver.find_element("id", "id_first_name").send_keys("Unsaved parent")
+
+        open_popup(parent, "add_id_school")
+        name = f'Popup & "linked" school {server.name}'
+        driver.find_element("id", "id_name").send_keys(name)
+        driver.find_element("id", "id_short_name").send_keys("Popup fixture")
+        finish_popup(parent, 'input[name="_save"]')
+        chosen = driver.find_element("css selector", "#id_school option:checked")
+        assert chosen.text == name
+        school = chosen.get_attribute("value")
+
+        open_popup(parent, "change_id_school")
+        renamed = name + " renamed"
+        field = driver.find_element("id", "id_name")
+        field.clear()
+        field.send_keys(renamed)
+        finish_popup(parent, 'input[name="_save"]')
+        chosen = driver.find_element("css selector", "#id_school option:checked")
+        assert chosen.text == renamed and chosen.get_attribute("value") == school
+
+        open_popup(parent, "delete_id_school")
+        finish_popup(parent, 'input[name="post"] ~ input[type="submit"]')
+        assert not driver.find_elements("css selector", f'#id_school option[value="{school}"]')
     driver.delete_all_cookies()
 
 
@@ -2191,7 +2258,8 @@ assert School.objects.filter(name="Unselected control school").exists()
 def assert_admin_attachments(driver, django, rust):
     root = Path(os.environ["BR_STATE"])
     file = root / "fixture-attachment.txt"
-    file.write_text("Fabricated attachment for the parity test.\n")
+    fixture = "Fabricated attachment for the parity test.\n"
+    file.write_text(fixture * (2 * 1024 * 1024 // len(fixture) + 1))
     admin = django_session()
     route = "/admin/django_summernote/attachment/"
     for source, target in ((django, rust), (rust, django)):
@@ -3914,6 +3982,7 @@ def browser_checks(database, options, output):
         assert_native_site_admin(driver, django, rust)
         assert_admin_model_saves(driver, django, rust)
         assert_admin_preserves_linked_state(driver, django, rust)
+        assert_admin_related_popups(driver, django, rust)
         assert_admin_across_pages(driver, rust)
         assert_admin_topic_merges(driver, django, rust)
         assert_admin_speaker_visibility(driver, django, rust)

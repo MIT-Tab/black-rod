@@ -176,6 +176,15 @@ impl AdminRequest<'_> {
             .is_some_and(|origin| origin.starts_with("https://"))
     }
 
+    fn popup_response(&self, data: serde_json::Value) -> Result<Response, ApiError> {
+        self.view(
+            "site_admin/popup_response.html",
+            context! {
+                popup_response_data=>data.to_string(),
+            },
+        )
+    }
+
     fn view(&self, name: &str, bindings: Value) -> Result<Response, ApiError> {
         let schema = schema();
         let apps = self.viewer.applications();
@@ -355,7 +364,7 @@ async fn endpoint(state: &AppState, request: Request) -> Result<Response, ApiErr
             let Some(model) = schema().model(app, model) else {
                 return Ok(StatusCode::NOT_FOUND.into_response());
             };
-            form::page(&admin, model, None, parts.method, body).await
+            form::page(&admin, model, None, Request::from_parts(parts, body)).await
         }
         [app, model, id, "history"] => {
             let (Some(model), Ok(id)) = (schema().model(app, model), id.parse::<i64>()) else {
@@ -386,7 +395,7 @@ async fn endpoint(state: &AppState, request: Request) -> Result<Response, ApiErr
             let (Some(model), Ok(id)) = (schema().model(app, model), id.parse::<i64>()) else {
                 return Ok(StatusCode::NOT_FOUND.into_response());
             };
-            form::page(&admin, model, Some(id), parts.method, body).await
+            form::page(&admin, model, Some(id), Request::from_parts(parts, body)).await
         }
         [app, model] => {
             let Some(model) = schema().model(app, model) else {

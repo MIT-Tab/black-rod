@@ -120,10 +120,14 @@ pub(super) async fn rebuild(conn: &mut AnyConnection, season: &str) -> Result<()
         }
     }
     let mut qualifications = Vec::new();
+    let mut points_rows = Vec::new();
+    let mut online_rows = Vec::new();
+    let mut latest_updates = Vec::new();
     let mut schools = BTreeMap::<i64, f64>::new();
     let mut awarded = BTreeSet::new();
-    let standalone=sqlx::query("SELECT CAST(q.id AS BIGINT) AS id,CAST(q.debater_id AS BIGINT) AS debater,
-        CAST(q.qual_type AS BIGINT) AS kind,CAST(d.school_id AS BIGINT) AS school_id,
+    let standalone=sqlx::query("SELECT CAST(q.debater_id AS BIGINT) AS debater,CAST(q.qual_type AS BIGINT) AS kind,
+        CAST(q.tournament_id AS BIGINT) AS event,CAST(q.place AS BIGINT) AS place,q.points,
+        CAST(CASE WHEN q.tied THEN 1 ELSE 0 END AS BIGINT) AS tied, CAST(d.school_id AS BIGINT) AS school_id,
         CAST(CASE WHEN s.included_in_oty THEN 1 ELSE 0 END AS BIGINT) AS included
         FROM core_qual q JOIN core_debater d ON d.id=q.debater_id LEFT JOIN core_school s ON s.id=d.school_id
         WHERE q.season=$1 AND NOT EXISTS(SELECT 1 FROM core_qualpoints p WHERE p.season=q.season AND p.debater_id=q.debater_id)
@@ -142,11 +146,21 @@ pub(super) async fn rebuild(conn: &mut AnyConnection, season: &str) -> Result<()
         {
             *schools.entry(school).or_default() += 6.0;
         }
-        let values = TABLES["core.QUAL"].get(conn, row.try_get("id")?).await?;
-        if let Value::Object(mut values) = values {
-            values.remove("id");
-            qualifications.push(values);
-        }
+        let mut values = ranked(season, "debater_id", id, row.try_get("points")?);
+        values.insert(
+            "qual_type".to_owned(),
+            json!(row.try_get::<i64, _>("kind")?),
+        );
+        values.insert(
+            "tournament_id".to_owned(),
+            json!(row.try_get::<Option<i64>, _>("event")?),
+        );
+        values.insert("place".to_owned(), json!(row.try_get::<i64, _>("place")?));
+        values.insert(
+            "tied".to_owned(),
+            json!(row.try_get::<i64, _>("tied")? != 0),
+        );
+        qualifications.push(values);
     }
     for table in [
         "core_qual",
@@ -162,11 +176,7 @@ pub(super) async fn rebuild(conn: &mut AnyConnection, season: &str) -> Result<()
     }
     for (id, person) in people {
         if person.latest.as_deref().and_then(year) < year(season) {
-            sqlx::query("UPDATE core_debater SET latest_season=$1 WHERE id=$2")
-                .bind(season)
-                .bind(id)
-                .execute(&mut *conn)
-                .await?;
+            latest_updates.push(id);
         }
         if !person.included {
             continue;
@@ -196,7 +206,7 @@ pub(super) async fn rebuild(conn: &mut AnyConnection, season: &str) -> Result<()
                 ("debater_id".to_owned(), json!(id)),
                 ("points".to_owned(), json!(total)),
             ]);
-            TABLES["core.QualPoints"].write(conn, &fields, None).await?;
+            points_rows.push(fields);
         }
         online_markers.sort_by(|left, right| right.0.total_cmp(&left.0));
         let online_total = online_markers
@@ -213,7 +223,7 @@ pub(super) async fn rebuild(conn: &mut AnyConnection, season: &str) -> Result<()
                 fields.insert(format!("marker_{name}"), json!(value));
                 fields.insert(format!("tournament_{name}_id"), json!(event));
             }
-            TABLES["core.OnlineQUAL"].write(conn, &fields, None).await?;
+            online_rows.push(fields);
         }
         if if online {
             online_total >= 10.0
@@ -237,12 +247,29 @@ pub(super) async fn rebuild(conn: &mut AnyConnection, season: &str) -> Result<()
             qualifications.push(values);
         }
     }
-    for qual in qualifications {
-        TABLES["core.QUAL"].write(conn, &qual, None).await?;
+    let school_rows = schools
+        .into_iter()
+        .filter(|(_, total)| *total > 0.0)
+        .map(|(school, total)| ranked(season, "school_id", school, total))
+        .collect::<Vec<_>>();
+    for (table, rows) in [
+        ("core.QUAL", qualifications),
+        ("core.QualPoints", points_rows),
+        ("core.OnlineQUAL", online_rows),
+        ("core.COTY", school_rows),
+    ] {
+        TABLES[table].insert_many(conn, &rows).await?;
     }
-    for (school, total) in schools.into_iter().filter(|(_, total)| *total > 0.0) {
-        TABLES["core.COTY"]
-            .write(conn, &ranked(season, "school_id", school, total), None)
+    for chunk in latest_updates.chunks(500) {
+        let ids = chunk
+            .iter()
+            .map(i64::to_string)
+            .collect::<Vec<_>>()
+            .join(",");
+        let statement = format!("UPDATE core_debater SET latest_season=$1 WHERE id IN ({ids})");
+        sqlx::query(AssertSqlSafe(statement))
+            .bind(season)
+            .execute(&mut *conn)
             .await?;
     }
     rank(conn, "core_coty", season).await?;

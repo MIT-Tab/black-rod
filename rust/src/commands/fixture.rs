@@ -133,6 +133,16 @@ fn sanitize(
                 json!("pbkdf2_sha256$260000$fake$fakehashfordev"),
             );
         }
+        "core.debater"
+            if fields["email"]
+                .as_str()
+                .is_some_and(|email| !email.is_empty()) =>
+        {
+            fields.insert(
+                "email".to_owned(),
+                json!(format!("debater-{id}@example.invalid")),
+            );
+        }
         "core.video" => {
             let select = |values: &[String]| json!(values[index % values.len()]);
             let youtube = &examples.fake_youtube_ids[index % examples.fake_youtube_ids.len()];

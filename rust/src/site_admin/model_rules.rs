@@ -100,6 +100,41 @@ pub(super) async fn before_save(
         if let Some(bar) = scoring.bar {
             columns.insert("autoqual_bar".to_owned(), json!(bar));
         }
+    } else if model.slug() == "mergedebaterrequest" {
+        for role in ["primary", "secondary"] {
+            let Some(person) = columns
+                .get(&format!("{role}_debater_id"))
+                .and_then(Value::as_i64)
+            else {
+                continue;
+            };
+            let name = format!("{role}_name");
+            let school = format!("{role}_school_name");
+            let missing = |key: &str| {
+                columns
+                    .get(key)
+                    .and_then(Value::as_str)
+                    .is_none_or(str::is_empty)
+            };
+            let (fill_name, fill_school) = (missing(&name), missing(&school));
+            if (fill_name || fill_school)
+                && let Some((full_name, school_name)) =
+                    sqlx::query_as::<_, (String, Option<String>)>(
+                        "SELECT d.first_name || ' ' || d.last_name, s.name
+                     FROM core_debater d LEFT JOIN core_school s ON s.id=d.school_id WHERE d.id=$1",
+                    )
+                    .bind(person)
+                    .fetch_optional(&mut *conn)
+                    .await?
+            {
+                if fill_name {
+                    columns.insert(name, json!(full_name.trim()));
+                }
+                if fill_school && let Some(value) = school_name {
+                    columns.insert(school, json!(value));
+                }
+            }
+        }
     } else if model.slug() == "roundstats"
         && let Some(round) = columns.get("round_id").and_then(Value::as_i64)
         && let Some(stage) =
