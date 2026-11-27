@@ -187,7 +187,7 @@ def exercise(django, rust, fixture):
     synthetic_stat = run(django, stat_path)
     synthetic_alias = run(django, alias_path)
     assert synthetic_alias == run(rust, alias_path)
-    assert "." not in synthetic_alias["created_at"]
+    assert synthetic_alias["created_at"].endswith(".000Z")
     for action in ("merge_synthetic", "merge_debaters"):
         operation = {
             "op": action, "source_id": source_id, "target_id": target_id,
@@ -209,11 +209,23 @@ def exercise(django, rust, fixture):
         run(django, alias_path, expected=404)
         stat = run(django, stat_path)
         assert stat["debater_id"] == target_id and stat["score_index"] == 2
-        undo_server = django if action == "merge_synthetic" else rust
-        run(undo_server, f"batches/{merged['id']}/undo/", payload=prepare())
+        undo_server = rust if action == "merge_synthetic" else django
+        reversal = run(undo_server, f"batches/{merged['id']}/undo/", payload=prepare())
         assert run(rust, source_path) == source and run(rust, target_path) == target
         assert run(rust, stat_path) == synthetic_stat
-        assert run(rust, alias_path) == synthetic_alias
+        # Both runtimes restore the millisecond value stored in the journal.
+        restored_alias = run(rust, alias_path)
+        assert restored_alias == run(django, alias_path)
+        assert restored_alias["created_at"] == synthetic_alias["created_at"].replace(".000Z", "Z")
+        assert restored_alias["updated_at"] == synthetic_alias["updated_at"].replace(".000Z", "Z")
+        for field in synthetic_alias.keys() - {"revision", "created_at", "updated_at"}:
+            assert restored_alias[field] == synthetic_alias[field]
+        if undo_server is rust:
+            # A reversed journal written by Rust can itself be reversed by legacy Django.
+            redo = run(django, f"batches/{reversal['id']}/undo/", payload=prepare())
+            run(rust, f"batches/{redo['id']}/undo/", payload=prepare())
+            assert run(rust, stat_path) == synthetic_stat
+            assert run(rust, alias_path) == restored_alias
     print("Agent write parity passed: preview hashes, concurrent cross-runtime retries, stale revisions, "
           "atomic rollback, references, teams, cascade restoration, conflicting later edits, and school, team, and debater merges")
 

@@ -84,7 +84,11 @@ pub(crate) fn random_token(
 }
 
 fn encode(session: &Value, secret: &[u8]) -> String {
-    encode_signed(&session.to_string(), secret, SESSION_SALT)
+    encode_signed(
+        &crate::django_json::ascii(&session.to_string()),
+        secret,
+        SESSION_SALT,
+    )
 }
 
 pub(crate) struct StoredSession {
@@ -309,19 +313,19 @@ pub(crate) async fn consume_oauth(
     secret: &[u8],
     state_id: &str,
 ) -> Result<Option<OAuthContext>, sqlx::Error> {
-    let Some(session_key) = session_id(headers) else {
+    let Some(mut session) = StoredSession::read(pool, headers, secret).await? else {
         return Ok(None);
     };
-    let data = sqlx::query_scalar::<_, String>("SELECT session_data FROM django_session WHERE session_key = $1 AND expire_date > CURRENT_TIMESTAMP")
-        .bind(session_key).fetch_optional(pool).await?;
-    let Some((data, mut payload)) =
-        data.and_then(|data| decode(&data, secret).map(|payload| (data, payload)))
+    let Some(mut states) = session
+        .values
+        .get("socialaccount_states")
+        .and_then(|states| {
+            serde_json::from_str::<serde_json::Map<String, Value>>(states.get()).ok()
+        })
     else {
         return Ok(None);
     };
-    let state = payload["socialaccount_states"]
-        .as_object_mut()
-        .and_then(|states| states.remove(state_id));
+    let state = states.remove(state_id);
     let Some(state) = state else {
         return Ok(None);
     };
@@ -336,19 +340,20 @@ pub(crate) async fn consume_oauth(
         None | Some("login") => false,
         _ => return Ok(None),
     };
-    let changed = sqlx::query(
-        "UPDATE django_session SET session_data = $1 WHERE session_key = $2 AND session_data = $3",
-    )
-    .bind(encode(&payload, secret))
-    .bind(session_key)
-    .bind(data)
-    .execute(pool)
-    .await?;
-    if changed.rows_affected() == 0 {
+    let remaining = serde_json::value::to_raw_value(&states)
+        .map_err(|error| sqlx::Error::Protocol(error.to_string()))?;
+    session
+        .values
+        .insert("socialaccount_states".to_owned(), remaining);
+    let remember = session
+        .values
+        .get("apda_remember_login")
+        .and_then(|value| serde_json::from_str::<bool>(value.get()).ok())
+        .unwrap_or(true);
+    if !session.save(pool, secret).await? {
         return Ok(None);
     }
     let next = state[0]["next"].as_str().unwrap_or_default().to_owned();
-    let remember = payload["apda_remember_login"].as_bool().unwrap_or(true);
     Ok(Some(OAuthContext {
         next,
         remember,
@@ -561,6 +566,62 @@ mod tests {
         let mut altered = SIGNED.to_owned();
         altered.push('x');
         assert!(decode(&altered, b"local-rust-session-test").is_none());
+    }
+
+    #[tokio::test]
+    async fn consuming_oauth_preserves_django_session_fields() {
+        sqlx::any::install_default_drivers();
+        let pool = sqlx::any::AnyPoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query("CREATE TABLE django_session (session_key TEXT PRIMARY KEY, session_data TEXT, expire_date TEXT)")
+            .execute(&pool).await.unwrap();
+        let secret = b"disposable-oauth-test-key";
+        let number = "340282366920938463463374607431768211455";
+        let payload = format!(
+            r#"{{"grid_seed":{number},"title":"Caf\u00e9","apda_remember_login":false,"socialaccount_states":{{"used":[{{"process":"connect","next":"/caf\u00e9/"}},{}],"other":[{{"process":"login"}},{}]}}}}"#,
+            Utc::now().timestamp(),
+            Utc::now().timestamp(),
+        );
+        sqlx::query(
+            "INSERT INTO django_session VALUES ('oauthfixture', $1, '2099-01-01 00:00:00')",
+        )
+        .bind(encode_signed(&payload, secret, SESSION_SALT))
+        .execute(&pool)
+        .await
+        .unwrap();
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            header::COOKIE,
+            header::HeaderValue::from_static("sessionid=oauthfixture"),
+        );
+        let context = consume_oauth(&pool, &headers, secret, "used")
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(context.connect && !context.remember);
+        assert_eq!(context.next, "/café/");
+        assert!(
+            consume_oauth(&pool, &headers, secret, "used")
+                .await
+                .unwrap()
+                .is_none()
+        );
+
+        let stored = StoredSession::read(&pool, &headers, secret)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(stored.values["grid_seed"].get(), number);
+        assert_eq!(stored.string("title").as_deref(), Some("Café"));
+        let bytes = decode_signed_bytes(&stored.original, secret, SESSION_SALT).unwrap();
+        assert!(bytes.is_ascii());
+        let states: Value =
+            serde_json::from_str(stored.values["socialaccount_states"].get()).unwrap();
+        assert!(states.get("used").is_none());
+        assert!(states.get("other").is_some());
     }
 
     #[test]

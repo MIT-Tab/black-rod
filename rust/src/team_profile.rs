@@ -14,8 +14,8 @@ use sqlx::{AnyConnection, AssertSqlSafe, Row, any::AnyRow};
 
 use crate::{
     ApiError, AppState, api_response, is_django_integer, json_error, options,
+    routing::limit,
     schedule::{TOURNAMENT_COLUMNS, Tournament, proxy_url, season_display},
-    school_profile::limit,
     schools::{DEBATER_COLUMNS, Debater, School},
     standings::place_display,
 };

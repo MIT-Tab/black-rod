@@ -122,7 +122,7 @@ fn api_url(input: &str) -> Option<String> {
 
 async fn index(state: &AppState) -> HashMap<String, Source> {
     if let Some(cache) = &state.memcached {
-        return snapshots::source_index(cache).await;
+        return snapshots::source_index(cache).await.unwrap_or_default();
     }
     let now = Utc::now().timestamp() as f64;
     state
@@ -206,15 +206,32 @@ async fn publish(state: &AppState, url: &str, data: Arc<Value>) -> Result<(), Er
             "Another worker is updating the tournament cache; try again.",
         ));
     }
-    let mut before = snapshots::source_index(cache).await;
-    let previous = before.insert(id, row);
-    let written = match serde_pickle::to_vec(&before, Default::default()) {
-        Ok(bytes) => cache.write_raw(INDEX, 1, &bytes, 0, true).await,
-        Err(_) => false,
+    let mut before = match snapshots::source_index(cache).await {
+        Ok(index) => index,
+        Err(error) => {
+            cache.delete_raw(&format!("{INDEX}:lock")).await;
+            discard(cache, &stored).await;
+            eprintln!("Could not read the tournament snapshot index: {error}");
+            return Err(invalid("Could not publish the tournament snapshot"));
+        }
+    };
+    let previous = before.insert(id.clone(), row);
+    let published = match serde_pickle::to_vec(&before, Default::default()) {
+        Ok(bytes) if cache.write_raw(INDEX, 1, &bytes, 0, true).await => Some(true),
+        Ok(_) => {
+            // A lost acknowledgement can leave an index that already references these chunks.
+            snapshots::source_index(cache)
+                .await
+                .ok()
+                .map(|index| index.get(&id).is_some_and(|source| source.chunks == stored))
+        }
+        Err(_) => Some(false),
     };
     cache.delete_raw(&format!("{INDEX}:lock")).await;
-    if !written {
-        discard(cache, &stored).await;
+    if published != Some(true) {
+        if published == Some(false) {
+            discard(cache, &stored).await;
+        }
         return Err(invalid("Could not publish the tournament snapshot"));
     }
     if let Some(old) = previous {
@@ -669,7 +686,14 @@ pub(super) async fn refresh(state: &AppState) -> usize {
         if !guard_index(cache).await {
             return ok;
         }
-        let mut cached = snapshots::source_index(cache).await;
+        let mut cached = match snapshots::source_index(cache).await {
+            Ok(index) => index,
+            Err(error) => {
+                cache.delete_raw(&format!("{INDEX}:lock")).await;
+                eprintln!("Could not read the tournament snapshot index: {error}");
+                return ok;
+            }
+        };
         for row in cached.values_mut() {
             if active.contains(&row.url) {
                 if row.missing_since.take().is_some() {

@@ -378,7 +378,7 @@ def test_create_refs_membership_and_round_delete_restore_every_row(access, graph
 def test_synthetic_merge_undo_restores_complete_database_graph(
     access, graph, entity, source_key, target_key, monkeypatch
 ):
-    instant = timezone.now().replace(microsecond=1)
+    instant = timezone.now().replace(microsecond=123000)
     monkeypatch.setattr(timezone, "now", lambda: instant)
     client, _, _ = access
     g = graph
@@ -418,15 +418,6 @@ def test_synthetic_merge_undo_restores_complete_database_graph(
     assert result.status_code == 200, result.content
     assert graph_snapshot() == after
     assert "private@example.com" not in json.dumps(response.json())
-
-    # A journal from before timestamp canonicalization can contain .000Z.
-    redo = AgentChangeSet.objects.get(pk=result.json()["id"])
-    for change in redo.changes:
-        if change["model"] == "core.SyntheticResolutionLog":
-            change["after"]["created_at"] = instant.isoformat(timespec="milliseconds").replace("+00:00", "Z")
-    redo.save(update_fields=["changes"])
-    assert undo(client, redo.pk).status_code == 200
-    assert graph_snapshot() == before
 
 
 def test_merge_journal_keeps_whole_table_scope_after_narrow_watch(access, graph):

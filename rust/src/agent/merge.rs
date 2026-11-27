@@ -239,7 +239,7 @@ pub(crate) async fn merge_debaters(
     conn: &mut AnyConnection,
     primary: i64,
     secondary: i64,
-) -> Result<(), Failure> {
+) -> Result<Vec<String>, Failure> {
     if primary == secondary {
         return Err(invalid("Cannot merge a debater into itself."));
     }

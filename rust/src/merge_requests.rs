@@ -283,19 +283,24 @@ async fn mutate_review(
         None => None,
     };
     let approved = action == "approve";
-    if approved {
+    let seasons = if approved {
         let Some((primary, secondary)) = first.as_ref().zip(second.as_ref()) else {
             return Ok((40,"Merge failed: One of the selected debaters no longer exists. Please refresh the page and try again.".to_owned()));
         };
-        if let Err(error) = merge::merge_debaters(&mut tx, primary.id, secondary.id).await {
-            let detail=match error{
-                Failure::Invalid(message)=>format!("Merge failed: {message}"),
-                Failure::Database(ApiError::Constraint)=>"Merge failed: A database constraint was violated. This usually means the debaters have conflicting records that cannot be automatically merged. Please contact a technical administrator for assistance.".to_owned(),
-                _=>{eprintln!("Merge request did not complete");"An unexpected error occurred while processing the merge request. The merge has been cancelled and no changes were made. Please contact a technical administrator if this problem persists.".to_owned()}
-            };
-            return Ok((40, detail));
+        match merge::merge_debaters(&mut tx, primary.id, secondary.id).await {
+            Ok(seasons) => seasons,
+            Err(error) => {
+                let detail=match error{
+                    Failure::Invalid(message)=>format!("Merge failed: {message}"),
+                    Failure::Database(ApiError::Constraint)=>"Merge failed: A database constraint was violated. This usually means the debaters have conflicting records that cannot be automatically merged. Please contact a technical administrator for assistance.".to_owned(),
+                    _=>{eprintln!("Merge request did not complete");"An unexpected error occurred while processing the merge request. The merge has been cancelled and no changes were made. Please contact a technical administrator for assistance.".to_owned()}
+                };
+                return Ok((40, detail));
+            }
         }
-    }
+    } else {
+        Vec::new()
+    };
     let reason = if approved {
         ""
     } else {
@@ -315,9 +320,10 @@ async fn mutate_review(
     tx.commit().await?;
     if approved {
         state.search.invalidate_all();
-        state.standings.invalidate_all();
-        state.home.invalidate_all();
-        state.replay.invalidate_all();
+        for season in seasons {
+            crate::standings::invalidate(state, &season, crate::standings::STORED_BOARDS).await;
+        }
+        crate::recent_results::invalidate(state).await;
         crate::elo::invalidate(state).await;
         let first = first.as_ref().map_or("Unknown", |row| row.name.as_str());
         let second = second.as_ref().map_or("Unknown", |row| row.name.as_str());

@@ -39,6 +39,13 @@ fn truthy(value: &Value) -> bool {
     }
 }
 
+fn zero_fraction(timestamp: &str) -> &str {
+    timestamp
+        .strip_suffix(".000Z")
+        .or_else(|| timestamp.strip_suffix('Z'))
+        .unwrap_or(timestamp)
+}
+
 fn matches_journal_row(table: &Table, current: &Value, expected: &Value) -> bool {
     if current == expected {
         return true;
@@ -58,25 +65,45 @@ fn matches_journal_row(table: &Table, current: &Value, expected: &Value) -> bool
                 .fields
                 .get(name)
                 .is_some_and(|field| field.kind() == "DateTimeField")
-                && value
+                && actual
                     .as_str()
-                    .and_then(|timestamp| timestamp.strip_suffix(".000Z"))
-                    .is_some_and(|whole_second| {
-                        actual.as_str() == Some(&format!("{whole_second}Z"))
+                    .zip(value.as_str())
+                    .is_some_and(|(actual, expected)| {
+                        actual.ends_with('Z')
+                            && expected.ends_with('Z')
+                            && zero_fraction(actual) == zero_fraction(expected)
                     })
         })
 }
 
-async fn restore(conn: &mut AnyConnection, changes: &[Value]) -> Result<(), Failure> {
+async fn restore(conn: &mut AnyConnection, changes: &[Value]) -> Result<Vec<Value>, Failure> {
+    let mut reversed = Vec::with_capacity(changes.len());
     for row in changes {
         let label = row["model"].as_str().ok_or(ApiError::Serialization)?;
         let table = TABLES.get(label).ok_or(ApiError::Serialization)?;
         let id = row["id"].as_i64().ok_or(ApiError::Serialization)?;
-        if !matches_journal_row(table, &table.get(conn, id).await?, &row["after"]) {
+        let current = table.get(conn, id).await?;
+        if !matches_journal_row(table, &current, &row["after"]) {
             return Err(Failure::Stale(
                 json!({"model":label,"id":id,"detail":"Later edits prevent undo."}),
             ));
         }
+        let mut restored = row["before"].clone();
+        if let Some(fields) = restored.as_object_mut() {
+            for (name, value) in fields {
+                if table
+                    .fields
+                    .get(name)
+                    .is_some_and(|field| field.kind() == "DateTimeField")
+                    && let Some(timestamp) =
+                        value.as_str().and_then(|value| value.strip_suffix(".000Z"))
+                {
+                    // At journal precision .000Z is restored as a whole second in SQL.
+                    *value = json!(format!("{timestamp}Z"));
+                }
+            }
+        }
+        reversed.push(json!({"model":label,"id":id,"before":current,"after":restored}));
     }
     for row in changes {
         let table = &TABLES[row["model"].as_str().ok_or(ApiError::Serialization)?];
@@ -106,7 +133,7 @@ async fn restore(conn: &mut AnyConnection, changes: &[Value]) -> Result<(), Fail
             json!({"detail":"Later references or constraints prevent undo; reverse dependent changes first."}),
         ));
     }
-    Ok(())
+    Ok(reversed)
 }
 
 async fn complete(
@@ -216,8 +243,8 @@ async fn complete(
         }
         let changes = super::changes(&original)?;
         let list = changes.as_array().ok_or(ApiError::Serialization)?;
-        match restore(&mut tx, list).await {
-            Ok(()) => (),
+        let changes = match restore(&mut tx, list).await {
+            Ok(reversed) => reversed,
             Err(Failure::Stale(detail)) => return Ok(endpoint.render(StatusCode::CONFLICT, detail)),
             Err(Failure::Database(_)) => {
                 return Ok(conflict(
@@ -226,14 +253,7 @@ async fn complete(
                 ));
             }
             Err(Failure::Invalid(detail)) => return Ok(invalid(endpoint, &detail)),
-        }
-        let changes = list
-            .iter()
-            .map(|row| {
-                json!({"model":row["model"],"id":row["id"],
-            "before":row["after"],"after":row["before"]})
-            })
-            .collect::<Vec<_>>();
+        };
         (
             json!([{"op":"undo","changeset_id":id}]),
             Vec::new(),
@@ -339,6 +359,46 @@ async fn complete(
     let response = super::batch(&mut tx, endpoint, id).await?;
     tx.commit().await.map_err(journal::storage_error)?;
     state.search.invalidate_all();
+    let mut seasons = std::collections::BTreeSet::new();
+    for row in &changes {
+        if matches!(
+            row["model"].as_str(),
+            Some(
+                "core.TOTY"
+                    | "core.SOTY"
+                    | "core.COTY"
+                    | "core.NOTY"
+                    | "core.OnlineQUAL"
+                    | "core.QUAL"
+                    | "core.QualPoints"
+                    | "core.Tournament"
+            )
+        ) {
+            seasons.extend(
+                [&row["before"], &row["after"]]
+                    .into_iter()
+                    .filter_map(|record| record["season"].as_str()),
+            );
+        }
+    }
+    for season in seasons {
+        crate::standings::invalidate(state, season, crate::standings::STORED_BOARDS).await;
+    }
+    if changes.iter().any(|row| {
+        matches!(
+            row["model"].as_str(),
+            Some(
+                "core.Tournament"
+                    | "core.Debater"
+                    | "core.School"
+                    | "core.Team"
+                    | "core.TeamResult"
+                    | "core.SpeakerResult"
+            )
+        )
+    }) {
+        crate::recent_results::invalidate(state).await;
+    }
     crate::elo::invalidate(state).await;
     Ok(response)
 }
@@ -390,7 +450,10 @@ mod tests {
     fn journal_undo_matches_legacy_zero_millisecond_timestamps() {
         let table = &TABLES["core.SyntheticResolutionLog"];
         let timestamp = "2026-11-27T15:25:41.000001Z";
-        assert_eq!(catalog::datetime(timestamp, true), "2026-11-27T15:25:41Z");
+        assert_eq!(
+            catalog::datetime(timestamp, true),
+            "2026-11-27T15:25:41.000Z"
+        );
         assert_eq!(
             catalog::datetime(timestamp, false),
             "2026-11-27T15:25:41.000001Z"
@@ -399,6 +462,7 @@ mod tests {
         let restored = json!({"created_at": "2026-11-27T15:25:41Z", "reason": "same"});
         let mut legacy = json!({"created_at": "2026-11-27T15:25:41.000Z", "reason": "same"});
         assert!(matches_journal_row(table, &restored, &legacy));
+        assert!(matches_journal_row(table, &legacy, &restored));
         legacy["reason"] = json!("changed");
         assert!(!matches_journal_row(table, &restored, &legacy));
         legacy["reason"] = json!("same");

@@ -69,10 +69,18 @@ impl Memcached {
     }
 
     pub(crate) async fn read_raw(&self, key: &str) -> Option<(u32, Vec<u8>)> {
+        self.read_raw_checked(key).await.ok().flatten()
+    }
+
+    // Writers need to distinguish an absent key from an unavailable or invalid read.
+    pub(crate) async fn read_raw_checked(&self, key: &str) -> io::Result<Option<(u32, Vec<u8>)>> {
         if !valid_key(key) {
-            return None;
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Invalid cache key",
+            ));
         }
-        let result = timeout(SERVICE_TIMEOUT, async {
+        timeout(SERVICE_TIMEOUT, async {
             let stream = TcpStream::connect(self.0).await?;
             let mut reader = BufReader::new(stream);
             reader
@@ -84,36 +92,38 @@ impl Memcached {
                 .take(300)
                 .read_until(b'\n', &mut header)
                 .await?;
-            let line = std::str::from_utf8(&header)
-                .ok()
-                .and_then(|line| line.strip_suffix("\r\n"));
-            let Some(line) = line else {
-                return Ok(None);
-            };
-            let mut fields = line.split_ascii_whitespace();
-            if fields.next() != Some("VALUE") || fields.next() != Some(key) {
+            if header == b"END\r\n" {
                 return Ok(None);
             }
-            let Some(flags) = fields.next().and_then(|flags| flags.parse::<u32>().ok()) else {
-                return Ok(None);
-            };
+            let malformed = || io::Error::new(io::ErrorKind::InvalidData, "Invalid cache response");
+            let line = std::str::from_utf8(&header)
+                .ok()
+                .and_then(|line| line.strip_suffix("\r\n"))
+                .ok_or_else(malformed)?;
+            let mut fields = line.split_ascii_whitespace();
+            if fields.next() != Some("VALUE") || fields.next() != Some(key) {
+                return Err(malformed());
+            }
+            let flags = fields
+                .next()
+                .and_then(|flags| flags.parse::<u32>().ok())
+                .ok_or_else(malformed)?;
             let length = fields
                 .next()
-                .and_then(|length| length.parse::<usize>().ok());
-            let Some(length) = length.filter(|length| *length <= MAX_VALUE) else {
-                return Ok(None);
-            };
+                .and_then(|length| length.parse::<usize>().ok())
+                .filter(|length| *length <= MAX_VALUE)
+                .ok_or_else(malformed)?;
             let mut bytes = vec![0; length];
             reader.read_exact(&mut bytes).await?;
             let mut terminator = [0; 7];
             reader.read_exact(&mut terminator).await?;
             if terminator != *b"\r\nEND\r\n" {
-                return Ok(None);
+                return Err(malformed());
             }
-            Ok::<_, io::Error>(Some((flags, bytes)))
+            Ok(Some((flags, bytes)))
         })
-        .await;
-        result.ok()?.ok()?
+        .await
+        .map_err(io::Error::other)?
     }
 
     async fn send(&self, command: &str, body: Option<&[u8]>, expected: &[u8]) -> bool {
@@ -225,6 +235,32 @@ impl<K> Expiry<K, CachedBody> for BodyExpiry {
 mod tests {
     use super::*;
     use tokio::net::TcpListener;
+
+    #[tokio::test]
+    async fn checked_reads_distinguish_miss_from_protocol_and_transport_failure() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let cache = Memcached::new(listener.local_addr().unwrap());
+        let server = tokio::spawn(async move {
+            for reply in [
+                b"END\r\n".as_slice(),
+                b"SERVER_ERROR unavailable\r\n",
+                b"VALUE other 0 1\r\nx\r\nEND\r\n",
+                b"VALUE index 1 3\r\nx",
+            ] {
+                let (socket, _) = listener.accept().await.unwrap();
+                let mut stream = BufReader::new(socket);
+                let mut command = String::new();
+                stream.read_line(&mut command).await.unwrap();
+                assert_eq!(command, "get index\r\n");
+                stream.get_mut().write_all(reply).await.unwrap();
+            }
+        });
+        assert!(cache.read_raw_checked("index").await.unwrap().is_none());
+        for _ in 0..3 {
+            assert!(cache.read_raw_checked("index").await.is_err());
+        }
+        server.await.unwrap();
+    }
 
     #[tokio::test]
     async fn records_use_memcached_ascii_commands_and_keep_remaining_time() {

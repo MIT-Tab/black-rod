@@ -169,21 +169,10 @@ def m2m_for(resource):
     ]
 
 
-def _canonicalize_row_datetimes(model, row):
-    if row is None:
-        return None
-    canonical = row.copy()
-    for field in model._meta.concrete_fields:
-        value = row.get(field.attname)
-        if isinstance(field, models.DateTimeField) and isinstance(value, str) and value.endswith(".000Z"):
-            # Django's JSON encoder can emit .000Z from a nonzero sub-millisecond value.
-            canonical[field.attname] = value.removesuffix(".000Z") + "Z"
-    return canonical
-
-
 def row_data(obj):
-    row = normalized({f.attname: getattr(obj, f.attname) for f in obj._meta.concrete_fields})
-    return _canonicalize_row_datetimes(type(obj), row)
+    return normalized(
+        {f.attname: getattr(obj, f.attname) for f in obj._meta.concrete_fields}
+    )
 
 
 def membership_ids(obj, field):
@@ -203,9 +192,8 @@ def revision(obj):
 
 
 def public_row(resource, obj):
-    data = _canonicalize_row_datetimes(
-        type(obj),
-        normalized({f.attname: getattr(obj, f.attname) for f in fields_for(resource)}),
+    data = normalized(
+        {f.attname: getattr(obj, f.attname) for f in fields_for(resource)}
     )
     for f in m2m_for(resource):
         data[f.name] = membership_ids(obj, f)
@@ -616,7 +604,7 @@ def restore(changes):
     for c in changes:
         model = apps.get_model(c["model"])
         obj = model._base_manager.filter(pk=c["id"]).first()
-        if (row_data(obj) if obj else None) != _canonicalize_row_datetimes(model, c["after"]):
+        if (row_data(obj) if obj else None) != c["after"]:
             raise Conflict(
                 {
                     "model": c["model"],

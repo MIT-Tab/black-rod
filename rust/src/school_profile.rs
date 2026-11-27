@@ -9,6 +9,7 @@ use sqlx::{AnyPool, AssertSqlSafe, Row};
 
 use crate::{
     ApiError, AppState, api_response, is_django_integer, json_error, options,
+    routing::limit,
     schedule::{TOURNAMENT_COLUMNS, Tournament, proxy_url, requested_season, season_display},
     schools::{DEBATER_COLUMNS, Debater, SCHOOL, School},
     standings::{available_seasons, coty_breakdowns, lite_school, place_display},
@@ -89,15 +90,6 @@ async fn members(
         .iter()
         .map(|(years, debater)| json!({"debater": debater, "years_on_team": years}))
         .collect())
-}
-
-pub(crate) fn limit(raw: &str) -> Option<i64> {
-    let value = url::form_urlencoded::parse(raw.as_bytes())
-        .filter(|(name, _)| name == "limit")
-        .map(|(_, value)| value)
-        .last()?;
-    let value = value.trim().parse::<i64>().ok()?;
-    (value > 0).then_some(value.min(200))
 }
 
 async fn load(

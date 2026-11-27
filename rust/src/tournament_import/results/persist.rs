@@ -245,11 +245,16 @@ pub(super) async fn store(
     }
     tx.commit().await?;
     state.search.invalidate_all();
-    state.home.invalidate_all();
-    state.standings.invalidate_all();
-    state.replay.invalidate_all();
-    if let Ok(year) = season.parse() {
-        crate::live::invalidate(state, year).await;
-    }
+    let boards = if season == state.current_season.to_string() {
+        crate::standings::STORED_BOARDS
+    } else if !affected.is_empty() {
+        &["coty"][..]
+    } else {
+        &[][..]
+    };
+    tokio::join!(
+        crate::standings::invalidate(state, &season, boards),
+        crate::recent_results::invalidate(state),
+    );
     Ok(skipped)
 }

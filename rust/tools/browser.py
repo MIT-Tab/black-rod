@@ -2684,6 +2684,32 @@ def assert_manual_results(driver, django, rust, fixture):
     driver.delete_all_cookies()
 
 
+def shared_import_cache_keys():
+    from hashlib import md5
+
+    season = "2026"
+    digest = md5(f"{season}:".encode(), usedforsecurity=False).hexdigest()
+    widget = ":1:recent_results_widget_html"
+    fragments = [f":1:template.cache.{board}.{digest}" for board in
+                 ("toty", "soty", "coty", "noty", "online_quals")]
+    return widget, fragments
+
+
+def cached_import_keys(keys):
+    host, port = os.environ["BLACK_ROD_PARITY_MEMCACHED_ADDR"].rsplit(":", 1)
+    with socket.create_connection((host, int(port)), timeout=2) as client, client.makefile("rwb") as cache:
+        cache.write(("get " + " ".join(keys) + "\r\n").encode())
+        cache.flush()
+        found = set()
+        while (header := cache.readline()) != b"END\r\n":
+            value, key, _, length = header.split()
+            assert value == b"VALUE"
+            cache.read(int(length))
+            assert cache.read(2) == b"\r\n"
+            found.add(key.decode())
+        return found
+
+
 def assert_reviewed_tournament_import(driver, django, rust, fixture, provider):
     root = f"http://{HOST}:{rust.port}"
     sources = "/core/tournaments/import/"
@@ -2725,6 +2751,16 @@ def assert_reviewed_tournament_import(driver, django, rust, fixture, provider):
     assert any(field.get_property("value") == "Incoming" for field in
                driver.find_elements("css selector", 'input[id^=id_debaters-][id$=-first_name]'))
 
+    shared = os.environ.get("BLACK_ROD_PARITY_MEMCACHED_ADDR")
+    if shared:
+        widget, fragments = shared_import_cache_keys()
+        widget_page = Case("/core/widgets/recent-results/", accept="text/html")
+        assert request(django, Case("/?season=2026", accept="text/html"))[0] == 200
+        old_widget = request(django, widget_page)
+        assert old_widget[0] == 200
+        assert request(rust, widget_page)[2] == old_widget[2]
+        assert cached_import_keys([widget, *fragments]) == {widget, *fragments}
+
     original_teams = provider.import_payload["debater_counts"]["teams"]
     provider.import_payload["debater_counts"]["teams"] = 99
     try:
@@ -2737,6 +2773,14 @@ def assert_reviewed_tournament_import(driver, django, rust, fixture, provider):
     finally:
         provider.import_payload["debater_counts"]["teams"] = original_teams
     assert result["status"] == 200 and result["path"] == f"/core/tournaments/{event}", result
+    if shared:
+        assert not cached_import_keys([widget, *fragments])
+        assert request(rust, widget_page)[0] == 200
+        assert cached_import_keys([widget]) == {widget}
+        assert request(django, widget_page)[0] == 200
+        assert request(django, Case("/?season=2026", accept="text/html"))[0] == 200
+        assert cached_import_keys(fragments) == set(fragments)
+
     with sqlite3.connect(f"{db.as_uri()}?mode=ro", uri=True) as database:
         assert database.execute("SELECT num_teams,num_novice_debaters FROM core_tournament WHERE id=?", (event,)).fetchone() == (24, 7)
         assert database.execute("SELECT COUNT(*) FROM core_teamresult WHERE tournament_id=?", (event,)).fetchone() == (1,)
@@ -3290,7 +3334,7 @@ def assert_login_roundtrip(driver, rust, django):
     driver.get(f"{root}/auth/login/?next=/games/")
     driver.delete_cookie("sessionid")
     assert driver.find_element("id", "id_remember").is_selected()
-    driver.find_element("id", "id_username").send_keys("tab")
+    driver.find_element("id", "id_username").send_keys("TaB")
     driver.find_element("id", "id_password").send_keys("password")
     driver.find_element("css selector", "#id_password").submit()
     WebDriverWait(driver, 10).until(lambda browser: browser.current_url == f"{root}/games/")

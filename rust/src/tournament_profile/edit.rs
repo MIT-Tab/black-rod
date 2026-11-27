@@ -397,7 +397,7 @@ async fn save(state: &AppState, fields: &Fields, id: Option<i64>) -> Result<Opti
     let result = statement.fetch_optional(&mut *tx).await?;
     tx.commit().await?;
     if result.is_some() {
-        state.recent_results.invalidate(&()).await;
+        crate::recent_results::invalidate(state).await;
     }
     Ok(result)
 }

@@ -5,7 +5,6 @@ mod speaker_positions;
 
 use std::{error::Error, fs, path::Path};
 
-use md5::{Digest, Md5};
 use sqlx::{AssertSqlSafe, Row};
 
 use crate::{AppState, agent, claims, delete_relations, points};
@@ -131,23 +130,12 @@ impl AppState {
             2004..=self.current_season
         };
         for season in seasons {
-            if let Some(cache) = &self.memcached {
-                let hash = Md5::digest(format!("{season}:"));
-                let types = if refresh {
-                    &["toty", "noty", "coty", "soty"][..]
-                } else {
-                    &["toty", "coty", "soty"][..]
-                };
-                for name in types {
-                    cache
-                        .delete_raw(&format!(":1:template.cache.{name}.{hash:x}"))
-                        .await;
-                }
-                cache
-                    .delete_raw(&format!(":1:api:standings_replay:{season}"))
-                    .await;
-            }
-            crate::live::invalidate(self, season).await;
+            let boards = if refresh {
+                &["toty", "noty", "coty", "soty"][..]
+            } else {
+                &["toty", "coty", "soty"][..]
+            };
+            crate::standings::invalidate(self, &season.to_string(), boards).await;
         }
         Ok(())
     }

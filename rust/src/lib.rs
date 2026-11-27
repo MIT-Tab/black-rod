@@ -253,6 +253,19 @@ impl AppState {
         Ok(self)
     }
 
+    pub fn with_production_webpack_stats(
+        self,
+        path: &Path,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
+        let state = self
+            .with_webpack_stats(path)
+            .map_err(|error| format!("Could not load production webpack stats: {error}"))?;
+        if state.bundles.is_empty() {
+            return Err("Production webpack stats has no main JavaScript assets.".into());
+        }
+        Ok(state)
+    }
+
     pub fn watch_webpack_stats(mut self, path: &Path) -> Self {
         self.watched_webpack = Some(Arc::new(WatchedWebpack {
             path: path.to_owned(),

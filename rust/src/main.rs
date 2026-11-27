@@ -45,6 +45,11 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
     install_default_drivers();
     let production = env::var("ENV").is_ok_and(|mode| mode == "production");
+    let production_web = production && command == "serve";
+    let secret = env::var("SECRET_KEY").ok();
+    if production_web && secret.as_deref().is_none_or(|key| key.trim().is_empty()) {
+        return Err("Set SECRET_KEY before serving production requests.".into());
+    }
     let database = database_url(production)?;
     let pool = AnyPoolOptions::new()
         .max_connections(8)
@@ -81,11 +86,13 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     {
         state = state.with_allowed_hosts(&hosts);
     }
-    if let Ok(secret) = env::var("SECRET_KEY") {
+    if let Some(secret) = secret {
         state = state.with_session_secret(secret);
     }
     let stats = env::var("WEBPACK_STATS_FILE").unwrap_or_else(|_| "webpack-stats.json".into());
-    if enabled("BLACK_ROD_WATCH_WEBPACK") {
+    if production_web {
+        state = state.with_production_webpack_stats(Path::new(&stats))?;
+    } else if enabled("BLACK_ROD_WATCH_WEBPACK") {
         state = state.watch_webpack_stats(Path::new(&stats));
     } else if Path::new(&stats).is_file() {
         state = state.with_webpack_stats(Path::new(&stats))?;

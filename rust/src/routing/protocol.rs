@@ -74,10 +74,15 @@ pub(super) async fn api_protocol(
         .flat_map(|value| value.split(','))
     {
         let mut parts = media.split(';');
-        if let Some("*/*" | "application/*" | "application/json" | "text/html" | "text/*") =
-            parts.next().map(str::trim)
-        {
-            suitable = true;
+        let media = parts.next().unwrap_or_default().trim();
+        let json = matches!(media, "*/*" | "application/*" | "application/json");
+        let html = matches!(media, "*/*" | "text/*" | "text/html");
+        suitable |= match format.as_deref() {
+            Some("json") => json,
+            Some("api") => html,
+            _ => json || html,
+        };
+        if json {
             indent = parts
                 .filter_map(|part| part.trim().strip_prefix("indent="))
                 .filter_map(|value| value.trim_matches('"').parse::<u8>().ok())
@@ -91,9 +96,7 @@ pub(super) async fn api_protocol(
         .is_some_and(|format| !matches!(format, "" | "json" | "api"))
     {
         Some((StatusCode::NOT_FOUND, "Not found."))
-    } else if (!suitable || (format.as_deref() == Some("api") && !browse))
-        && request.headers().contains_key(header::ACCEPT)
-    {
+    } else if !suitable && request.headers().contains_key(header::ACCEPT) {
         Some((
             StatusCode::NOT_ACCEPTABLE,
             "Could not satisfy the request Accept header.",
@@ -278,4 +281,62 @@ fn negotiation_error(status: StatusCode, detail: &str) -> Response {
         .headers_mut()
         .insert(header::VARY, HeaderValue::from_static("Accept"));
     response
+}
+
+pub(crate) fn limit(raw: &str) -> Option<i64> {
+    let value = url::form_urlencoded::parse(raw.as_bytes())
+        .filter(|(name, _)| name == "limit")
+        .map(|(_, value)| value)
+        .last()?;
+    let value = value.trim();
+    let value = value.strip_prefix('+').unwrap_or(value);
+    let mut digits = 0;
+    let mut limit = 0;
+    let mut previous_digit = false;
+    for ch in value.chars() {
+        if ch == '_' && previous_digit {
+            previous_digit = false;
+            continue;
+        }
+        let digit = decimal_digit(ch)?;
+        digits += 1;
+        limit = (limit * 10 + digit).min(200);
+        previous_digit = true;
+    }
+    (previous_digit && digits <= 4300 && limit > 0).then_some(limit)
+}
+
+fn decimal_digit(ch: char) -> Option<i64> {
+    if let Some(digit) = ch.to_digit(10) {
+        return Some(i64::from(digit));
+    }
+    static DECIMAL: std::sync::LazyLock<regex::Regex> =
+        std::sync::LazyLock::new(|| regex::Regex::new(r"^\p{Nd}$").expect("decimal digit pattern"));
+    let is_decimal = |ch: char| DECIMAL.is_match(ch.encode_utf8(&mut [0; 4]));
+    if !is_decimal(ch) {
+        return None;
+    }
+    // Unicode decimal digit sets are contiguous blocks of ten, beginning at zero.
+    let point = u32::from(ch);
+    let start = (0..point)
+        .rev()
+        .take_while(|&point| char::from_u32(point).is_some_and(is_decimal))
+        .count();
+    Some((start % 10) as i64)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::limit;
+
+    #[test]
+    fn caps_large_valid_limits_and_rejects_invalid_integer_syntax() {
+        assert_eq!(limit("limit=1&limit=%2B1_0"), Some(10));
+        assert_eq!(limit("limit=%D9%A2"), Some(2));
+        assert_eq!(limit("limit=999999999999999999999"), Some(200));
+        assert_eq!(limit(&format!("limit={}", "9".repeat(4301))), None);
+        for invalid in ["_1", "1_", "1__0", "-1", "0", "2.1", "%C2%B2"] {
+            assert_eq!(limit(&format!("limit={invalid}")), None);
+        }
+    }
 }

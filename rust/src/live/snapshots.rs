@@ -1,4 +1,8 @@
-use std::{collections::HashMap, io::Read, time::Duration};
+use std::{
+    collections::HashMap,
+    io::{self, Read},
+    time::Duration,
+};
 
 use flate2::read::ZlibDecoder;
 use serde::{Deserialize, Serialize};
@@ -20,23 +24,25 @@ pub(crate) struct Source {
     pub(crate) chunks: Vec<String>,
 }
 
-pub(crate) async fn source_index(cache: &Memcached) -> HashMap<String, Source> {
-    let Some((1, data)) = cache.read_raw(INDEX).await else {
-        return HashMap::new();
+pub(crate) async fn source_index(cache: &Memcached) -> io::Result<HashMap<String, Source>> {
+    let Some((flags, data)) = cache.read_raw_checked(INDEX).await? else {
+        return Ok(HashMap::new());
     };
-    let Ok(index) = serde_pickle::from_slice::<HashMap<String, Source>>(&data, Default::default())
-    else {
-        return HashMap::new();
-    };
+    if flags != 1 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "Invalid snapshot index flags",
+        ));
+    }
+    let mut index = serde_pickle::from_slice::<HashMap<String, Source>>(&data, Default::default())
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "Invalid snapshot index"))?;
     let now = chrono::Utc::now().timestamp() as f64;
-    index
-        .into_iter()
-        .filter(|(_, source)| {
-            source
-                .missing_since
-                .is_none_or(|date| now - date < RETENTION)
-        })
-        .collect()
+    index.retain(|_, source| {
+        source
+            .missing_since
+            .is_none_or(|date| now - date < RETENTION)
+    });
+    Ok(index)
 }
 
 pub(super) async fn missing(
@@ -45,6 +51,7 @@ pub(super) async fn missing(
 ) -> HashMap<String, Value> {
     let mut sources = source_index(cache)
         .await
+        .unwrap_or_default()
         .into_iter()
         .filter(|(_, source)| !active.contains_key(&source.url));
     let mut waiting = JoinSet::new();

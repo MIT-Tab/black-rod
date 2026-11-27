@@ -101,20 +101,13 @@ pub(crate) async fn page(State(state): State<AppState>, request: Request) -> Res
             eprintln!("Rankings recomputation failed: {reason:?}");
             return error("The database could not recompute the rankings.");
         }
-        state.standings.invalidate_all();
-        state.home.invalidate_all();
-        state.replay.invalidate_all();
         state.search.invalidate_all();
-        if let Ok(year) = selected.parse() {
-            crate::live::invalidate(&state, year).await;
-        }
-        if let Some(cache) = &state.memcached
-            && ranking == "coty"
-        {
-            cache
-                .delete_raw(&format!(":1:api:standings_replay:{selected}"))
-                .await;
-        }
+        let boards = if ranking == "coty" {
+            &["coty", "online_quals"][..]
+        } else {
+            &[ranking][..]
+        };
+        crate::standings::invalidate(&state, selected, boards).await;
         return Json(json!({"success":true,"message":format!("Successfully recomputed {} rankings for season {selected}", ranking.to_uppercase())})).into_response();
     }
     let Ok((secret, token)) = login::csrf_tokens(&headers) else {

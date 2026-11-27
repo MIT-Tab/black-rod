@@ -483,7 +483,7 @@ pub(super) async fn merge(
     journal: &mut Journal,
     primary: i64,
     secondary: i64,
-) -> Result<(), Failure> {
+) -> Result<Vec<String>, Failure> {
     let team_ids = sqlx::query_scalar::<_, i64>(
         "SELECT DISTINCT CAST(team_id AS BIGINT) FROM core_team_debaters
         WHERE debater_id IN ($1,$2) ORDER BY 1",
@@ -550,7 +550,7 @@ pub(super) async fn merge(
     finish(conn, journal, primary, secondary).await?;
     erase(conn, journal, "core_debater", secondary).await?;
     rankings::recompute(conn, journal, primary, &team_ids, &schools, &seasons).await?;
-    Ok(())
+    Ok(seasons)
 }
 
 pub(super) async fn snapshot(conn: &mut AnyConnection, row: &Value) -> Result<Value, ApiError> {

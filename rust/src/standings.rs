@@ -19,7 +19,36 @@ use crate::{
     schools::{DEBATER_COLUMNS, Debater, School},
 };
 
-const BOARD_NAMES: [&str; 5] = ["toty", "soty", "coty", "noty", "online_quals"];
+pub(crate) async fn invalidate(state: &AppState, season: &str, boards: &[&str]) {
+    use md5::{Digest, Md5};
+
+    state.home.invalidate_all();
+    state.standings.invalidate_all();
+    state.replay.invalidate_all();
+    if let Some(cache) = &state.memcached {
+        let hash = Md5::digest(format!("{season}:"));
+        let mut deletes = tokio::task::JoinSet::new();
+        let keys = boards
+            .iter()
+            .map(|board| format!(":1:template.cache.{board}.{hash:x}"))
+            .chain([
+                format!(":1:api:standings:{season}"),
+                format!(":1:api:standings_replay:{season}"),
+            ]);
+        for key in keys {
+            let cache = cache.clone();
+            deletes.spawn(async move {
+                cache.delete_raw(&key).await;
+            });
+        }
+        while deletes.join_next().await.is_some() {}
+    }
+    if let Ok(year) = season.parse() {
+        crate::live::invalidate(state, year).await;
+    }
+}
+
+pub(crate) const STORED_BOARDS: &[&str] = &["toty", "soty", "coty", "noty", "online_quals"];
 const MARKER_NAMES: [&str; 6] = ["one", "two", "three", "four", "five", "six"];
 const ONLINE_QUAL_BAR: f64 = 10.0;
 
@@ -440,28 +469,18 @@ pub(crate) fn filter_boards<'a>(
     uri: &Uri,
 ) -> BTreeMap<&'static str, &'a [Value]> {
     let mut selected = BTreeSet::new();
-    let mut limit = None;
-    for (key, value) in url::form_urlencoded::parse(uri.query().unwrap_or_default().as_bytes()) {
-        match key.as_ref() {
-            "board" => {
-                for board in value
-                    .split(',')
-                    .map(|name| name.trim().to_ascii_lowercase())
-                {
-                    if let Some(name) = BOARD_NAMES.into_iter().find(|name| *name == board) {
-                        selected.insert(name);
-                    }
+    let raw = uri.query().unwrap_or_default();
+    let limit = crate::routing::limit(raw).map(|limit| limit as usize);
+    for (key, value) in url::form_urlencoded::parse(raw.as_bytes()) {
+        if key == "board" {
+            for board in value
+                .split(',')
+                .map(|name| name.trim().to_ascii_lowercase())
+            {
+                if let Some(name) = STORED_BOARDS.iter().copied().find(|name| *name == board) {
+                    selected.insert(name);
                 }
             }
-            "limit" => {
-                limit = value
-                    .trim()
-                    .parse::<i64>()
-                    .ok()
-                    .filter(|limit| *limit > 0)
-                    .map(|limit| limit.min(200) as usize);
-            }
-            _ => (),
         }
     }
     let filtered = boards

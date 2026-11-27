@@ -5,11 +5,10 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use minijinja::context;
-use sqlx::Row;
 use unicode_normalization::UnicodeNormalization;
 
 use super::{AdminRequest, HOME, Viewer, redirect};
-use crate::{ApiError, AppState, login as browser_login, password, session};
+use crate::{ApiError, AppState, login as browser_login, session};
 
 pub(crate) async fn login(State(state): State<AppState>, request: Request) -> Response {
     match login_page(&state, request).await {
@@ -73,44 +72,17 @@ async fn login_page(state: &AppState, request: Request) -> Result<Response, ApiE
             field_errors.insert("password", "This field is required.");
         }
         if field_errors.is_empty() {
-            let candidate=sqlx::query("SELECT CAST(id AS BIGINT) AS id,password FROM core_user WHERE username=$1 AND is_active AND is_staff")
-                .bind(&submitted).fetch_optional(&state.pool).await?;
-            let stored = candidate
-                .as_ref()
-                .map(|row| row.try_get::<String, _>("password"))
-                .transpose()?;
-            let entered = entered.as_bytes().to_owned();
-            let saved = stored.clone();
-            let verified = tokio::task::spawn_blocking(move || {
-                password::verify_and_upgrade(&entered, saved.as_deref())
-            })
-            .await
-            .map_err(|_| ApiError::Serialization)?;
-            if let (Some(row), Some(stored), Some(upgrade)) = (candidate, stored, verified) {
-                let id = row.try_get::<i64, _>("id")?;
-                let digest = if let Some(upgrade) = upgrade {
-                    let result =
-                        sqlx::query("UPDATE core_user SET password=$1 WHERE id=$2 AND password=$3")
-                            .bind(&upgrade)
-                            .bind(id)
-                            .bind(stored)
-                            .execute(&state.pool)
-                            .await?;
-                    if result.rows_affected() != 1 {
-                        return Ok(StatusCode::CONFLICT.into_response());
-                    }
-                    upgrade
-                } else {
-                    stored
-                };
-                return Ok(browser_login::sign_in(
+            if let Some(verified) = browser_login::authenticate(&state.pool, &submitted, entered)
+                .await?
+                .filter(|account| account.staff)
+            {
+                return Ok(browser_login::finish_password_login(
                     state,
                     &parts.headers,
                     admin.secure(),
                     if next.is_empty() { HOME } else { &next },
                     true,
-                    (id, &digest),
-                    "django.contrib.auth.backends.ModelBackend",
+                    verified,
                 )
                 .await);
             }

@@ -12,6 +12,17 @@ use sqlx::{AnyConnection, Row};
 
 use crate::{ApiError, AppState, web};
 
+const WIDGET_KEY: &str = ":1:recent_results_widget_html";
+const WIDGET_TTL: u32 = 24 * 60 * 60;
+
+pub(crate) async fn invalidate(state: &AppState) {
+    if let Some(cache) = &state.memcached {
+        cache.delete_raw(WIDGET_KEY).await;
+    } else {
+        state.recent_results.invalidate(&()).await;
+    }
+}
+
 const TOURNAMENTS: &str = "
     WITH posted AS (
         SELECT t.id, t.name, t.date, t.num_teams,
@@ -175,6 +186,27 @@ async fn render(state: &AppState) -> Result<String, ApiError> {
 }
 
 pub(crate) async fn page(State(state): State<AppState>) -> Response {
+    if let Some(cache) = &state.memcached {
+        // Django stores the response body as bytes using pymemcache's zero flag.
+        if let Some((0, bytes)) = cache.read_raw(WIDGET_KEY).await
+            && let Ok(html) = String::from_utf8(bytes)
+            && !html.is_empty()
+        {
+            return Html(html).into_response();
+        }
+        return match render(&state).await {
+            Ok(html) => {
+                cache
+                    .write_raw(WIDGET_KEY, 0, html.as_bytes(), WIDGET_TTL, false)
+                    .await;
+                Html(html).into_response()
+            }
+            Err(error) => {
+                eprintln!("Recent results were unavailable: {error:?}");
+                StatusCode::INTERNAL_SERVER_ERROR.into_response()
+            }
+        };
+    }
     match state
         .recent_results
         .try_get_with((), async { render(&state).await.map(Arc::new) })

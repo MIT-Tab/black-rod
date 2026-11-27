@@ -11,11 +11,11 @@ use cookie::{
     time::{Duration, OffsetDateTime},
 };
 use minijinja::context;
-use sqlx::Row;
+use sqlx::{AnyPool, Row};
 use subtle::ConstantTimeEq;
 use unicode_normalization::UnicodeNormalization;
 
-use crate::{AppState, password, session, web};
+use crate::{ApiError, AppState, password, session, web};
 
 const CSRF_ALPHABET: &[u8] = b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 const CSRF_AGE: u32 = 31_449_600;
@@ -282,29 +282,14 @@ pub(crate) async fn view(State(state): State<AppState>, request: Request) -> Res
         .collect();
     let username = normalized_username.as_str();
     let password = field("password").unwrap_or_default();
-    let row = sqlx::query("SELECT CAST(id AS BIGINT) AS id, password FROM core_user WHERE username = $1 AND is_active")
-        .bind(username).fetch_optional(&state.pool).await;
-    let candidate = match row {
-        Ok(row) => row.and_then(|row| {
-            Some((
-                row.try_get::<i64, _>("id").ok()?,
-                row.try_get::<String, _>("password").ok()?,
-            ))
-        }),
+    let verified = match authenticate(&state.pool, username, password).await {
+        Ok(verified) => verified,
         Err(error) => {
-            eprintln!("Login lookup failed: {error}");
+            eprintln!("Login verification failed: {error:?}");
             return StatusCode::INTERNAL_SERVER_ERROR.into_response();
         }
     };
-    let hash = candidate.as_ref().map(|(_, hash)| hash.clone());
-    let password = password.as_bytes().to_owned();
-    let verification = tokio::task::spawn_blocking(move || {
-        password::verify_and_upgrade(&password, hash.as_deref())
-    })
-    .await
-    .ok()
-    .flatten();
-    let Some((id, mut hash)) = candidate.filter(|_| verification.is_some()) else {
+    let Some(verified) = verified else {
         return page(
             &state,
             &parts.headers,
@@ -318,17 +303,89 @@ pub(crate) async fn view(State(state): State<AppState>, request: Request) -> Res
         )
         .await;
     };
-    if let Some(Some(upgraded)) = verification {
+    finish_password_login(&state, &parts.headers, secure, &next, remember, verified).await
+}
+
+pub(crate) struct VerifiedPassword {
+    id: i64,
+    hash: String,
+    upgrade: Option<String>,
+    backend: &'static str,
+    pub(crate) staff: bool,
+}
+
+pub(crate) async fn authenticate(
+    pool: &AnyPool,
+    username: &str,
+    password: &str,
+) -> Result<Option<VerifiedPassword>, ApiError> {
+    let rows = sqlx::query(
+        "SELECT CAST(id AS BIGINT) AS id, username, password,
+            CAST(CASE WHEN is_staff THEN 1 ELSE 0 END AS BIGINT) AS staff
+        FROM core_user WHERE is_active AND (
+            username = $1 OR id = (
+                SELECT id FROM core_user WHERE UPPER(username) = UPPER($1) ORDER BY id LIMIT 1
+            )
+        ) ORDER BY CASE WHEN username = $1 THEN 0 ELSE 1 END",
+    )
+    .bind(username)
+    .fetch_all(pool)
+    .await?;
+    let candidates = rows
+        .iter()
+        .map(|row| {
+            Ok((
+                row.try_get::<i64, _>("id")?,
+                row.try_get::<String, _>("password")?,
+                row.try_get::<&str, _>("username")? == username,
+                row.try_get::<i64, _>("staff")? != 0,
+            ))
+        })
+        .collect::<Result<Vec<_>, sqlx::Error>>()?;
+    let password = password.as_bytes().to_owned();
+    tokio::task::spawn_blocking(move || {
+        if candidates.is_empty() {
+            password::verify_and_upgrade(&password, None);
+        }
+        candidates.into_iter().find_map(|(id, hash, exact, staff)| {
+            let upgrade = password::verify_and_upgrade(&password, Some(&hash))?;
+            let backend = if exact {
+                "django.contrib.auth.backends.ModelBackend"
+            } else {
+                "allauth.account.auth_backends.AuthenticationBackend"
+            };
+            Some(VerifiedPassword {
+                id,
+                hash,
+                upgrade,
+                backend,
+                staff,
+            })
+        })
+    })
+    .await
+    .map_err(|_| ApiError::Serialization)
+}
+
+pub(crate) async fn finish_password_login(
+    state: &AppState,
+    headers: &HeaderMap,
+    secure: bool,
+    next: &str,
+    remember: bool,
+    mut verified: VerifiedPassword,
+) -> Response {
+    if let Some(upgraded) = verified.upgrade {
         let updated = sqlx::query(
             "UPDATE core_user SET password=$1 WHERE id=$2 AND password=$3 AND is_active",
         )
         .bind(&upgraded)
-        .bind(id)
-        .bind(&hash)
+        .bind(verified.id)
+        .bind(&verified.hash)
         .execute(&state.pool)
         .await;
         match updated {
-            Ok(changed) if changed.rows_affected() == 1 => hash = upgraded,
+            Ok(changed) if changed.rows_affected() == 1 => verified.hash = upgraded,
             Ok(_) => return StatusCode::CONFLICT.into_response(),
             Err(error) => {
                 eprintln!("Password hash upgrade failed: {error}");
@@ -337,13 +394,13 @@ pub(crate) async fn view(State(state): State<AppState>, request: Request) -> Res
         }
     }
     sign_in(
-        &state,
-        &parts.headers,
+        state,
+        headers,
         secure,
-        &next,
+        next,
         remember,
-        (id, &hash),
-        "django.contrib.auth.backends.ModelBackend",
+        (verified.id, &verified.hash),
+        verified.backend,
     )
     .await
 }

@@ -109,7 +109,7 @@ async fn page(
                     state.search.invalidate_all();
                 }
                 if entity.model == "core_tournament" {
-                    state.recent_results.invalidate(&()).await;
+                    crate::recent_results::invalidate(state).await;
                 }
                 return Ok((
                     StatusCode::FOUND,
