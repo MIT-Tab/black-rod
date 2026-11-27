@@ -1,3 +1,5 @@
+pub(crate) mod edit;
+
 use std::collections::{HashMap, HashSet};
 
 use axum::{
@@ -379,7 +381,7 @@ pub(crate) async fn page(
     let Ok(user) = session::user(&state.pool, &headers, state.secret.as_deref()).await else {
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     };
-    match html(&state, &user, id, &uri).await {
+    match html(&state, &user, id, &uri, None).await {
         Ok(html) => ([(header::VARY, "Cookie")], Html(html)).into_response(),
         Err(ApiError::NotFound(_)) => StatusCode::NOT_FOUND.into_response(),
         Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
@@ -391,6 +393,7 @@ async fn html(
     user: &User,
     id: i64,
     uri: &axum::http::Uri,
+    editing: Option<minijinja::Value>,
 ) -> Result<String, ApiError> {
     let mut tx = read_transaction(&state.pool).await?;
     let tournament = tournament(&mut tx, id, "").await?;
@@ -468,11 +471,17 @@ async fn html(
         varsity_speaker_results, novice_speaker_results, videos => metadata,
         tab_cards_search_enabled => false, messages => Vec::<String>::new(),
     };
-    crate::web::render(
-        "tournaments/detail.html",
-        minijinja::context! {..ctx, ..specific},
-    )
-    .map_err(|error| {
+    let (template, bindings) = match editing {
+        Some(form) => (
+            "tournaments/update.html",
+            minijinja::context! {..form,..specific,..ctx},
+        ),
+        None => (
+            "tournaments/detail.html",
+            minijinja::context! {..specific,..ctx},
+        ),
+    };
+    crate::web::render(template, bindings).map_err(|error| {
         eprintln!("Tournament template failed: {error}");
         ApiError::Serialization
     })

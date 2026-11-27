@@ -1,0 +1,8 @@
+{% extends "base/create.html" %}
+{% block form %}
+    <form action="" method="POST" novalidate>
+        <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf }}">
+        {% include "core/entity_fields.html" %}
+        <input type="submit" class="btn btn-success" value="Create">
+    </form>
+{% endblock form %}

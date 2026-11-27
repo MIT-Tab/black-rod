@@ -1,3 +1,5 @@
+pub(crate) mod edit;
+
 use std::collections::{HashMap, HashSet};
 
 use axum::{
@@ -490,13 +492,23 @@ pub(crate) async fn page(
     OriginalUri(uri): OriginalUri,
     headers: HeaderMap,
 ) -> Response {
+    let Some(id) = id.parse::<i64>().ok().filter(|_| is_django_integer(&id)) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    render_page(&state, id, &uri, &headers, None).await
+}
+
+pub(crate) async fn render_page(
+    state: &AppState,
+    id: i64,
+    uri: &axum::http::Uri,
+    headers: &HeaderMap,
+    editing: Option<minijinja::Value>,
+) -> Response {
     use crate::{session, web};
     use axum::{http::header, response::Html};
     use minijinja::context;
 
-    let Some(id) = id.parse::<i64>().ok().filter(|_| is_django_integer(&id)) else {
-        return StatusCode::NOT_FOUND.into_response();
-    };
     let exists = sqlx::query_scalar::<_, i64>(
         "SELECT CAST(id AS BIGINT) FROM core_team WHERE id = $1 AND NOT synthetic",
     )
@@ -511,11 +523,11 @@ pub(crate) async fn page(
             return StatusCode::INTERNAL_SERVER_ERROR.into_response();
         }
     }
-    let data = load(&state, id, "", None, "").await;
+    let data = load(state, id, "", None, "").await;
     let Ok(data) = data else {
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     };
-    let Ok(user) = session::user(&state.pool, &headers, state.secret.as_deref()).await else {
+    let Ok(user) = session::user(&state.pool, headers, state.secret.as_deref()).await else {
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     };
     let all = url::form_urlencoded::parse(uri.query().unwrap_or_default().as_bytes())
@@ -549,12 +561,16 @@ pub(crate) async fn page(
             })
         })
         .collect::<Vec<_>>();
-    let common = web::base_context(&state, &user, &uri);
+    let common = web::base_context(state, &user, uri);
     let specific = context! {
         object => &data["team"], visible_debaters => &data["team"]["debaters"],
         totys => &data["toty_history"], buttons, results, current_season => "",
     };
-    match web::render("teams/detail.html", context! {..common, ..specific}) {
+    let (template, bindings) = match editing {
+        Some(form) => ("teams/update.html", context! {..form,..common,..specific}),
+        None => ("teams/detail.html", context! {..common,..specific}),
+    };
+    match web::render(template, bindings) {
         Ok(html) => ([(header::VARY, "Cookie")], Html(html)).into_response(),
         Err(error) => {
             eprintln!("Team template failed: {error}");

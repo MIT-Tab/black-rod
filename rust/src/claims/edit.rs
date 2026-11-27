@@ -28,6 +28,16 @@ const QUERY: &str = "
 ";
 static MARKUP: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?s)<!--.*?-->|<![^>]*>|</?[a-zA-Z][^>]*>").unwrap());
+pub(crate) fn sanitize_name(value: &str, fallback: &str) -> String {
+    let stripped = MARKUP.replace_all(value, "");
+    let stripped = stripped.trim();
+    if stripped.is_empty() {
+        fallback.to_owned()
+    } else {
+        stripped.to_owned()
+    }
+}
+
 const STATES: [(&str, &str); 3] = [("1", "Varsity"), ("0", "Novice"), ("2", "Dino")];
 const ELO: [(&str, &str); 3] = [("", "Unset"), ("opt_in", "Opt-in"), ("opt_out", "Opt-out")];
 const REGIONS: [&str; 7] = [
@@ -348,46 +358,51 @@ pub(crate) async fn team_names(conn: &mut AnyConnection, id: i64) -> Result<(), 
     .fetch_all(&mut *conn)
     .await?;
     for team in teams {
-        let roster = sqlx::query(
-            "
+        team_name(conn, team).await?;
+    }
+    Ok(())
+}
+
+pub(crate) async fn team_name(conn: &mut AnyConnection, team: i64) -> Result<(), sqlx::Error> {
+    let roster = sqlx::query(
+        "
             SELECT d.first_name,d.last_name,COALESCE(s.name,'Unaffiliated') AS school
             FROM core_team_debaters m JOIN core_debater d ON d.id=m.debater_id
             LEFT JOIN core_school s ON s.id=d.school_id WHERE m.team_id=$1 ORDER BY m.id
         ",
-        )
-        .bind(team)
-        .fetch_all(&mut *conn)
-        .await?;
-        let Some(first) = roster.first() else {
-            continue;
-        };
-        let Some(last) = roster.last() else {
-            continue;
-        };
-        let first: &str = first.try_get("school")?;
-        let last: &str = last.try_get("school")?;
-        let school = if first == last {
-            first.to_owned()
-        } else {
-            format!("{first} / {last}")
-        };
-        let mut initials = String::new();
-        for person in &roster {
-            let last: &str = person.try_get("last_name")?;
-            let first: &str = person.try_get("first_name")?;
-            initials.push(
-                last.chars()
-                    .next()
-                    .or_else(|| first.chars().next())
-                    .unwrap_or('?'),
-            );
-        }
-        sqlx::query("UPDATE core_team SET name=$2 WHERE id=$1")
-            .bind(team)
-            .bind(format!("{school} {initials}").trim())
-            .execute(&mut *conn)
-            .await?;
+    )
+    .bind(team)
+    .fetch_all(&mut *conn)
+    .await?;
+    let Some(first) = roster.first() else {
+        return Ok(());
+    };
+    let Some(last) = roster.last() else {
+        return Ok(());
+    };
+    let first: &str = first.try_get("school")?;
+    let last: &str = last.try_get("school")?;
+    let school = if first == last {
+        first.to_owned()
+    } else {
+        format!("{first} / {last}")
+    };
+    let mut initials = String::new();
+    for person in &roster {
+        let last: &str = person.try_get("last_name")?;
+        let first: &str = person.try_get("first_name")?;
+        initials.push(
+            last.chars()
+                .next()
+                .or_else(|| first.chars().next())
+                .unwrap_or('?'),
+        );
     }
+    sqlx::query("UPDATE core_team SET name=$2 WHERE id=$1")
+        .bind(team)
+        .bind(format!("{school} {initials}").trim())
+        .execute(&mut *conn)
+        .await?;
     Ok(())
 }
 
@@ -417,18 +432,13 @@ async fn save(
         let value = profile.text[key].as_str();
         (!value.is_empty()).then_some(value)
     };
-    let first = MARKUP.replace_all(&profile.text["first_name"], "");
-    let last = MARKUP.replace_all(&profile.text["last_name"], "");
-    let first = if first.trim().is_empty() {
-        "Removed"
-    } else {
-        first.trim()
-    };
+    let first = sanitize_name(&profile.text["first_name"], "Removed");
+    let last = sanitize_name(&profile.text["last_name"], "");
     let mut tx = pool.begin().await?;
     let updated = sqlx::query(AssertSqlSafe(sql))
         .bind(id)
         .bind(first)
-        .bind(last.trim())
+        .bind(last)
         .bind(option("email"))
         .bind(option("paradigm"))
         .bind(&profile.text["first_season"])

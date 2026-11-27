@@ -45,6 +45,10 @@ jobs:
           scripts=.agents/skills/black-rod-task/scripts
           "$scripts/br" venv/bin/python manage.py migrate --noinput
           "$scripts/br" venv/bin/python manage.py loaddata dev_fixtures
+      - name: Check compatibility with Django model deletion rules
+        run: |
+          .agents/skills/black-rod-task/scripts/br venv/bin/python rust/tools/export_relations.py
+          git diff --exit-code -- rust/schema/delete_relations.tsv
       - name: Compare HTTP responses on SQLite
         run: .agents/skills/black-rod-task/scripts/br venv/bin/python rust/tools/compare.py
       - uses: actions/setup-node@v4

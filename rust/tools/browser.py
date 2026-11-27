@@ -339,6 +339,70 @@ def assert_video_permissions(driver, django, rust, fixture):
                 assert left == right, f"{path} {key}[{index}] differed: {left!r} vs {right!r}"
 
 
+def assert_video_editor(driver, django, rust, fixture):
+    rust_root = f"http://{HOST}:{rust.port}"
+    django_root = f"http://{HOST}:{django.port}"
+    create = "/core/videos/create"
+    driver.get(f"{rust_root}/games/")
+    driver.add_cookie({"name": "sessionid", "value": django_session()})
+    driver.get(f"{rust_root}{create}")
+    wait = WebDriverWait(driver, 12)
+    wait.until(lambda browser: len(browser.find_elements("css selector", ".note-editor .note-editable")) == 2)
+    assert driver.find_element("id", "id_round").get_attribute("value") == "0"
+    assert driver.find_element("id", "id_permissions").get_attribute("value") == "2"
+
+    def write(root, path, data):
+        driver.get(f"{root}{path}")
+        return driver.execute_async_script("""
+            const [data, done] = arguments;
+            const fields = new URLSearchParams(data);
+            fields.set("csrfmiddlewaretoken", document.querySelector("[name=csrfmiddlewaretoken]").value);
+            fetch(location.pathname,{method:"POST",body:fields}).then(async response => {
+                done([response.status,new URL(response.url).pathname,(await response.text()).includes("was introduced through the editor")]);
+            }, () => done([0]));
+        """, data)
+
+    from base64 import b64encode
+    from io import BytesIO
+    pixels = BytesIO()
+    Image.new("RGB", (2, 2), (53, 92, 127)).save(pixels, "PNG")
+    uploaded = driver.execute_async_script("""
+        const [data, done] = arguments;
+        const bytes = Uint8Array.from(atob(data), char => char.charCodeAt(0));
+        const body = new FormData();
+        body.set("files", new File([bytes], "fixture.png"));
+        body.set("csrfmiddlewaretoken", document.querySelector("[name=csrfmiddlewaretoken]").value);
+        fetch("/summernote/upload_attachment/", {method:"POST",body}).then(async response => {
+            done([response.status, await response.json()]);
+        }, () => done([0]));
+    """, b64encode(pixels.getvalue()).decode())
+    assert uploaded[0] == 200 and uploaded[1]["files"][0]["size"] == len(pixels.getvalue()), uploaded
+    attachment = uploaded[1]["files"][0]["url"]
+    served = driver.execute_async_script("""
+        const [path, done] = arguments;
+        fetch(path).then(response => done([response.status,response.headers.get("content-type")]), () => done([0]));
+    """, attachment)
+    assert served == [200, "image/png"], served
+    roles = dict(zip(("pm", "mg", "lo", "mo"), fixture["authors"]))
+    data = {**roles, "tournament": fixture["tournament"], "round": "8", "permissions": "0",
+            "link": "https://videos.example.test/new", "password": "",
+            "case": '<p>This case was introduced through the editor.</p>',
+            "description": f'<p>Test fixture.</p><img src="{attachment}">', "tags": "Video authoring fixture"}
+    created = write(rust_root, create, data)
+    assert created[0] == 200 and created[1].split("/")[-1].isdigit() and created[2], created
+    view = created[1]
+    driver.get(f"{django_root}{view}")
+    assert "This case was introduced through the editor." in driver.find_element("tag name", "body").text
+    data["round"] = "9"
+    edited = write(rust_root, f"{view}/edit", data)
+    assert edited == [200, view, True], edited
+    driver.get(f"{django_root}{view}")
+    assert "Varsity Finals" in driver.find_element("tag name", "body").text
+    deleted = write(rust_root, f"{view}/delete", {})
+    assert deleted[:2] == [200, "/core/videos/"], deleted
+    driver.delete_all_cookies()
+
+
 def assert_random_video(driver, django, rust, fixture):
     video = fixture["videos"][0]
     private_video = fixture["videos"][2]
@@ -980,6 +1044,90 @@ def assert_scheduling(driver, django, rust, fixture):
     driver.delete_all_cookies()
 
 
+def assert_entities(driver, django, rust, fixture):
+    rust_root = f"http://{HOST}:{rust.port}"
+    django_root = f"http://{HOST}:{django.port}"
+    driver.get(f"{rust_root}/games/")
+    driver.add_cookie({"name": "sessionid", "value": django_session()})
+
+    def submit(root, path, fields):
+        driver.get(f"{root}{path}")
+        return driver.execute_async_script("""
+            const [fields, done] = arguments;
+            const body = new URLSearchParams(fields);
+            const token = document.querySelector("[name=csrfmiddlewaretoken]");
+            if (!token) return done(["missing form", document.body.textContent.slice(0, 200)]);
+            body.set("csrfmiddlewaretoken", token.value);
+            fetch(location.pathname, {method:"POST",body}).then(async response => {
+                done([response.status,new URL(response.url).pathname,await response.text()]);
+            }, () => done([0]));
+        """, fields)
+
+    school_name = {"name": "Parity School Created", "short_name": "Parity", "included_in_oty": "on"}
+    created_school = submit(rust_root, "/core/schools/create", school_name)
+    assert created_school[0] == 200 and created_school[1].split("/")[-1].isdigit(), created_school[:2]
+    school = created_school[1]
+    school_id = school.split("/")[-1]
+    driver.get(f"{django_root}{school}/edit")
+    assert driver.find_element("id", "id_name").get_attribute("value") == school_name["name"]
+    school_name["name"] = "Parity School Edited"
+    assert submit(rust_root, f"{school}/edit", school_name)[:2] == [200, school]
+    driver.get(f"{django_root}{school}/edit")
+    assert driver.find_element("id", "id_name").get_attribute("value") == school_name["name"]
+    participant = {"first_name": "Native", "last_name": "Created", "school": school_id, "ajax": "1"}
+    created_debater = submit(rust_root, "/core/debaters/create", participant)
+    assert created_debater[0] == 200 and created_debater[2].isdigit(), created_debater[:2]
+    debater = f"/core/debaters/{created_debater[2]}"
+    driver.get(f"{django_root}{debater}/edit")
+    assert driver.find_element("id", "id_last_name").get_attribute("value") == "Created"
+    participant.pop("ajax")
+    participant["last_name"] = "Updated"
+    assert submit(rust_root, f"{debater}/edit", participant)[:2] == [200, debater]
+    driver.get(f"{django_root}{debater}/edit")
+    assert driver.find_element("id", "id_last_name").get_attribute("value") == "Updated"
+    assert submit(rust_root, f"{school}/delete", {})[:2] == [200, "/core/schools/"]
+    database = Path(os.environ["BR_STATE"]) / "dev.sqlite3"
+    with sqlite3.connect(f"{database.as_uri()}?mode=ro", uri=True) as connection:
+        assert connection.execute("SELECT school_id FROM core_debater WHERE id = ?",
+                                  (created_debater[2],)).fetchone() == (None,)
+    assert submit(rust_root, f"{debater}/delete", {})[:2] == [200, "/core/debaters/"]
+    data = {"host": fixture["claim_candidates"][0][1], "season": "2026", "date": "2026-09-01",
+            "num_teams": "24", "num_novice_debaters": "12", "qual_type": "15",
+            "name_suffix": "0", "manual_name": "Disposable parity event", "short_name": ""}
+    created_event = submit(rust_root, "/core/tournaments/create", data)
+    assert created_event[0] == 200 and created_event[1].split("/")[-1].isdigit(), created_event[:2]
+    tournament = created_event[1]
+    with sqlite3.connect(f"{database.as_uri()}?mode=ro", uri=True) as connection:
+        row = connection.execute("SELECT qual,noty,toty,soty,autoqual_bar FROM core_tournament WHERE id=?",
+                                 (tournament.split("/")[-1],)).fetchone()
+        assert row == (True, False, False, False, 2), row
+    driver.get(f"{django_root}{tournament}/edit")
+    assert driver.find_element("id", "id_manual_name").get_attribute("value") == data["manual_name"]
+    data["manual_name"] = "Edited parity event"
+    edited = submit(rust_root, f"{tournament}/edit", data)
+    assert edited[:2] == [200, tournament] and data["manual_name"] in edited[2], edited[:2]
+    assert submit(rust_root, f"{tournament}/delete", {})[:2] == [200, "/core/tournaments/"]
+    with sqlite3.connect(f"{database.as_uri()}?mode=ro", uri=True) as connection:
+        team_id = connection.execute("""
+            SELECT t.id FROM core_team t JOIN core_team_debaters m ON m.team_id=t.id
+            JOIN core_debater d ON d.id=m.debater_id
+            WHERE NOT t.synthetic AND NOT d.synthetic AND NOT d.temporary
+            GROUP BY t.id HAVING COUNT(*)=2 ORDER BY t.id LIMIT 1
+        """).fetchone()[0]
+        member_ids = [row[0] for row in connection.execute(
+            "SELECT debater_id FROM core_team_debaters WHERE team_id=?",
+            (team_id,)).fetchall()]
+    team = f"/core/teams/{team_id}"
+    fields = [["short_name", "Parity team name"]]
+    invalid = submit(rust_root, f"{team}/edit", fields + [["debaters", member_ids[0]]])
+    assert invalid[0] == 200 and "All teams must have 2 debaters" in invalid[2], invalid[:2]
+    updated = submit(rust_root, f"{team}/edit", fields + [["debaters", id] for id in member_ids])
+    assert updated[:2] == [200, team], updated[:2]
+    driver.get(f"{django_root}{team}/edit")
+    assert driver.find_element("id", "id_short_name").get_attribute("value") == fields[0][1]
+    driver.delete_all_cookies()
+
+
 def assert_generated_codes(driver, django, rust, fixture):
     roots = [f"http://{HOST}:{server.port}" for server in (django, rust)]
     path = "/core/generated-codes/"
@@ -1268,6 +1416,7 @@ def browser_checks(database, options, output):
         assert_partnership_stats(driver, django, rust)
         assert_search(driver, django, rust)
         assert_video_permissions(driver, django, rust, fixture)
+        assert_video_editor(driver, django, rust, fixture)
         assert_random_video(driver, django, rust, fixture)
         assert_recent_results(driver, django, rust)
         assert_motion_progress(driver, django, rust, fixture)
@@ -1284,6 +1433,7 @@ def browser_checks(database, options, output):
         assert_doty(driver, django, rust)
         assert_admin_tools(driver, django, rust)
         assert_generated_codes(driver, django, rust, fixture)
+        assert_entities(driver, django, rust, fixture)
         assert_claims(driver, django, rust, fixture)
         live_django = directory_state(driver, django, "/live")
         live_rust = directory_state(driver, rust, "/live")

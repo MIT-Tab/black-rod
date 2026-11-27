@@ -3,9 +3,12 @@ mod autocomplete;
 mod cache;
 mod claims;
 mod debater_profile;
+mod delete_relations;
 mod directory;
 mod discovery;
 mod django_json;
+mod entity_delete;
+mod entity_forms;
 mod exports;
 mod flash;
 mod generated_code;
@@ -33,6 +36,7 @@ mod search;
 mod session;
 mod standings;
 mod stats;
+mod summernote;
 mod tag_filter;
 mod team_profile;
 mod tournament_profile;
@@ -374,6 +378,14 @@ pub fn app(state: AppState) -> Router {
         )
         .route("/core/schools/{school}", get(school_profile::page))
         .route("/core/schools/", get(directory::page))
+        .route(
+            "/core/schools/create",
+            get(entity_forms::endpoint).post(entity_forms::endpoint),
+        )
+        .route(
+            "/core/debaters/create",
+            get(entity_forms::endpoint).post(entity_forms::endpoint),
+        )
         .route("/core/debaters/", get(directory::page))
         .route(
             "/core/admin/scheduling/",
@@ -439,6 +451,30 @@ pub fn app(state: AppState) -> Router {
             "/core/admin/school-short-names/",
             get(admin::short_names::endpoint).post(admin::short_names::endpoint),
         )
+        .route(
+            "/core/schools/{school}/delete",
+            get(entity_delete::endpoint).post(entity_delete::endpoint),
+        )
+        .route(
+            "/core/debaters/{debater}/delete",
+            get(entity_delete::endpoint).post(entity_delete::endpoint),
+        )
+        .route(
+            "/core/teams/{team}/delete",
+            get(entity_delete::endpoint).post(entity_delete::endpoint),
+        )
+        .route(
+            "/core/tournaments/{tournament}/delete",
+            get(entity_delete::endpoint).post(entity_delete::endpoint),
+        )
+        .route(
+            "/core/schools/{school}/edit",
+            get(entity_forms::endpoint).post(entity_forms::endpoint),
+        )
+        .route(
+            "/core/debaters/{debater}/edit",
+            get(entity_forms::endpoint).post(entity_forms::endpoint),
+        )
         .route("/core/dino-judges/", get(directory::page))
         .route("/core/dino-judges", get(append_slash))
         .route("/core/dino-tos/", get(directory::page))
@@ -449,7 +485,19 @@ pub fn app(state: AppState) -> Router {
             get(exports::career_tab_cards),
         )
         .route("/core/teams/", get(directory::page))
+        .route(
+            "/core/teams/{team}/edit",
+            get(team_profile::edit::endpoint).post(team_profile::edit::endpoint),
+        )
         .route("/core/tournaments/", get(directory::page))
+        .route(
+            "/core/tournaments/create",
+            get(tournament_profile::edit::endpoint).post(tournament_profile::edit::endpoint),
+        )
+        .route(
+            "/core/tournaments/{tournament}/edit",
+            get(tournament_profile::edit::endpoint).post(tournament_profile::edit::endpoint),
+        )
         .route("/core/tournaments", get(append_slash))
         .route("/core/widgets/recent-results/", get(recent_results::page))
         .route("/core/widgets/recent-results", get(append_slash))
@@ -518,6 +566,18 @@ pub fn app(state: AppState) -> Router {
         .route("/core/videos/", get(directory::page))
         .route("/core/videos", get(append_slash))
         .route("/core/videos/random", get(directory::page))
+        .route(
+            "/core/videos/create",
+            get(video::edit::endpoint).post(video::edit::endpoint),
+        )
+        .route(
+            "/core/videos/{video}/edit",
+            get(video::edit::endpoint).post(video::edit::endpoint),
+        )
+        .route(
+            "/core/videos/{video}/delete",
+            get(video::edit::endpoint).post(video::edit::endpoint),
+        )
         .route("/core/videos/{video}", get(video::detail))
         .route("/core/resources/", get(directory::page))
         .route("/core/resources", get(append_slash))
@@ -542,6 +602,14 @@ pub fn app(state: AppState) -> Router {
         .route("/core/soty", get(directory::page))
         .route("/core/noty", get(directory::page))
         .route("/core/coty", get(directory::page))
+        .route(
+            "/summernote/upload_attachment/",
+            get(summernote::upload).post(summernote::upload),
+        )
+        .route(
+            "/django-summernote/{day}/{name}",
+            get(summernote::attachment),
+        )
         .route("/robots.txt", get(robots))
         .route("/llms.txt", get(discovery::documentation))
         .route("/llm/", get(discovery::proxy))

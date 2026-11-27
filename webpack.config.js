@@ -29,6 +29,10 @@ module.exports = {
   module: {
     rules: [
       {
+        test: /\.(woff2?|ttf|eot)$/,
+        type: "asset/resource",
+      },
+      {
         test: /\.css$/,
         use: ["style-loader", "css-loader"],
       },
@@ -73,6 +77,7 @@ module.exports = {
 
   resolve: {
     extensions: [".js", ".jsx"],
+    alias: { jQuery: "jquery" },
   },
 
   devtool: "source-map",

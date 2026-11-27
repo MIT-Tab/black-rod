@@ -1,0 +1,67 @@
+{% macro select(name, label, choices=none) %}
+    <div id="div_id_{{ name }}" class="form-group">
+        <label for="id_{{ name }}" class="requiredField">{{ label }}<span class="asteriskField">*</span></label>
+        <div>
+            {% if choices %}
+                <select name="{{ name }}" id="id_{{ name }}" class="select form-control{% if errors[name] %} is-invalid{% endif %}" required>
+                    {% for value, option_label in choices %}<option value="{{ value }}"{% if fields[name] == value %} selected{% endif %}>{{ option_label }}</option>{% endfor %}
+                </select>
+            {% else %}
+                <select name="{{ name }}" id="id_{{ name }}" class="modelselect2 form-control{% if errors[name] %} is-invalid{% endif %}"
+                        data-rust-select-url="{{ '/core/tournaments/all_autocomplete' if name == 'tournament' else '/core/debaters/autocomplete' }}" required>
+                    <option value=""></option>
+                    {% if fields.people[name].value %}<option value="{{ fields.people[name].value }}" selected>{{ fields.people[name].label }}</option>{% endif %}
+                </select>
+            {% endif %}
+            {% if errors[name] %}<p id="error_1_id_{{ name }}" class="invalid-feedback d-block"><strong>{{ errors[name] }}</strong></p>{% endif %}
+        </div>
+    </div>
+{% endmacro %}
+{% macro detail(name, label) %}
+    <div id="div_id_{{ name }}" class="form-group">
+        <label for="id_{{ name }}"{% if name == "link" %} class="requiredField"{% endif %}>{{ label }}{% if name == "link" %}<span class="asteriskField">*</span>{% endif %}</label>
+        <div>
+            {% if name in ["case", "description"] %}
+                <textarea name="{{ name }}" id="id_{{ name }}" class="summernotewidget form-control" data-rust-summernote>{{ fields[name] }}</textarea>
+            {% elif name == "tags" %}
+                <select name="tags" id="id_tags" class="selectmultiple form-control{% if errors[name] %} is-invalid{% endif %}" data-rust-tag-url="/core/videos/tags" data-rust-tag-create multiple>
+                    {% for tag in fields.tags %}<option value="{{ tag }}" selected>{{ tag }}</option>{% endfor %}
+                </select>
+                <small id="hint_id_tags" class="form-text text-muted">A comma-separated list of tags.</small>
+            {% else %}
+                <input type="text" name="{{ name }}" id="id_{{ name }}" class="textinput textInput form-control" value="{{ fields[name] }}" maxlength="{{ 4096 if name == 'link' else 1024 }}"{% if name == "link" %} required{% endif %}>
+                {% if name == "password" %}<small id="hint_id_password" class="form-text text-muted">If needed</small>{% endif %}
+            {% endif %}
+            {% if errors[name] %}<p id="error_1_id_{{ name }}" class="invalid-feedback d-block"><strong>{{ errors[name] }}</strong></p>{% endif %}
+        </div>
+    </div>
+{% endmacro %}
+{% if creating %}
+    <form method="post" id="video-create">
+        <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf }}">
+        <div class="form-row">
+            <div class="col-md-6">{{ select("tournament", "Tournament") }}</div>
+            <div class="col-md-6">{{ select("round", "Round", options) }}</div>
+        </div>
+        <div class="border-top my-3"></div>
+        <div class="form-row">
+            <div class="col-md-6">{{ select("pm", "PM") }}{{ select("mg", "MG") }}</div>
+            <div class="col-md-6">{{ select("lo", "LO") }}{{ select("mo", "MO") }}</div>
+        </div>
+        <div class="border-top my-3"></div>
+        <div class="form-row">
+            <div class="col-md-4">{{ detail("link", "Link") }}</div>
+            <div class="col-md-4">{{ detail("password", "Password") }}</div>
+            <div class="col-md-4">{{ select("permissions", "Permissions", permissions) }}</div>
+        </div>
+        <div class="border-top my-3"></div>
+        <div class="form-row">{{ detail("case", "Case") }}{{ detail("description", "Description") }}{{ detail("tags", "Tags") }}</div>
+        <div class="form-group"><div><input type="submit" name="Create" value="Create" class="btn btn-primary" id="submit-id-create"></div></div>
+    </form>
+{% else %}
+    {{ select("pm", "PM") }}{{ select("mg", "MG") }}{{ select("lo", "LO") }}{{ select("mo", "MO") }}
+    {{ select("tournament", "Tournament") }}{{ select("round", "Round", options) }}
+    {{ detail("case", "Case") }}{{ detail("description", "Description") }}
+    {{ detail("link", "Link") }}{{ detail("password", "Password") }}
+    {{ select("permissions", "Permissions", permissions) }}{{ detail("tags", "Tags") }}
+{% endif %}

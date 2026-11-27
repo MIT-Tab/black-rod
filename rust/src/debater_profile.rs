@@ -730,10 +730,20 @@ pub(crate) async fn page(
     else {
         return StatusCode::NOT_FOUND.into_response();
     };
-    let Ok(user) = session::user(&state.pool, &headers, state.secret.as_deref()).await else {
+    render_page(&state, id, &uri, &headers, None).await
+}
+
+pub(crate) async fn render_page(
+    state: &AppState,
+    id: i64,
+    uri: &axum::http::Uri,
+    headers: &HeaderMap,
+    editing: Option<minijinja::Value>,
+) -> Response {
+    let Ok(user) = session::user(&state.pool, headers, state.secret.as_deref()).await else {
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     };
-    let data = match load(&state, id, &user, "", None, uri.path()).await {
+    let data = match load(state, id, &user, "", None, uri.path()).await {
         Ok(data) => data,
         Err(ApiError::NotFound(_)) => return StatusCode::NOT_FOUND.into_response(),
         Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
@@ -884,7 +894,7 @@ pub(crate) async fn page(
         && session::has_permission(&state.pool, &user, "change_speakerresult")
             .await
             .unwrap_or(false);
-    let common = crate::web::base_context(&state, &user, &uri);
+    let common = crate::web::base_context(state, &user, uri);
     let values = minijinja::context! {
         object, buttons, results, teams, videos, can_edit_profile => owner || user.is_superuser,
         partner_breakdown, perms => json!({"core":{"change_teamresult":manage_team, "change_speakerresult":manage_speaker}}),
@@ -895,10 +905,16 @@ pub(crate) async fn page(
         sotys => data["standings"]["soty"].clone(),
         notys => data["standings"]["noty"].clone(),
     };
-    match crate::web::render(
-        "debaters/detail.html",
-        minijinja::context! { ..values, ..common },
-    ) {
+    let template = if editing.is_some() {
+        "debaters/update.html"
+    } else {
+        "debaters/detail.html"
+    };
+    let bindings = match editing {
+        Some(form) => minijinja::context! {..form,..values,..common},
+        None => minijinja::context! {..values,..common},
+    };
+    match crate::web::render(template, bindings) {
         Ok(html) => (
             [(axum::http::header::VARY, "Cookie")],
             axum::response::Html(html),

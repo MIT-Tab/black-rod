@@ -110,6 +110,7 @@ def servers(database, cold=False):
         "BLACK_ROD_BIND": f"{HOST}:{rust_port}",
         "BLACK_ROD_CACHE_TTL_SECONDS": "0" if cold else "300",
         "TOKIO_WORKER_THREADS": "8",
+        "BLACK_ROD_MEDIA_ROOT": str(Path(os.environ["BR_STATE"]) / "media"),
         "SECRET_KEY": django_env["SECRET_KEY"],
         "MITTAB_PRIVATE_API_TOKENS": django_env["MITTAB_PRIVATE_API_TOKENS"],
         "FORUM_PROFILE_API_TOKEN": django_env["FORUM_PROFILE_API_TOKEN"],

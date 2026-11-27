@@ -1,0 +1,18 @@
+{% if errors.form %}<div class="alert alert-block alert-danger"><ul class="m-0"><li>{{ errors.form }}</li></ul></div>{% endif %}
+<div id="div_id_debaters" class="form-group">
+    <label for="id_debaters" class="requiredField">Debaters<span class="asteriskField">*</span></label>
+    <div>
+        <select name="debaters" id="id_debaters" class="modelselect2multiple form-control{% if errors.debaters %} is-invalid{% endif %}"
+                data-rust-select-url="/core/debaters/autocomplete" multiple required>
+            {% for id, name in debaters %}<option value="{{ id }}" selected>{{ name }}</option>{% endfor %}
+        </select>
+        {% if errors.debaters %}<p class="invalid-feedback d-block"><strong>{{ errors.debaters }}</strong></p>{% endif %}
+    </div>
+</div>
+<div id="div_id_short_name" class="form-group">
+    <label for="id_short_name" class="requiredField">Short name<span class="asteriskField">*</span></label>
+    <div>
+        <input type="text" name="short_name" value="{{ short_name }}" id="id_short_name" maxlength="128" class="textinput textInput form-control{% if errors.short_name %} is-invalid{% endif %}" required>
+        {% if errors.short_name %}<p class="invalid-feedback d-block"><strong>{{ errors.short_name }}</strong></p>{% endif %}
+    </div>
+</div>

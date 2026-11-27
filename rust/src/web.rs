@@ -19,6 +19,58 @@ use crate::{
 
 const VIEWS: &[(&str, &str)] = &[
     (
+        "tournaments/create.html",
+        include_str!("../templates/tournament_create.html"),
+    ),
+    (
+        "tournaments/update.html",
+        include_str!("../../core/templates/tournaments/update.html"),
+    ),
+    (
+        "tournaments/fields.html",
+        include_str!("../templates/tournament_fields.html"),
+    ),
+    (
+        "teams/update.html",
+        include_str!("../../core/templates/teams/update.html"),
+    ),
+    (
+        "teams/fields.html",
+        include_str!("../templates/team_fields.html"),
+    ),
+    (
+        "core/entity_fields.html",
+        include_str!("../templates/entity_fields.html"),
+    ),
+    (
+        "schools/update.html",
+        include_str!("../../core/templates/schools/update.html"),
+    ),
+    (
+        "debaters/update.html",
+        include_str!("../../core/templates/debaters/update.html"),
+    ),
+    (
+        "core/create_entity.html",
+        include_str!("../templates/create_entity.html"),
+    ),
+    (
+        "videos/create.html",
+        include_str!("../../core/templates/videos/create.html"),
+    ),
+    (
+        "videos/update.html",
+        include_str!("../../core/templates/videos/update.html"),
+    ),
+    (
+        "videos/delete.html",
+        include_str!("../../core/templates/videos/delete.html"),
+    ),
+    (
+        "videos/fields.html",
+        include_str!("../templates/video_fields.html"),
+    ),
+    (
         "debaters/personal_partnership_stats.html",
         include_str!("../../core/templates/debaters/personal_partnership_stats.html"),
     ),
@@ -479,6 +531,41 @@ fn adapt_scheduler(template: &str) -> String {
 fn adapt_template(name: &str, template: &str) -> String {
     let adapted;
     let template = match name {
+        "tournaments/update.html" => {
+            adapted = template
+                .replace("{{ object }}", "{{ object.name }}")
+                .replace("{{ form.media }}", "")
+                .replace(
+                    "{{ form|crispy }}",
+                    r#"{% include "tournaments/fields.html" %}"#,
+                );
+            &adapted
+        }
+        "teams/update.html" => {
+            adapted = template
+                .replace("{{ object }}", "{{ object.name }}")
+                .replace("{{ form.media }}", "")
+                .replace("{{ form|crispy }}", r#"{% include "teams/fields.html" %}"#);
+            &adapted
+        }
+        "schools/update.html" | "debaters/update.html" => {
+            adapted = template
+                .replace("{{ object }}", "{{ object.name }}")
+                .replace("{{ form.media }}", "")
+                .replace(
+                    "{{ form|crispy }}",
+                    r#"{% include "core/entity_fields.html" %}"#,
+                );
+            &adapted
+        }
+        "videos/create.html" | "videos/update.html" => {
+            adapted = template.replace("{{ form.media }}", "")
+                .replace("{% crispy form %}", r#"{% include "videos/fields.html" %}"#)
+                .replace("{{ form|crispy }}", r#"{% include "videos/fields.html" %}"#)
+                .replace("{{ object }}", "{{ object.name }}")
+                .replace("{{ debater_form.school|as_crispy_field }}", r#"<div class="form-group"><label for="id_school">School</label><select name="school" id="id_school" class="modelselect2 form-control" data-rust-select-url="/core/schools/autocomplete"><option value=""></option></select></div>"#);
+            &adapted
+        }
         "debaters/personal_partnership_stats.html"
         | "debaters/_partnership_stats_results.html"
         | "debaters/_partnership_rankings.html" => {
@@ -685,6 +772,7 @@ fn adapt_template(name: &str, template: &str) -> String {
                 let route = arguments.split('\'').nth(1).unwrap_or_default();
                 let path = match route {
                     "core:index" => "/",
+                    "core:school_create" => "/core/schools/create",
                     "core:admin_tools" => "/core/admin-tools/",
                     "core:doty" => "/DOTY",
                     "core:partnership_paths" => "/core/debaters/partnership-paths/",

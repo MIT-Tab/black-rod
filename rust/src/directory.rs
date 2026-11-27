@@ -168,7 +168,7 @@ const TOURNAMENT_PROJECTION: &str = "CAST(x.id AS BIGINT) AS id, x.name, x.seaso
         LEFT JOIN core_debater d ON d.id = m.debater_id
         WHERE r.tournament_id = x.id AND r.type_of_place = 1 AND r.place = 1 LIMIT 1) AS winner_last_name";
 
-const TOURNAMENT_TYPES: &[(i64, &str)] = &[
+pub(crate) const TOURNAMENT_TYPES: &[(i64, &str)] = &[
     (0, "Regular (Points)"),
     (1, "Brandeis IV"),
     (2, "Yale IV"),

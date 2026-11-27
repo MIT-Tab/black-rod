@@ -195,12 +195,21 @@ pub(crate) async fn page(
     OriginalUri(uri): OriginalUri,
     headers: HeaderMap,
 ) -> Response {
-    use axum::{http::header, response::Html};
-    use minijinja::context;
-
     let Some(id) = id.parse::<i64>().ok().filter(|_| is_django_integer(&id)) else {
         return StatusCode::NOT_FOUND.into_response();
     };
+    render_page(&state, id, &uri, &headers, None).await
+}
+
+pub(crate) async fn render_page(
+    state: &AppState,
+    id: i64,
+    uri: &axum::http::Uri,
+    headers: &HeaderMap,
+    editing: Option<minijinja::Value>,
+) -> Response {
+    use axum::{http::header, response::Html};
+    use minijinja::context;
     let valid = sqlx::query_scalar::<_, i64>("SELECT CAST(id AS BIGINT) FROM core_school WHERE id = $1 AND NOT synthetic AND NOT temporary")
         .bind(id).fetch_optional(&state.pool).await;
     match valid {
@@ -217,7 +226,7 @@ pub(crate) async fn page(
         .get("season")
         .map(|value| value.as_ref())
         .unwrap_or_default();
-    if raw.is_empty() {
+    if raw.is_empty() && editing.is_none() {
         return (
             StatusCode::FOUND,
             [(
@@ -232,7 +241,7 @@ pub(crate) async fn page(
         .ok()
         .filter(|year| raw == year.to_string());
     let loaded = load(
-        &state,
+        state,
         "",
         id,
         season.unwrap_or(state.current_season),
@@ -243,8 +252,7 @@ pub(crate) async fn page(
     let Ok(loaded) = loaded else {
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     };
-    let Ok(user) = crate::session::user(&state.pool, &headers, state.secret.as_deref()).await
-    else {
+    let Ok(user) = crate::session::user(&state.pool, headers, state.secret.as_deref()).await else {
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     };
     let mut buttons = Vec::new();
@@ -278,16 +286,20 @@ pub(crate) async fn page(
         .get("default")
         .map(|value| value.as_ref())
         .unwrap_or("members");
-    let common = crate::web::base_context(&state, &user, &uri);
-    match crate::web::render(
-        "schools/detail.html",
-        context! {
-            ..common, ..context! { current_season => raw, default, buttons, debaters, quals,
-            object => &loaded["school"],
-            cotys => &loaded["coty_history"],
-            tournaments => &loaded["hosted_tournaments"], }
-        },
-    ) {
+    let common = crate::web::base_context(state, &user, uri);
+    let props = context! { current_season => raw, default, buttons, debaters, quals,
+    object => &loaded["school"], cotys => &loaded["coty_history"],
+    tournaments => &loaded["hosted_tournaments"] };
+    let template = if editing.is_some() {
+        "schools/update.html"
+    } else {
+        "schools/detail.html"
+    };
+    let bindings = match editing {
+        Some(form) => context! {..form,..props,..common},
+        None => context! {..props,..common},
+    };
+    match crate::web::render(template, bindings) {
         Ok(html) => ([(header::VARY, "Cookie")], Html(html)).into_response(),
         Err(error) => {
             eprintln!("School template failed: {error}");
