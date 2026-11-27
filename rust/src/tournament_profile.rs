@@ -17,7 +17,9 @@ use crate::{
     schools::{DEBATER_COLUMNS, Debater},
     session::{self, User},
     standings::place_display,
-    team_profile::{SCHOOL_COLUMNS, Team, cards, members, read_transaction, school},
+    team_profile::{
+        SCHOOL_COLUMNS, Team, cards, members, read_transaction, school, tournament_card,
+    },
 };
 
 const TOURNAMENT: &str = "
@@ -466,13 +468,26 @@ async fn html(
                 .unwrap_or_default()
         );
     }
+    let mut teams = Vec::new();
+    if state.tournament_tab_card_search && editing.is_none() {
+        for row in sqlx::query(TEAMS_WITH_ROUNDS)
+            .bind(id)
+            .fetch_all(&mut *tx)
+            .await?
+        {
+            let team_id: i64 = row.try_get("id")?;
+            let people = members(&mut tx, team_id, "").await?;
+            let rounds = tournament_card(&mut tx, team_id, &people, id).await?;
+            teams.push(json!([{"id":team_id,"name":row.try_get::<&str,_>("name")?}, rounds]));
+        }
+    }
     tx.commit().await?;
     let mut buttons = Vec::new();
     for (permission, name, suffix, class) in [
         ("remove_tournament", "Delete", "delete", "btn-danger"),
         ("change_tournament", "Edit", "edit", "btn-info"),
     ] {
-        if session::has_permission(&state.pool, user, permission).await? {
+        if editing.is_none() && session::has_permission(&state.pool, user, permission).await? {
             buttons.push(json!({"name":name,"class":class,"href":format!("/core/tournaments/{id}/{suffix}")}));
         }
     }
@@ -485,7 +500,7 @@ async fn html(
     let specific = minijinja::context! {
         object => tournament, perms, buttons, recipients, varsity_team_results, novice_team_results,
         varsity_speaker_results, novice_speaker_results, videos => metadata,
-        tab_cards_search_enabled => false, messages,
+        tab_cards_search_enabled => state.tournament_tab_card_search, tab_cards_available => !teams.is_empty(), teams, messages,
     };
     let (template, bindings) = match editing {
         Some(form) => (

@@ -3,11 +3,11 @@
     {{ super() }}<link rel="stylesheet" href="/static/admin/css/changelists.css">
     {% if edit_speakers %}<link rel="stylesheet" href="/static/admin/css/forms.css">{% endif %}
     {% if actions or edit_speakers %}<script src="/admin/jsi18n/"></script>{% endif %}
-    {% for medium,asset in css %}<link href="/static/{{ asset|vendor_asset }}" media="{{ medium }}" rel="stylesheet">{% endfor %}
+    {% for medium,asset in css %}<link href="/static/{{ asset }}" media="{{ medium }}" rel="stylesheet">{% endfor %}
 {% endblock %}
 {% block extrahead %}
     {{ super() }}
-    {% for asset in js %}<script src="/static/{{ asset|vendor_asset }}"></script>{% endfor %}
+    {% for asset in js %}<script src="/static/{{ asset }}"></script>{% endfor %}
     <script src="/static/admin/js/filters.js" defer></script>
 {% endblock %}
 {% block bodyclass %}{{ super() }} app-{{ app_label }} model-{{ model_name }} change-list{% endblock %}

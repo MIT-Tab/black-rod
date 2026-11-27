@@ -207,6 +207,22 @@ def model_config(request, model, model_admin):
     return model_admin_options
 
 
+def configured_model(request, model, admin):
+    from django.test import override_settings
+
+    config = model_config(request, model, admin)
+    with override_settings(DEBUG=False):
+        production = model_config(request, model, admin)
+    if config["list_media"] != production["list_media"]:
+        config["production_list_media"] = production["list_media"]
+    for key in ("form_add", "form_change"):
+        if config[key]["media"] != production[key]["media"]:
+            config[key]["production_media"] = production[key]["media"]
+    if "exchange" in config and config["exchange"]["import_media"] != production["exchange"]["import_media"]:
+        config["exchange"]["production_import_media"] = production["exchange"]["import_media"]
+    return config
+
+
 def main():
     setup()
     from django.contrib import admin
@@ -229,7 +245,7 @@ def main():
         "content_types": content_types,
         "apps": [
             {"label": app["app_label"], "name": str(app["name"]),
-             "models": [model_config(request, entry["model"], site._registry[entry["model"]]) for entry in app["models"]]}
+             "models": [configured_model(request, entry["model"], site._registry[entry["model"]]) for entry in app["models"]]}
             for app in site.get_app_list(request)
         ],
     }

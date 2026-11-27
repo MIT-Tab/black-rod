@@ -2,15 +2,15 @@
     {% set name = item.name %}
     {% if item.kind == "select" or item.kind == "person" %}
         <select name="{{ name }}" id="id_{{ name }}"
-                class="{{ 'modelselect2' if item.kind == 'person' else 'form-control' }}"
-                {% if item.kind == "person" %}data-rust-select-url="/core/debaters/autocomplete"{% endif %}
-                {% if item.required %}required{% endif %}>
+                {% if item.kind != "person" %}class="form-control"{% endif %}
+                {% if item.kind == "person" %}data-autocomplete-light-language="en" data-autocomplete-light-url="/core/debaters/autocomplete" data-autocomplete-light-function="select2"{% endif %}
+                {% if item.required and item.kind == "person" %}required{% endif %}>
             {% for choice in item.choices %}
             <option value="{{ choice[0] }}"{% if choice[0] == item.value %} selected{% endif %}>{{ choice[1] }}</option>
             {% endfor %}
         </select>
     {% else %}
-        <input type="{{ item.kind }}" name="{{ name }}" id="id_{{ name }}" value="{{ item.value }}" class="form-control"
+        <input type="{{ item.kind }}" name="{{ name }}" id="id_{{ name }}"{% if item.value %} value="{{ item.value }}"{% endif %} class="form-control"
                {% if item.step %}step="{{ item.step }}"{% endif %}
                {% if item.min is not none %}min="{{ item.min }}"{% endif %}
                {% if item.limit %}maxlength="{{ item.limit }}"{% endif %}>

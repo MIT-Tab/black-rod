@@ -51,6 +51,14 @@ const VIEWS: &[(&str, &str)] = &[
         include_str!("../../core/templates/django_summernote/widget_iframe_editor.html"),
     ),
     (
+        "django_summernote/widget_media.html",
+        include_str!("../templates/django_summernote/widget_media.html"),
+    ),
+    (
+        "django_summernote/widget_inplace.html",
+        include_str!("../templates/django_summernote/widget_inplace.html"),
+    ),
+    (
         "django_summernote/widget_common.html",
         include_str!("../templates/django_summernote/widget_common.html"),
     ),
@@ -471,6 +479,7 @@ const VIEWS: &[(&str, &str)] = &[
         include_str!("../../core/templates/admin/claim_debater_requests.html"),
     ),
     ("400.html", include_str!("../../core/templates/400.html")),
+    ("404.html", include_str!("../../core/templates/404.html")),
     ("500.html", include_str!("../../core/templates/500.html")),
     ("403.html", include_str!("../../core/templates/403.html")),
     (
@@ -640,22 +649,28 @@ const VIEWS: &[(&str, &str)] = &[
     ),
 ];
 
+pub(crate) fn debug_assets() -> bool {
+    static DEBUG: LazyLock<bool> = LazyLock::new(|| {
+        std::env::var("DEBUG").map_or_else(
+            |_| std::env::var("ENV").as_deref() != Ok("production"),
+            |value| value == "1",
+        )
+    });
+    *DEBUG
+}
+
 static TEMPLATES: LazyLock<Result<Environment<'static>, minijinja::Error>> = LazyLock::new(|| {
     let mut environment = Environment::new();
     environment.set_auto_escape_callback(|_| AutoEscape::Html);
     environment.set_keep_trailing_newline(true);
     environment.add_filter("vendor_asset", |asset: String| {
-        static DEBUG: LazyLock<bool> = LazyLock::new(|| {
-            std::env::var("DEBUG").map_or_else(
-                |_| std::env::var("ENV").as_deref() != Ok("production"),
-                |value| value == "1",
-            )
-        });
-        if !*DEBUG
+        if !debug_assets()
             && matches!(
                 asset.as_str(),
                 "admin/css/vendor/select2/select2.css"
                     | "admin/js/vendor/select2/select2.full.js"
+                    | "autocomplete_light/autocomplete_light.js"
+                    | "autocomplete_light/select2.js"
                     | "admin/js/vendor/jquery/jquery.js"
                     | "admin/js/vendor/xregexp/xregexp.js"
             )
@@ -834,8 +849,8 @@ fn adapt_scheduler(template: &str) -> String {
     let template = template
         .replace("{{ upload_form.workspace_version }}", r#"<input type="hidden" name="workspace_version" value="{{ version }}" id="id_workspace_version">"#)
         .replace("{{ settings_form.workspace_version }}", r#"<input type="hidden" name="workspace_version" value="{{ version }}" id="id_workspace_version">"#)
-        .replace("{{ upload_form.schools_csv }}", r#"<input type="file" name="schools_csv" class="form-control-file" id="id_schools_csv">"#)
-        .replace("{{ upload_form.dates_csv }}", r#"<input type="file" name="dates_csv" class="form-control-file" id="id_dates_csv">"#)
+        .replace("{{ upload_form.schools_csv }}", r#"<input type="file" name="schools_csv" class="form-control-file" aria-describedby="id_schools_csv_helptext" id="id_schools_csv">"#)
+        .replace("{{ upload_form.dates_csv }}", r#"<input type="file" name="dates_csv" class="form-control-file" aria-describedby="id_dates_csv_helptext" id="id_dates_csv">"#)
         .replace("upload_form.schools_csv.errors", "upload_errors.schools_csv")
         .replace("upload_form.dates_csv.errors", "upload_errors.dates_csv")
         .replace("upload_form.non_field_errors", "upload_errors.non_field_errors")
@@ -847,7 +862,7 @@ fn adapt_scheduler(template: &str) -> String {
     SETTINGS_INPUT
         .replace_all(&template, |capture: &Captures<'_>| {
             let field = &capture[1];
-            let bounds = if field == "max_workers" { r#" min="1" max="64""# } else { "" };
+            let bounds = if field == "max_workers" { r#" min="1" max="64" aria-describedby="id_max_workers_helptext""# } else { "" };
             format!(r#"<input type="number" name="{field}" class="form-control"{bounds} required id="id_{field}" value="{{{{ settings.{field}.value }}}}">"#)
         })
         .replace("settings_form.", "settings.")
@@ -968,7 +983,7 @@ fn adapt_template(name: &str, template: &str) -> String {
             let mut html = template
                 .replace(
                     "{{ form.media }}",
-                    r#"{% from "admin/tournament_ballot_control.html" import control %}"#,
+                    r#"{% include "autocomplete_media.html" %}{% from "admin/tournament_ballot_control.html" import control %}"#,
                 )
                 .replace("form.non_field_errors", "errors")
                 .replace("form.ballot_rows", "rows");
@@ -1010,7 +1025,7 @@ fn adapt_template(name: &str, template: &str) -> String {
                 .replace(r#"|date:"Y-m-d H:i""#, "")
                 .replace(r#"|default:"-""#, r#"|default("-", true)"#)
                 .replace("{{ tournament.get_absolute_url }}", "{{ tournament.url }}")
-                .replace("{{ import_move_form_media }}", "")
+                .replace("{{ import_move_form_media }}", r#"{% include "autocomplete_media.html" %}"#)
                 .replace(
                     "{{ row.move_form.tournament_import_id }}",
                     r#"<input type="hidden" name="import-{{ row.id }}-tournament_import_id" value="{{ row.id }}">"#,
@@ -1018,8 +1033,8 @@ fn adapt_template(name: &str, template: &str) -> String {
                 .replace(
                     "{{ row.move_form.target_tournament }}",
                     r#"<select name="import-{{ row.id }}-target_tournament" id="id_import-{{ row.id }}-target_tournament"
-                            class="modelselect2" data-rust-select-url="/core/tournaments/all_autocomplete" required
-                            data-rust-select-placeholder="Select target tournament"><option value="">---------</option></select>"#,
+                            data-autocomplete-light-language="en" data-autocomplete-light-url="/core/tournaments/all_autocomplete" data-autocomplete-light-function="select2" required
+                            data-placeholder="Select target tournament"><option value="">---------</option></select>"#,
                 );
             &adapted
         }
@@ -1046,7 +1061,7 @@ fn adapt_template(name: &str, template: &str) -> String {
             let panes = Regex::new(r#"(?s)(id="dataEntryTabContent">).*?(</div>\s*<div class="mt-4 pt-3 border-top">)"#).unwrap();
             adapted = panes
                 .replace(
-                    &media.replace(template, ""),
+                    &media.replace(template, r#"{% include "autocomplete_media.html" %}"#),
                     r#"${1}
                     {% for panel in panels %}
                       {% if (panel.kind == 'school' or panel.kind == 'debater') and not panel.rows and not panel.errors %}
@@ -1058,7 +1073,7 @@ fn adapt_template(name: &str, template: &str) -> String {
                     {% endfor %}
                     ${2}"#,
                 )
-                .replace("{{ autoqual_form.media }}", "")
+                .replace("{{ autoqual_form.media }}", r#"{% include "autocomplete_media.html" %}"#)
                 .replace(
                     "{{ autoqual_form.autoqual_debaters|as_crispy_field }}",
                     r#"{% include "tournaments/includes/result_autoqual.html" %}"#,
@@ -1077,7 +1092,7 @@ fn adapt_template(name: &str, template: &str) -> String {
                 .replace(
                     "{{ debater_form.school|as_crispy_field }}",
                     r#"{% from "tournaments/includes/result_widgets.html" import field %}
-                    {{ field("", "school", "School", none, "/core/schools/autocomplete", {}) }}"#,
+                    {{ field("", "school", "School", none, "/core/schools/autocomplete", {}, required=true) }}"#,
                 );
             &adapted
         }
@@ -1126,7 +1141,15 @@ fn adapt_template(name: &str, template: &str) -> String {
             &adapted
         }
         "tournaments/detail.html" => {
-            adapted = template.replace("{{ message }}", "{{ message.text }}");
+            adapted = template
+                .replace("{{ message }}", "{{ message.text }}")
+                .replace("stat.debater.get_absolute_url", "stat.debater.url")
+                .replace("round.round.round_number", "round.round_number")
+                .replace("round.round|opponent_url:team", "round.opponent.url")
+                .replace("round.round|opponent_side:team", "round.opponent_side")
+                .replace("round.round|opponent:team", "round.opponent.name")
+                .replace("round.round|wl:team", "round.result")
+                .replace("stat.debater_role|upper", "stat.role");
             &adapted
         }
         "admin/speaks_statistics.html"
@@ -1146,7 +1169,7 @@ fn adapt_template(name: &str, template: &str) -> String {
                 )
                 .replace(
                     "{{ season.round_speaks.correspondence|json_script:season.chart_id }}",
-                    r#"<script id="{{ season.chart_id }}" type="application/json">{{ season.round_speaks.correspondence|html_json }}</script>"#,
+                    r#"<script id="{{ season.chart_id }}" type="application/json">[{% for item in season.round_speaks.correspondence %}{"score": {{ item.score|html_json }}, "sample_size": {{ item.sample_size }}, "cumulative_count": {{ item.cumulative_count }}, "percentile": {{ item.percentile|html_json }}}{% if not loop.last %}, {% endif %}{% endfor %}]</script>"#,
                 );
             &adapted
         }
@@ -1197,7 +1220,10 @@ fn adapt_template(name: &str, template: &str) -> String {
         "tournaments/update.html" => {
             adapted = template
                 .replace("{{ object }}", "{{ object.name }}")
-                .replace("{{ form.media }}", "")
+                .replace(
+                    "{{ form.media }}",
+                    r#"{% include "autocomplete_media.html" %}"#,
+                )
                 .replace(
                     "{{ form|crispy }}",
                     r#"{% include "tournaments/fields.html" %}"#,
@@ -1222,11 +1248,11 @@ fn adapt_template(name: &str, template: &str) -> String {
             &adapted
         }
         "videos/create.html" | "videos/update.html" => {
-            adapted = template.replace("{{ form.media }}", "")
+            adapted = template.replace("{{ form.media }}", r#"{% include "django_summernote/widget_media.html" %}"#)
                 .replace("{% crispy form %}", r#"{% include "videos/fields.html" %}"#)
                 .replace("{{ form|crispy }}", r#"{% include "videos/fields.html" %}"#)
                 .replace("{{ object }}", "{{ object.name }}")
-                .replace("{{ debater_form.school|as_crispy_field }}", r#"<div class="form-group"><label for="id_school">School</label><select name="school" id="id_school" class="modelselect2 form-control" data-rust-select-url="/core/schools/autocomplete"><option value=""></option></select></div>"#);
+                .replace("{{ debater_form.school|as_crispy_field }}", r#"<div id="div_id_school" class="form-group"><label for="id_school" class="requiredField">School<span class="asteriskField">*</span></label><div><select name="school" id="id_school" class="modelselect2 form-control" data-autocomplete-light-language="en" data-autocomplete-light-url="/core/schools/autocomplete" data-autocomplete-light-function="select2" required><option value="" selected>---------</option></select></div></div>"#);
             &adapted
         }
         "django_summernote/widget_iframe_editor.html" => {
@@ -1287,7 +1313,7 @@ fn adapt_template(name: &str, template: &str) -> String {
             adapted = template
                 .replace(r#"|join:", ""#, r#"|join(", ")"#)
                 .replace(r#"|join:"; ""#, r#"|join("; ")"#)
-                .replace("{{ form|crispy }}", r#"<div id="div_id_spreadsheet" class="form-group"><label for="id_spreadsheet" class="requiredField">Spreadsheet<span class="asteriskField">*</span></label><div><input type="file" name="spreadsheet" class="clearablefileinput form-control-file{% if warning %} is-invalid{% endif %}" required id="id_spreadsheet" aria-describedby="hint_id_spreadsheet"><small id="hint_id_spreadsheet" class="form-text text-muted">CSV or XLSX. Required column: motion_text. Optional: background_slide, date_set, tournament, tags.</small>{% if warning %}<p id="error_1_id_spreadsheet" class="invalid-feedback"><strong>{{ warning }}</strong></p>{% endif %}</div></div>"#);
+                .replace("{{ form|crispy }}", r#"<div id="div_id_spreadsheet" class="form-group"><label for="id_spreadsheet" class="requiredField">Spreadsheet<span class="asteriskField">*</span></label><div><input type="file" name="spreadsheet" class="clearablefileinput form-control-file{% if warning %} is-invalid{% endif %}" required id="id_spreadsheet" aria-describedby="id_spreadsheet_helptext"><small id="hint_id_spreadsheet" class="form-text text-muted">CSV or XLSX. Required column: motion_text. Optional: background_slide, date_set, tournament, tags.</small>{% if warning %}<p id="error_1_id_spreadsheet" class="invalid-feedback"><strong>{{ warning }}</strong></p>{% endif %}</div></div>"#);
             &adapted
         }
         "admin/school_short_name_audit.html" => {
@@ -1308,7 +1334,7 @@ fn adapt_template(name: &str, template: &str) -> String {
                 .replace("{{ user.username }}", "{{ username }}")
                 .replace("{{ round_amendment_form.amendment_file.id_for_label }}", "id_amendment_file")
                 .replace("{{ round_amendment_form.amendment_file.label }}", "Round amendment JSON")
-                .replace("{{ round_amendment_form.amendment_file }}", r#"<input type="file" name="amendment_file" accept=".json,application/json" required id="id_amendment_file">"#)
+                .replace("{{ round_amendment_form.amendment_file }}", r#"<input type="file" name="amendment_file" accept=".json,application/json" aria-describedby="id_amendment_file_helptext" required id="id_amendment_file">"#)
                 .replace("{% if round_amendment_form.amendment_file.help_text %}", "{% if true %}")
                 .replace("round_amendment_form.amendment_file.errors", "round_amendment_errors")
                 .replace("{{ round_amendment_form.amendment_file.help_text }}", "Upload a JSON file with synthetic resolutions, round edits, or tournament import moves/deletes.")
@@ -1319,7 +1345,10 @@ fn adapt_template(name: &str, template: &str) -> String {
         }
         "resources/create.html" | "resources/update.html" => {
             adapted = template
-                .replace("{{ form.media }}", "")
+                .replace(
+                    "{{ form.media }}",
+                    r#"{% include "autocomplete_media.html" %}"#,
+                )
                 .replace(
                     "{% crispy form %}",
                     r#"{% include "resources/fields.html" %}"#,
@@ -1409,7 +1438,7 @@ fn adapt_template(name: &str, template: &str) -> String {
             .replace("request.requested_by.get_full_name|default:request.requested_by.username", "request.requested_by.name")
             .replace("request.processed_by.get_full_name|default:request.processed_by.username", "request.processed_by.name")
             .replace("{{ message }}", "{{ message.text }}")
-            .replace("{{ form.media }}", "")
+            .replace("{{ form.media }}", r#"{% include "autocomplete_media.html" %}"#)
             .replace("{{ form.school.label_tag }}", "").replace("{{ form.debater.label_tag }}", "")
             .replace("{{ form.school }}", r#"{% with field="school" %}{% include "debater/claim_selects.html" %}{% endwith %}"#)
             .replace("{{ form.debater }}", r#"{% with field="debater" %}{% include "debater/claim_selects.html" %}{% endwith %}"#)
@@ -1424,7 +1453,10 @@ fn adapt_template(name: &str, template: &str) -> String {
     let template = if name == "motions/form.html" || name == "base/create.html" {
         std::borrow::Cow::Owned(
             template
-                .replace("{{ form.media }}", "")
+                .replace(
+                    "{{ form.media }}",
+                    r#"{% include "autocomplete_media.html" %}"#,
+                )
                 .replace("{{ form|crispy }}", "{% include \"motions/fields.html\" %}"),
         )
     } else {
@@ -1673,7 +1705,8 @@ impl MenuItem {
             name,
             url: "",
             selected: submenu.iter().any(|item| item.selected)
-                && !(name == "Fun" && path == "/core/debaters/partnership-paths/stats/"),
+                && !(name == "Fun" && path == "/core/debaters/partnership-paths/stats/")
+                && !(name == "My Account" && path == "/core/resources/create"),
             submenu,
         }
     }
@@ -1720,7 +1753,7 @@ pub(crate) fn menu(user: &User, path: &str) -> Vec<MenuItem> {
             ("Create Resource", "/core/resources/create"),
             ("My Resources", "/core/resources/my-resources"),
         ];
-        if user.is_school_admin {
+        if user.is_superuser || user.is_school_admin {
             account.extend([
                 ("School Dashboard", "/core/school-admin/"),
                 ("Merge Debaters", "/core/merge-debaters/request/"),
@@ -1867,12 +1900,6 @@ pub(crate) fn base_context(
         left_menu,
         seasons => seasons(state.current_season),
     }
-}
-
-pub(crate) fn server_error(state: &AppState, user: &User, uri: &axum::http::Uri) -> Response {
-    let content = render("500.html", base_context(state, user, uri))
-        .unwrap_or_else(|_| "Server error".to_owned());
-    (StatusCode::INTERNAL_SERVER_ERROR, Html(content)).into_response()
 }
 
 pub(crate) fn permission_denied(state: &AppState, user: &User, uri: &axum::http::Uri) -> Response {

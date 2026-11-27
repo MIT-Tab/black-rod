@@ -23,13 +23,28 @@ from urllib.request import urlopen
 
 from PIL import Image, ImageChops
 from selenium import webdriver
-from selenium.common.exceptions import TimeoutException
+from selenium.common.exceptions import TimeoutException, WebDriverException
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.support.expected_conditions import staleness_of
 from selenium.webdriver.support.ui import WebDriverWait
 
-from compare import Case, HOST, ROOT, compare as compare_responses, request, servers
+from compare import Case, HOST, ROOT, RUST_BIN, compare as compare_responses, request, servers
 
 CASE = "/standings/replay/?season=2025&default=coty"
+
+
+def document_replaced(element):
+    stale = staleness_of(element)
+
+    def check(driver):
+        try:
+            return stale(driver)
+        except WebDriverException as error:
+            if "Node with given id does not belong to the document" in str(error):
+                return True
+            raise
+
+    return check
 
 
 def render(driver, server, dimensions, path):
@@ -306,6 +321,22 @@ def assert_search(driver, django, rust):
                 assert left == right, f"{path} {key}[{index}] differed: {left!r} vs {right!r}"
 
 
+
+def assert_search_reindex(rust):
+    path = Path(os.environ["BR_STATE"]) / "dev.sqlite3"
+    address = os.environ["BLACK_ROD_PARITY_MEMCACHED_ADDR"]
+    query = Case("/search/?q=Uniqueparityindex", accept="text/html")
+    label = b"Uniqueparityindex Debater"
+    assert label not in request(rust, query)[2]
+    subprocess.run([str(ROOT / "venv/bin/python"), "manage.py", "shell", "--verbosity", "0", "-c",
+                    'from core.models import Debater; Debater.objects.create(first_name="Uniqueparityindex", last_name="Debater")'],
+                   check=True, capture_output=True)
+    assert label not in request(rust, query)[2]
+    subprocess.run([str(RUST_BIN), "reindex_haystack", "--using", "default", "--remove-old"],
+                   env={**os.environ, "BLACK_ROD_DATABASE_URL": f"sqlite://{path}?mode=ro",
+                        "BLACK_ROD_MEMCACHED_ADDR": address}, check=True, capture_output=True)
+    assert label in request(rust, query)[2]
+
 def seed_browser_cases():
     code = """
 from django import setup
@@ -322,6 +353,7 @@ from core.models.results.team import TeamResult
 from core.models.team import Team
 from core.models.resource import Resource
 from core.models.school import School
+from core.models.school_admin import SchoolAdmin
 from core.models.round import RoundStats
 from core.models.tournament import Tournament
 from core.models.video import Video
@@ -369,12 +401,15 @@ for access, _ in Video.PERMISSIONS:
     )
     video.tags.add("Rust parity test")
     result["videos"].append(video.pk)
-for label in ["ordinary", "account", "staff"]:
+result["managed_school"] = School.objects.create(name="Disposable managed school", short_name="Managed").pk
+for label in ["ordinary", "account", "staff", "school_admin"]:
     user = get_user_model().objects.create_user(
         username=f"video-{label}", email=f"{label}@example.test", can_view_private_videos=label == "account",
     )
     if label == "staff":
         user.user_permissions.add(Permission.objects.get(content_type__app_label="core", codename="view_video"))
+    if label == "school_admin":
+        SchoolAdmin.objects.create(user=user, school_id=result["managed_school"], primary=True)
     session = SessionStore()
     session["_auth_user_id"] = str(user.pk)
     session["_auth_user_backend"] = "django.contrib.auth.backends.ModelBackend"
@@ -1474,7 +1509,7 @@ def assert_account_entry_and_email(driver, django, rust, smtp):
     def submit(selector='form button[type="submit"]'):
         old = driver.find_element("tag name","html")
         driver.find_element("css selector",selector).click()
-        WebDriverWait(driver,10).until(staleness_of(old))
+        WebDriverWait(driver,10).until(document_replaced(old))
 
     driver.delete_all_cookies()
     open_page(rust, signup + "?next=/games/")
@@ -1534,8 +1569,6 @@ def assert_account_entry_and_email(driver, django, rust, smtp):
 
 
 def assert_password_accounts(driver, django, rust, smtp):
-    from selenium.webdriver.support.expected_conditions import staleness_of
-
     script = """
 from django import setup
 setup()
@@ -1578,11 +1611,10 @@ print(json.dumps(data))
     def type_in(fields):
         for key,value in fields.items():
             field = driver.find_element("id",f"id_{key}")
-            field.clear()
-            field.send_keys(value)
-        form = driver.find_element("tag name", "form")
+            driver.execute_script("arguments[0].value = arguments[1];", field, value)
+        form = driver.find_element("css selector", "main form")
         form.find_element("css selector", 'button[type="submit"]').click()
-        WebDriverWait(driver, 10).until(staleness_of(form))
+        WebDriverWait(driver, 10).until(document_replaced(form))
 
     def normalized():
         return driver.execute_script("""
@@ -1646,7 +1678,7 @@ print(json.dumps(data))
         for key, value in fields.items():
             form.find_element("name", key).send_keys(value)
         form.find_element("css selector", 'input[type="submit"]').click()
-        WebDriverWait(driver, 10).until(staleness_of(form))
+        WebDriverWait(driver, 10).until(document_replaced(form))
 
     for source, target, label in ((django, rust, "django"), (rust, django, "rust")):
         driver.delete_all_cookies()
@@ -1691,8 +1723,6 @@ print(json.dumps(data))
 
 
 def assert_elo_dashboard(driver, django, rust, fixture):
-    from selenium.webdriver.support.expected_conditions import staleness_of
-
     path = "/core/elo/"
     login_cookie = django_session()
     driver.delete_all_cookies()
@@ -1731,7 +1761,7 @@ def assert_elo_dashboard(driver, django, rust, fixture):
             driver.find_element("id", f"id_elo-{name}").click()
         form = driver.find_element("css selector", ".elo-dashboard form")
         form.find_element("css selector", 'button[type="submit"]').click()
-        WebDriverWait(driver, 10).until(staleness_of(form))
+        WebDriverWait(driver, 10).until(document_replaced(form))
         return snapshot()
 
     def visit(server):
@@ -1768,7 +1798,7 @@ def assert_elo_dashboard(driver, django, rust, fixture):
         open_as_admin(server, "/core/admin-tools/")
         form = driver.find_element("css selector", 'form[action="/core/admin/elo-cache/invalidate/"]')
         form.find_element("tag name", "button").click()
-        WebDriverWait(driver, 10).until(staleness_of(form))
+        WebDriverWait(driver, 10).until(document_replaced(form))
         assert urlsplit(driver.current_url).path == "/core/admin-tools/"
 
     shared = bool(os.environ.get("BLACK_ROD_PARITY_MEMCACHED_ADDR"))
@@ -1801,8 +1831,6 @@ def assert_elo_dashboard(driver, django, rust, fixture):
 
 
 def assert_native_site_admin(driver, django, rust):
-    from selenium.webdriver.support.expected_conditions import staleness_of
-
     login_cookie = django_session()
     root = f"http://{HOST}:{rust.port}"
     reference = f"http://{HOST}:{django.port}"
@@ -1813,7 +1841,7 @@ def assert_native_site_admin(driver, django, rust):
         element = driver.find_element("css selector", css)
         old = driver.find_element("tag name", "html")
         element.click()
-        WebDriverWait(driver, 10).until(staleness_of(old))
+        WebDriverWait(driver, 10).until(document_replaced(old))
 
     driver.delete_all_cookies()
     driver.get(root + school_admin)
@@ -1915,8 +1943,6 @@ def assert_admin_attachments(driver, django, rust):
 
 
 def assert_admin_speaker_visibility(driver, django, rust):
-    from selenium.webdriver.support.expected_conditions import staleness_of
-
     route = "/admin/core/speakerresult/?q=Third+Result"
     origins = [f"http://{HOST}:{server.port}" for server in (django, rust)]
     driver.get(origins[1] + "/robots.txt")
@@ -1931,7 +1957,7 @@ def assert_admin_speaker_visibility(driver, django, rust):
         fields[0].click()
         previous = driver.find_element("tag name", "html")
         driver.find_element("name", "_save").click()
-        WebDriverWait(driver, 10).until(staleness_of(previous))
+        WebDriverWait(driver, 10).until(document_replaced(previous))
         assert "1 speaker result was changed successfully." in driver.find_element("tag name", "body").text
         driver.get(origins[candidate] + route)
         assert driver.find_element("id", "id_form-0-hidden_from_profile").is_selected() == expected
@@ -1941,8 +1967,6 @@ def assert_admin_speaker_visibility(driver, django, rust):
 
 
 def assert_admin_topic_merges(driver, django, rust):
-    from selenium.webdriver.support.expected_conditions import staleness_of
-
     code = """
 from django import setup
 setup()
@@ -1974,7 +1998,7 @@ print(json.dumps([[motion.pk, video.pk]]))
         driver.find_element("css selector", 'select[name="action"] option[value="merge_topics"]').click()
         old = driver.find_element("tag name", "html")
         driver.find_element("css selector", ".actions button").click()
-        WebDriverWait(driver, 10).until(staleness_of(old))
+        WebDriverWait(driver, 10).until(document_replaced(old))
         assert "Merged 1 topics into 'Parity topic alpha'." in driver.find_element("tag name", "body").text
         for server in (django, rust):
             driver.get(f"http://{HOST}:{server.port}{edit}")
@@ -1985,8 +2009,6 @@ print(json.dumps([[motion.pk, video.pk]]))
 
 def assert_admin_formats(driver, django, rust):
     import base64
-    from selenium.webdriver.support.expected_conditions import staleness_of
-
     code = """
 from django import setup
 setup()
@@ -2065,7 +2087,7 @@ print(school.id)
         driver.find_element("css selector",'select[name="input_format"] option[value="0"]').click()
         html = driver.find_element("tag name","html")
         driver.find_element("css selector",'#content input[value="Submit"]').click()
-        WebDriverWait(driver,10).until(staleness_of(html))
+        WebDriverWait(driver,10).until(document_replaced(html))
     assert "Preview" in driver.find_element("id","content").text
     db = Path(os.environ["BR_STATE"]) / "dev.sqlite3"
     with sqlite3.connect(f"{db.as_uri()}?mode=ro",uri=True) as connection:
@@ -2073,7 +2095,7 @@ print(school.id)
         assert connection.execute("SELECT id FROM core_school WHERE name='Disposable Imported School'").fetchone() is None
     html = driver.find_element("tag name","html")
     driver.find_element("name","confirm").click()
-    WebDriverWait(driver,10).until(staleness_of(html))
+    WebDriverWait(driver,10).until(document_replaced(html))
     assert driver.current_url == root + route
     assert "Import finished, with 1 new and 1 updated schools." in driver.find_element("tag name","body").text
     open_page(django,f"{existing}/change/")
@@ -2086,8 +2108,6 @@ print(school.id)
 
 
 def assert_native_round_inlines(driver, django, rust):
-    from selenium.webdriver.support.expected_conditions import staleness_of
-
     code = """
 from django import setup
 setup()
@@ -2118,7 +2138,7 @@ print(json.dumps({"round":created.id,"discard":discard.id,"keep":keep.id,"new_de
     def submit():
         old = driver.find_element("tag name", "html")
         driver.find_element("name", "_continue").click()
-        WebDriverWait(driver, 10).until(staleness_of(old))
+        WebDriverWait(driver, 10).until(document_replaced(old))
 
     open_page(rust)
     driver.find_element("css selector", "#stats-group .add-row a").click()
@@ -2772,6 +2792,8 @@ def assert_tournament_audit_writes(driver, django, rust, fixture):
                     ("PM","MG","LO","MO"))},
                "gov_1_speaks": "27.1250", "gov_1_ranks": "2.0000", "gov_1_source_name": "Fixture manual source"}
     db = Path(os.environ["BR_STATE"]) / "dev.sqlite3"
+    amendments = db.with_name("round-amendments.json")
+    previous = json.loads(amendments.read_bytes())["actions"] if amendments.exists() else []
 
     def post(page, path, inputs):
         driver.get(root + page)
@@ -2851,10 +2873,12 @@ def assert_tournament_audit_writes(driver, django, rust, fixture):
     with sqlite3.connect(f"{db.as_uri()}?mode=ro", uri=True) as database:
         assert database.execute("SELECT COUNT(*) FROM core_round WHERE id=?", (round_id,)).fetchone() == (0,)
         assert database.execute("SELECT COUNT(*) FROM core_round WHERE tournament_id=? AND import_key='prelim-1'", (target,)).fetchone() == (0,)
-    log = json.loads((Path(os.environ["BR_STATE"]) / "round-amendments.json").read_bytes())
-    assert [row["type"] for row in log["actions"]] == ["create_round","update_round","move_tournament_import",
-        "delete_tournament_import","delete_round"], log["actions"]
-    assert log["actions"][0]["import_key"] == import_key
+    actions = json.loads(amendments.read_bytes())["actions"]
+    assert actions[:len(previous)] == previous
+    appended = actions[len(previous):]
+    assert [row["type"] for row in appended] == ["create_round","update_round","move_tournament_import",
+        "delete_tournament_import","delete_round"], appended
+    assert appended[0]["import_key"] == import_key
     driver.delete_all_cookies()
 
 
@@ -3144,8 +3168,6 @@ def assert_oauth_roundtrip(driver, rust, django):
 
 
 def assert_oauth_pending_signup(driver, django, rust, provider):
-    from selenium.webdriver.support.expected_conditions import staleness_of
-
     code = """
 from django import setup
 setup()
@@ -3177,7 +3199,7 @@ EmailAddress.objects.get_or_create(user=user, email="taken-oauth-fixture@example
         assert driver.find_element("id", "id_email").get_attribute("value") == "taken-oauth-fixture@example.test"
         old = driver.find_element("tag name", "html")
         driver.find_element("id", "id_email").submit()
-        WebDriverWait(driver, 10).until(staleness_of(old))
+        WebDriverWait(driver, 10).until(document_replaced(old))
         assert "An account already exists with this email address." in driver.find_element("tag name", "body").text
         email = driver.find_element("id", "id_email")
         email.clear()
@@ -3219,7 +3241,7 @@ def assert_oauth_connections(driver, django, rust, provider):
     driver.find_element("name","account").click()
     old = driver.find_element("tag name","html")
     driver.find_element("css selector",'main form button[type="submit"]').click()
-    WebDriverWait(driver,10).until(staleness_of(old))
+    WebDriverWait(driver,10).until(document_replaced(old))
     assert "The third-party account has been disconnected." in driver.find_element("tag name","body").text
     driver.get(django_root + route)
     assert "Connected Fixture" not in driver.find_element("tag name","body").text
@@ -3227,8 +3249,6 @@ def assert_oauth_connections(driver, django, rust, provider):
 
 
 def assert_account_reauthentication(driver, django, rust):
-    from selenium.webdriver.support.expected_conditions import staleness_of
-
     for server in (django, rust):
         origin = f"http://{HOST}:{server.port}"
         driver.get(origin + "/robots.txt")
@@ -3236,13 +3256,15 @@ def assert_account_reauthentication(driver, django, rust):
         driver.add_cookie({"name": "sessionid", "value": django_session()})
         driver.get(origin + "/accounts/reauthenticate/?next=/games/")
         old = driver.find_element("tag name", "html")
-        driver.find_element("id", "id_password").send_keys("parity-invalid-password")
-        driver.find_element("id", "id_password").submit()
-        WebDriverWait(driver, 10).until(staleness_of(old))
+        password = driver.find_element("id", "id_password")
+        driver.execute_script("arguments[0].value = arguments[1];", password, "parity-invalid-password")
+        password.submit()
+        WebDriverWait(driver, 10).until(document_replaced(old))
         error = driver.find_element("id", "id_password_error").text
-        assert error == "Incorrect password."
-        driver.find_element("id", "id_password").send_keys("password")
-        driver.find_element("id", "id_password").submit()
+        assert error == "Incorrect password.", (server.port, error)
+        password = driver.find_element("id", "id_password")
+        driver.execute_script("arguments[0].value = arguments[1];", password, "password")
+        password.submit()
         WebDriverWait(driver, 10).until(lambda browser: browser.current_url == origin + "/games/")
         assert "My Account" in driver.find_element("tag name", "nav").get_attribute("textContent")
     driver.delete_all_cookies()
@@ -3280,6 +3302,11 @@ def main():
     args.output.mkdir(parents=True, exist_ok=True)
     database = (Path(os.environ["BR_STATE"]) / "dev.sqlite3").resolve(strict=True)
     options = Options()
+    options.add_experimental_option("prefs", {
+        "credentials_enable_service": False,
+        "profile.password_manager_enabled": False,
+        "profile.password_manager_leak_detection": False,
+    })
     options.add_argument("--headless=new")
     options.add_argument("--force-color-profile=srgb")
     options.add_argument("--disable-search-engine-choice-screen")
@@ -3345,6 +3372,8 @@ def browser_checks(database, options, output):
         if os.environ.get("BLACK_ROD_PARITY_MEMCACHED_ADDR"):
             assert_shared_partnership_cache(driver, django, rust)
         assert_search(driver, django, rust)
+        if os.environ.get("BLACK_ROD_PARITY_MEMCACHED_ADDR"):
+            assert_search_reindex(rust)
         assert_video_permissions(driver, django, rust, fixture)
         assert_video_editor(driver, django, rust, fixture)
         assert_random_video(driver, django, rust, fixture)

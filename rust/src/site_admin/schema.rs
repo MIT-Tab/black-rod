@@ -74,6 +74,7 @@ pub(super) struct Widget {
 pub(super) struct Form {
     pub(super) widgets: BTreeMap<String, Widget>,
     pub(super) media: Media,
+    pub(super) production_media: Option<Media>,
     pub(super) inlines: Vec<Inline>,
 }
 
@@ -132,6 +133,7 @@ pub(super) struct Exchange {
     pub(super) fields: Vec<String>,
     pub(super) import_formats: Vec<String>,
     pub(super) import_media: Vec<String>,
+    pub(super) production_import_media: Option<Vec<String>>,
     pub(super) export_formats: Vec<String>,
 }
 
@@ -159,6 +161,7 @@ pub(super) struct Model {
     pub(super) exchange: Option<Exchange>,
     pub(super) save_on_top: bool,
     pub(super) list_media: Media,
+    pub(super) production_list_media: Option<Media>,
     pub(super) actions: Vec<(String, String)>,
     pub(super) fieldsets_add: Vec<Fieldset>,
     pub(super) fieldsets_change: Vec<Fieldset>,
@@ -185,7 +188,38 @@ impl Application {
     }
 }
 
+impl Form {
+    pub(super) fn media(&self) -> &Media {
+        if !crate::web::debug_assets()
+            && let Some(media) = &self.production_media
+        {
+            return media;
+        }
+        &self.media
+    }
+}
+
+impl Exchange {
+    pub(super) fn import_media(&self) -> &[String] {
+        if !crate::web::debug_assets()
+            && let Some(media) = &self.production_import_media
+        {
+            return media;
+        }
+        &self.import_media
+    }
+}
+
 impl Model {
+    pub(super) fn list_media(&self) -> &Media {
+        if !crate::web::debug_assets()
+            && let Some(media) = &self.production_list_media
+        {
+            return media;
+        }
+        &self.list_media
+    }
+
     pub(super) fn app(&self) -> &str {
         self.key.split_once('.').expect("admin model key").0
     }

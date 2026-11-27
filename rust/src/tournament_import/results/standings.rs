@@ -522,3 +522,66 @@ async fn write_awards(
     }
     Ok(())
 }
+
+pub(crate) async fn refresh_current_awards(
+    conn: &mut AnyConnection,
+    current: i32,
+) -> Result<(), ApiError> {
+    let season = current.to_string();
+    for name in sqlx::query_scalar::<_, String>("SELECT name FROM core_team ORDER BY id")
+        .fetch_all(&mut *conn)
+        .await?
+    {
+        println!("Updating {name}");
+    }
+    recompute_rankings(conn, &season, "toty", current).await?;
+    for name in sqlx::query_scalar::<_, String>("SELECT name FROM core_team ORDER BY id")
+        .fetch_all(&mut *conn)
+        .await?
+    {
+        println!("Updating {name}");
+    }
+    let people = sqlx::query_scalar::<_, i64>(
+        "SELECT DISTINCT CAST(m.debater_id AS BIGINT) FROM core_team_debaters m
+         JOIN core_debater d ON d.id=m.debater_id
+         WHERE NOT (d.temporary OR d.synthetic)
+         AND EXISTS (SELECT 1 FROM core_teamresult r WHERE r.team_id=m.team_id)",
+    )
+    .fetch_all(&mut *conn)
+    .await?
+    .into_iter()
+    .collect();
+    qualifications::recompute_team_members(conn, &season, &people).await?;
+    let print_people = |names: Vec<String>| {
+        for name in names {
+            println!("Updating {}", name.trim());
+        }
+    };
+    let members = "SELECT first_name || ' ' || last_name FROM core_debater
+        WHERE NOT (temporary OR synthetic) ORDER BY id";
+    print_people(sqlx::query_scalar(members).fetch_all(&mut *conn).await?);
+    recompute_rankings(conn, &season, "soty", current).await?;
+    print_people(sqlx::query_scalar(members).fetch_all(&mut *conn).await?);
+    recompute_rankings(conn, &season, "noty", current).await?;
+    for (kind, table) in [
+        ("TOTY", "core_toty"),
+        ("NOTY", "core_noty"),
+        ("COTY", "core_coty"),
+        ("SOTY", "core_soty"),
+    ] {
+        println!("Ranking {kind}");
+        rank(conn, table, &season).await?;
+    }
+    Ok(())
+}
+
+pub(crate) async fn rerank_current_awards(
+    conn: &mut AnyConnection,
+    current: i32,
+) -> Result<(), ApiError> {
+    let season = current.to_string();
+    for table in ["core_toty", "core_coty", "core_soty"] {
+        rank(conn, table, &season).await?;
+    }
+    Ok(())
+}

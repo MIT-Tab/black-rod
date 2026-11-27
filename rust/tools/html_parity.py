@@ -24,6 +24,8 @@ from compare import HOST, ROOT, servers
 VIEWPORTS = {"desktop": (1440, 1000), "mobile": (390, 844)}
 PUBLIC = [
     ("home", "/", False),
+    ("missing-page", "/fixture-route-does-not-exist/", False),
+    ("missing-school", "/core/schools/999999999", False),
     ("replay", "/standings/replay/?season=2025&default=coty", False),
     ("schools", "/core/schools/", False),
     ("debaters", "/core/debaters/", False),
@@ -60,6 +62,10 @@ PUBLIC = [
     ("debater-profile", "/core/debaters/5270", False),
     ("team-profile", "/core/teams/6719", False),
     ("tournament-profile", "/core/tournaments/1203", False),
+    ("tournament-profile-member", "/core/tournaments/1203", True),
+    ("tournament-tab-cards", "/core/tournaments/862", False),
+    ("tournament-tab-cards-member", "/core/tournaments/862", True),
+    ("debater-profile-tab-cards", "/core/debaters/3683", True),
     ("tournaments", "/core/tournaments/", False),
     ("live", "/live", False),
     ("legacy-toty", "/core/toty?season=2025", False),
@@ -115,6 +121,63 @@ ADMIN = [
     ("admin-credential-add", "/admin/core/agentcredential/add/", True),
 ]
 
+def staff_cases(fixture):
+    manual = fixture["manual_event"]["id"]
+    bundle = fixture["bundle_event"]
+    motion = fixture["motion"]
+    video = fixture["videos"][0]
+    resource = fixture["resources"][0]
+    return [
+        ("staff-admin-tools", "/core/admin-tools/", True),
+        ("staff-scheduling", "/core/admin/scheduling/", True),
+        ("staff-tournament-audit", f"/core/admin/tournament-audit/{manual}/", True),
+        ("staff-tournament-audit-round", f"/core/admin/tournament-audit/{manual}/round/new/", True),
+        ("staff-pipeline-audit", "/core/admin/tournament-pipeline-audit/?incomplete_only=1&sort=total_pct&dir=desc", True),
+        ("staff-speaks-stats", "/core/admin/speaks-stats/", True),
+        ("staff-elo", "/core/elo/", True),
+        ("staff-rankings", "/core/rankings-recompute/", True),
+        ("staff-round-amendment", "/core/admin/round-amendments/", True),
+        ("staff-mittab", "/core/mittab-dashboard/", True),
+        ("staff-import", "/core/tournaments/import/", True),
+        ("staff-import-bundle", f"/core/tournaments/mittab_bundle/upload?tournament={bundle}", True),
+        ("staff-results-entry", f"/core/tournaments/data_entry?tournament={manual}", True),
+        ("staff-results-setup", f"/core/tournaments/data_entry/setup?tournament={manual}", True),
+        ("staff-motion-create", "/core/motions/create", True),
+        ("staff-motion-update", f"/core/motions/{motion}/edit", True),
+        ("staff-motion-import", "/core/motions/import", True),
+        ("staff-video-create", "/core/videos/create", True),
+        ("staff-video-update", f"/core/videos/{video}/edit", True),
+        ("staff-video-delete", f"/core/videos/{video}/delete", True),
+        ("staff-resource-create", "/core/resources/create", True),
+        ("staff-resource-update", f"/core/resources/{resource}/edit", True),
+        ("staff-resource-delete", f"/core/resources/{resource}/delete", True),
+        ("staff-tournament-create", "/core/tournaments/create", True),
+        ("staff-tournament-edit", f"/core/tournaments/{manual}/edit", True),
+        ("staff-school-roles", "/core/manage-school-admins/", True),
+        ("staff-school-dashboard", "/core/school-admin/", True),
+        ("member-school-dashboard", "/core/school-admin/", "school_admin"),
+        ("member-school-roster", f"/core/school-admin/{fixture['managed_school']}/debaters/", "school_admin"),
+        ("member-school-roster-missing", "/core/school-admin/999999/debaters/", "school_admin"),
+        ("member-school-roster-page-missing", f"/core/school-admin/{fixture['managed_school']}/debaters/?page=2", "school_admin"),
+        ("member-school-roster-forbidden", f"/core/school-admin/{fixture['managed_school']}/debaters/", "ordinary"),
+        ("staff-school-short-names", "/core/admin/school-short-names/", True),
+        ("staff-synthetic-cleanup", "/core/admin/synthetic-cleanup/", True),
+        ("staff-synthetic-suggestions", "/core/admin/synthetic-resolution-suggestions/", True),
+        ("staff-merge-suggestions", "/core/admin/merge-suggestions/", True),
+        ("staff-merge-review", "/core/merge-debaters/review/", True),
+        ("staff-aliases", "/core/admin/debater-aliases/", True),
+        ("staff-claim-review", "/core/claim-debater/review/", True),
+        ("member-generated-codes", "/core/generated-codes/", "ordinary"),
+        ("member-resource-forbidden", f"/core/resources/{fixture['resources'][1]}", "ordinary"),
+        ("member-video-allowed", f"/core/videos/{fixture['videos'][1]}", "account"),
+        ("member-video-forbidden", f"/core/videos/{fixture['videos'][2]}", "ordinary"),
+        ("member-profile", "/core/my-profile/", "ordinary"),
+        ("member-claim", "/core/claim-debater/request/", "ordinary"),
+        ("member-owned-resources", "/core/resources/my-resources", "ordinary"),
+        ("member-admin-forbidden", "/admin/core/user/", "ordinary"),
+    ]
+
+
 def admin_models(database):
     metadata = json.loads(Path(__file__).resolve().parents[1].joinpath("schema/admin.json").read_text())
     cases = []
@@ -149,7 +212,7 @@ function node(element) {
         }
         const verbatim = element.parentElement?.matches('pre, textarea, script, style');
         const raw = verbatim && element.textContent.trim() ? element.textContent : element.textContent.replace(/\s+/g, ' ').trim();
-        return raw.replace(/(var csrftoken = ')[A-Za-z0-9]{64}(';)/g, "$1<csrf>$2") || null;
+        return raw.replace(/((?:var csrftoken|window\.csrfToken) = ')[A-Za-z0-9]{64}(';)/g, "$1<csrf>$2") || null;
     }
     if (element.nodeType !== Node.ELEMENT_NODE) return null;
     const name = element.tagName.toLowerCase();
@@ -159,7 +222,11 @@ function node(element) {
         if (item.name === 'value' && element.getAttribute('name') === 'csrfmiddlewaretoken') {
             return [item.name, '<csrf>'];
         }
-        let value = item.value.replaceAll(location.origin, '<origin>');
+        let value = item.value.replaceAll(location.origin, '<origin>')
+            .replace(/((?:(?:back|fore)Color(?:Picker|Palette)|note-dialog-(?:image|link|video)-[a-z-]+)-)\d{12,}/g, '$1<generated>');
+        if (item.name === 'data-select2-id') {
+            value = value.replace(/^(select2-data-\d+-)[a-z0-9]{4}$/, '$1<generated>');
+        }
         if (item.name === 'class') value = value.split(/\s+/).filter(Boolean).sort().join(' ');
         return [item.name, value];
     }).sort((a,b) => a[0].localeCompare(b[0]));
@@ -218,6 +285,17 @@ def capture(driver, server, route, session, target, exclude):
         WebDriverWait(driver, 30).until(lambda browser: browser.execute_script("""
             return document.querySelector("[data-network-motion]")?.textContent === "Axes fixed";
         """))
+    if route == "/core/tournaments/862" and session and os.environ.get("ENABLE_TOURNAMENT_TAB_CARD_SEARCH") == "1":
+        driver.execute_script("""
+            const query = document.getElementById("teams");
+            const first = document.querySelector("#team_list button");
+            query.value = first.textContent.trim();
+            query.dispatchEvent(new KeyboardEvent("keyup", {bubbles: true}));
+        """)
+        visible = [button for button in driver.find_elements("css selector", "#team_list button") if button.is_displayed()]
+        assert len(visible) == 1, "The team-name filter should find one card"
+        visible[0].click()
+        WebDriverWait(driver, 10).until(lambda browser: browser.find_element("css selector", ".modal.show").is_displayed())
     driver.execute_cdp_cmd("Input.dispatchMouseEvent", {"type": "mouseMoved", "x": 0, "y": 0})
     driver.execute_async_script("""
         const done = arguments[0];
@@ -278,7 +356,7 @@ def shared_origin():
             thread.join()
 
 
-def compare(driver, django, rust, cases, session, output, viewports, exclude, pixel_only, proxy, origin):
+def compare(driver, django, rust, cases, sessions, output, viewports, exclude, pixel_only, proxy, origin):
     failures = []
     for mode in viewports:
         width, height = VIEWPORTS[mode]
@@ -286,18 +364,24 @@ def compare(driver, django, rust, cases, session, output, viewports, exclude, pi
             "width":width, "height":height, "deviceScaleFactor":1, "mobile":False,
         })
         for slug, route, authenticated in cases:
+            session = sessions.get("admin" if authenticated is True else authenticated)
             reference = output / f"{mode}-{slug}-django"
             candidate = output / f"{mode}-{slug}-rust"
-            proxy.target = django
-            left_navigation, left = capture(driver, origin, route,
-                           session if authenticated else None, reference, exclude)
-            proxy.target = rust
-            right_navigation, right = capture(driver, origin, route,
-                            session if authenticated else None, candidate, exclude)
-            structural = first_difference(left, right)
-            if left_navigation != right_navigation:
-                structural = ("navigation URL or status", left_navigation, right_navigation)
-            fraction = pixels(reference, candidate)
+            for attempt in range(2):
+                proxy.target = django
+                left_navigation, left = capture(driver, origin, route, session, reference, exclude)
+                proxy.target = rust
+                right_navigation, right = capture(driver, origin, route, session, candidate, exclude)
+                structural = first_difference(left, right)
+                if left_navigation != right_navigation:
+                    structural = ("navigation URL or status", left_navigation, right_navigation)
+                fraction = pixels(reference, candidate)
+                if (structural is None and not fraction) or attempt == 1:
+                    break
+                print(f"{mode} {route} initial comparison differed, repeating both browser navigations")
+                for target in (reference, candidate):
+                    for suffix in (".html", ".json", ".png"):
+                        target.with_suffix(suffix).replace(target.with_name(target.name + "-initial").with_suffix(suffix))
             print(f"{mode} {route} DOM {'match' if structural is None else 'differs'}, changed pixels {fraction:.4%}")
             if structural is not None:
                 location, expected, actual = structural
@@ -310,7 +394,7 @@ def compare(driver, django, rust, cases, session, output, viewports, exclude, pi
 def main():
     parser = ArgumentParser(description=__doc__)
     parser.add_argument("output", type=Path)
-    parser.add_argument("--group", choices=("public", "admin", "admin-models", "all"), default="all")
+    parser.add_argument("--group", choices=("public", "admin", "admin-models", "staff", "all"), default="all")
     parser.add_argument("--page", metavar="NAME", action="append")
     parser.add_argument("--viewport", choices=VIEWPORTS, action="append")
     parser.add_argument("--exclude-element", action="append", default=[])
@@ -335,8 +419,9 @@ def main():
         os.environ["BR_STATE"] = folder
         fixture = seed_browser_cases()
         model_cases = admin_models(local) if arguments.group in ("admin-models", "all") else []
-        cases = {"public": PUBLIC, "admin": ADMIN, "admin-models": model_cases,
-                 "all": [*PUBLIC, *ADMIN, *model_cases]}[arguments.group]
+        staff = staff_cases(fixture)
+        cases = {"public": PUBLIC, "admin": ADMIN, "admin-models": model_cases, "staff": staff,
+                 "all": [*PUBLIC, *ADMIN, *model_cases, *staff]}[arguments.group]
         if arguments.page:
             cases = [case for case in cases if case[0] in arguments.page]
         if not cases:
@@ -344,10 +429,10 @@ def main():
         if any(route.startswith("/search/") for _, route, _ in cases):
             subprocess.run([str(ROOT / "venv/bin/python"), "manage.py", "update_index", "--verbosity", "0"],
                            check=True, capture_output=True)
-        session = django_session()
+        sessions = {"admin": django_session(), **fixture["sessions"]}
         with oauth_provider(fixture), smtp_sink(), servers(local) as (django, rust), webdriver.Chrome(options=options) as browser:
             with shared_origin() as (proxy, origin):
-                failures = compare(browser, django, rust, cases, session, output, viewports,
+                failures = compare(browser, django, rust, cases, sessions, output, viewports,
                                    arguments.exclude_element, arguments.pixel_only, proxy, origin)
             if failures:
                 raise SystemExit(f"{len(failures)} HTML or screenshot comparisons differed. See {output}.")

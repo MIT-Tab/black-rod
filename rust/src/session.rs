@@ -566,7 +566,7 @@ pub(crate) async fn user(
         SELECT u.password,
                CAST(CASE WHEN u.is_superuser THEN 1 ELSE 0 END AS BIGINT) AS superuser,
                CAST(CASE WHEN u.is_staff THEN 1 ELSE 0 END AS BIGINT) AS staff,
-               CAST(CASE WHEN u.is_superuser OR EXISTS (
+               CAST(CASE WHEN EXISTS (
                    SELECT 1 FROM core_schooladmin a WHERE a.user_id = u.id
                ) THEN 1 ELSE 0 END AS BIGINT) AS school_admin,
                CAST(CASE WHEN u.is_superuser OR EXISTS (

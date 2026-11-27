@@ -92,6 +92,7 @@ pub struct AppState {
     bundles: Arc<Vec<String>>,
     current_season: i32,
     debater_tab_cards: bool,
+    tournament_tab_card_search: bool,
     debater_partner_chart: bool,
     public_origin: Option<String>,
     allowed_hosts: Option<Arc<[String]>>,
@@ -136,6 +137,7 @@ impl AppState {
             bundles: Arc::default(),
             current_season,
             debater_tab_cards: false,
+            tournament_tab_card_search: false,
             debater_partner_chart: false,
             public_origin: None,
             allowed_hosts: None,
@@ -205,6 +207,11 @@ impl AppState {
     pub fn with_debater_profile_features(mut self, tab_cards: bool, partner_chart: bool) -> Self {
         self.debater_tab_cards = tab_cards;
         self.debater_partner_chart = partner_chart;
+        self
+    }
+
+    pub fn with_tournament_tab_card_search(mut self, enabled: bool) -> Self {
+        self.tournament_tab_card_search = enabled;
         self
     }
 
@@ -649,6 +656,10 @@ pub fn app(state: AppState) -> Router {
             axum::routing::post(partnership::stats::clear),
         )
         .route("/core/school-admin/", get(school_admin::dashboard))
+        .route(
+            "/core/school-admin/{school}/debaters/",
+            get(school_admin::debater_list),
+        )
         .route(
             "/core/school-admin/{school}/debater/create/",
             get(school_admin::debater::endpoint).post(school_admin::debater::endpoint),
@@ -1155,9 +1166,7 @@ async fn validate_host(
     next: axum::middleware::Next,
 ) -> Response {
     if !state.host_allowed(request.headers()) {
-        let html = web::render("400.html", minijinja::context! {})
-            .unwrap_or_else(|_| "Bad request".to_owned());
-        return (StatusCode::BAD_REQUEST, axum::response::Html(html)).into_response();
+        return StatusCode::BAD_REQUEST.into_response();
     }
     next.run(request).await
 }
@@ -1182,10 +1191,33 @@ async fn report_server_errors(request: Request, next: axum::middleware::Next) ->
 
 async fn security_headers(request: Request, next: axum::middleware::Next) -> Response {
     let path = request.uri().path();
+    let head = *request.method() == Method::HEAD;
     let may_embed = path == "/core/widgets/recent-results/";
     let summernote =
         path.starts_with("/summernote/editor/") || path == "/summernote/upload_attachment/";
     let mut response = next.run(request).await;
+    if !response.headers().contains_key(header::CONTENT_TYPE) {
+        let template = match response.status() {
+            StatusCode::BAD_REQUEST => Some("400.html"),
+            StatusCode::FORBIDDEN => Some("403.html"),
+            StatusCode::NOT_FOUND => Some("404.html"),
+            StatusCode::INTERNAL_SERVER_ERROR => Some("500.html"),
+            _ => None,
+        };
+        if let Some(template) = template
+            && let Ok(page) = web::render(template, minijinja::context! {})
+        {
+            let headers = response.headers_mut();
+            headers.insert(
+                header::CONTENT_TYPE,
+                HeaderValue::from_static("text/html; charset=utf-8"),
+            );
+            headers.remove(header::CONTENT_LENGTH);
+            if !head {
+                *response.body_mut() = axum::body::Body::from(page);
+            }
+        }
+    }
     let redirect = response.status() == StatusCode::MOVED_PERMANENTLY;
     let embeddable_response = may_embed && response.status().is_success();
     let headers = response.headers_mut();

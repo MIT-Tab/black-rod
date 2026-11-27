@@ -1,6 +1,6 @@
 {% from "tournaments/includes/result_widgets.html" import field, checkbox, hidden, input %}
 {% set prefix = panel.key ~ '-' ~ form_index ~ '-' %}
-{% if panel.kind in ["team","speaker"] %}{{ hidden(prefix, "ORDER", row.order) }}{% endif %}
+{% if panel.kind in ["team","speaker"] %}<input type="number" name="{{ prefix }}ORDER" id="id_{{ prefix }}ORDER"{% if row.order %} value="{{ row.order }}"{% endif %}>{% endif %}
 <input type="checkbox" name="{{ prefix }}DELETE" id="id_{{ prefix }}DELETE"{% if row.deleted %} checked{% endif %}>
 {% if panel.kind == 'school' %}
     {{ hidden(prefix, "id", row.record or "") }}

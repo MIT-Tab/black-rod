@@ -30,7 +30,7 @@ pub(crate) struct Person {
     pub(crate) name: String,
     school: Option<School>,
     season: Option<String>,
-    get_absolute_url: String,
+    url: String,
     counts: Counts,
 }
 
@@ -70,7 +70,7 @@ impl Person {
             school: school_id
                 .zip(school_name)
                 .map(|(id, name)| School { id, name }),
-            get_absolute_url: format!("/core/debaters/{id}"),
+            url: format!("/core/debaters/{id}"),
             counts: Counts {
                 team_results: row.try_get("teams")?,
                 speaker_results: row.try_get("speakers")?,

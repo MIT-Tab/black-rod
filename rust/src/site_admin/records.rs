@@ -25,7 +25,7 @@ fn common(model: &Model, id: i64, original: &str) -> Value {
         app_url=>app.url(),app_name=>&app.name,app_label=>&app.label,model_name=>model.slug(),
         model_url=>model.url(),object_url=>format!("{}{id}/",model.url()),
         singular=>&model.singular,plural=>cap_first(&model.plural),original,
-        css=>&model.list_media.css,js=>&model.list_media.js,
+        css=>&model.list_media().css,js=>&model.list_media().js,
     }
 }
 

@@ -622,11 +622,7 @@ async fn render_form(
 ) -> Result<Response, ApiError> {
     let adding = id.is_none();
     if adding && matches!(model.key.as_str(), "core.motion" | "core.resource") {
-        return Ok(crate::web::server_error(
-            admin.state,
-            &admin.viewer.user,
-            admin.uri,
-        ));
+        return Ok(StatusCode::INTERNAL_SERVER_ERROR.into_response());
     }
     let sets = if adding {
         &model.fieldsets_add
@@ -691,7 +687,7 @@ async fn render_form(
         subtitle=>id.map(|_|&original), original,
         plural=>cap_first(&model.plural), app_label=>model.app(),app_name=>&app.name,app_url=>app.url(),
         model_name=>model.slug(),model_url=>url,object_url, fieldsets,inlines,save_on_top=>model.save_on_top,add=>adding,errors,
-        css=>&form.media.css, js=>&form.media.js, multipart=>model.key=="django_summernote.attachment",
+        css=>&form.media().css, js=>&form.media().js, multipart=>model.key=="django_summernote.attachment",
         add_user=>adding && model.slug()=="user", can_view=>admin.viewer.read(model),
         can_add=>admin.viewer.allows(model,"add"),can_change=>admin.viewer.allows(model,"change"),
         can_delete=>admin.viewer.allows(model,"delete"),save=>if adding{admin.viewer.allows(model,"add")}else{admin.viewer.allows(model,"change")},

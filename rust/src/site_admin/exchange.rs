@@ -29,7 +29,7 @@ fn common(model: &Model, exchange: &Exchange, importing: bool) -> Value {
     context! {
         title=>if importing{"Import"}else{"Export"},importing,model_name=>model.slug(),app_label=>app.label.as_str(),
         app_name=>&app.name,app_url=>app.url(),plural=>cap_first(&model.plural),model_url=>model.url(),
-        formats=>choices,fields=>&exchange.fields,media=>&exchange.import_media,
+        formats=>choices,fields=>&exchange.fields,media=>exchange.import_media(),
     }
 }
 

@@ -68,6 +68,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         enabled("ENABLE_DEBATER_PROFILE_TAB_CARDS"),
         enabled("ENABLE_DEBATER_PARTNER_PIE_CHART"),
     );
+    state = state.with_tournament_tab_card_search(enabled("ENABLE_TOURNAMENT_TAB_CARD_SEARCH"));
     if let Some(origin) = env::var("BLACK_ROD_PUBLIC_ORIGIN")
         .ok()
         .or_else(|| production.then(|| "https://results.apda.online".to_owned()))

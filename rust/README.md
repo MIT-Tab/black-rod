@@ -20,9 +20,15 @@ The statistics cache lasts one hour. Set `BLACK_ROD_MEMCACHED_ADDR` for shared d
 
 Rust also serves staff speaker-score statistics, manual tournament data entry, legacy bundle uploads, reviewed MIT-Tab imports, tournament audits and round amendments, and the ELO dashboard. Reviewed imports and ELO dashboard results are readable by both servers through shared Memcached, including after a server switch. ELO retains the six-hour result cache and two bounded ten-minute runtime caches.
 
-The Rust server also includes rankings recomputation, the browsable API renderer, signup and email maintenance, password reauthentication, OAuth connection management and pending signup, the Summernote iframe editor, and native Django-style model administration. Admin exchange supports CSV, TSV, JSON, YAML, HTML, XLS, XLSX, and ODS. The Rust correction API uses the same credential and change-set tables for authorized reads, atomic writes, previews, merges, and undo. The development launcher starts Rust. The Django implementation remains available as the parity reference and for provisioning new local fixture databases. Production routing and service configuration are managed on the host.
+The Rust server also includes rankings recomputation, the browsable API renderer, signup and email maintenance, password reauthentication, OAuth connection management and pending signup, the Summernote iframe editor, and native Django-style model administration. Admin exchange supports CSV, TSV, JSON, YAML, HTML, XLS, XLSX, and ODS. The Rust correction API uses the same credential and change-set tables for authorized reads, atomic writes, previews, merges, and undo. The development launcher starts Rust. The Django implementation remains available as the parity reference and for provisioning new local fixture databases.
 
-Run `black-rod --help` to list the native maintenance commands. The fixture exporter replaces credentials and access codes with sample values and redacts the contents of correction audit records. `black-rod cache_mittab_results` uses the same retained snapshot data and can run on the existing 12-hour schedule. `black-rod export_generated_codes --output PATH` writes the existing CSV format.
+Run `black-rod --help` to list the native maintenance commands. Use `black-rod rerank_current_awards` for the old standalone `bin/redo_rankings.py` utility and `black-rod redo_rankings` for the distinct Django management command. `black-rod update_otys` refreshes current-season awards. `black-rod generate_speaker_position_amendments` accepts the existing raw backup directory and reads both MIT-Tab JSON fixtures and historical MySQL dump files. The fixture exporter replaces credentials and access codes with sample values and redacts the contents of correction audit records. `black-rod cache_mittab_results` uses the same retained snapshot data and can run on the existing 12-hour schedule. `black-rod export_generated_codes --output PATH` writes the existing CSV format.
+
+## Deployment and rollback
+
+Build the release binary with Rust 1.94 and build the existing frontend assets with `npm ci` and `npm run build`. Keep the webpack manifest, bundles, and static files with that release. Start `rust/target/release/black-rod serve` from the release root with `ENV=production` and the existing environment. Use the same PostgreSQL database, application secret, Memcached, OAuth, and file-storage configuration. A staged service can bind to an unused loopback port while the current service handles traffic.
+
+Verify the staged service through the configured HTTPS origin before redirecting traffic. Check an existing account session, public standings, admin, uploaded media, and a representative existing import review. Switch the scheduled snapshot refresh to the Rust binary on the existing 12-hour interval. Preserve the previous service, release assets, and cron command for rollback. Restoring their routing and schedule uses the same database and files. The existing Linode deploy workflow invokes the host-managed deploy script, so switching the running service and scheduled command requires host configuration.
 
 ## Parity tests
 
@@ -48,7 +54,7 @@ venv/screenshots/bin/python -m pip install Pillow==12.3.0
 "$scripts/br" venv/screenshots/bin/python rust/tools/html_parity.py /tmp/black-rod-admin --group admin-models
 ```
 
-The HTML harness compares the normalized live DOM, including the rendered controls and client-side widgets, and checks screenshots at desktop and mobile widths. The broad admin command reports all differences across model lists and records. The parity workflow checks the curated pages with established matches.
+The HTML harness compares the normalized live DOM, including the rendered controls and client-side widgets, and checks screenshots at desktop and mobile widths. The broad admin command reports all differences across model lists and records. The parity workflow runs the public, staff, and full admin model groups. A second independent capture confirms any initial difference, and the harness retains the first artifacts. A comparison passes only when the normalized DOM matches and no screenshot pixel exceeds the RGB channel tolerance of 8.
 
 ## PostgreSQL benchmark
 
@@ -92,3 +98,13 @@ A later release build was measured with the same PostgreSQL version, client coun
 | 2025–26 replay | 153.61 → 3.72 | 97 → 3,013 | 186.75 → 31.45 | 311.69 → 30.94 | 149.83 → 57.61 |
 | Debater detail 5270 | 4,130.41 → 54.76 | 2.53 → 254.06 | 138.06 → 36.61 | 355.22 → 16.77 | 131.02 → 20.81 |
 | Partnership network since 2025 | 7,192.45 → 104.01 | 1.54 → 106.82 | 384.16 → 106.23 | 369.74 → 21.63 | 165.91 → 34.34 |
+
+
+The latest four-endpoint release run used the same local PostgreSQL fixture, 120 warm requests at concurrency 8, and 12 cache-disabled requests at concurrency 1. It verified all 258 HTTP cases and the benchmark response pairs before load.
+
+| Endpoint | Warm p95 ms Django → Rust | Warm req/s Django → Rust | Warm peak RSS MiB Django → Rust | Cache-disabled p95 ms Django → Rust | Cache-disabled peak RSS MiB Django → Rust |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Active schools | 4.90 → 1.04 | 2,198 → 15,556 | 120.69 → 20.69 | 8.44 → 1.50 | 119.67 → 20.42 |
+| 2025–26 replay | 60.79 → 2.21 | 221 → 6,116 | 185.39 → 34.89 | 189.60 → 23.52 | 147.70 → 61.00 |
+| Debater detail 5270 | 2,169.71 → 55.17 | 4.34 → 288.81 | 139.22 → 37.23 | 317.99 → 14.70 | 130.91 → 23.22 |
+| Partnership network since 2025 | 5,084.50 → 71.58 | 2.45 → 151.25 | 391.64 → 108.03 | 739.58 → 27.06 | 168.56 → 37.19 |

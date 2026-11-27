@@ -56,6 +56,8 @@ jobs:
           .agents/skills/black-rod-task/scripts/br venv/bin/python rust/tools/export_admin_schema.py
           .agents/skills/black-rod-task/scripts/br venv/bin/python rust/tools/export_fixture_schema.py
           git diff --exit-code -- rust/schema/
+      - name: Match the Django URL inventory
+        run: .agents/skills/black-rod-task/scripts/br venv/bin/python rust/tools/route_parity.py
       - name: Compare HTTP responses on SQLite
         run: .agents/skills/black-rod-task/scripts/br venv/bin/python rust/tools/compare.py
       - name: Compare reversible Agent corrections on SQLite
@@ -82,23 +84,16 @@ jobs:
       - name: Compare rendered HTML and desktop and mobile screenshots
         run: |
           scripts=.agents/skills/black-rod-task/scripts
-          "$scripts/br" venv/screenshots/bin/python -u rust/tools/html_parity.py "${RUNNER_TEMP}/black-rod-html" \
-            --page home --page replay --page schools --page debaters --page teams --page schedule \
-            --page statistics --page games --page login \
-            --page api-schools --page api-school --page api-standings --page api-agent-auth \
-            --page account-login --page account-signup --page account-logout --page account-email \
-            --page account-confirm-email --page account-verify-email --page account-inactive \
-            --page account-connect --page account-provider --page account-reauth \
-            --page account-social-error --page account-social-cancelled --page summernote-editor \
-            --page admin-login --page admin-index --page admin-core-index --page admin-school-list \
-            --page admin-school-add --page admin-school-change --page admin-school-history \
-            --page admin-school-import --page admin-school-export --page admin-password \
-            --page admin-password-done --page admin-user-list --page admin-tournament-list \
-            --page admin-user-add --page admin-credential-list --page admin-credential-add \
-            --page admin-model-auth-group-delete --page admin-model-core-team-delete \
-            --page admin-model-core-tournament-delete --page admin-model-core-round-delete \
-            --page admin-model-core-resource-delete --page admin-model-core-motion-delete \
-            --page admin-model-core-school-delete --page admin-model-core-speakerresult-list
+          "$scripts/br" venv/screenshots/bin/python -u rust/tools/html_parity.py "${RUNNER_TEMP}/black-rod-html" --group all
+      - name: Compare optional tab-card and partnership features
+        env:
+          ENABLE_DEBATER_PROFILE_TAB_CARDS: '1'
+          ENABLE_DEBATER_PARTNER_PIE_CHART: '1'
+          ENABLE_TOURNAMENT_TAB_CARD_SEARCH: '1'
+        run: |
+          scripts=.agents/skills/black-rod-task/scripts
+          "$scripts/br" venv/screenshots/bin/python -u rust/tools/html_parity.py "${RUNNER_TEMP}/black-rod-html-features" \
+            --page tournament-tab-cards --page tournament-tab-cards-member --page debater-profile-tab-cards
       - name: Compare HTTP responses on PostgreSQL
         env:
           BLACK_ROD_PARITY_POSTGRES_URL: postgres://black_rod:fixture@127.0.0.1:5432/black_rod_parity

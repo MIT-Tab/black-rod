@@ -89,6 +89,14 @@ pub(super) async fn recompute(
     recompute_for(conn, season, current, None).await
 }
 
+pub(super) async fn recompute_team_members(
+    conn: &mut AnyConnection,
+    season: &str,
+    people: &BTreeSet<i64>,
+) -> Result<(), ApiError> {
+    recompute_for(conn, season, true, Some(people)).await
+}
+
 async fn recompute_for(
     conn: &mut AnyConnection,
     season: &str,

@@ -1,21 +1,21 @@
 {% macro field(name, label, control, required=false, help="", rows=0, choices=[]) %}
     <div id="div_id_{{ name }}" class="form-group">
-        <label for="id_{{ name }}"{% if required %} class="requiredField"{% endif %}>{{ label }}{% if required %}<span class="asteriskField">*</span>{% endif %}</label>
+        <label for="id_{{ name }}"class="{% if required %}requiredField{% endif %}">{{ label }}{% if required %}<span class="asteriskField">*</span>{% endif %}</label>
         <div>
             {% if control == "text" or control == "url" %}
-                <input type="{{ control }}" name="{{ name }}" value="{{ fields[name] }}" maxlength="{{ 255 if control == 'text' else 4096 }}" class="{{ 'textinput textInput' if control == 'text' else 'urlinput' }} form-control{% if errors[name] %} is-invalid{% endif %}"{% if required %} required{% endif %} id="id_{{ name }}">
+                <input type="{{ control }}" name="{{ name }}" {% if fields[name] %} value="{{ fields[name] }}"{% endif %} maxlength="{{ 255 if control == 'text' else 4096 }}" class="{{ 'textinput textInput' if control == 'text' else 'urlinput' }} form-control{% if errors[name] %} is-invalid{% endif %}"{% if required %} required{% endif %}{% if help %} aria-describedby="id_{{ name }}_helptext"{% endif %} id="id_{{ name }}">
             {% elif control == "textarea" %}
-                <textarea name="{{ name }}" cols="40" rows="{{ rows }}" class="textarea form-control{% if errors[name] %} is-invalid{% endif %}" id="id_{{ name }}">{{ fields[name] }}</textarea>
+                <textarea name="{{ name }}" cols="40" rows="{{ rows }}" class="textarea form-control{% if errors[name] %} is-invalid{% endif %}" {% if help %} aria-describedby="id_{{ name }}_helptext"{% endif %} id="id_{{ name }}">{{ fields[name] }}</textarea>
             {% elif control == "authors" %}
-                <select name="authors" id="id_authors" class="selectmultiple form-control{% if errors[name] %} is-invalid{% endif %}" data-rust-select-url="/core/debaters/autocomplete" multiple required>
+                <select name="authors" id="id_authors" class="modelselect2multiple {{ 'form-control' if object else 'custom-select' }}{% if errors[name] %} is-invalid{% endif %}" aria-describedby="id_authors_helptext" data-autocomplete-light-language="en" data-autocomplete-light-url="/core/debaters/autocomplete" data-autocomplete-light-function="select2" multiple required>
                     {% for id, label in fields.authors %}<option value="{{ id }}" selected>{{ label }}</option>{% endfor %}
                 </select>
             {% elif control == "tags" %}
-                <select name="tags" id="id_tags" class="selectmultiple form-control{% if errors[name] %} is-invalid{% endif %}" data-rust-tag-url="{{ resource_tag_url }}"{% if resource_can_create_tags %} data-rust-tag-create{% endif %} multiple>
+                <select name="tags" id="id_tags" class="taggitselect2 {{ 'form-control' if object else 'custom-select' }}{% if errors[name] %} is-invalid{% endif %}" data-autocomplete-light-language="en" data-autocomplete-light-url="{{ resource_tag_url }}" data-autocomplete-light-function="select2" data-tags="," multiple>
                     {% for tag in fields.tags %}<option value="{{ tag }}" selected>{{ tag }}</option>{% endfor %}
                 </select>
             {% else %}
-                <select name="{{ name }}" id="id_{{ name }}" class="select form-control{% if errors[name] %} is-invalid{% endif %}"{% if required %} required{% endif %}>
+                <select name="{{ name }}" id="id_{{ name }}" class="select {{ 'form-control' if object else 'custom-select' }}{% if errors[name] %} is-invalid{% endif %}"{% if help %} aria-describedby="id_{{ name }}_helptext"{% endif %}>
                     {% for value, label in choices %}<option value="{{ value }}"{% if fields[name] == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
                 </select>
             {% endif %}
@@ -40,6 +40,7 @@
 {% else %}
     <form method="post">
         <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf }}">
+        {% include "autocomplete_media.html" %}
         <div class="form-row">
             <div class="col-md-8">{{ field("title", "Title", "text", true) }}</div>
             <div class="col-md-4">{{ field("resource_type", "Type", "select", true, choices=resource_types) }}</div>
@@ -55,6 +56,6 @@
             <div class="col-md-6">{{ field("viewing_permission", "Viewing Permission", "select", true, viewing_help, choices=resource_permissions) }}</div>
             <div class="col-md-6">{{ field("tags", "Tags", "tags") }}</div>
         </div>
-        <div class="form-group"><div><input type="submit" name="save" value="Save" class="btn btn-primary" id="submit-id-save"></div></div>
+        <input type="submit" name="save" value="Save" class="btn btn-primary" id="submit-id-save">
     </form>
 {% endif %}

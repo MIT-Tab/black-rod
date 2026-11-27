@@ -1,9 +1,11 @@
 mod canonical;
 mod fixture;
 mod shorten;
+mod speaker_positions;
 
 use std::{error::Error, fs, path::Path};
 
+use md5::{Digest, Md5};
 use sqlx::{AssertSqlSafe, Row};
 
 use crate::{AppState, agent, claims, delete_relations, points};
@@ -27,10 +29,13 @@ Commands:
   create_dev_fixtures             Export sanitized development data
   export_generated_codes          Export generated codes to CSV
   rebuild_synthetic_team_names     Restore native labels for synthetic teams
+  generate_speaker_position_amendments  Derive round edits from raw backups
   fix_novice_debaters               Restore first-season status for novice debaters
   reconstruct_historical_point_quals  Restore missing offline point qualifications
   reindex_haystack                Refresh the native debater search index
   redo_rankings                    Recompute qualifications for teams with nine-point debaters
+  rerank_current_awards           Refresh the displayed places of current standings
+  update_otys                     Refresh points, qualifications and places for the current season
   shorten_names                   Populate school-based tournament and team short names
   seed_qual_bars                   Fill missing offline qualification bars
   seed_season_filters              Update debater season filters from results
@@ -77,6 +82,9 @@ impl AppState {
             "rebuild_synthetic_team_names" if args.is_empty() || args == ["--dry-run"] => {
                 self.rebuild_synthetic_teams(!args.is_empty()).await?;
             }
+            "generate_speaker_position_amendments" => {
+                speaker_positions::generate(self, args).await?
+            }
             "fix_novice_debaters" => self.fix_novices(args).await?,
             "reconstruct_historical_point_quals" => {
                 self.reconstruct_historical_qualifications(args).await?
@@ -94,12 +102,52 @@ impl AppState {
                 .map_err(|error| format!("Could not update qualifications: {error:?}"))?;
                 tx.commit().await?;
             }
+            "update_otys" | "rerank_current_awards" if args.is_empty() => {
+                self.maintain_awards(command == "update_otys").await?;
+            }
             "seed_qual_bars" if args.is_empty() => self.seed_qual_bars().await?,
             "seed_season_filters" => self.seed_seasons(args).await?,
             "set_old_quals" if args.is_empty() => self.old_quals().await?,
             _ => {
                 return Err(format!("Unknown command or arguments: {command}. Use --help.").into());
             }
+        }
+        Ok(())
+    }
+
+    async fn maintain_awards(&self, refresh: bool) -> Result<()> {
+        use crate::tournament_import::results::standings;
+        let mut tx = self.pool.begin().await?;
+        if refresh {
+            standings::refresh_current_awards(&mut tx, self.current_season).await
+        } else {
+            standings::rerank_current_awards(&mut tx, self.current_season).await
+        }
+        .map_err(|reason| format!("Could not refresh standings: {reason:?}"))?;
+        tx.commit().await?;
+        let seasons = if refresh {
+            self.current_season..=self.current_season
+        } else {
+            2004..=self.current_season
+        };
+        for season in seasons {
+            if let Some(cache) = &self.memcached {
+                let hash = Md5::digest(format!("{season}:"));
+                let types = if refresh {
+                    &["toty", "noty", "coty", "soty"][..]
+                } else {
+                    &["toty", "coty", "soty"][..]
+                };
+                for name in types {
+                    cache
+                        .delete_raw(&format!(":1:template.cache.{name}.{hash:x}"))
+                        .await;
+                }
+                cache
+                    .delete_raw(&format!(":1:api:standings_replay:{season}"))
+                    .await;
+            }
+            crate::live::invalidate(self, season).await;
         }
         Ok(())
     }

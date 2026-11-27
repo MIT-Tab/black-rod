@@ -64,7 +64,7 @@ function initSummernote_{{ id_safe }}() {
                         var $wrap = $($nEditor).wrap(
                             '<div class="summernote-div"></div>'
                         ).parent();
-                        {% for k, v in attrs.items() %}
+                        {% for k, v in attrs %}
                         $wrap.attr('{{ k }}', '{{ v }}');
                         {% endfor %}
 {% endif %}

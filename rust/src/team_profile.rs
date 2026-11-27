@@ -187,6 +187,29 @@ pub(crate) async fn cards(
     origin: &str,
     only_tournament: Option<i64>,
 ) -> Result<HashMap<i64, Card>, ApiError> {
+    card_data(conn, team, people, origin, only_tournament, false).await
+}
+
+pub(crate) async fn tournament_card(
+    conn: &mut AnyConnection,
+    team: i64,
+    people: &[Value],
+    tournament: i64,
+) -> Result<Vec<Value>, ApiError> {
+    let card = card_data(conn, team, people, "", Some(tournament), true)
+        .await?
+        .remove(&tournament);
+    Ok(card.map_or_else(Vec::new, |card| card.rounds))
+}
+
+async fn card_data(
+    conn: &mut AnyConnection,
+    team: i64,
+    people: &[Value],
+    origin: &str,
+    only_tournament: Option<i64>,
+    include_empty: bool,
+) -> Result<HashMap<i64, Card>, ApiError> {
     let round_rows = sqlx::query(ROUNDS)
         .bind(team)
         .bind(only_tournament)
@@ -209,8 +232,9 @@ pub(crate) async fn cards(
                 row.try_get::<i64, _>("debater_id")?,
             );
             if let std::collections::hash_map::Entry::Vacant(entry) = scores.entry(key) {
+                let role: Option<&str> = row.try_get("debater_role")?;
                 entry.insert(json!({
-                    "role": row.try_get::<Option<&str>, _>("debater_role")?.unwrap_or_default().to_uppercase(),
+                    "role": role.unwrap_or(if include_empty { "NONE" } else { "" }).to_uppercase(),
                     "speaks": row.try_get::<Option<f64>, _>("speaks")?,
                     "ranks": row.try_get::<Option<f64>, _>("ranks")?,
                 }));
@@ -234,12 +258,14 @@ pub(crate) async fn cards(
         let round_id: i64 = row.try_get("id")?;
         let stats = endpoints
             .into_iter()
-            .flatten()
             .filter_map(|person| {
-                let id = person["id"].as_i64()?;
-                let mut payload = scores.get(&(round_id, id))?.clone();
-                payload["debater"] = person.clone();
-                Some(payload)
+                let entry = person.and_then(|person| {
+                    let id = person["id"].as_i64()?;
+                    let mut payload = scores.get(&(round_id, id))?.clone();
+                    payload["debater"] = person.clone();
+                    Some(payload)
+                });
+                entry.or_else(|| include_empty.then(|| json!({"role": "", "speaks": null, "ranks": null, "debater": {"name": "", "url": ""}})))
             })
             .collect::<Vec<_>>();
         let side = if gov == team { "OPP" } else { "GOV" };

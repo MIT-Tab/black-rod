@@ -2,8 +2,8 @@
 {% block title %}{% if errors %}Error: {% endif %}{{ super() }}{% endblock %}
 {% block extrahead %}{{ super() }}
     <script src="/admin/jsi18n/"></script>
-    {% for medium,asset in css %}<link href="/static/{{ asset|vendor_asset }}" media="{{ medium }}" rel="stylesheet">{% endfor %}
-    {% for asset in js %}<script src="/static/{{ asset|vendor_asset }}"></script>{% endfor %}
+    {% for medium,asset in css %}<link href="/static/{{ asset }}" media="{{ medium }}" rel="stylesheet">{% endfor %}
+    {% for asset in js %}<script src="/static/{{ asset }}"></script>{% endfor %}
     {% if add_user %}<link rel="stylesheet" href="/static/admin/css/unusable_password_field.css">{% endif %}
 {% endblock %}
 {% block extrastyle %}{{ super() }}<link rel="stylesheet" href="/static/admin/css/forms.css">{% endblock %}

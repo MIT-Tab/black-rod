@@ -2,7 +2,7 @@ pub(crate) mod debater;
 pub(crate) mod roles;
 
 use axum::{
-    extract::{OriginalUri, State},
+    extract::{OriginalUri, Path, State},
     http::{HeaderMap, StatusCode, Uri, header},
     response::{Html, IntoResponse, Response},
 };
@@ -143,6 +143,76 @@ pub(crate) async fn dashboard(
     headers: HeaderMap,
 ) -> Response {
     page(&state, &uri, &headers)
+        .await
+        .unwrap_or_else(roles::failed)
+}
+
+async fn debater_list_page(
+    state: &AppState,
+    school: i64,
+    uri: &Uri,
+    headers: &HeaderMap,
+) -> Result<Response, ApiError> {
+    let user = session::user(&state.pool, headers, state.secret.as_deref()).await?;
+    if !user.is_authenticated {
+        return Ok(login::redirect_to_login(uri));
+    }
+    if !user.is_school_admin {
+        return Ok(web::permission_denied(state, &user, uri));
+    }
+    let mut tx = read_transaction(&state.pool).await?;
+    let manages_school = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM core_school s JOIN core_schooladmin a ON a.school_id=s.id
+         WHERE s.id=$1 AND a.user_id=$2 AND NOT s.temporary",
+    )
+    .bind(school)
+    .bind(user.id)
+    .fetch_one(&mut *tx)
+    .await?
+        > 0;
+    if !manages_school {
+        return Ok(StatusCode::NOT_FOUND.into_response());
+    }
+    let page = url::form_urlencoded::parse(uri.query().unwrap_or_default().as_bytes())
+        .filter(|(name, _)| name == "page")
+        .map(|(_, value)| value)
+        .last();
+    if let Some(number) = page
+        .as_deref()
+        .filter(|number| !matches!(*number, "" | "last"))
+    {
+        let Ok(number) = number.trim().parse::<i64>() else {
+            return Ok(StatusCode::NOT_FOUND.into_response());
+        };
+        if number < 1 {
+            return Ok(StatusCode::NOT_FOUND.into_response());
+        }
+        if number > 1 {
+            let count = sqlx::query_scalar::<_, i64>(
+                "SELECT COUNT(*) FROM core_debater
+                 WHERE school_id=$1 AND latest_season >= $2 AND NOT temporary AND NOT synthetic",
+            )
+            .bind(school)
+            .bind((state.current_season - 6).to_string())
+            .fetch_one(&mut *tx)
+            .await?;
+            if number > ((count + 49) / 50).max(1) {
+                return Ok(StatusCode::NOT_FOUND.into_response());
+            }
+        }
+    }
+    tx.commit().await?;
+    // The reference roster view selects a template that is absent from the project.
+    Ok(StatusCode::INTERNAL_SERVER_ERROR.into_response())
+}
+
+pub(crate) async fn debater_list(
+    State(state): State<AppState>,
+    Path(school): Path<i64>,
+    OriginalUri(uri): OriginalUri,
+    headers: HeaderMap,
+) -> Response {
+    debater_list_page(&state, school, &uri, &headers)
         .await
         .unwrap_or_else(roles::failed)
 }

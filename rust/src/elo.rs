@@ -406,7 +406,7 @@ fn controls(min: i32, max: i32) -> HashMap<&'static str, Control> {
         control.minimum = Some(0);
         control.maximum = Some(100);
         control.step = Some("5");
-        control.classes = "form-range js-elo-share-slider";
+        control.classes = "form-control form-control-sm form-range js-elo-share-slider";
         control.help = if action == "win" {
             "Percent of team win delta assigned to the higher pre-round ELO partner."
         } else {
