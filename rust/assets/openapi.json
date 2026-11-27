@@ -1,0 +1,2389 @@
+{
+    "openapi": "3.1.0",
+    "info": {
+        "title": "APDA Standings API",
+        "version": "1.1.0",
+        "description": "Machine-friendly endpoints for APDA standings, replay visualizations, school rosters, debater profiles, teams, tournaments, and the OTY scoring guide."
+    },
+    "paths": {
+        "/api/agent/v1/": {
+            "get": {
+                "operationId": "agent_v1_retrieve",
+                "description": "Discover the correction API, allowed fields, relations, constraints, and supported bulk operations.",
+                "tags": [
+                    "agent"
+                ],
+                "security": [
+                    {
+                        "agentBearer": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": {}
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/agent/v1/batches/": {
+            "get": {
+                "operationId": "agent_v1_batches_retrieve",
+                "tags": [
+                    "agent"
+                ],
+                "security": [
+                    {
+                        "agentBearer": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": {}
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            },
+            "post": {
+                "operationId": "agent_v1_batches_create",
+                "description": "Atomic bulk correction. Requires request_id UUID, reason, and 1–200 operations. Optional dry_run and expected_change_hash. See authenticated guide for examples.",
+                "tags": [
+                    "agent"
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": {}
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "agentBearer": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": {}
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/agent/v1/batches/{id}/": {
+            "get": {
+                "operationId": "agent_v1_batches_retrieve_2",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "schema": {
+                            "type": "integer"
+                        },
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "agent"
+                ],
+                "security": [
+                    {
+                        "agentBearer": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": {}
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            },
+            "post": {
+                "operationId": "agent_v1_batches_create_2",
+                "description": "Atomic bulk correction. Requires request_id UUID, reason, and 1–200 operations. Optional dry_run and expected_change_hash. See authenticated guide for examples.",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "schema": {
+                            "type": "integer"
+                        },
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "agent"
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": {}
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "agentBearer": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": {}
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/agent/v1/batches/{id}/undo/": {
+            "post": {
+                "operationId": "agent_v1_batches_undo_create",
+                "description": "Reverse a committed batch. Requires a fresh request_id and reason. Supports dry_run. Refuses conflicting later edits. Undo itself is a reversible change set.",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "schema": {
+                            "type": "integer"
+                        },
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "agent"
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "additionalProperties": {}
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "agentBearer": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": {}
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/agent/v1/guide/": {
+            "get": {
+                "operationId": "agent_v1_guide_retrieve",
+                "tags": [
+                    "agent"
+                ],
+                "security": [
+                    {
+                        "agentBearer": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": {}
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/agent/v1/records/{resource}/": {
+            "get": {
+                "operationId": "agent_v1_records_retrieve",
+                "description": "Read uncached correction records, including synthetic/temporary identities. Filter by exposed scalar fields (exact or __in), q text search, limit and after cursor.",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "resource",
+                        "schema": {
+                            "type": "string"
+                        },
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "agent"
+                ],
+                "security": [
+                    {
+                        "agentBearer": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": {}
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/agent/v1/records/{resource}/{id}/": {
+            "get": {
+                "operationId": "agent_v1_records_retrieve_2",
+                "description": "Read uncached correction records, including synthetic/temporary identities. Filter by exposed scalar fields (exact or __in), q text search, limit and after cursor.",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "schema": {
+                            "type": "integer"
+                        },
+                        "required": true
+                    },
+                    {
+                        "in": "path",
+                        "name": "resource",
+                        "schema": {
+                            "type": "string"
+                        },
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "agent"
+                ],
+                "security": [
+                    {
+                        "agentBearer": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": {}
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/debaters/{id}/detail/": {
+            "get": {
+                "operationId": "debaters_detail_retrieve",
+                "description": "Return a debater's public profile, standings history, and tournament results.",
+                "summary": "Debater detail",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "schema": {
+                            "type": "integer"
+                        },
+                        "required": true
+                    },
+                    {
+                        "in": "query",
+                        "name": "limit",
+                        "schema": {
+                            "type": "integer"
+                        },
+                        "description": "Maximum number of repeated entries to return (defaults to all)."
+                    },
+                    {
+                        "in": "path",
+                        "name": "pk",
+                        "schema": {
+                            "type": "integer"
+                        },
+                        "description": "Primary key referenced in the URL.",
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "debaters"
+                ],
+                "security": [
+                    {
+                        "cookieAuth": []
+                    },
+                    {
+                        "basicAuth": []
+                    },
+                    {}
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/DebaterDetailResponse"
+                                }
+                            }
+                        },
+                        "description": ""
+                    },
+                    "404": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/debaters/{school_id}/": {
+            "get": {
+                "operationId": "debaters_retrieve",
+                "description": "Return debaters from the specified school who have competed within the last five seasons.",
+                "summary": "List debaters for a school",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "school_id",
+                        "schema": {
+                            "type": "integer"
+                        },
+                        "description": "Primary key of the school.",
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "debaters"
+                ],
+                "security": [
+                    {
+                        "cookieAuth": []
+                    },
+                    {
+                        "basicAuth": []
+                    },
+                    {}
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/SchoolDebatersResponse"
+                                }
+                            }
+                        },
+                        "description": ""
+                    },
+                    "404": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/oty-guide/": {
+            "get": {
+                "operationId": "oty_guide_retrieve",
+                "description": "Return the Markdown guide describing TOTY/SOTY/COTY scoring rules.",
+                "summary": "OTY scoring guide",
+                "tags": [
+                    "oty-guide"
+                ],
+                "security": [
+                    {
+                        "cookieAuth": []
+                    },
+                    {
+                        "basicAuth": []
+                    },
+                    {}
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/OTYGuideResponse"
+                                }
+                            }
+                        },
+                        "description": ""
+                    },
+                    "503": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/schedule/": {
+            "get": {
+                "operationId": "schedule_retrieve",
+                "description": "Return the public tournament schedule grouped by month/week with OTY notes.",
+                "summary": "Tournament schedule",
+                "parameters": [
+                    {
+                        "in": "query",
+                        "name": "season",
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "APDA season (e.g., '2024'). Defaults to the current season."
+                    }
+                ],
+                "tags": [
+                    "schedule"
+                ],
+                "security": [
+                    {
+                        "cookieAuth": []
+                    },
+                    {
+                        "basicAuth": []
+                    },
+                    {}
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ScheduleResponse"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/schools/": {
+            "get": {
+                "operationId": "schools_retrieve",
+                "description": "Return the 25 schools with the most active debaters in the past two seasons.",
+                "summary": "List active schools",
+                "tags": [
+                    "schools"
+                ],
+                "security": [
+                    {
+                        "cookieAuth": []
+                    },
+                    {
+                        "basicAuth": []
+                    },
+                    {}
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/SchoolListResponse"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/schools/{id}/detail/": {
+            "get": {
+                "operationId": "schools_detail_retrieve",
+                "description": "Season-aware school profile with COTY history, hosted tournaments, and roster info.",
+                "summary": "School detail",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "schema": {
+                            "type": "integer"
+                        },
+                        "required": true
+                    },
+                    {
+                        "in": "query",
+                        "name": "limit",
+                        "schema": {
+                            "type": "integer"
+                        },
+                        "description": "Maximum number of repeated entries to return (defaults to all)."
+                    },
+                    {
+                        "in": "path",
+                        "name": "pk",
+                        "schema": {
+                            "type": "integer"
+                        },
+                        "description": "Primary key of the school.",
+                        "required": true
+                    },
+                    {
+                        "in": "query",
+                        "name": "season",
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "APDA season (e.g., '2024'). Defaults to the current season."
+                    }
+                ],
+                "tags": [
+                    "schools"
+                ],
+                "security": [
+                    {
+                        "cookieAuth": []
+                    },
+                    {
+                        "basicAuth": []
+                    },
+                    {}
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/SchoolDetailResponse"
+                                }
+                            }
+                        },
+                        "description": ""
+                    },
+                    "404": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/schools/all/": {
+            "get": {
+                "operationId": "schools_all_retrieve",
+                "description": "Return every school in the database, ordered by most recent debater activity.",
+                "summary": "List all schools",
+                "tags": [
+                    "schools"
+                ],
+                "security": [
+                    {
+                        "cookieAuth": []
+                    },
+                    {
+                        "basicAuth": []
+                    },
+                    {}
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/SchoolListResponse"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/standings/": {
+            "get": {
+                "operationId": "standings_retrieve",
+                "description": "Fetch TOTY, COTY, SOTY, NOTY, and online qualifier standings for the requested season.",
+                "summary": "Season standings",
+                "parameters": [
+                    {
+                        "in": "query",
+                        "name": "board",
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "Repeat or comma-separate to limit standings boards (toty, soty, coty, noty, online_quals)."
+                    },
+                    {
+                        "in": "query",
+                        "name": "limit",
+                        "schema": {
+                            "type": "integer"
+                        },
+                        "description": "Maximum number of entries to return per board (defaults to all)."
+                    },
+                    {
+                        "in": "query",
+                        "name": "season",
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "APDA season (e.g., '2024'). Defaults to the current season."
+                    }
+                ],
+                "tags": [
+                    "standings"
+                ],
+                "security": [
+                    {
+                        "cookieAuth": []
+                    },
+                    {
+                        "basicAuth": []
+                    },
+                    {}
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/SeasonStandingsResponse"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/standings/replay/": {
+            "get": {
+                "operationId": "standings_replay_retrieve",
+                "description": "Return TOTY/SOTY/COTY standings plus every tournament marker for replay visualizations.",
+                "summary": "Standings replay dataset",
+                "parameters": [
+                    {
+                        "in": "query",
+                        "name": "board",
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "Repeat or comma-separate to limit standings boards (toty, soty, coty, noty, online_quals)."
+                    },
+                    {
+                        "in": "query",
+                        "name": "limit",
+                        "schema": {
+                            "type": "integer"
+                        },
+                        "description": "Maximum number of entries to return per board (defaults to all)."
+                    },
+                    {
+                        "in": "query",
+                        "name": "season",
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "APDA season (e.g., '2024'). Defaults to the current season."
+                    }
+                ],
+                "tags": [
+                    "standings"
+                ],
+                "security": [
+                    {
+                        "cookieAuth": []
+                    },
+                    {
+                        "basicAuth": []
+                    },
+                    {}
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/SeasonStandingsReplayResponse"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/standings/through-date/": {
+            "get": {
+                "operationId": "standings_through_date_retrieve",
+                "description": "Compute standings as of the supplied ISO date by reusing replay markers.",
+                "summary": "Standings snapshot through a date",
+                "parameters": [
+                    {
+                        "in": "query",
+                        "name": "board",
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "Repeat or comma-separate to limit standings boards (toty, soty, coty, noty, online_quals)."
+                    },
+                    {
+                        "in": "query",
+                        "name": "limit",
+                        "schema": {
+                            "type": "integer"
+                        },
+                        "description": "Maximum number of entries to return per board (defaults to all)."
+                    },
+                    {
+                        "in": "query",
+                        "name": "season",
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "APDA season (e.g., '2024'). Defaults to the current season."
+                    },
+                    {
+                        "in": "query",
+                        "name": "through",
+                        "schema": {
+                            "type": "string",
+                            "format": "date"
+                        },
+                        "description": "ISO-8601 date (YYYY-MM-DD). Only markers earned on/before this date are counted.",
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "standings"
+                ],
+                "security": [
+                    {
+                        "cookieAuth": []
+                    },
+                    {
+                        "basicAuth": []
+                    },
+                    {}
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/StandingsThroughDateResponse"
+                                }
+                            }
+                        },
+                        "description": ""
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/teams/{id}/detail/": {
+            "get": {
+                "operationId": "teams_detail_retrieve",
+                "description": "Expose a team's roster, TOTY history, and tournament performances.",
+                "summary": "Team detail",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "schema": {
+                            "type": "integer"
+                        },
+                        "required": true
+                    },
+                    {
+                        "in": "query",
+                        "name": "limit",
+                        "schema": {
+                            "type": "integer"
+                        },
+                        "description": "Maximum number of repeated entries to return (defaults to all)."
+                    },
+                    {
+                        "in": "path",
+                        "name": "pk",
+                        "schema": {
+                            "type": "integer"
+                        },
+                        "description": "Primary key of the team.",
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "teams"
+                ],
+                "security": [
+                    {
+                        "cookieAuth": []
+                    },
+                    {
+                        "basicAuth": []
+                    },
+                    {}
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/TeamDetailResponse"
+                                }
+                            }
+                        },
+                        "description": ""
+                    },
+                    "404": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/tournaments/{id}/detail/": {
+            "get": {
+                "operationId": "tournaments_detail_retrieve",
+                "description": "Provide tournament metadata, awards, speaker results, tab cards, and videos.",
+                "summary": "Tournament detail",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "schema": {
+                            "type": "integer"
+                        },
+                        "required": true
+                    },
+                    {
+                        "in": "path",
+                        "name": "pk",
+                        "schema": {
+                            "type": "integer"
+                        },
+                        "description": "Primary key of the tournament.",
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "tournaments"
+                ],
+                "security": [
+                    {
+                        "cookieAuth": []
+                    },
+                    {
+                        "basicAuth": []
+                    },
+                    {}
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/TournamentDetailResponse"
+                                }
+                            }
+                        },
+                        "description": ""
+                    },
+                    "404": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        }
+    },
+    "components": {
+        "schemas": {
+            "CotyBreakdownEntry": {
+                "type": "object",
+                "properties": {
+                    "debater": {
+                        "$ref": "#/components/schemas/LiteDebater"
+                    },
+                    "points": {
+                        "type": "number",
+                        "format": "double"
+                    },
+                    "qualled": {
+                        "type": "boolean"
+                    },
+                    "contribution": {
+                        "type": "number",
+                        "format": "double"
+                    },
+                    "auto_quals": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "auto_quals",
+                    "contribution",
+                    "debater",
+                    "points",
+                    "qualled"
+                ]
+            },
+            "CotyStandingEntry": {
+                "type": "object",
+                "properties": {
+                    "season": {
+                        "type": "string"
+                    },
+                    "season_display": {
+                        "type": "string"
+                    },
+                    "place_display": {
+                        "type": "string"
+                    },
+                    "points": {
+                        "type": "number",
+                        "format": "double"
+                    },
+                    "markers": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/StandingMarker"
+                        }
+                    },
+                    "id": {
+                        "type": "integer"
+                    },
+                    "place": {
+                        "type": "integer",
+                        "nullable": true
+                    },
+                    "tied": {
+                        "type": "boolean"
+                    },
+                    "team": {
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/LiteTeam"
+                            }
+                        ],
+                        "nullable": true
+                    },
+                    "debater": {
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/LiteDebater"
+                            }
+                        ],
+                        "nullable": true
+                    },
+                    "school": {
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/LiteSchool"
+                            }
+                        ],
+                        "nullable": true
+                    },
+                    "breakdown": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/CotyBreakdownEntry"
+                        }
+                    }
+                },
+                "required": [
+                    "points",
+                    "season",
+                    "season_display"
+                ]
+            },
+            "DebaterDetailResponse": {
+                "type": "object",
+                "properties": {
+                    "debater": {
+                        "$ref": "#/components/schemas/LiteDebater"
+                    },
+                    "first_season": {
+                        "type": "string",
+                        "nullable": true
+                    },
+                    "latest_season": {
+                        "type": "string",
+                        "nullable": true
+                    },
+                    "is_dino": {
+                        "type": "boolean"
+                    },
+                    "contact_preferences": {
+                        "type": "object",
+                        "additionalProperties": {
+                            "type": "string",
+                            "nullable": true
+                        }
+                    },
+                    "also_debated_under": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/LiteDebater"
+                        }
+                    },
+                    "teams": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/DebaterTeamSummary"
+                        }
+                    },
+                    "standings": {
+                        "$ref": "#/components/schemas/DebaterStandingHistory"
+                    },
+                    "season_summaries": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "additionalProperties": {}
+                        }
+                    },
+                    "videos": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/TournamentVideo"
+                        }
+                    },
+                    "links": {
+                        "$ref": "#/components/schemas/Link"
+                    }
+                },
+                "required": [
+                    "also_debated_under",
+                    "contact_preferences",
+                    "debater",
+                    "first_season",
+                    "is_dino",
+                    "latest_season",
+                    "links",
+                    "season_summaries",
+                    "standings",
+                    "teams",
+                    "videos"
+                ]
+            },
+            "DebaterStandingHistory": {
+                "type": "object",
+                "properties": {
+                    "toty": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/StandingEntry"
+                        }
+                    },
+                    "soty": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/StandingEntry"
+                        }
+                    },
+                    "noty": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/StandingEntry"
+                        }
+                    }
+                },
+                "required": [
+                    "noty",
+                    "soty",
+                    "toty"
+                ]
+            },
+            "DebaterTeamSummary": {
+                "type": "object",
+                "properties": {
+                    "team": {
+                        "$ref": "#/components/schemas/LiteTeam"
+                    },
+                    "tournament_count": {
+                        "type": "integer"
+                    },
+                    "toty_points": {
+                        "type": "number",
+                        "format": "double"
+                    }
+                },
+                "required": [
+                    "team",
+                    "toty_points",
+                    "tournament_count"
+                ]
+            },
+            "ErrorResponse": {
+                "type": "object",
+                "properties": {
+                    "detail": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "detail"
+                ]
+            },
+            "Link": {
+                "type": "object",
+                "properties": {
+                    "self": {
+                        "type": "string"
+                    },
+                    "html": {
+                        "type": "string"
+                    },
+                    "replay_api": {
+                        "type": "string"
+                    },
+                    "replay_html": {
+                        "type": "string"
+                    },
+                    "full_standings": {
+                        "type": "string"
+                    },
+                    "plain_text": {
+                        "type": "string"
+                    },
+                    "llm_proxy": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "self"
+                ]
+            },
+            "LiteDebater": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "integer"
+                    },
+                    "name": {
+                        "type": "string"
+                    },
+                    "first_name": {
+                        "type": "string"
+                    },
+                    "last_name": {
+                        "type": "string"
+                    },
+                    "status": {
+                        "type": "string"
+                    },
+                    "status_code": {
+                        "type": "string"
+                    },
+                    "school_id": {
+                        "type": "integer",
+                        "nullable": true
+                    },
+                    "school_name": {
+                        "type": "string",
+                        "nullable": true
+                    },
+                    "school": {
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/LiteSchool"
+                            }
+                        ],
+                        "nullable": true
+                    },
+                    "url": {
+                        "type": "string"
+                    },
+                    "api_url": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "first_name",
+                    "id",
+                    "last_name",
+                    "name",
+                    "status",
+                    "status_code"
+                ]
+            },
+            "LiteSchool": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "integer"
+                    },
+                    "name": {
+                        "type": "string"
+                    },
+                    "included_in_oty": {
+                        "type": "boolean"
+                    },
+                    "url": {
+                        "type": "string"
+                    },
+                    "api_url": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "id",
+                    "name"
+                ]
+            },
+            "LiteTeam": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "integer"
+                    },
+                    "name": {
+                        "type": "string"
+                    },
+                    "hybrid": {
+                        "type": "boolean"
+                    },
+                    "debaters": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/LiteDebater"
+                        }
+                    },
+                    "url": {
+                        "type": "string"
+                    },
+                    "api_url": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "hybrid",
+                    "id",
+                    "name"
+                ]
+            },
+            "LiteTournament": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "integer"
+                    },
+                    "name": {
+                        "type": "string"
+                    },
+                    "season": {
+                        "type": "string"
+                    },
+                    "season_display": {
+                        "type": "string"
+                    },
+                    "date": {
+                        "type": "string",
+                        "nullable": true
+                    },
+                    "display": {
+                        "type": "string"
+                    },
+                    "num_teams": {
+                        "type": "integer"
+                    },
+                    "num_novice_debaters": {
+                        "type": "integer"
+                    },
+                    "host": {
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/LiteSchool"
+                            }
+                        ],
+                        "nullable": true
+                    },
+                    "url": {
+                        "type": "string"
+                    },
+                    "api_url": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "id",
+                    "name",
+                    "num_novice_debaters",
+                    "num_teams",
+                    "season",
+                    "season_display"
+                ]
+            },
+            "OTYGuideResponse": {
+                "type": "object",
+                "properties": {
+                    "title": {
+                        "type": "string"
+                    },
+                    "season": {
+                        "type": "string"
+                    },
+                    "season_display": {
+                        "type": "string"
+                    },
+                    "format": {
+                        "type": "string"
+                    },
+                    "body": {
+                        "type": "string"
+                    },
+                    "last_modified": {
+                        "type": "string",
+                        "nullable": true
+                    },
+                    "links": {
+                        "$ref": "#/components/schemas/Link"
+                    }
+                },
+                "required": [
+                    "body",
+                    "format",
+                    "last_modified",
+                    "links",
+                    "season",
+                    "season_display",
+                    "title"
+                ]
+            },
+            "ReplayStandingEntry": {
+                "type": "object",
+                "properties": {
+                    "season": {
+                        "type": "string"
+                    },
+                    "season_display": {
+                        "type": "string"
+                    },
+                    "place_display": {
+                        "type": "string"
+                    },
+                    "points": {
+                        "type": "number",
+                        "format": "double"
+                    },
+                    "markers": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/StandingMarker"
+                        }
+                    },
+                    "id": {
+                        "type": "integer"
+                    },
+                    "place": {
+                        "type": "integer",
+                        "nullable": true
+                    },
+                    "tied": {
+                        "type": "boolean"
+                    },
+                    "team": {
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/LiteTeam"
+                            }
+                        ],
+                        "nullable": true
+                    },
+                    "debater": {
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/LiteDebater"
+                            }
+                        ],
+                        "nullable": true
+                    },
+                    "school": {
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/LiteSchool"
+                            }
+                        ],
+                        "nullable": true
+                    },
+                    "all_markers": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/StandingMarker"
+                        }
+                    }
+                },
+                "required": [
+                    "all_markers",
+                    "points",
+                    "season",
+                    "season_display"
+                ]
+            },
+            "ReplayStandings": {
+                "type": "object",
+                "properties": {
+                    "toty": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/ReplayStandingEntry"
+                        }
+                    },
+                    "soty": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/ReplayStandingEntry"
+                        }
+                    },
+                    "coty": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/ReplayStandingEntry"
+                        }
+                    }
+                }
+            },
+            "ScheduleMonth": {
+                "type": "object",
+                "properties": {
+                    "month": {
+                        "type": "integer"
+                    },
+                    "display": {
+                        "type": "string"
+                    },
+                    "year": {
+                        "type": "integer"
+                    },
+                    "weeks": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/ScheduleWeek"
+                        }
+                    }
+                },
+                "required": [
+                    "display",
+                    "month",
+                    "weeks",
+                    "year"
+                ]
+            },
+            "ScheduleResponse": {
+                "type": "object",
+                "properties": {
+                    "season": {
+                        "type": "string"
+                    },
+                    "season_display": {
+                        "type": "string"
+                    },
+                    "notes": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    "months": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/ScheduleMonth"
+                        }
+                    },
+                    "links": {
+                        "$ref": "#/components/schemas/Link"
+                    }
+                },
+                "required": [
+                    "links",
+                    "months",
+                    "notes",
+                    "season",
+                    "season_display"
+                ]
+            },
+            "ScheduleTournament": {
+                "type": "object",
+                "properties": {
+                    "tournament": {
+                        "$ref": "#/components/schemas/LiteTournament"
+                    },
+                    "otys": {
+                        "type": "object",
+                        "additionalProperties": {
+                            "type": "boolean"
+                        }
+                    }
+                },
+                "required": [
+                    "otys",
+                    "tournament"
+                ]
+            },
+            "ScheduleWeek": {
+                "type": "object",
+                "properties": {
+                    "date": {
+                        "type": "integer"
+                    },
+                    "one_more": {
+                        "type": "integer"
+                    },
+                    "tournaments": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/ScheduleTournament"
+                        }
+                    }
+                },
+                "required": [
+                    "date",
+                    "one_more",
+                    "tournaments"
+                ]
+            },
+            "SchoolDebatersResponse": {
+                "type": "object",
+                "properties": {
+                    "school": {
+                        "$ref": "#/components/schemas/LiteSchool"
+                    },
+                    "count": {
+                        "type": "integer"
+                    },
+                    "debaters": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/LiteDebater"
+                        }
+                    }
+                },
+                "required": [
+                    "count",
+                    "debaters",
+                    "school"
+                ]
+            },
+            "SchoolDetailResponse": {
+                "type": "object",
+                "properties": {
+                    "school": {
+                        "$ref": "#/components/schemas/LiteSchool"
+                    },
+                    "season": {
+                        "type": "string"
+                    },
+                    "season_display": {
+                        "type": "string"
+                    },
+                    "available_seasons": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/SeasonOption"
+                        }
+                    },
+                    "coty_history": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/CotyStandingEntry"
+                        }
+                    },
+                    "hosted_tournaments": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/LiteTournament"
+                        }
+                    },
+                    "season_summary": {
+                        "$ref": "#/components/schemas/SchoolSeasonSummary"
+                    },
+                    "links": {
+                        "$ref": "#/components/schemas/Link"
+                    }
+                },
+                "required": [
+                    "available_seasons",
+                    "coty_history",
+                    "hosted_tournaments",
+                    "links",
+                    "school",
+                    "season",
+                    "season_display",
+                    "season_summary"
+                ]
+            },
+            "SchoolListResponse": {
+                "type": "object",
+                "properties": {
+                    "count": {
+                        "type": "integer"
+                    },
+                    "schools": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/LiteSchool"
+                        }
+                    }
+                },
+                "required": [
+                    "count",
+                    "schools"
+                ]
+            },
+            "SchoolSeasonSummary": {
+                "type": "object",
+                "properties": {
+                    "season": {
+                        "type": "string"
+                    },
+                    "season_display": {
+                        "type": "string"
+                    },
+                    "members": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/LiteDebater"
+                        }
+                    },
+                    "coty_breakdown": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/CotyBreakdownEntry"
+                        }
+                    }
+                },
+                "required": [
+                    "coty_breakdown",
+                    "members",
+                    "season",
+                    "season_display"
+                ]
+            },
+            "SeasonOption": {
+                "type": "object",
+                "properties": {
+                    "value": {
+                        "type": "string"
+                    },
+                    "label": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "label",
+                    "value"
+                ]
+            },
+            "SeasonStandingsReplayResponse": {
+                "type": "object",
+                "properties": {
+                    "season": {
+                        "type": "string"
+                    },
+                    "season_display": {
+                        "type": "string"
+                    },
+                    "available_seasons": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/SeasonOption"
+                        }
+                    },
+                    "standings": {
+                        "$ref": "#/components/schemas/ReplayStandings"
+                    },
+                    "timeline_dates": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    "marker_limits": {
+                        "type": "object",
+                        "additionalProperties": {
+                            "type": "integer"
+                        }
+                    },
+                    "links": {
+                        "$ref": "#/components/schemas/Link"
+                    }
+                },
+                "required": [
+                    "available_seasons",
+                    "links",
+                    "marker_limits",
+                    "season",
+                    "season_display",
+                    "standings",
+                    "timeline_dates"
+                ]
+            },
+            "SeasonStandingsResponse": {
+                "type": "object",
+                "properties": {
+                    "season": {
+                        "type": "string"
+                    },
+                    "season_display": {
+                        "type": "string"
+                    },
+                    "available_seasons": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/SeasonOption"
+                        }
+                    },
+                    "render_noty": {
+                        "type": "boolean"
+                    },
+                    "using_online_quals": {
+                        "type": "boolean"
+                    },
+                    "online_qual_bar": {
+                        "type": "number",
+                        "format": "double"
+                    },
+                    "standings": {
+                        "$ref": "#/components/schemas/Standings"
+                    },
+                    "links": {
+                        "$ref": "#/components/schemas/Link"
+                    }
+                },
+                "required": [
+                    "available_seasons",
+                    "links",
+                    "online_qual_bar",
+                    "render_noty",
+                    "season",
+                    "season_display",
+                    "standings",
+                    "using_online_quals"
+                ]
+            },
+            "SpeakerAwards": {
+                "type": "object",
+                "properties": {
+                    "varsity": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/SpeakerResult"
+                        }
+                    },
+                    "novice": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/SpeakerResult"
+                        }
+                    }
+                },
+                "required": [
+                    "novice",
+                    "varsity"
+                ]
+            },
+            "SpeakerResult": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "integer"
+                    },
+                    "place": {
+                        "type": "integer"
+                    },
+                    "type": {
+                        "type": "string"
+                    },
+                    "type_code": {
+                        "type": "integer"
+                    },
+                    "tie": {
+                        "type": "boolean"
+                    },
+                    "debater": {
+                        "$ref": "#/components/schemas/LiteDebater"
+                    },
+                    "tournament": {
+                        "$ref": "#/components/schemas/LiteTournament"
+                    }
+                },
+                "required": [
+                    "debater",
+                    "id",
+                    "place",
+                    "tie",
+                    "tournament",
+                    "type",
+                    "type_code"
+                ]
+            },
+            "StandingEntry": {
+                "type": "object",
+                "properties": {
+                    "season": {
+                        "type": "string"
+                    },
+                    "season_display": {
+                        "type": "string"
+                    },
+                    "place_display": {
+                        "type": "string"
+                    },
+                    "points": {
+                        "type": "number",
+                        "format": "double"
+                    },
+                    "markers": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/StandingMarker"
+                        }
+                    },
+                    "id": {
+                        "type": "integer"
+                    },
+                    "place": {
+                        "type": "integer",
+                        "nullable": true
+                    },
+                    "tied": {
+                        "type": "boolean"
+                    },
+                    "team": {
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/LiteTeam"
+                            }
+                        ],
+                        "nullable": true
+                    },
+                    "debater": {
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/LiteDebater"
+                            }
+                        ],
+                        "nullable": true
+                    },
+                    "school": {
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/LiteSchool"
+                            }
+                        ],
+                        "nullable": true
+                    }
+                },
+                "required": [
+                    "points",
+                    "season",
+                    "season_display"
+                ]
+            },
+            "StandingMarker": {
+                "type": "object",
+                "properties": {
+                    "slot": {
+                        "type": "integer"
+                    },
+                    "points": {
+                        "type": "number",
+                        "format": "double"
+                    },
+                    "raw_points": {
+                        "type": "number",
+                        "format": "double"
+                    },
+                    "marker_type": {
+                        "type": "string"
+                    },
+                    "qualification": {
+                        "type": "object",
+                        "additionalProperties": {}
+                    },
+                    "place": {
+                        "type": "integer"
+                    },
+                    "ghost_points": {
+                        "type": "boolean"
+                    },
+                    "tournament": {
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/LiteTournament"
+                            }
+                        ],
+                        "nullable": true
+                    },
+                    "debater": {
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/LiteDebater"
+                            }
+                        ],
+                        "nullable": true
+                    },
+                    "earned_on": {
+                        "type": "string",
+                        "nullable": true
+                    },
+                    "result_id": {
+                        "type": "integer"
+                    }
+                },
+                "required": [
+                    "points"
+                ]
+            },
+            "Standings": {
+                "type": "object",
+                "properties": {
+                    "toty": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/StandingEntry"
+                        }
+                    },
+                    "soty": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/StandingEntry"
+                        }
+                    },
+                    "coty": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/CotyStandingEntry"
+                        }
+                    },
+                    "noty": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/StandingEntry"
+                        }
+                    },
+                    "online_quals": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/StandingEntry"
+                        }
+                    }
+                }
+            },
+            "StandingsThroughDateResponse": {
+                "type": "object",
+                "properties": {
+                    "season": {
+                        "type": "string"
+                    },
+                    "season_display": {
+                        "type": "string"
+                    },
+                    "through": {
+                        "type": "string"
+                    },
+                    "marker_limits": {
+                        "type": "object",
+                        "additionalProperties": {
+                            "type": "integer"
+                        }
+                    },
+                    "standings": {
+                        "$ref": "#/components/schemas/Standings"
+                    },
+                    "links": {
+                        "$ref": "#/components/schemas/Link"
+                    }
+                },
+                "required": [
+                    "links",
+                    "marker_limits",
+                    "season",
+                    "season_display",
+                    "standings",
+                    "through"
+                ]
+            },
+            "TabCardEntry": {
+                "type": "object",
+                "properties": {
+                    "team": {
+                        "$ref": "#/components/schemas/LiteTeam"
+                    },
+                    "tab_card": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "additionalProperties": {}
+                        }
+                    }
+                },
+                "required": [
+                    "tab_card",
+                    "team"
+                ]
+            },
+            "TeamAwards": {
+                "type": "object",
+                "properties": {
+                    "varsity": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/TeamResult"
+                        }
+                    },
+                    "novice": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/TeamResult"
+                        }
+                    }
+                },
+                "required": [
+                    "novice",
+                    "varsity"
+                ]
+            },
+            "TeamDetailResponse": {
+                "type": "object",
+                "properties": {
+                    "team": {
+                        "$ref": "#/components/schemas/LiteTeam"
+                    },
+                    "toty_history": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/ReplayStandingEntry"
+                        }
+                    },
+                    "tournaments": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/TeamTournamentEntry"
+                        }
+                    },
+                    "links": {
+                        "$ref": "#/components/schemas/Link"
+                    }
+                },
+                "required": [
+                    "links",
+                    "team",
+                    "toty_history",
+                    "tournaments"
+                ]
+            },
+            "TeamResult": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "integer"
+                    },
+                    "place": {
+                        "type": "integer",
+                        "nullable": true
+                    },
+                    "place_display": {
+                        "type": "string"
+                    },
+                    "type": {
+                        "type": "string"
+                    },
+                    "type_code": {
+                        "type": "integer"
+                    },
+                    "ghost_points": {
+                        "type": "boolean"
+                    },
+                    "team": {
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/LiteTeam"
+                            }
+                        ],
+                        "nullable": true
+                    },
+                    "tournament": {
+                        "$ref": "#/components/schemas/LiteTournament"
+                    }
+                },
+                "required": [
+                    "ghost_points",
+                    "id",
+                    "place",
+                    "place_display",
+                    "team",
+                    "tournament",
+                    "type",
+                    "type_code"
+                ]
+            },
+            "TeamTournamentEntry": {
+                "type": "object",
+                "properties": {
+                    "kind": {
+                        "type": "string"
+                    },
+                    "team_result": {
+                        "$ref": "#/components/schemas/TeamResult"
+                    },
+                    "record": {
+                        "type": "string"
+                    },
+                    "tab_card": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "additionalProperties": {}
+                        }
+                    },
+                    "tournament": {
+                        "$ref": "#/components/schemas/LiteTournament"
+                    }
+                },
+                "required": [
+                    "kind",
+                    "tournament"
+                ]
+            },
+            "TournamentDetailResponse": {
+                "type": "object",
+                "properties": {
+                    "tournament": {
+                        "$ref": "#/components/schemas/LiteTournament"
+                    },
+                    "team_awards": {
+                        "$ref": "#/components/schemas/TeamAwards"
+                    },
+                    "speaker_awards": {
+                        "$ref": "#/components/schemas/SpeakerAwards"
+                    },
+                    "tab_cards_available": {
+                        "type": "boolean"
+                    },
+                    "team_tab_cards": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/TabCardEntry"
+                        }
+                    },
+                    "videos": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/TournamentVideo"
+                        }
+                    },
+                    "links": {
+                        "$ref": "#/components/schemas/Link"
+                    }
+                },
+                "required": [
+                    "links",
+                    "speaker_awards",
+                    "tab_cards_available",
+                    "team_awards",
+                    "team_tab_cards",
+                    "tournament",
+                    "videos"
+                ]
+            },
+            "TournamentVideo": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "integer"
+                    },
+                    "round": {
+                        "type": "string"
+                    },
+                    "round_code": {
+                        "type": "string"
+                    },
+                    "link": {
+                        "type": "string"
+                    },
+                    "description": {
+                        "type": "string"
+                    },
+                    "case": {
+                        "type": "string"
+                    },
+                    "permissions": {
+                        "type": "string"
+                    },
+                    "tournament": {
+                        "$ref": "#/components/schemas/LiteTournament"
+                    },
+                    "participants": {
+                        "$ref": "#/components/schemas/VideoParticipants"
+                    },
+                    "tags": {
+                        "type": "array",
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    "url": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "case",
+                    "description",
+                    "id",
+                    "link",
+                    "participants",
+                    "permissions",
+                    "round",
+                    "round_code",
+                    "tags",
+                    "tournament"
+                ]
+            },
+            "VideoParticipants": {
+                "type": "object",
+                "properties": {
+                    "pm": {
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/LiteDebater"
+                            }
+                        ],
+                        "nullable": true
+                    },
+                    "mg": {
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/LiteDebater"
+                            }
+                        ],
+                        "nullable": true
+                    },
+                    "lo": {
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/LiteDebater"
+                            }
+                        ],
+                        "nullable": true
+                    },
+                    "mo": {
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/LiteDebater"
+                            }
+                        ],
+                        "nullable": true
+                    }
+                },
+                "required": [
+                    "lo",
+                    "mg",
+                    "mo",
+                    "pm"
+                ]
+            }
+        },
+        "securitySchemes": {}
+    },
+    "servers": [
+        {
+            "url": "https://127.0.0.1"
+        }
+    ],
+    "security": []
+}

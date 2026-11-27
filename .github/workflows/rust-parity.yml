@@ -1,0 +1,63 @@
+name: Rust parity
+
+on:
+  pull_request:
+    branches: [master, main]
+
+jobs:
+  parity:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: black_rod
+          POSTGRES_PASSWORD: fixture
+          POSTGRES_DB: black_rod_parity
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U black_rod"
+          --health-interval=3s
+          --health-timeout=3s
+          --health-retries=10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10.16'
+          cache: pip
+      - name: Install reference dependencies
+        run: |
+          python -m venv venv
+          venv/bin/python -m pip install -r requirements.txt -c constraints.txt
+      - name: Check Rust code
+        run: |
+          rustup toolchain install 1.94.0 --profile minimal --component clippy,rustfmt
+          cargo +1.94.0 fmt --manifest-path rust/Cargo.toml --check
+          cargo +1.94.0 clippy --manifest-path rust/Cargo.toml --locked --all-targets -- -D warnings
+          cargo +1.94.0 test --manifest-path rust/Cargo.toml --locked
+          cargo +1.94.0 build --manifest-path rust/Cargo.toml --release --locked
+      - name: Load SQLite fixture
+        env:
+          BR_LOADING_FIXTURE: '1'
+        run: |
+          scripts=.agents/skills/black-rod-task/scripts
+          "$scripts/br" venv/bin/python manage.py migrate --noinput
+          "$scripts/br" venv/bin/python manage.py loaddata dev_fixtures
+      - name: Compare HTTP responses on SQLite
+        run: .agents/skills/black-rod-task/scripts/br venv/bin/python rust/tools/compare.py
+      - name: Compare HTTP responses on PostgreSQL
+        env:
+          BLACK_ROD_PARITY_POSTGRES_URL: postgres://black_rod:fixture@127.0.0.1:5432/black_rod_parity
+        run: |
+          scripts=.agents/skills/black-rod-task/scripts
+          BR_LOADING_FIXTURE=1 "$scripts/br" venv/bin/python -c '
+          import sys
+          sys.path.insert(0, "rust/tools")
+          from reference import application
+          from django.core.management import call_command
+          call_command("migrate", interactive=False)
+          call_command("loaddata", "dev_fixtures")
+          '
+          "$scripts/br" venv/bin/python rust/tools/compare.py

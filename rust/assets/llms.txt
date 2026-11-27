@@ -1,0 +1,35 @@
+LLM Documentation for black-rod
+
+This public API exposes standings, school rosters, debater profiles, tournaments,
+and other APDA Online resources in JSON for third-party tools.
+
+Endpoints:
+1. /llm
+   - Wrap any /api/ JSON response in HTML for browser-based LLM tools.
+   - Usage: /llm?endpoint=/api/<path> (example: /llm?endpoint=/api/standings/?season=2024)
+   - Only relative /api/ paths plus /.well-known/* OpenAPI/manifest endpoints are accepted; query parameters are forwarded.
+
+2. /llms.txt
+   - This document. Lists machine-friendly interfaces for LLM access.
+
+3. /llm?endpoint=/api/schedule/
+   - Machine-readable version of the public tournament schedule grouped the same way as the HTML page.
+
+4. /llm?endpoint=/api/oty-guide/
+   - Markdown version of the TOTY/SOTY/COTY scoring guide.
+
+5. /llm/oty-guide/
+   - Plain-text explainer covering how TOTY, SOTY, and COTY point races work (including scoring formulas).
+
+Filtering:
+- /api/standings/, /api/standings/replay/, and /api/standings/through-date/ accept ?board=<name>&limit=<n> to restrict the boards returned and cap their lengths.
+- Detail endpoints such as /api/teams/<id>/detail/, /api/debaters/<id>/detail/, and /api/schools/<id>/detail/ accept ?limit=<n> to truncate repeated lists.
+
+OpenAPI schema:
+- /.well-known/openapi.json (OpenAPI 3.1 schema describing every public endpoint)
+- /.well-known/ai-plugin.json (ChatGPT plugin manifest that references the schema)
+
+Guidelines:
+- Respect caching headers from API responses.
+- Avoid crawling authenticated or non-/api/ paths through /llm.
+- Report issues to info@apda.online.

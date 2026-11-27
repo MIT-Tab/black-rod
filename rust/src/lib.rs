@@ -1,0 +1,590 @@
+mod cache;
+mod debater_profile;
+mod directory;
+mod discovery;
+mod live;
+mod login;
+pub use live::Live;
+mod oauth;
+pub use oauth::OAuth;
+mod points;
+mod private_api;
+mod replay;
+pub use private_api::PrivateTokens;
+mod schedule;
+mod school_profile;
+mod schools;
+mod session;
+mod standings;
+mod stats;
+mod team_profile;
+mod tournament_profile;
+mod web;
+
+use std::{net::SocketAddr, path::Path, sync::Arc, time::Duration};
+
+use axum::{
+    Json, Router,
+    body::Bytes,
+    extract::{OriginalUri, Request, State},
+    http::{HeaderMap, HeaderValue, Method, StatusCode, header},
+    response::{IntoResponse, Response},
+    routing::get,
+};
+use chrono::{DateTime, Utc};
+use moka::future::Cache;
+use serde_json::json;
+use sqlx::AnyPool;
+
+const OTY_GUIDE: &str = include_str!("../../api/content/oty_guide.md");
+const API_HEADERS: [(header::HeaderName, &str); 2] = [
+    (header::VARY, "Accept, Cookie"),
+    (header::ALLOW, "GET, HEAD, OPTIONS"),
+];
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum Endpoint {
+    Directory(schools::Directory),
+    Schedule(i32),
+}
+
+#[derive(Clone)]
+pub struct AppState {
+    pool: AnyPool,
+    secret: Option<Arc<[u8]>>,
+    private_tokens: Arc<PrivateTokens>,
+    oauth: Option<Arc<OAuth>>,
+    live: Option<Arc<Live>>,
+    bundles: Arc<Vec<String>>,
+    current_season: i32,
+    public_origin: Option<String>,
+    guide_modified: Option<String>,
+    public_json: Cache<(String, Endpoint), cache::CachedBody>,
+    memcached: Option<cache::Memcached>,
+    cache_lifetime: Duration,
+    standings: Cache<(String, i32), Arc<standings::Boards>>,
+    replay: Cache<(String, i32), Arc<replay::Replay>>,
+    home: Cache<i32, Arc<standings::Boards>>,
+    stats: Cache<(), Arc<serde_json::Value>>,
+    snapshots: Cache<(String, i32, String), Arc<standings::Boards>>,
+}
+
+impl AppState {
+    pub fn new(pool: AnyPool, current_season: i32) -> Self {
+        Self::with_cache_lifetime(pool, current_season, Duration::from_secs(300))
+    }
+
+    pub fn with_cache_lifetime(pool: AnyPool, current_season: i32, lifetime: Duration) -> Self {
+        let guide_modified = Path::new("api/content/oty_guide.md")
+            .metadata()
+            .and_then(|metadata| metadata.modified())
+            .ok()
+            .map(|time| DateTime::<Utc>::from(time).date_naive().to_string());
+        Self {
+            pool,
+            secret: None,
+            private_tokens: Arc::default(),
+            oauth: None,
+            live: None,
+            bundles: Arc::default(),
+            current_season,
+            public_origin: None,
+            guide_modified,
+            snapshots: Cache::builder()
+                .time_to_live(lifetime)
+                .max_capacity(12)
+                .build(),
+            stats: Cache::builder()
+                .time_to_live(if lifetime.is_zero() {
+                    Duration::ZERO
+                } else {
+                    Duration::from_secs(3600)
+                })
+                .max_capacity(1)
+                .build(),
+            home: Cache::builder()
+                .time_to_live(lifetime)
+                .max_capacity(24)
+                .build(),
+            replay: Cache::builder()
+                .time_to_live(lifetime)
+                .max_capacity(12)
+                .build(),
+            standings: Cache::builder()
+                .time_to_live(lifetime)
+                .max_capacity(24)
+                .build(),
+            public_json: Cache::builder()
+                .expire_after(cache::BodyExpiry)
+                .weigher(|_, body: &cache::CachedBody| {
+                    u32::try_from(body.bytes.len()).unwrap_or(u32::MAX)
+                })
+                .max_capacity(16 * 1024 * 1024)
+                .build(),
+            memcached: None,
+            cache_lifetime: lifetime,
+        }
+    }
+
+    pub fn with_memcached(mut self, address: SocketAddr) -> Self {
+        self.memcached = Some(cache::Memcached::new(address));
+        self
+    }
+
+    pub fn with_session_secret(mut self, secret: String) -> Self {
+        self.secret = Some(Arc::from(secret.into_bytes()));
+        self
+    }
+
+    pub fn with_live(mut self, live: Live) -> Self {
+        self.live = Some(Arc::new(live));
+        self
+    }
+
+    pub fn with_oauth(mut self, oauth: OAuth) -> Self {
+        self.oauth = Some(Arc::new(oauth));
+        self
+    }
+
+    pub fn with_private_tokens(mut self, tokens: PrivateTokens) -> Self {
+        self.private_tokens = Arc::new(tokens);
+        self
+    }
+
+    pub fn with_webpack_stats(mut self, path: &Path) -> Result<Self, Box<dyn std::error::Error>> {
+        self.bundles = Arc::new(web::bundles(path)?);
+        Ok(self)
+    }
+
+    pub fn with_public_origin(mut self, origin: &str) -> Result<Self, &'static str> {
+        let url = url::Url::parse(origin).map_err(|_| "Invalid Black Rod public origin")?;
+        if !matches!(url.scheme(), "http" | "https")
+            || url.host().is_none()
+            || url.path() != "/"
+            || !url.username().is_empty()
+            || url.password().is_some()
+            || url.query().is_some()
+            || url.fragment().is_some()
+        {
+            return Err("Black Rod public origin must be an HTTP or HTTPS origin");
+        }
+        self.public_origin = Some(url.origin().ascii_serialization());
+        Ok(self)
+    }
+
+    fn origin(&self, headers: &HeaderMap) -> Option<String> {
+        if self.public_origin.is_some() {
+            return self.public_origin.clone();
+        }
+        let host = headers.get(header::HOST)?.to_str().ok()?;
+        let authority = host.parse::<axum::http::uri::Authority>().ok()?;
+        (!host.contains('@') && !authority.host().is_empty()).then(|| format!("http://{host}"))
+    }
+}
+
+fn api_routes() -> Router<AppState> {
+    Router::new()
+        .route(
+            "/api/schools/",
+            get(schools::active).options(schools::active_options),
+        )
+        .route(
+            "/api/schools/{school}/detail/",
+            get(school_profile::detail).options(school_profile::detail_options),
+        )
+        .route(
+            "/api/teams/{team}/detail/",
+            get(team_profile::detail).options(team_profile::detail_options),
+        )
+        .route(
+            "/api/tournaments/{tournament}/detail/",
+            get(tournament_profile::detail).options(tournament_profile::detail_options),
+        )
+        .route(
+            "/api/debaters/{debater}/detail/",
+            get(debater_profile::detail).options(debater_profile::detail_options),
+        )
+        .route(
+            "/api/schools/all/",
+            get(schools::all).options(schools::all_options),
+        )
+        .route(
+            "/api/debaters/{school}/",
+            get(schools::debaters).options(schools::debaters_options),
+        )
+        .route(
+            "/api/schedule/",
+            get(schedule::schedule).options(schedule::schedule_options),
+        )
+        .route(
+            "/api/oty-guide/",
+            get(oty_guide_api).options(oty_guide_options),
+        )
+        .route(
+            "/api/standings/",
+            get(standings::standings).options(standings::standings_options),
+        )
+        .route(
+            "/api/standings/replay/",
+            get(replay::handle).options(replay::replay_options),
+        )
+        .route(
+            "/api/standings/through-date/",
+            get(replay::handle).options(replay::through_options),
+        )
+        .route("/.well-known/ai-plugin.json", get(discovery::manifest))
+        .route("/.well-known/openapi.json", get(discovery::schema))
+}
+
+fn local_api(state: AppState) -> Router {
+    api_routes()
+        .layer(axum::middleware::from_fn(api_protocol))
+        .with_state(state)
+}
+
+pub fn app(state: AppState) -> Router {
+    api_routes()
+        .route("/api/standings", get(append_slash))
+        .route("/api/standings/replay", get(append_slash))
+        .route("/api/standings/through-date", get(append_slash))
+        .route("/api/schools", get(append_slash))
+        .route("/api/schools/all", get(append_slash))
+        .route("/api/schools/{school}/detail", get(append_slash))
+        .route("/api/teams/{team}/detail", get(append_slash))
+        .route("/api/tournaments/{tournament}/detail", get(append_slash))
+        .route("/api/debaters/{school}", get(append_slash))
+        .route("/api/debaters/{debater}/detail", get(append_slash))
+        .route("/api/schedule", get(append_slash))
+        .route("/api/oty-guide", get(append_slash))
+        .route("/", get(web::show))
+        .route("/live", get(live::page))
+        .route("/stats/", get(stats::page))
+        .route("/stats", get(append_slash))
+        .route("/auth/login/", get(login::view).post(login::view))
+        .route("/accounts/apdaonline/login/callback/", get(oauth::callback))
+        .route("/auth/login", get(append_slash))
+        .route("/auth/logout/", axum::routing::post(login::logout))
+        .route("/auth/logout", get(append_slash))
+        .route("/standings/replay/", get(web::show))
+        .route("/standings/replay", get(append_slash))
+        .route("/games/", get(web::show))
+        .route("/core/schedules/", get(schedule::page))
+        .route("/core/schedules", get(append_slash))
+        .route("/core/schools/{school}", get(school_profile::page))
+        .route("/core/schools/", get(directory::page))
+        .route("/core/debaters/", get(directory::page))
+        .route("/core/teams/", get(directory::page))
+        .route("/core/teams/{team}", get(team_profile::page))
+        .route("/core/schools", get(append_slash))
+        .route("/core/debaters", get(append_slash))
+        .route("/core/teams", get(append_slash))
+        .route("/games", get(append_slash))
+        .nest_service(
+            "/static",
+            tower_http::services::ServeDir::new("apda/assets"),
+        )
+        .route(
+            "/api/private/forum-profiles/",
+            axum::routing::any(private_api::forum),
+        )
+        .route(
+            "/api/private/debater-emails/",
+            axum::routing::any(private_api::mittab),
+        )
+        .route("/robots.txt", get(robots))
+        .route("/llms.txt", get(discovery::documentation))
+        .route("/llm/", get(discovery::proxy))
+        .route("/llm", get(append_slash))
+        .route("/llm/oty-guide/", get(oty_guide))
+        .route("/llm/oty-guide", get(append_slash))
+        .fallback(|| async { StatusCode::NOT_FOUND })
+        .layer(axum::middleware::from_fn(api_protocol))
+        .layer(axum::middleware::from_fn(security_headers))
+        .with_state(state)
+}
+
+fn public_api_path(path: &str) -> bool {
+    matches!(
+        path,
+        "/api/schools/"
+            | "/api/schools/all/"
+            | "/api/schedule/"
+            | "/api/oty-guide/"
+            | "/api/standings/"
+            | "/api/standings/replay/"
+            | "/api/standings/through-date/"
+    ) || path
+        .strip_prefix("/api/debaters/")
+        .and_then(|tail| tail.strip_suffix('/'))
+        .is_some_and(is_django_integer)
+        || [
+            "/api/schools/",
+            "/api/teams/",
+            "/api/tournaments/",
+            "/api/debaters/",
+        ]
+        .into_iter()
+        .any(|prefix| {
+            path.strip_prefix(prefix)
+                .and_then(|tail| tail.strip_suffix("/detail/"))
+                .is_some_and(is_django_integer)
+        })
+}
+
+async fn api_protocol(request: Request, next: axum::middleware::Next) -> Response {
+    if !public_api_path(request.uri().path()) {
+        return next.run(request).await;
+    }
+    let head = *request.method() == Method::HEAD;
+    let format = url::form_urlencoded::parse(request.uri().query().unwrap_or_default().as_bytes())
+        .filter(|(name, _)| name == "format")
+        .map(|(_, value)| value)
+        .last();
+    let mut indent = 0;
+    let mut suitable = false;
+    for media in request
+        .headers()
+        .get_all(header::ACCEPT)
+        .iter()
+        .filter_map(|value| value.to_str().ok())
+        .flat_map(|value| value.split(','))
+    {
+        let mut parts = media.split(';');
+        if let Some("*/*" | "application/*" | "application/json" | "text/html" | "text/*") =
+            parts.next().map(str::trim)
+        {
+            suitable = true;
+            indent = parts
+                .filter_map(|part| part.trim().strip_prefix("indent="))
+                .filter_map(|value| value.trim_matches('"').parse::<u8>().ok())
+                .map(|width| width.min(8))
+                .next()
+                .unwrap_or(indent);
+        }
+    }
+    let response = if format
+        .as_deref()
+        .is_some_and(|format| !matches!(format, "" | "json" | "api"))
+    {
+        negotiation_error(StatusCode::NOT_FOUND, "Not found.")
+    } else if !suitable && request.headers().contains_key(header::ACCEPT) {
+        negotiation_error(
+            StatusCode::NOT_ACCEPTABLE,
+            "Could not satisfy the request Accept header.",
+        )
+    } else if !matches!(
+        *request.method(),
+        Method::GET | Method::HEAD | Method::OPTIONS
+    ) {
+        json_error(
+            StatusCode::METHOD_NOT_ALLOWED,
+            &format!("Method \"{}\" not allowed.", request.method()),
+        )
+    } else {
+        next.run(request).await
+    };
+    if head {
+        return response.map(|_| axum::body::Body::empty());
+    }
+    if indent == 0
+        || response
+            .headers()
+            .get(header::CONTENT_TYPE)
+            .is_none_or(|value| value != "application/json")
+    {
+        return response;
+    }
+    let (mut parts, body) = response.into_parts();
+    let Ok(bytes) = axum::body::to_bytes(body, usize::MAX).await else {
+        return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+    };
+    let value: serde_json::Value = match serde_json::from_slice(&bytes) {
+        Ok(value) => value,
+        Err(_) => return Response::from_parts(parts, bytes.into()),
+    };
+    let mut output = Vec::new();
+    let spacing = [b' '; 8];
+    let formatter = serde_json::ser::PrettyFormatter::with_indent(&spacing[..usize::from(indent)]);
+    let mut serializer = serde_json::Serializer::with_formatter(&mut output, formatter);
+    if serde::Serialize::serialize(&value, &mut serializer).is_err() {
+        return Response::from_parts(parts, bytes.into());
+    }
+    parts.headers.remove(header::CONTENT_LENGTH);
+    Response::from_parts(parts, output.into())
+}
+
+async fn security_headers(request: Request, next: axum::middleware::Next) -> Response {
+    let mut response = next.run(request).await;
+    let redirect = response.status() == StatusCode::MOVED_PERMANENTLY;
+    let headers = response.headers_mut();
+    if !redirect {
+        headers.insert(header::X_FRAME_OPTIONS, HeaderValue::from_static("DENY"));
+    }
+    headers.insert(
+        header::X_CONTENT_TYPE_OPTIONS,
+        HeaderValue::from_static("nosniff"),
+    );
+    headers.insert(
+        header::REFERRER_POLICY,
+        HeaderValue::from_static("same-origin"),
+    );
+    headers.insert(
+        "cross-origin-opener-policy",
+        HeaderValue::from_static("same-origin"),
+    );
+    response
+}
+
+async fn append_slash(OriginalUri(uri): OriginalUri) -> Response {
+    if let Some(id) = uri.path().strip_prefix("/api/debaters/")
+        && !is_django_integer(id)
+    {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+    let mut location = uri.path().to_owned();
+    location.push('/');
+    if let Some(query) = uri.query() {
+        location.push('?');
+        location.push_str(query);
+    }
+    (
+        StatusCode::MOVED_PERMANENTLY,
+        [
+            (header::LOCATION, location),
+            (header::CONTENT_TYPE, "text/html; charset=utf-8".into()),
+        ],
+    )
+        .into_response()
+}
+
+fn is_django_integer(raw: &str) -> bool {
+    !raw.is_empty() && raw.bytes().all(|byte| byte.is_ascii_digit())
+}
+
+async fn robots() -> &'static str {
+    "User-agent: *\nAllow: /"
+}
+
+async fn oty_guide() -> &'static str {
+    OTY_GUIDE.trim()
+}
+
+async fn oty_guide_options() -> Response {
+    options(
+        "Oty Guide Api",
+        "Expose the OTY scoring explainer in a machine-readable format.",
+    )
+}
+
+async fn oty_guide_api(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    OriginalUri(uri): OriginalUri,
+) -> Response {
+    let Some(origin) = state.origin(&headers) else {
+        return StatusCode::BAD_REQUEST.into_response();
+    };
+    let path = uri.path_and_query().map(|p| p.as_str()).unwrap_or_default();
+    let season = state.current_season;
+    let api_path = "/api/oty-guide/";
+    api_response(Json(json!({
+        "title": "APDA OTY Scoring Guide",
+        "season": season.to_string(),
+        "season_display": schedule::season_display(season),
+        "format": "markdown",
+        "body": OTY_GUIDE.trim(),
+        "last_modified": state.guide_modified,
+        "links": {
+            "plain_text": format!("{origin}/llm/oty-guide/"),
+            "llm_proxy": schedule::proxy_url(&origin, api_path),
+            "self": schedule::proxy_url(&origin, path),
+        },
+    })))
+}
+
+fn api_response(body: impl IntoResponse) -> Response {
+    (API_HEADERS, body).into_response()
+}
+
+fn negotiation_error(status: StatusCode, detail: &str) -> Response {
+    let mut response = json_error(status, detail);
+    response
+        .headers_mut()
+        .insert(header::VARY, HeaderValue::from_static("Accept"));
+    response
+}
+
+fn json_error(status: StatusCode, detail: &str) -> Response {
+    api_response((status, Json(json!({ "detail": detail }))))
+}
+
+fn options(name: &str, description: &str) -> Response {
+    api_response(Json(json!({
+        "name": name,
+        "description": description,
+        "renders": ["application/json", "text/html"],
+        "parses": ["application/json", "application/x-www-form-urlencoded", "multipart/form-data"],
+    })))
+}
+
+#[derive(Debug)]
+enum ApiError {
+    NotFound(&'static str),
+    Database,
+    Serialization,
+    InvalidStoredDate,
+}
+
+impl From<sqlx::Error> for ApiError {
+    fn from(error: sqlx::Error) -> Self {
+        eprintln!("API query failed: {error}");
+        Self::Database
+    }
+}
+
+impl From<serde_json::Error> for ApiError {
+    fn from(error: serde_json::Error) -> Self {
+        eprintln!("API response encoding failed: {error}");
+        Self::Serialization
+    }
+}
+
+async fn cached_json(state: AppState, headers: HeaderMap, item: Endpoint, path: &str) -> Response {
+    let Some(origin) = state.origin(&headers) else {
+        return StatusCode::BAD_REQUEST.into_response();
+    };
+    let output = state
+        .public_json
+        .try_get_with((origin.clone(), item), async {
+            let remote = state
+                .memcached
+                .as_ref()
+                .filter(|_| !state.cache_lifetime.is_zero())
+                .map(|cache| (cache, cache::Memcached::key("directory", &origin, item)));
+            if let Some((cache, key)) = &remote
+                && let Some(body) = cache.get(key).await
+            {
+                return Ok(body);
+            }
+            let body = match item {
+                Endpoint::Directory(directory) => directory.json(&state, &origin).await,
+                Endpoint::Schedule(season) => schedule::json(&state, &origin, season, path).await,
+            };
+            let body = Bytes::from(body?);
+            if let Some((cache, key)) = &remote {
+                cache.set(key, &body, state.cache_lifetime).await;
+            }
+            Ok(cache::CachedBody {
+                bytes: body,
+                lifetime: state.cache_lifetime,
+            })
+        })
+        .await;
+    match output {
+        Ok(body) => api_response(([(header::CONTENT_TYPE, "application/json")], body.bytes)),
+        Err(error) => match *error {
+            ApiError::NotFound(detail) => json_error(StatusCode::NOT_FOUND, detail),
+            _ => json_error(StatusCode::INTERNAL_SERVER_ERROR, "Internal server error."),
+        },
+    }
+}
