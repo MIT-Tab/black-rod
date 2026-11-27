@@ -19,6 +19,18 @@ use crate::{
 
 const VIEWS: &[(&str, &str)] = &[
     (
+        "admin/tournament_audit_detail.html",
+        include_str!("../../core/templates/admin/tournament_audit_detail.html"),
+    ),
+    (
+        "admin/tournament_pipeline_audit.html",
+        include_str!("../../core/templates/admin/tournament_pipeline_audit.html"),
+    ),
+    (
+        "tournaments/import_sources.html",
+        include_str!("../../core/templates/tournaments/import_sources.html"),
+    ),
+    (
         "tournaments/data_entry.html",
         include_str!("../../core/templates/tournaments/data_entry.html"),
     ),
@@ -632,6 +644,30 @@ fn adapt_scheduler(template: &str) -> String {
 fn adapt_template(name: &str, template: &str) -> String {
     let adapted;
     let template = match name {
+        "admin/tournament_pipeline_audit.html" | "admin/tournament_audit_detail.html" => {
+            adapted = template
+                .replace(r#"|join:", ""#, r#"|join(", ")"#)
+                .replace(r#"|date:"Y-m-d""#, "")
+                .replace(r#"|date:"Y-m-d H:i""#, "")
+                .replace(r#"|default:"-""#, r#"|default("-", true)"#)
+                .replace("{{ tournament.get_absolute_url }}", "{{ tournament.url }}")
+                .replace("{{ import_move_form_media }}", "")
+                .replace(
+                    "{{ row.move_form.tournament_import_id }}",
+                    r#"<input type="hidden" name="import-{{ row.id }}-tournament_import_id" value="{{ row.id }}">"#,
+                )
+                .replace(
+                    "{{ row.move_form.target_tournament }}",
+                    r#"<select name="import-{{ row.id }}-target_tournament" id="id_import-{{ row.id }}-target_tournament"
+                            class="modelselect2" data-rust-select-url="/core/tournaments/all_autocomplete" required
+                            data-rust-select-placeholder="Select target tournament"><option value="">---------</option></select>"#,
+                );
+            &adapted
+        }
+        "tournaments/import_sources.html" => {
+            adapted = template.replace("sources.items", "sources|items");
+            &adapted
+        }
         "tournaments/data_entry_setup.html" => {
             adapted = template
                 .replace(
@@ -653,7 +689,14 @@ fn adapt_template(name: &str, template: &str) -> String {
                 .replace(
                     &media.replace(template, ""),
                     r#"${1}
-                    {% for panel in panels %}{% include "tournaments/includes/formset_tab_pane.html" %}{% endfor %}
+                    {% for panel in panels %}
+                      {% if (panel.kind == 'school' or panel.kind == 'debater') and not panel.rows and not panel.errors %}
+                        <input type="hidden" name="{{ panel.key }}-TOTAL_FORMS" value="0" id="id_{{ panel.key }}-TOTAL_FORMS">
+                        <input type="hidden" name="{{ panel.key }}-INITIAL_FORMS" value="0" id="id_{{ panel.key }}-INITIAL_FORMS">
+                      {% else %}
+                        {% include "tournaments/includes/formset_tab_pane.html" %}
+                      {% endif %}
+                    {% endfor %}
                     ${2}"#,
                 )
                 .replace("{{ autoqual_form.media }}", "")

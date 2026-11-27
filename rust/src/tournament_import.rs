@@ -1,6 +1,7 @@
 mod bundle;
 mod identity;
 pub(crate) mod results;
+pub(crate) mod source;
 
 use axum::{
     extract::{FromRequest, Multipart, Request, State},
@@ -265,4 +266,8 @@ pub(crate) async fn upload(State(state): State<AppState>, http: Request) -> Resp
             StatusCode::INTERNAL_SERVER_ERROR.into_response()
         }
     }
+}
+
+pub(crate) async fn refresh_sources(state: &AppState) -> usize {
+    source::refresh(state).await
 }

@@ -34,7 +34,7 @@ const FETCH_BUDGET: Duration = Duration::from_secs(15);
 const SOURCE_TIMEOUT: Duration = Duration::from_secs(8);
 const MARKER_LIMITS: [usize; 3] = [5, 6, 5];
 
-mod snapshots;
+pub(crate) mod snapshots;
 
 pub struct Live {
     directory: Option<String>,
@@ -147,11 +147,13 @@ impl Live {
         }
     }
 
-    async fn fetch(&self, cache: Option<&Memcached>) -> Vec<Value> {
+    pub(crate) async fn directory_state(&self) -> (Vec<String>, bool) {
         let mut sources = self.sources.clone();
+        let mut confirmed = false;
         if let Some(directory) = &self.directory
             && let Some(payload) = read_json(&self.client, directory, Duration::from_secs(5)).await
         {
+            confirmed = payload["tournaments"].is_array();
             sources.extend(
                 array(&payload["tournaments"])
                     .iter()
@@ -159,10 +161,20 @@ impl Live {
             );
         }
         let mut seen = HashSet::new();
-        let mut pending = sources
+        let urls = sources
             .into_iter()
             .filter_map(|value| safe_url(&value))
-            .filter(|value| seen.insert(value.clone()));
+            .filter(|value| seen.insert(value.clone()))
+            .collect();
+        (urls, confirmed)
+    }
+
+    pub(crate) async fn directory_urls(&self) -> Vec<String> {
+        self.directory_state().await.0
+    }
+
+    async fn fetch(&self, cache: Option<&Memcached>) -> Vec<Value> {
+        let mut pending = self.directory_urls().await.into_iter();
         let mut running = JoinSet::new();
         let add = |running: &mut JoinSet<(String, Option<Value>)>, url: String| {
             let client = self.client.clone();

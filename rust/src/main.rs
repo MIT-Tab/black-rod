@@ -66,6 +66,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         (!directory.is_empty()).then_some(directory),
         sources,
     )?);
+    if env::args().nth(1).as_deref() == Some("refresh_import_sources") {
+        println!(
+            "Refreshed {} tournament snapshots.",
+            state.refresh_tournament_sources().await
+        );
+        return Ok(());
+    }
     let listener = TcpListener::bind(address).await?;
     eprintln!("Black Rod listening on {}", listener.local_addr()?);
     axum::serve(listener, app(state))

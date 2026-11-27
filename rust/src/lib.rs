@@ -89,6 +89,7 @@ pub struct AppState {
     public_json: Cache<(String, Endpoint), cache::CachedBody>,
     memcached: Option<cache::Memcached>,
     cache_lifetime: Duration,
+    import_cache: tournament_import::source::Cache,
     standings: Cache<(String, i32), Arc<standings::Boards>>,
     replay: Cache<(String, i32), Arc<replay::Replay>>,
     home: Cache<i32, Arc<standings::Boards>>,
@@ -173,6 +174,7 @@ impl AppState {
                 .max_capacity(4096)
                 .build(),
             cache_lifetime: lifetime,
+            import_cache: tournament_import::source::Cache::new(),
         }
     }
 
@@ -210,6 +212,10 @@ impl AppState {
     pub fn with_webpack_stats(mut self, path: &Path) -> Result<Self, Box<dyn std::error::Error>> {
         self.bundles = Arc::new(web::bundles(path)?);
         Ok(self)
+    }
+
+    pub async fn refresh_tournament_sources(&self) -> usize {
+        tournament_import::refresh_sources(self).await
     }
 
     pub fn with_public_origin(mut self, origin: &str) -> Result<Self, &'static str> {
@@ -480,6 +486,16 @@ pub fn app(state: AppState) -> Router {
             get(school_admin::roles::autocomplete),
         )
         .route("/core/admin-tools/", get(admin::tools))
+        .route(
+            "/core/admin/tournament-pipeline-audit/",
+            get(admin::tournament_audit::overview),
+        )
+        .route("/core/admin/tournament-pipeline-audit", get(append_slash))
+        .route(
+            "/core/admin/tournament-audit/{id}/",
+            get(admin::tournament_audit::event),
+        )
+        .route("/core/admin/tournament-audit/{id}", get(append_slash))
         .route("/core/admin/speaks-stats/", get(admin::speaks::page))
         .route("/core/admin/speaks-stats", get(append_slash))
         .route("/core/admin-tools", get(append_slash))
@@ -526,6 +542,11 @@ pub fn app(state: AppState) -> Router {
             get(team_profile::edit::endpoint).post(team_profile::edit::endpoint),
         )
         .route("/core/tournaments/", get(directory::page))
+        .route(
+            "/core/tournaments/import/",
+            get(tournament_import::source::page).post(tournament_import::source::page),
+        )
+        .route("/core/tournaments/import", get(append_slash))
         .route(
             "/core/tournaments/data_entry/setup",
             get(tournament_import::results::page).post(tournament_import::results::page),

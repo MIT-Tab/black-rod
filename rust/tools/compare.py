@@ -115,6 +115,12 @@ def servers(database, cold=False):
         "MITTAB_PRIVATE_API_TOKENS": django_env["MITTAB_PRIVATE_API_TOKENS"],
         "FORUM_PROFILE_API_TOKEN": django_env["FORUM_PROFILE_API_TOKEN"],
     }
+    memcached = os.environ.get("BLACK_ROD_PARITY_MEMCACHED_ADDR")
+    if memcached and not cold:
+        host, _, port = memcached.rpartition(":")
+        if host != HOST or not port.isdecimal():
+            raise ValueError("The Rust comparison only connects to local Memcached")
+        rust_env["BLACK_ROD_MEMCACHED_ADDR"] = memcached
     gunicorn = [str(ROOT / "venv/bin/gunicorn"), "--bind", f"{HOST}:{django_port}",
                 "--workers", "1", "--threads", "8", "reference:application"]
     with start_server("Django", gunicorn, django_port, django_env) as django:

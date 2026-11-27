@@ -4,6 +4,7 @@ use sqlx::{AnyConnection, Row};
 
 use super::{
     forms::Panel,
+    review::{self, Review},
     standings::{self, Award},
 };
 use crate::{
@@ -123,9 +124,10 @@ async fn historical_coty(
 pub(super) async fn store(
     state: &AppState,
     event: i64,
-    panels: &[Panel],
+    panels: &mut [Panel],
     autoquals: &[i64],
-) -> Result<(), Error> {
+    review: Option<&Review>,
+) -> Result<Vec<String>, Error> {
     let mut tx = state.pool.begin().await?;
     let Some(season) = sqlx::query_scalar::<_, String>(
         "UPDATE core_tournament SET id=id WHERE id=$1 RETURNING season",
@@ -135,6 +137,13 @@ pub(super) async fn store(
     .await?
     else {
         return Err(invalid("Tournament not found."));
+    };
+    let resolved = if let Some(review) = review {
+        let rows = review::resolve(&mut tx, panels, state.current_season).await?;
+        review::counts(&mut tx, event, review).await?;
+        Some(rows)
+    } else {
+        None
     };
     let (hidden_teams, hidden_speakers) = hidden(&mut tx, event).await?;
     let mut teams = BTreeSet::new();
@@ -170,7 +179,10 @@ pub(super) async fn store(
         .await?;
     let affected = recipients(&mut tx, event, autoquals).await?;
     sync_manual(&mut tx, &season, &affected).await?;
-    for panel in panels {
+    for panel in panels
+        .iter()
+        .filter(|panel| matches!(panel.tab.kind, "speaker" | "team"))
+    {
         let tab = panel.tab;
         for row in panel.rows.iter().filter(|row| !row.deleted) {
             let Some(first) = row.first else { continue };
@@ -218,6 +230,11 @@ pub(super) async fn store(
             }
         }
     }
+    let skipped = if let Some((review, resolved)) = review.zip(resolved.as_ref()) {
+        review::rounds(&mut tx, event, state.current_season, review, resolved).await?
+    } else {
+        Vec::new()
+    };
     if season == state.current_season.to_string() {
         standings::awards(&mut tx, &season, Award::Team, &teams).await?;
         standings::awards(&mut tx, &season, Award::Speaker, &speakers[0]).await?;
@@ -231,5 +248,5 @@ pub(super) async fn store(
     state.home.invalidate_all();
     state.standings.invalidate_all();
     state.replay.invalidate_all();
-    Ok(())
+    Ok(skipped)
 }

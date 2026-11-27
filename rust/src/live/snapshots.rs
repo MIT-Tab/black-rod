@@ -1,26 +1,26 @@
 use std::{collections::HashMap, io::Read, time::Duration};
 
 use flate2::read::ZlibDecoder;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio::task::JoinSet;
 
 use crate::cache::Memcached;
 
-const INDEX: &str = ":1:mittab-import:index:v1";
-const RETENTION: f64 = 7.0 * 24.0 * 3600.0;
+pub(crate) const INDEX: &str = ":1:mittab-import:index:v1";
+pub(crate) const RETENTION: f64 = 7.0 * 24.0 * 3600.0;
 
-#[derive(Deserialize)]
-struct Source {
-    url: String,
-    missing_since: Option<f64>,
-    chunks: Vec<String>,
+#[derive(Clone, Deserialize, Serialize)]
+pub(crate) struct Source {
+    pub(crate) url: String,
+    pub(crate) name: String,
+    #[serde(default)]
+    pub(crate) updated_at: Option<String>,
+    pub(crate) missing_since: Option<f64>,
+    pub(crate) chunks: Vec<String>,
 }
 
-pub(super) async fn missing(
-    cache: &Memcached,
-    active: &HashMap<String, Value>,
-) -> HashMap<String, Value> {
+pub(crate) async fn source_index(cache: &Memcached) -> HashMap<String, Source> {
     let Some((1, data)) = cache.read_raw(INDEX).await else {
         return HashMap::new();
     };
@@ -29,18 +29,36 @@ pub(super) async fn missing(
         return HashMap::new();
     };
     let now = chrono::Utc::now().timestamp() as f64;
-    let mut sources = index.into_iter().filter(|(_, source)| {
-        !active.contains_key(&source.url)
-            && source
+    index
+        .into_iter()
+        .filter(|(_, source)| {
+            source
                 .missing_since
                 .is_none_or(|date| now - date < RETENTION)
-    });
+        })
+        .collect()
+}
+
+pub(super) async fn missing(
+    cache: &Memcached,
+    active: &HashMap<String, Value>,
+) -> HashMap<String, Value> {
+    let mut sources = source_index(cache)
+        .await
+        .into_iter()
+        .filter(|(_, source)| !active.contains_key(&source.url));
     let mut waiting = JoinSet::new();
     let load = |waiting: &mut JoinSet<_>, (key, source): (String, Source)| {
         let cache = cache.clone();
         waiting.spawn(async move {
             let response = cached_source(&cache, &key, &source.chunks).await;
-            response.map(|payload| (source.url, payload))
+            response.and_then(|mut value| {
+                let payload = value.as_object_mut()?;
+                payload.remove("bundle");
+                payload.remove("new_debater_data");
+                payload.insert("_cached_only".into(), Value::Bool(true));
+                Some((source.url, value))
+            })
         });
     };
     for source in sources.by_ref().take(8) {
@@ -61,7 +79,11 @@ pub(super) async fn missing(
     result
 }
 
-async fn cached_source(cache: &Memcached, key: &str, chunks: &[String]) -> Option<Value> {
+pub(crate) async fn cached_source(
+    cache: &Memcached,
+    key: &str,
+    chunks: &[String],
+) -> Option<Value> {
     let prefix = format!("mittab-import:{key}:");
     let mut compressed = Vec::new();
     for chunk in chunks {
@@ -77,12 +99,7 @@ async fn cached_source(cache: &Memcached, key: &str, chunks: &[String]) -> Optio
         let mut decoder = ZlibDecoder::new(compressed.as_slice());
         let mut decoded = Vec::new();
         decoder.read_to_end(&mut decoded).ok()?;
-        let mut value: Value = serde_json::from_slice(&decoded).ok()?;
-        let payload = value.as_object_mut()?;
-        payload.remove("bundle");
-        payload.remove("new_debater_data");
-        payload.insert("_cached_only".into(), Value::Bool(true));
-        Some(value)
+        serde_json::from_slice(&decoded).ok()
     })
     .await
     .ok()?

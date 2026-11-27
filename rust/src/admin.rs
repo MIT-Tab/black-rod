@@ -1,5 +1,6 @@
 pub(crate) mod short_names;
 pub(crate) mod speaks;
+pub(crate) mod tournament_audit;
 
 use axum::{
     extract::{OriginalUri, State},
@@ -31,6 +32,22 @@ pub(crate) async fn require(
     Ok(user)
 }
 
+pub(super) fn recording_context() -> minijinja::Value {
+    let enabled =
+        std::env::var("ENV").is_ok_and(|mode| mode.trim().eq_ignore_ascii_case("development"));
+    let path = std::env::var("ROUND_AMENDMENTS_FILE")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| {
+            std::env::current_dir()
+                .unwrap_or_default()
+                .join("apda/round-amendments.local.json")
+                .to_string_lossy()
+                .into_owned()
+        });
+    context! {enabled,path}
+}
+
 pub(crate) async fn tools(
     State(state): State<AppState>,
     OriginalUri(uri): OriginalUri,
@@ -51,20 +68,8 @@ pub(crate) async fn tools(
     let Ok((csrf, token)) = login::csrf_tokens(&headers) else {
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     };
-    let recording =
-        std::env::var("ENV").is_ok_and(|mode| mode.trim().eq_ignore_ascii_case("development"));
-    let path = std::env::var("ROUND_AMENDMENTS_FILE")
-        .ok()
-        .filter(|value| !value.trim().is_empty())
-        .unwrap_or_else(|| {
-            std::env::current_dir()
-                .unwrap_or_default()
-                .join("apda/round-amendments.local.json")
-                .to_string_lossy()
-                .into_owned()
-        });
     let common = web::base_context(&state, &user, &uri);
-    let bindings = context! {username, csrf=>token, round_amendment_errors=>Vec::<String>::new(), round_amendment_recording=>context!{enabled=>recording,path}};
+    let bindings = context! {username, csrf=>token, round_amendment_errors=>Vec::<String>::new(), round_amendment_recording=>recording_context()};
     let html = match web::render("admin/admin_tools.html", context! {..bindings,..common}) {
         Ok(html) => html,
         Err(reason) => {

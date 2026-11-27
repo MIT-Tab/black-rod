@@ -1,8 +1,26 @@
-{% from "tournaments/includes/result_widgets.html" import field, checkbox, hidden %}
+{% from "tournaments/includes/result_widgets.html" import field, checkbox, hidden, input %}
 {% set prefix = panel.key ~ '-' ~ form_index ~ '-' %}
-{{ hidden(prefix, "ORDER", row.order) }}
-<input type="checkbox" name="{{ prefix }}DELETE" id="id_{{ prefix }}DELETE">
-{% if panel.kind == 'team' %}
+{% if panel.kind in ["team","speaker"] %}{{ hidden(prefix, "ORDER", row.order) }}{% endif %}
+<input type="checkbox" name="{{ prefix }}DELETE" id="id_{{ prefix }}DELETE"{% if row.deleted %} checked{% endif %}>
+{% if panel.kind == 'school' %}
+    {{ hidden(prefix, "id", row.record or "") }}
+    {{ hidden(prefix, "server_name", row.first_source) }}
+    {{ hidden(prefix, "included_in_oty", "True" if row.included else "False") }}
+    <div class="row">
+        <div class="col-md-5">{{ input(prefix, "name", "Name", row.name) }}</div>
+        <div class="col-md-4">{{ field(prefix, "existing_school", "Link to existing school", row.first, "/core/schools/autocomplete", schools) }}</div>
+    </div>
+{% elif panel.kind == 'debater' %}
+    {{ hidden(prefix, "id", row.record or "") }}
+    {{ hidden(prefix, "tournament_id", row.first_source) }}
+    {{ hidden(prefix, "school_name", row.school_name) }}
+    <div class="row">
+        <div class="col-md-3">{{ input(prefix, "first_name", "First name", row.name) }}</div>
+        <div class="col-md-3">{{ input(prefix, "last_name", "Last name", row.last_name) }}</div>
+        <div class="col-md-3">{{ field(prefix, "school", "School", row.school, "/core/schools/autocomplete", schools) }}</div>
+        <div class="col-md-3">{{ field(prefix, "existing_debater", "Link to existing debater", row.first, "/core/debaters/autocomplete", people) }}</div>
+    </div>
+{% elif panel.kind == 'team' %}
     {{ hidden(prefix, "debater_one_tournament_id", row.first_source) }}
     {{ hidden(prefix, "debater_two_tournament_id", row.second_source) }}
     <div class="row">

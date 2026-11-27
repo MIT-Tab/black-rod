@@ -27,3 +27,10 @@
 {% macro hidden(prefix,name,value='') -%}
 <input type="hidden" name="{{ prefix }}{{ name }}" value="{{ value }}" id="id_{{ prefix }}{{ name }}">
 {%- endmacro %}
+
+{% macro input(prefix,name,label,value) -%}
+<div id="div_id_{{ prefix }}{{ name }}" class="form-group">
+    <label for="id_{{ prefix }}{{ name }}">{{ label }}</label>
+    <div><input id="id_{{ prefix }}{{ name }}" name="{{ prefix }}{{ name }}" value="{{ value }}" class="textinput form-control"></div>
+</div>
+{%- endmacro %}

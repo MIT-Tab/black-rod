@@ -1407,6 +1407,104 @@ def assert_manual_results(driver, django, rust, fixture):
     driver.delete_all_cookies()
 
 
+def assert_reviewed_tournament_import(driver, django, rust, fixture, provider):
+    root = f"http://{HOST}:{rust.port}"
+    sources = "/core/tournaments/import/"
+    driver.delete_all_cookies()
+    driver.get(root + sources)
+    assert urlsplit(driver.current_url).path == "/auth/login/"
+    driver.add_cookie({"name": "sessionid", "value": django_session()})
+    db = Path(os.environ["BR_STATE"]) / "dev.sqlite3"
+    remote = f"http://{HOST}:{provider.server_port}"
+    for server in (django, rust):
+        driver.get(f"http://{HOST}:{server.port}{sources}")
+        assert driver.find_element("tag name", "h1").text == "Import tournament results"
+        assert remote in driver.find_element("tag name", "body").text
+    driver.find_element("css selector", "form button.btn-primary").click()
+    WebDriverWait(driver, 10).until(lambda browser: "#schools-pane" in browser.page_source)
+    query = parse_qs(urlsplit(driver.current_url).query)
+    event = int(query["tournament"][0])
+    assert len(query["review"][0]) == 32 and query["api_url"] == [remote]
+    assert event != fixture["manual_event"]["id"]
+    if os.environ.get("BLACK_ROD_PARITY_MEMCACHED_ADDR"):
+        rust_review = driver.current_url
+        driver.get(f"http://{HOST}:{django.port}{urlsplit(rust_review).path}?{urlsplit(rust_review).query}")
+        assert driver.find_element("id", "id_debaters-0-first_name").get_attribute("value") == "Incoming"
+        driver.get(rust_review)
+    school_input = driver.find_element("id", "id_schools-0-name")
+    assert school_input.get_attribute("value") == "Fixture School From MIT-Tab"
+    school_input.clear()
+    school_input.send_keys("Reviewed Fixture School")
+    first = driver.find_element("id", "id_debaters-0-first_name")
+    assert first.get_attribute("value") == "Incoming"
+
+    original_teams = provider.import_payload["debater_counts"]["teams"]
+    provider.import_payload["debater_counts"]["teams"] = 99
+    try:
+        result = driver.execute_async_script("""
+            const done = arguments[0], form = document.querySelector('#data-entry-form');
+            fetch(location.pathname + location.search, {method:'POST', body:new URLSearchParams(new FormData(form))})
+                .then(async response => done({status:response.status,path:new URL(response.url).pathname,
+                    text:(await response.text()).slice(0,160)}), () => done({status:0}));
+        """)
+    finally:
+        provider.import_payload["debater_counts"]["teams"] = original_teams
+    assert result["status"] == 200 and result["path"] == f"/core/tournaments/{event}", result
+    with sqlite3.connect(f"{db.as_uri()}?mode=ro", uri=True) as database:
+        assert database.execute("SELECT num_teams,num_novice_debaters FROM core_tournament WHERE id=?", (event,)).fetchone() == (24, 7)
+        assert database.execute("SELECT COUNT(*) FROM core_teamresult WHERE tournament_id=?", (event,)).fetchone() == (1,)
+        assert database.execute("SELECT COUNT(*) FROM core_speakerresult WHERE tournament_id=?", (event,)).fetchone() == (1,)
+        assert database.execute("SELECT COUNT(*) FROM core_round WHERE tournament_id=? AND import_key='review-prelim-1'", (event,)).fetchone() == (1,)
+        assert database.execute("SELECT COUNT(*) FROM core_tournamentimport WHERE tournament_id=? AND original_file_name='api-bundle.json'", (event,)).fetchone() == (1,)
+        assert database.execute("SELECT temporary FROM core_school WHERE name='Reviewed Fixture School'").fetchone() == (0,)
+        assert database.execute("""SELECT d.temporary,s.name FROM core_debater d JOIN core_school s ON s.id=d.school_id
+            WHERE d.first_name='Incoming' AND d.last_name='Participant'""").fetchone() == (0, "Reviewed Fixture School")
+    driver.get(f"http://{HOST}:{django.port}/core/tournaments/{event}")
+    assert "Incoming Participant" in driver.find_element("tag name", "body").text
+    if os.environ.get("BLACK_ROD_PARITY_MEMCACHED_ADDR"):
+        driver.get(f"http://{HOST}:{django.port}{sources}")
+        driver.find_element("css selector", "form button.btn-primary").click()
+        WebDriverWait(driver, 10).until(lambda browser: "review" in parse_qs(urlsplit(browser.current_url).query))
+        django_review = urlsplit(driver.current_url)
+        driver.get(f"{root}{django_review.path}?{django_review.query}")
+        assert driver.find_element("id", "id_varsity_teams-0-debater_one").get_attribute("value")
+        driver.refresh()
+        assert driver.find_element("id", "id_varsity_teams-0-debater_one").get_attribute("value")
+    driver.delete_all_cookies()
+
+
+def assert_tournament_audit(driver, django, rust, fixture):
+    overview = "/core/admin/tournament-pipeline-audit/?incomplete_only=1&sort=total_pct&dir=desc"
+    detail = f"/core/admin/tournament-audit/{fixture['bundle_event']}/"
+    driver.get(f"http://{HOST}:{rust.port}{overview}")
+    assert urlsplit(driver.current_url).path == "/auth/login/"
+    driver.add_cookie({"name": "sessionid", "value": django_session()})
+
+    def snapshot(server, path):
+        driver.get(f"http://{HOST}:{server.port}{path}")
+        return driver.execute_script("""
+            return {
+                heading: document.querySelector('.card-title').textContent.trim(),
+                badges: [...document.querySelectorAll('.card-body .badge')].map(node => node.textContent.trim()),
+                tables: [...document.querySelectorAll('table')].map(table => [...table.rows].map(row =>
+                    [...row.cells].map(cell => cell.textContent.replace(/\\s+/g, ' ').trim()))),
+            };
+        """)
+
+    for path in (overview, detail):
+        reference, candidate = snapshot(django, path), snapshot(rust, path)
+        assert reference["heading"] == candidate["heading"] and reference["badges"] == candidate["badges"], path
+        for left, right in zip(reference["tables"], candidate["tables"]):
+            for expected, observed in zip_longest(left, right):
+                assert expected is not None and observed is not None, path
+                if path == detail:
+                    # The target Select2 control is served by different template adapters.
+                    assert expected[:-1] == observed[:-1], (expected, observed)
+                else:
+                    assert expected == observed, (expected, observed)
+    driver.delete_all_cookies()
+
+
 def assert_agent_reads(django, rust, fixture):
     base = "/api/agent/v1/"
     authorization = "Bearer " + fixture["agent"]
@@ -1561,6 +1659,33 @@ SessionStore().delete(sys.stdin.read().strip())
         subprocess.run([str(ROOT / "venv/bin/python"), "-c", code], input=cookie, text=True, check=True)
 
 
+def import_payload(fixture):
+    manual = fixture["manual_event"]
+    incoming = {"debater_id": 1001, "apda_id": -1, "name": "Incoming Participant",
+                "school_id": -1, "school_name": "Fixture School From MIT-Tab"}
+    other = {"debater_id": 1002, "apda_id": manual["people"][0]}
+    people = [incoming, other, {"debater_id": 1003, "apda_id": manual["people"][1]},
+              {"debater_id": 1004, "apda_id": manual["people"][2]}]
+    return {
+        "schema_version": 1, "import_ready": True,
+        "tournament": {"name":"Disposable MIT-Tab reviewed tournament", "date":"2026-12-01",
+                       "season":"2026", "tournament_type":0, "host_school":{"apda_id":manual["school"]}},
+        "varsity_team_placements": [[incoming, other]], "novice_team_placements": [], "non_placing_teams": [],
+        "varsity_speaker_awards": [incoming], "novice_speaker_awards": [],
+        "new_schools": ["Fixture School From MIT-Tab"], "new_debater_data": [incoming],
+        "debater_counts": {"teams": 24, "novice": 7},
+        "bundle": {"schema_version":1,"source":"mit_tab_black_rod_bundle","tournament_name":"Fixture",
+            "schools":[{"id":100,"name":"Fixture School From MIT-Tab"}],
+            "debaters":[{"id":row["debater_id"], "apda_id":row["apda_id"],
+                "school_id":100 if index==0 else None, "name":row.get("name","Existing Person")}
+                for index,row in enumerate(people)],
+            "rounds":[{"import_key":"review-prelim-1","stage":"prelim","round_number":1,"victor":1,
+                "gov":{"debater_ids":[1001,1002],"source_names":["Incoming Participant","Fixture A"]},
+                "opp":{"debater_ids":[1003,1004],"source_names":["Fixture B","Fixture C"]}}],
+        },
+    }
+
+
 class OAuthProvider(BaseHTTPRequestHandler):
     def log_message(self, _format, *args):
         pass
@@ -1585,6 +1710,8 @@ class OAuthProvider(BaseHTTPRequestHandler):
             self.end_headers()
         elif location.path == "/api/tournaments":
             self.reply({"tournaments": [{"url": f"http://{HOST}:{self.server.server_port}"}]})
+        elif location.path == "/api/import-results" and self.server.import_payload:
+            self.reply(self.server.import_payload)
         elif location.path == "/api/live-results":
             self.reply({
                 "schema_version": 1, "source_url": f"http://{HOST}:{self.server.server_port}",
@@ -1614,15 +1741,16 @@ class OAuthProvider(BaseHTTPRequestHandler):
 
 
 @contextmanager
-def oauth_provider():
+def oauth_provider(fixture=None):
     with ThreadingHTTPServer((HOST, 0), OAuthProvider) as server:
+        server.import_payload = import_payload(fixture) if fixture else None
         thread = Thread(target=server.serve_forever, daemon=True)
         origin = f"http://{HOST}:{server.server_port}"
         os.environ["BLACK_ROD_OAUTH_BASE"] = f"{origin}/"
         os.environ["LIVE_MITTAB_DIRECTORY_URL"] = f"{origin}/api/tournaments"
         thread.start()
         try:
-            yield
+            yield server
         finally:
             server.shutdown()
             thread.join()
@@ -1700,7 +1828,7 @@ def browser_checks(database, options, output):
     fixture = seed_browser_cases()
     subprocess.run([str(ROOT / "venv/bin/python"), "manage.py", "update_index", "--verbosity", "0"],
                    check=True, capture_output=True)
-    with oauth_provider(), servers(database) as (django, rust), webdriver.Chrome(options=options) as driver:
+    with oauth_provider(fixture) as provider, servers(database) as (django, rust), webdriver.Chrome(options=options) as driver:
         expected_home = home_state(driver, django)
         result_home = home_state(driver, rust)
         assert expected_home["active"] == "soty"
@@ -1733,6 +1861,7 @@ def browser_checks(database, options, output):
         assert_admin_tools(driver, django, rust)
         assert_speaks_statistics(driver, django, rust, fixture)
         assert_mittab_bundle_upload(driver, django, rust, fixture)
+        assert_tournament_audit(driver, django, rust, fixture)
         assert_generated_codes(driver, django, rust, fixture)
         assert_entities(driver, django, rust, fixture)
         assert_school_admin(driver, django, rust, fixture)
@@ -1758,6 +1887,7 @@ def browser_checks(database, options, output):
                 print(f"{mode} replay changed pixels above tolerance {fraction:.3%}")
                 assert fraction <= 0.01, f"{mode} replay screenshot differs by {fraction:.2%}"
         assert_manual_results(driver, django, rust, fixture)
+        assert_reviewed_tournament_import(driver, django, rust, fixture, provider)
 
 
 if __name__ == "__main__":

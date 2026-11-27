@@ -8,6 +8,10 @@ jobs:
   parity:
     runs-on: ubuntu-24.04
     services:
+      memcached:
+        image: memcached:1.6
+        ports:
+          - 11211:11211
       postgres:
         image: postgres:17
         env:
@@ -59,6 +63,8 @@ jobs:
           node-version-file: '.nvmrc'
           cache: npm
       - name: Compare browser interactions and replay rendering in Chrome
+        env:
+          BLACK_ROD_PARITY_MEMCACHED_ADDR: 127.0.0.1:11211
         run: |
           npm ci
           npm run build

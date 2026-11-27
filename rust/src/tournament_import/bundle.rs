@@ -320,7 +320,6 @@ pub(super) async fn apply(
     file_name: &str,
     source_hash: &str,
 ) -> Result<Summary, Error> {
-    validate(document)?;
     let mut tx = state.pool.begin().await?;
     let lock = sqlx::query("UPDATE core_tournament SET id=id WHERE id=$1")
         .bind(tournament)
@@ -329,7 +328,29 @@ pub(super) async fn apply(
     if lock.rows_affected() != 1 {
         return Err(invalid("Tournament not found."));
     }
-    if !super::ready(&mut tx, tournament).await? {
+    let summary = within(
+        &mut tx,
+        tournament,
+        state.current_season,
+        document,
+        file_name,
+        source_hash,
+    )
+    .await?;
+    tx.commit().await.map_err(|_| ApiError::Database)?;
+    Ok(summary)
+}
+
+pub(super) async fn within(
+    conn: &mut AnyConnection,
+    tournament: i64,
+    season: i32,
+    document: &Value,
+    file_name: &str,
+    source_hash: &str,
+) -> Result<Summary, Error> {
+    validate(document)?;
+    if !super::ready(&mut *conn, tournament).await? {
         return Err(invalid(
             "Results must be imported for this tournament before uploading a Mit-Tab bundle.",
         ));
@@ -340,7 +361,7 @@ pub(super) async fn apply(
     )
     .bind(tournament)
     .bind(source_hash)
-    .fetch_optional(&mut *tx)
+    .fetch_optional(&mut *conn)
     .await?;
     if previous.is_some() {
         return Err(invalid(
@@ -349,7 +370,7 @@ pub(super) async fn apply(
     }
     let source = TABLES["core.TournamentImport"]
         .write(
-            &mut tx,
+            &mut *conn,
             &Map::from_iter([
                 ("tournament_id".to_owned(), json!(tournament)),
                 ("batch_id".to_owned(), Value::Null),
@@ -364,7 +385,7 @@ pub(super) async fn apply(
     let mut importer = Importer {
         document,
         tournament,
-        season: state.current_season,
+        season,
         source,
         schools: index(document, "schools")?,
         competitors: index(document, "debaters")?,
@@ -398,7 +419,7 @@ pub(super) async fn apply(
             .and_then(|gov| roster(round, "opp", &key).map(|opp| (gov, opp)));
         match sides {
             Ok((gov, opp)) => {
-                if importer.write(&mut tx, round, &key, gov, opp).await? {
+                if importer.write(&mut *conn, round, &key, gov, opp).await? {
                     summary.updated += 1;
                 } else {
                     summary.created += 1;
@@ -416,11 +437,11 @@ pub(super) async fn apply(
             WHERE r.tournament_id=$1 AND i.import_type='mittab_bundle' ORDER BY id",
         )
         .bind(tournament)
-        .fetch_all(&mut *tx)
+        .fetch_all(&mut *conn)
         .await?;
         for row in stale {
             if !keys.contains(row.try_get::<&str, _>("import_key")?) {
-                delete_relations::delete(&mut tx, "core_round", row.try_get("id")?)
+                delete_relations::delete(&mut *conn, "core_round", row.try_get("id")?)
                     .await
                     .map_err(|error| match error {
                         delete_relations::DeleteError::Database(error) => Error::from(error),
@@ -430,6 +451,5 @@ pub(super) async fn apply(
             }
         }
     }
-    tx.commit().await.map_err(|_| ApiError::Database)?;
     Ok(summary)
 }

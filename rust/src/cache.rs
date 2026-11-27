@@ -16,6 +16,10 @@ use tokio::{
 const SERVICE_TIMEOUT: Duration = Duration::from_millis(100);
 const MAX_VALUE: usize = 1024 * 1024;
 
+fn valid_key(key: &str) -> bool {
+    !key.is_empty() && key.len() <= 250 && key.bytes().all(|byte| byte.is_ascii_graphic())
+}
+
 #[derive(Clone)]
 pub(crate) struct Memcached(SocketAddr);
 
@@ -31,7 +35,7 @@ impl Memcached {
     }
 
     pub(crate) async fn read_raw(&self, key: &str) -> Option<(u32, Vec<u8>)> {
-        if key.is_empty() || key.len() > 250 || !key.bytes().all(|byte| byte.is_ascii_graphic()) {
+        if !valid_key(key) {
             return None;
         }
         let result = timeout(SERVICE_TIMEOUT, async {
@@ -78,6 +82,56 @@ impl Memcached {
         result.ok()?.ok()?
     }
 
+    async fn send(&self, command: &str, body: Option<&[u8]>, expected: &[u8]) -> bool {
+        timeout(SERVICE_TIMEOUT, async {
+            let stream = TcpStream::connect(self.0).await?;
+            let mut reader = BufReader::new(stream);
+            reader.get_mut().write_all(command.as_bytes()).await?;
+            if let Some(body) = body {
+                reader.get_mut().write_all(body).await?;
+                reader.get_mut().write_all(b"\r\n").await?;
+            }
+            let mut response = Vec::with_capacity(24);
+            (&mut reader)
+                .take(300)
+                .read_until(b'\n', &mut response)
+                .await?;
+            Ok::<_, io::Error>(response == expected)
+        })
+        .await
+        .is_ok_and(|result| result.unwrap_or_default())
+    }
+
+    pub(crate) async fn write_raw(
+        &self,
+        key: &str,
+        flags: u32,
+        body: &[u8],
+        seconds: u32,
+        replace: bool,
+    ) -> bool {
+        if !valid_key(key) || body.len() > MAX_VALUE {
+            return false;
+        }
+        let operation = if replace { "set" } else { "add" };
+        let command = format!("{operation} {key} {flags} {seconds} {}\r\n", body.len());
+        self.send(&command, Some(body), b"STORED\r\n").await
+    }
+
+    pub(crate) async fn delete_raw(&self, key: &str) -> bool {
+        valid_key(key)
+            && self
+                .send(&format!("delete {key}\r\n"), None, b"DELETED\r\n")
+                .await
+    }
+
+    pub(crate) async fn touch_raw(&self, key: &str, seconds: u32) -> bool {
+        valid_key(key)
+            && self
+                .send(&format!("touch {key} {seconds}\r\n"), None, b"TOUCHED\r\n")
+                .await
+    }
+
     pub(crate) async fn get(&self, key: &str) -> Option<CachedBody> {
         let (flags, bytes) = self.read_raw(key).await?;
         if flags != 0 {
@@ -99,20 +153,11 @@ impl Memcached {
         }
         // Memcached interprets durations larger than 30 days as Unix timestamps.
         let seconds = ttl.as_secs().clamp(1, 30 * 24 * 60 * 60);
-        let expires = epoch_seconds().saturating_add(seconds).to_be_bytes();
-        let _ = timeout(SERVICE_TIMEOUT, async {
-            let mut stream = TcpStream::connect(self.0).await?;
-            stream
-                .write_all(format!("set {key} 0 {seconds} {length}\r\n").as_bytes())
-                .await?;
-            stream.write_all(&expires).await?;
-            stream.write_all(body).await?;
-            stream.write_all(b"\r\n").await?;
-            let mut response = [0u8; 8];
-            stream.read_exact(&mut response).await?;
-            Ok::<_, io::Error>(())
-        })
-        .await;
+        let mut contents = Vec::with_capacity(length);
+        contents.extend_from_slice(&epoch_seconds().saturating_add(seconds).to_be_bytes());
+        contents.extend_from_slice(body);
+        self.write_raw(key, 0, &contents, seconds as u32, true)
+            .await;
     }
 }
 

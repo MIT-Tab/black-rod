@@ -65,3 +65,12 @@ The measurements below were captured before batching team rosters and tournament
 | Debater detail 5270 | 12,557.30 → 839.64 | 1 → 26 | 139.34 → 28.12 | 2,942.12 → 99.65 | 131.84 → 15.95 |
 
 The warm benchmark enables Django’s local-memory cache and Rust’s endpoint-specific caches where implemented. The profile endpoints run their normal database queries. This was one local run while other development processes were active. PostgreSQL data volume, traffic, production Memcached, and worker configuration can change these results. The measurements apply to the endpoints in the table.
+
+A separate follow-up run after batching debater profile reads used the same database fixture and host. It sent 120 warm requests with 8 concurrent clients and 12 cache-disabled requests with 1 client. The harness verified both endpoints against Django before sending load.
+
+| Endpoint | Mode | p95 ms Django → Rust | Req/s Django → Rust | Peak RSS MiB Django → Rust |
+| --- | --- | ---: | ---: | ---: |
+| Debater detail (5270) | Warm | 1,818.68 → 33.30 | 4.83 → 438.61 | 136.95 → 32.56 |
+| Debater detail (5270) | Cache disabled | 300.46 → 21.37 | 3.58 → 86.93 | 131.02 → 17.12 |
+| Partnership network (since 2025) | Warm | 2,690.38 → 53.84 | 3.78 → 204.22 | 374.30 → 111.11 |
+| Partnership network (since 2025) | Cache disabled | 277.21 → 16.86 | 3.77 → 65.06 | 164.14 → 30.20 |

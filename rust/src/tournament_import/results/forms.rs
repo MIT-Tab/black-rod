@@ -15,6 +15,23 @@ pub(super) struct Tab {
     pub(super) ghost: bool,
 }
 
+pub(super) const SCHOOL: Tab = Tab {
+    key: "schools",
+    kind: "school",
+    division: 0,
+    item: "School",
+    label: "Schools",
+    ghost: false,
+};
+pub(super) const DEBATER: Tab = Tab {
+    key: "debaters",
+    kind: "debater",
+    division: 0,
+    item: "Debater",
+    label: "Debaters",
+    ghost: false,
+};
+
 pub(super) const TABS: [Tab; 5] = [
     Tab {
         key: "varsity_teams",
@@ -61,6 +78,12 @@ pub(super) const TABS: [Tab; 5] = [
 #[derive(Default, Serialize)]
 pub(super) struct ResultRow {
     pub(super) first: Option<i64>,
+    pub(super) record: Option<i64>,
+    pub(super) name: String,
+    pub(super) last_name: String,
+    pub(super) school: Option<i64>,
+    pub(super) school_name: String,
+    pub(super) included: bool,
     pub(super) second: Option<i64>,
     pub(super) first_source: String,
     pub(super) second_source: String,
@@ -112,9 +135,12 @@ fn extract_person(value: Option<&String>, errors: &mut Vec<String>) -> Option<i6
     id
 }
 
-pub(super) fn submitted(values: &FormValues) -> Vec<Panel> {
+pub(super) fn submitted(values: &FormValues, reviewing: bool) -> Vec<Panel> {
     const FORM_TAMPERED: &str = "ManagementForm data is missing or has been tampered with.";
-    TABS.into_iter()
+    [SCHOOL, DEBATER]
+        .into_iter()
+        .filter(|_| reviewing)
+        .chain(TABS)
         .map(|tab| {
             let mut panel = Panel::new(tab);
             let input = |field: &str| values.get(&format!("{}-{field}", tab.key));
@@ -157,7 +183,33 @@ pub(super) fn submitted(values: &FormValues) -> Vec<Panel> {
                     deleted: check("DELETE"),
                     ..Default::default()
                 };
-                if tab.kind == "team" {
+                if matches!(tab.kind, "school" | "debater") {
+                    row.record = extract_person(field("id"), &mut row.errors);
+                    row.name = field(if tab.kind == "school" {
+                        "name"
+                    } else {
+                        "first_name"
+                    })
+                    .cloned()
+                    .unwrap_or_default();
+                    row.last_name = field("last_name").cloned().unwrap_or_default();
+                    row.school = extract_person(field("school"), &mut row.errors);
+                    let field_name = if tab.kind == "school" {
+                        "existing_school"
+                    } else {
+                        "existing_debater"
+                    };
+                    row.first = extract_person(field(field_name), &mut row.errors);
+                    row.school_name = field("school_name").cloned().unwrap_or_default();
+                    row.first_source = field(if tab.kind == "school" {
+                        "server_name"
+                    } else {
+                        "tournament_id"
+                    })
+                    .cloned()
+                    .unwrap_or_default();
+                    row.included = check("included_in_oty");
+                } else if tab.kind == "team" {
                     row.first = extract_person(field("debater_one"), &mut row.errors);
                     row.second = extract_person(field("debater_two"), &mut row.errors);
                     row.first_source = field("debater_one_tournament_id")
@@ -244,6 +296,7 @@ pub(super) async fn labels(
     ids.extend(
         panels
             .iter()
+            .filter(|panel| panel.tab.kind != "school")
             .flat_map(|panel| panel.rows.iter())
             .flat_map(|row| [row.first, row.second])
             .flatten(),
