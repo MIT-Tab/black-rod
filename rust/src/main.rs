@@ -52,6 +52,25 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     if production_web && secret.as_deref().is_none_or(|key| key.trim().is_empty()) {
         return Err("Set SECRET_KEY before serving production requests.".into());
     }
+    let enabled = |name| {
+        env::var(name)
+            .is_ok_and(|value| matches!(value.to_ascii_lowercase().as_str(), "1" | "true" | "yes"))
+    };
+    let address: SocketAddr = env::var("BLACK_ROD_BIND")
+        .or_else(|_| env::var("PORT").map(|port| format!("0.0.0.0:{port}")))
+        .unwrap_or_else(|_| "127.0.0.1:9090".into())
+        .parse()?;
+    let proxy = env::var("BLACK_ROD_TRUSTED_PROXY_IP")
+        .ok()
+        .map(|proxy| proxy.parse())
+        .transpose()?;
+    if production_web
+        && address.ip().is_loopback()
+        && proxy.is_none()
+        && !enabled("BLACK_ROD_DIRECT_CONNECTIONS")
+    {
+        return Err("Set BLACK_ROD_TRUSTED_PROXY_IP to the immediate reverse proxy's address, or set BLACK_ROD_DIRECT_CONNECTIONS=1 for direct requests.".into());
+    }
     let database = database_url(production)?;
     let pool = AnyPoolOptions::new()
         .max_connections(8)
@@ -68,14 +87,6 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         .connect(&database)
         .await?;
     let season = env::var("BLACK_ROD_CURRENT_SEASON").unwrap_or_else(|_| "2026".into());
-    let enabled = |name| {
-        env::var(name)
-            .is_ok_and(|value| matches!(value.to_ascii_lowercase().as_str(), "1" | "true" | "yes"))
-    };
-    let address: SocketAddr = env::var("BLACK_ROD_BIND")
-        .or_else(|_| env::var("PORT").map(|port| format!("0.0.0.0:{port}")))
-        .unwrap_or_else(|_| "127.0.0.1:9090".into())
-        .parse()?;
     let cache_lifetime = env::var("BLACK_ROD_CACHE_TTL_SECONDS")
         .map(|value| value.parse())
         .unwrap_or(Ok(300))?;
@@ -98,12 +109,8 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     {
         state = state.with_allowed_hosts(&hosts);
     }
-    if let Ok(proxy) = env::var("BLACK_ROD_TRUSTED_PROXY_IP") {
-        state = state.with_trusted_proxy(proxy.parse()?);
-    } else if production_web && address.ip().is_loopback() {
-        eprintln!(
-            "BLACK_ROD_TRUSTED_PROXY_IP is unset. If a local reverse proxy forwards requests, account rate limits will share the proxy's address."
-        );
+    if let Some(proxy) = proxy {
+        state = state.with_trusted_proxy(proxy);
     }
     if let Some(secret) = secret {
         state = state.with_session_secret(secret);

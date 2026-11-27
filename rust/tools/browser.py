@@ -808,7 +808,7 @@ print(b64encode(out.getvalue()).decode())
         assert rejected["status"] == 400 and not rejected["redirected"], rejected
         saved = confirm(roots[confirmer], (actual if confirmer == 0 else expected)["token"])
         assert saved["status"] == 200 and saved["redirected"] and "Imported 1 motions" in saved["text"], saved
-    large_csv = "Motion,Unused\n" + "".join(
+    large_csv = "Motion,Background\n" + "".join(
         f"This House would test large spreadsheet row {index},{'x' * 65_000}\n"
         for index in range(34)
     )
@@ -818,6 +818,10 @@ print(b64encode(out.getvalue()).decode())
     actual = preview(roots[1], "large-motions.csv", large_file)
     assert expected["status"] == actual["status"] == 200
     assert len(expected["rows"]) == 34 and expected["rows"] == actual["rows"]
+    imported = confirm(roots[1], expected["token"])
+    assert imported["status"] == 200 and imported["redirected"] and "Imported 34 motions" in imported["text"]
+    repeated = confirm(roots[1], actual["token"])
+    assert repeated["status"] == 200 and repeated["redirected"] and "skipped 34" in repeated["text"]
     driver.delete_all_cookies()
 
 
@@ -2219,6 +2223,142 @@ print(json.dumps((group.pk, first.pk, second.pk, team.pk)))
         save()
         assert roster() == before
         assert driver.find_element("id", "id_short_name").get_attribute("value") == "Roster edit"
+    driver.delete_all_cookies()
+
+
+def assert_admin_search_and_memberships(driver, django, rust):
+    code = """
+from django import setup
+setup()
+from core.models import Debater, Resource, Round, School, Team, Tournament
+import json
+
+tournament = Tournament.objects.order_by("pk").first()
+one = Debater.objects.create(first_name="Rosterlookup", last_name="Alpha", school_id=tournament.host_id)
+two = Debater.objects.create(first_name="Rosterlookup", last_name="Beta", school_id=tournament.host_id)
+team = Team.objects.create(name="Team with searchable roster")
+team.debaters.add(one, two)
+opponent = Team.objects.create(name="Opposing roster fixture")
+a, b = 730021, 7300211
+Round.objects.create(id=a, tournament=tournament, gov=team, opp=opponent)
+Round.objects.create(id=b, tournament=tournament, gov=opponent, opp=opponent)
+resource = Resource.objects.create(title="Resource with required authors",
+    content_link="https://example.test/resource")
+resource.authors.add(one, two)
+synthetic = School.objects.create(name="Synthetic school editor fixture", synthetic=True)
+print(json.dumps([a, b, team.pk, resource.pk, one.pk, two.pk, synthetic.pk]))
+"""
+    out = subprocess.check_output([str(ROOT / "venv/bin/python"), "-c", code], text=True)
+    exact, partial, team, resource, one, two, synthetic = json.loads(out.splitlines()[-1])
+    credential = django_session()
+
+    def ids(route):
+        driver.get(root + route)
+        return [
+            int(item.get_attribute("value"))
+            for item in driver.find_elements("css selector", 'tr input[name="_selected_action"]')
+        ]
+
+    def submit(route, field, value):
+        driver.get(root + route)
+        return driver.execute_async_script("""
+            const [field, value, done] = arguments;
+            const form = document.querySelector('#content-main form');
+            const body = new URLSearchParams(new FormData(form));
+            body.delete(field);
+            if (value !== null) body.set(field, value);
+            const label = field === 'debaters' ? 'name' : 'title';
+            body.set(label, 'Membership validation fixture edit');
+            body.set('_continue', 'Save and continue editing');
+            fetch(location.href, {method:'POST', body}).then(async response => {
+                const page = new DOMParser().parseFromString(await response.text(), 'text/html');
+                done({status:response.status, redirect:response.redirected,
+                    errors:[...page.querySelectorAll('.errorlist')].map(e => e.textContent)});
+            }, () => done({status:0}));
+        """, field, value)
+
+    db = Path(os.environ["BR_STATE"]) / "dev.sqlite3"
+    for server in (django, rust):
+        root = f"http://{HOST}:{server.port}"
+        driver.get(root + "/robots.txt")
+        driver.delete_all_cookies()
+        driver.add_cookie({"name": "sessionid", "value": credential})
+        assert ids("/admin/core/round/?" + urlencode({"q": "Rosterlookup"})) == [exact]
+        assert ids("/admin/core/round/?" + urlencode({"q": exact})) == [exact]
+        assert ids("/admin/core/round/?" + urlencode({"q": partial})) == [partial]
+        assert ids("/admin/core/resource/?" + urlencode({"q": "Rosterlookup Alpha"})) == [resource]
+        assert ids("/admin/core/resource/?" + urlencode({"q": "Alpha Beta"})) == []
+        query = urlencode({"app_label": "core", "model_name": "round", "field_name": "gov",
+                           "term": "Rosterlookup"})
+        result = driver.execute_async_script("""
+            const [url, done] = arguments;
+            fetch(url).then(response => response.json()).then(done);
+        """, "/admin/autocomplete/?" + query)
+        assert [entry["id"] for entry in result["results"]] == [str(team)]
+        school = f"/core/schools/{synthetic}"
+        driver.get(root + school + "/edit")
+        assert driver.find_element("id", "id_name").get_attribute("value") == "Synthetic school editor fixture"
+        status = driver.execute_async_script("""
+            const [url, done] = arguments;
+            fetch(url).then(response => done(response.status));
+        """, school)
+        assert status == 404
+        for model, pk, field, table, owner in (
+            ("team", team, "debaters", "core_team_debaters", "team_id"),
+            ("resource", resource, "authors", "core_resource_authors", "resource_id"),
+        ):
+            route = f"/admin/core/{model}/{pk}/change/"
+            for selection, message in [
+                (None, "This field is required."),
+                (777777777, "Select a valid choice. 777777777 is not one of the available choices."),
+                ("not-a-number", "“not-a-number” is not a valid value."),
+            ]:
+                rejected = submit(route, field, selection)
+                assert rejected["status"] == 200 and not rejected["redirect"], rejected
+                assert any(message in error for error in rejected["errors"]), rejected
+                with sqlite3.connect(f"{db.as_uri()}?mode=ro", uri=True) as connection:
+                    members = connection.execute(
+                        f"SELECT debater_id FROM {table} WHERE {owner}=? ORDER BY debater_id", (pk,),
+                    ).fetchall()
+                assert members == [(one,), (two,)]
+    driver.delete_all_cookies()
+
+
+def assert_admin_user_add_permissions(driver, django, rust):
+    code = """
+from django import setup
+setup()
+from django.contrib.auth.models import Permission
+from django.contrib.sessions.backends.db import SessionStore
+from core.models import User
+import json
+
+sessions = []
+for roles in [("add_user",), ("change_user",), ("add_user", "change_user")]:
+    user = User.objects.create_user(username="admin_fixture_" + "_".join(roles), is_staff=True)
+    user.user_permissions.set(Permission.objects.filter(content_type__app_label="core", codename__in=roles))
+    session = SessionStore()
+    session["_auth_user_id"] = str(user.pk)
+    session["_auth_user_backend"] = "django.contrib.auth.backends.ModelBackend"
+    session["_auth_user_hash"] = user.get_session_auth_hash()
+    session.save()
+    sessions.append(session.session_key)
+print(json.dumps(sessions))
+"""
+    result = subprocess.check_output([str(ROOT / "venv/bin/python"), "-c", code], text=True,
+        env={**os.environ, "SECRET_KEY": "disposable-local-parity-key"})
+    credentials = json.loads(result.splitlines()[-1])
+    for server in (django, rust):
+        root = f"http://{HOST}:{server.port}"
+        driver.get(root + "/robots.txt")
+        denied = 403 if os.environ.get("BLACK_ROD_PARITY_PRODUCTION_ERRORS") == "1" else 404
+        for credential, expected in zip(credentials, (denied, 403, 200)):
+            driver.delete_all_cookies()
+            driver.add_cookie({"name": "sessionid", "value": credential})
+            status = driver.execute_async_script("""
+                fetch('/admin/core/user/add/').then(response => arguments[0](response.status));
+            """)
+            assert status == expected, (server.name, expected, status)
     driver.delete_all_cookies()
 
 
@@ -3841,7 +3981,7 @@ def assert_oauth_roundtrip(driver, rust, django):
         driver.delete_cookie("sessionid")
 
 
-def assert_oauth_username_collision(driver, django, rust, provider):
+def assert_oauth_new_accounts(driver, django, rust, provider):
     code = """
 from django import setup
 setup()
@@ -3876,6 +4016,26 @@ for name in ("Django", "Rust"):
                     (str(uid),),
                 ).fetchone()
             assert user == (f"fallback{name}",), (server.name, user)
+            driver.delete_all_cookies()
+
+            provider.oauth_profile = {
+                "ID": uid + 10,
+                "user_nicename": f"noemail{name}",
+                "user_email": None,
+                "display_name": "Optional Email Fixture",
+                "user_roles": [],
+            }
+            driver.get(root + "/accounts/apdaonline/login/?next=/games/")
+            driver.find_element("css selector", '.card form button[type="submit"]').click()
+            WebDriverWait(driver, 10).until(lambda browser: browser.current_url == root + "/games/")
+            with sqlite3.connect(f"{db.as_uri()}?mode=ro", uri=True) as connection:
+                user = connection.execute(
+                    """SELECT username, email FROM core_user JOIN socialaccount_socialaccount
+                    ON core_user.id = socialaccount_socialaccount.user_id
+                    WHERE provider = 'apdaonline' AND uid = ?""",
+                    (str(uid + 10),),
+                ).fetchone()
+            assert user == (f"noemail{name}", ""), (server.name, user)
             driver.delete_all_cookies()
     finally:
         provider.oauth_profile = original_profile
@@ -4078,7 +4238,7 @@ def browser_checks(database, options, output):
         assert_account_entry_and_email(driver, django, rust, mail)
         assert_password_login_syncs_video_access(driver, django, rust)
         assert_oauth_roundtrip(driver, rust, django)
-        assert_oauth_username_collision(driver, django, rust, provider)
+        assert_oauth_new_accounts(driver, django, rust, provider)
         assert_oauth_connections(driver, django, rust, provider)
         assert_oauth_pending_signup(driver, django, rust, provider)
         assert_directories(driver, django, rust)
@@ -4112,6 +4272,8 @@ def browser_checks(database, options, output):
         assert_admin_model_saves(driver, django, rust)
         assert_admin_preserves_linked_state(driver, django, rust)
         assert_admin_related_popups(driver, django, rust)
+        assert_admin_search_and_memberships(driver, django, rust)
+        assert_admin_user_add_permissions(driver, django, rust)
         assert_admin_across_pages(driver, rust)
         assert_admin_topic_merges(driver, django, rust)
         assert_admin_speaker_visibility(driver, django, rust)

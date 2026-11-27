@@ -11,7 +11,9 @@ use serde_json::{Value, json, value::RawValue};
 use sqlx::{AnyConnection, AnyPool, Row};
 
 use signing::decode_signed_bytes;
-pub(crate) use signing::{decode_signed, decode_timed, encode_compressed, encode_signed, key};
+pub(crate) use signing::{
+    decode_signed, decode_timed, decode_timed_with_limits, encode_compressed, encode_signed, key,
+};
 
 const SESSION_SALT: &[u8] = b"django.contrib.sessions.SessionStoresigner";
 const AUTH_SALT: &[u8] = b"django.contrib.auth.models.AbstractBaseUser.get_session_auth_hash";

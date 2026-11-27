@@ -26,6 +26,11 @@ use crate::{
 
 const SIGNING_SALT: &[u8] = b"django.core.signingsigner";
 const IMPORT_EXPIRED: &str = "Import preview expired or was changed.";
+const MAX_CONFIRM_FORM: usize = 2_621_440;
+const MAX_SIGNED_ROWS: usize = MAX_CONFIRM_FORM - 128;
+const MAX_PREVIEW_BYTES: u64 = 128 * 1024 * 1024;
+const PREVIEW_TOO_LARGE: &str =
+    "The import preview is too large. Split the spreadsheet into smaller files.";
 
 #[derive(Deserialize, Serialize)]
 struct ImportRow {
@@ -337,13 +342,21 @@ async fn page(state: &AppState, request: Request, user: User) -> Result<Response
                         Ok(validated) => {
                             let payload =
                                 crate::django_json::ascii(&serde_json::to_string(&validated)?);
-                            let Ok(signed) =
-                                session::encode_compressed(&payload, secret, SIGNING_SALT)
-                            else {
-                                return Ok(StatusCode::INTERNAL_SERVER_ERROR.into_response());
-                            };
-                            signed_rows = signed;
-                            rows = validated;
+                            if payload.len() as u64 > MAX_PREVIEW_BYTES {
+                                warning = Some(PREVIEW_TOO_LARGE.to_owned());
+                            } else {
+                                let Ok(signed) =
+                                    session::encode_compressed(&payload, secret, SIGNING_SALT)
+                                else {
+                                    return Ok(StatusCode::INTERNAL_SERVER_ERROR.into_response());
+                                };
+                                if signed.len() <= MAX_SIGNED_ROWS {
+                                    signed_rows = signed;
+                                    rows = validated;
+                                } else {
+                                    warning = Some(PREVIEW_TOO_LARGE.to_owned());
+                                }
+                            }
                         }
                         Err(error) => warning = Some(error),
                     },
@@ -353,7 +366,7 @@ async fn page(state: &AppState, request: Request, user: User) -> Result<Response
                 warning = Some("This field is required.".to_owned());
             }
         } else {
-            let Ok(body) = to_bytes(request.into_body(), 2_621_440).await else {
+            let Ok(body) = to_bytes(request.into_body(), MAX_CONFIRM_FORM).await else {
                 return Ok(StatusCode::PAYLOAD_TOO_LARGE.into_response());
             };
             let fields = login::form_values(&body);
@@ -366,7 +379,14 @@ async fn page(state: &AppState, request: Request, user: User) -> Result<Response
             }
             if fields.get("confirm").is_some_and(|value| !value.is_empty()) {
                 let input = fields.get("rows").map_or("", String::as_str);
-                let Some(rows) = session::decode_timed(input, secret, SIGNING_SALT, 3600) else {
+                let Some(rows) = session::decode_timed_with_limits(
+                    input,
+                    secret,
+                    SIGNING_SALT,
+                    3600,
+                    MAX_SIGNED_ROWS,
+                    MAX_PREVIEW_BYTES,
+                ) else {
                     return Ok((StatusCode::BAD_REQUEST, IMPORT_EXPIRED).into_response());
                 };
                 let (created, skipped) = import(&state.pool, rows).await?;

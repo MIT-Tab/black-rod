@@ -52,6 +52,7 @@ pub(super) struct Source<'a> {
     model: &'a Model,
     joins: Vec<String>,
     paths: HashMap<String, (usize, &'static Model)>,
+    allow_many: bool,
 }
 
 impl<'a> Source<'a> {
@@ -60,6 +61,7 @@ impl<'a> Source<'a> {
             model,
             joins: Vec::new(),
             paths: HashMap::new(),
+            allow_many: false,
         }
     }
 
@@ -77,13 +79,9 @@ impl<'a> Source<'a> {
                     .unwrap_or(raw)
             };
             let field = model.fields.get(name)?;
-            if field.through.is_some() {
-                return None;
-            }
-            let field_column = field.column.as_ref()?;
-            let expr = format!(r#"t{index}."{field_column}""#);
             if parts.peek().is_none() {
-                return Some((expr, field));
+                let column = field.column.as_ref()?;
+                return Some((format!(r#"t{index}."{column}""#), field));
             }
             if !prefix.is_empty() {
                 prefix.push_str("__");
@@ -96,6 +94,19 @@ impl<'a> Source<'a> {
             }
             let (app, table) = field.related.as_deref()?.split_once('.')?;
             let related = schema().model(app, table)?;
+            let expr = if let Some([table, from, to]) = &field.through {
+                if !self.allow_many || field.generic_through.unwrap_or_default() {
+                    return None;
+                }
+                let member = self.joins.len() + 1;
+                self.joins.push(format!(
+                    r#"LEFT JOIN {table} t{member} ON t{member}."{from}"=t{index}.id"#
+                ));
+                format!(r#"t{member}."{to}""#)
+            } else {
+                let column = field.column.as_ref()?;
+                format!(r#"t{index}."{column}""#)
+            };
             let next = self.joins.len() + 1;
             self.joins.push(format!(
                 "LEFT JOIN {} t{next} ON t{next}.id={expr}",
@@ -613,33 +624,46 @@ fn search_terms(search: &str) -> impl Iterator<Item = Cow<'_, str>> {
     })
 }
 
-pub(super) fn search_conditions(
-    source: &mut Source<'_>,
+pub(super) fn search_condition(
     model: &Model,
     search: &str,
     values: &mut Vec<String>,
-) -> Vec<String> {
+) -> Option<String> {
+    let mut source = Source::new(model);
+    source.allow_many = true;
     let mut where_parts = Vec::new();
     for term in search_terms(search) {
         let mut options = Vec::new();
         for name in &model.search {
+            let exact = name.starts_with('=');
             let name = name.trim_start_matches(['^', '=', '@']);
             if let Some((entry, _)) = source.resolve(name) {
-                let value = term
-                    .replace('\\', "\\\\")
-                    .replace('%', "\\%")
-                    .replace('_', "\\_");
-                let marker = add_values(values, &format!("%{value}%"));
-                options.push(format!(
-                    "LOWER(CAST({entry} AS TEXT)) LIKE LOWER({marker}) ESCAPE '\\'"
-                ));
+                let comparable = format!("LOWER(CAST({entry} AS TEXT))");
+                if exact {
+                    let marker = add_values(values, &term);
+                    options.push(format!("{comparable}=LOWER({marker})"));
+                } else {
+                    let value = term
+                        .replace('\\', "\\\\")
+                        .replace('%', "\\%")
+                        .replace('_', "\\_");
+                    let marker = add_values(values, &format!("%{value}%"));
+                    options.push(format!("{comparable} LIKE LOWER({marker}) ESCAPE '\\'"));
+                }
             }
         }
         if !options.is_empty() {
             where_parts.push(format!("({})", options.join(" OR ")));
         }
     }
-    where_parts
+    // Restrict by matching primary keys so through-table matches never multiply results.
+    (!where_parts.is_empty()).then(|| {
+        format!(
+            "t0.id IN (SELECT t0.id FROM {} WHERE {})",
+            source.sql(),
+            where_parts.join(" AND ")
+        )
+    })
 }
 
 fn sort_expressions(
@@ -701,7 +725,7 @@ pub(super) fn conditions(
     if model.slug() == "school" {
         where_parts.push("NOT t0.temporary".to_owned());
     }
-    where_parts.extend(search_conditions(source, model, search, values));
+    where_parts.extend(search_condition(model, search, values));
     if model.slug() == "motion"
         && let Some(limit) = dates::limit(params, values)
     {

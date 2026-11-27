@@ -8,7 +8,7 @@ use sqlx::AssertSqlSafe;
 
 use super::{
     AdminRequest,
-    listing::{Source, label, search_conditions},
+    listing::{Source, label, search_condition},
     schema::schema,
 };
 use crate::{ApiError, login, web};
@@ -41,7 +41,9 @@ pub(super) async fn endpoint(admin: &AdminRequest<'_>) -> Result<Response, ApiEr
     }
     let mut from = Source::new(model);
     let mut values = Vec::new();
-    let mut conditions = search_conditions(&mut from, model, input("term"), &mut values);
+    let mut conditions: Vec<_> = search_condition(model, input("term"), &mut values)
+        .into_iter()
+        .collect();
     if model.slug() == "school" {
         conditions.push("NOT t0.temporary".to_owned());
     }

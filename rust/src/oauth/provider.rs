@@ -162,7 +162,7 @@ pub(super) struct Profile {
     #[serde(rename = "ID")]
     id: Value,
     pub(super) user_nicename: String,
-    pub(super) user_email: String,
+    pub(super) user_email: Option<String>,
     pub(super) display_name: String,
     user_roles: Vec<String>,
 }

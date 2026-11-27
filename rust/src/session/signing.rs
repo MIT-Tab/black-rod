@@ -23,28 +23,38 @@ pub(crate) fn decode_signed(data: &str, secret: &[u8], salt: &[u8]) -> Option<Va
 }
 
 pub(super) fn decode_signed_bytes(data: &str, secret: &[u8], salt: &[u8]) -> Option<Vec<u8>> {
-    if data.len() as u64 > MAX_SESSION_SIZE {
+    let (payload, _) = signed_payload(data, secret, salt, MAX_SESSION_SIZE as usize)?;
+    payload_bytes(payload, MAX_SESSION_SIZE)
+}
+
+fn signed_payload<'a>(
+    data: &'a str,
+    secret: &[u8],
+    salt: &[u8],
+    max_signed_bytes: usize,
+) -> Option<(&'a str, &'a str)> {
+    if data.len() > max_signed_bytes {
         return None;
     }
     let (signed, signature) = data.rsplit_once(':')?;
     let signature = URL_SAFE_NO_PAD.decode(signature).ok()?;
     hmac::verify(&key(salt, secret), signed.as_bytes(), &signature).ok()?;
-    let (payload, _) = signed.rsplit_once(':')?;
+    signed.rsplit_once(':')
+}
+
+fn payload_bytes(payload: &str, max_bytes: u64) -> Option<Vec<u8>> {
     let contents = if let Some(payload) = payload.strip_prefix('.') {
         let compressed = URL_SAFE_NO_PAD.decode(payload).ok()?;
         let mut inflated = Vec::new();
         ZlibDecoder::new(compressed.as_slice())
-            .take(MAX_SESSION_SIZE + 1)
+            .take(max_bytes + 1)
             .read_to_end(&mut inflated)
             .ok()?;
-        if inflated.len() as u64 > MAX_SESSION_SIZE {
-            return None;
-        }
         inflated
     } else {
         URL_SAFE_NO_PAD.decode(payload).ok()?
     };
-    Some(contents)
+    (contents.len() as u64 <= max_bytes).then_some(contents)
 }
 
 fn timestamp(mut time: u64) -> String {
@@ -95,8 +105,25 @@ pub(crate) fn decode_timed<T: serde::de::DeserializeOwned>(
     salt: &[u8],
     max_age: i64,
 ) -> Option<T> {
-    let bytes = decode_signed_bytes(signed, secret, salt)?;
-    let (_, timestamp) = signed.rsplit_once(':')?.0.rsplit_once(':')?;
+    decode_timed_with_limits(
+        signed,
+        secret,
+        salt,
+        max_age,
+        MAX_SESSION_SIZE as usize,
+        MAX_SESSION_SIZE,
+    )
+}
+
+pub(crate) fn decode_timed_with_limits<T: serde::de::DeserializeOwned>(
+    signed: &str,
+    secret: &[u8],
+    salt: &[u8],
+    max_age: i64,
+    max_signed_bytes: usize,
+    max_payload_bytes: u64,
+) -> Option<T> {
+    let (payload, timestamp) = signed_payload(signed, secret, salt, max_signed_bytes)?;
     let timestamp = timestamp.bytes().try_fold(0_i64, |acc, byte| {
         let digit = match byte {
             b'0'..=b'9' => byte - b'0',
@@ -109,5 +136,5 @@ pub(crate) fn decode_timed<T: serde::de::DeserializeOwned>(
     if Utc::now().timestamp().saturating_sub(timestamp) > max_age {
         return None;
     }
-    serde_json::from_slice(&bytes).ok()
+    serde_json::from_slice(&payload_bytes(payload, max_payload_bytes)?).ok()
 }

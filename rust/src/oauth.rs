@@ -224,7 +224,12 @@ async fn save(
             .await?;
         (id, password, account)
     } else {
-        let email = profile.user_email.trim().to_lowercase();
+        let email = profile
+            .user_email
+            .as_deref()
+            .unwrap_or_default()
+            .trim()
+            .to_lowercase();
         if email.chars().count() > 254 {
             return Err(AccountError::Invalid);
         }
@@ -384,15 +389,16 @@ async fn pending_signup(
         .display_name
         .split_once(' ')
         .unwrap_or((&profile.display_name, ""));
-    let addresses = if profile.user_email.is_empty() {
+    let email = profile.user_email.as_deref().unwrap_or_default();
+    let addresses = if email.is_empty() {
         Vec::new()
     } else {
-        vec![json!({"email":profile.user_email,"primary":true,"verified":false})]
+        vec![json!({"email":email,"primary":true,"verified":false})]
     };
     let value = json!({
         "provider":{"id":"apdaonline","app.client_id":provider.client_id()},
         "account":{"provider":"apdaonline","uid":uid,"extra_data":fields},
-        "user":{"username":profile.user_nicename,"email":profile.user_email,
+        "user":{"username":profile.user_nicename,"email":email,
             "first_name":first_name,"last_name":last_name,"can_view_private_videos":profile.can_view_video()},
         "state":{"next":context.next,"process":"login","remember":context.remember},
         "email_addresses":addresses,"phone":null,"phone_verified":false,
@@ -476,7 +482,7 @@ async fn signup_page(state: &AppState, request: Request) -> Result<Response, Api
             email_error = Some("Enter a valid email address.");
         }
         if username_error.is_none() && email_error.is_none() {
-            profile.user_email.clone_from(&email);
+            profile.user_email = Some(email.clone());
             let token = Token {
                 access_token: pending["token"]["token"]
                     .as_str()

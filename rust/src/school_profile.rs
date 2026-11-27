@@ -201,14 +201,20 @@ pub(crate) async fn render_page(
 ) -> Response {
     use axum::{http::header, response::Html};
     use minijinja::context;
-    let valid = sqlx::query_scalar::<_, i64>("SELECT CAST(id AS BIGINT) FROM core_school WHERE id = $1 AND NOT synthetic AND NOT temporary")
-        .bind(id).fetch_optional(&state.pool).await;
-    match valid {
-        Ok(Some(_)) => (),
-        Ok(None) => return StatusCode::NOT_FOUND.into_response(),
-        Err(error) => {
-            let _ = ApiError::from(error);
-            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+    if editing.is_none() {
+        let valid = sqlx::query_scalar::<_, i64>(
+            "SELECT CAST(id AS BIGINT) FROM core_school WHERE id = $1 AND NOT synthetic AND NOT temporary",
+        )
+        .bind(id)
+        .fetch_optional(&state.pool)
+        .await;
+        match valid {
+            Ok(Some(_)) => (),
+            Ok(None) => return StatusCode::NOT_FOUND.into_response(),
+            Err(error) => {
+                let _ = ApiError::from(error);
+                return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+            }
         }
     }
     let query: std::collections::HashMap<_, _> =

@@ -213,6 +213,7 @@ pub(super) struct Change<'a> {
     remove: bool,
     fields: Map<String, Json>,
     values: Values,
+    selections: super::RelatedSelections,
     changed: Vec<String>,
 }
 
@@ -286,6 +287,7 @@ pub(super) async fn prepare<'a>(
             }
             let mut fields = Map::new();
             let mut changed = Vec::new();
+            let mut selections = super::RelatedSelections::new();
             if !remove {
                 let mut invalid = Errors::new();
                 for (name, field) in &model.fields {
@@ -315,6 +317,9 @@ pub(super) async fn prepare<'a>(
                         changed.push(cap_first(&field.label));
                     }
                 }
+                selections =
+                    super::clean_memberships(admin, model, &spec.widgets, &values, &mut invalid)
+                        .await?;
                 errors.extend(
                     invalid
                         .into_iter()
@@ -328,6 +333,7 @@ pub(super) async fn prepare<'a>(
                     remove,
                     fields,
                     values,
+                    selections,
                     changed,
                 });
             }
@@ -349,6 +355,7 @@ pub(super) async fn apply(
         remove,
         mut fields,
         values,
+        selections,
         changed,
     } in changes
     {
@@ -366,7 +373,7 @@ pub(super) async fn apply(
         fields.insert(foreign_key(spec, model), json!(parent));
         super::model_rules::before_save(conn, model, season, id, &mut fields).await?;
         let record = model.storage.write(conn, &fields, id).await?;
-        super::save_memberships(conn, model, &spec.widgets, record, &values).await?;
+        super::save_memberships(conn, model, &spec.widgets, record, &values, &selections).await?;
         let name = super::loaded_label(conn, model, record).await?;
         if id.is_none() {
             messages.push(json!({"added":{"name":model.singular,"object":name}}));

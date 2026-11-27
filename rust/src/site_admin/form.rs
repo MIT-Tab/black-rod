@@ -891,34 +891,113 @@ pub(super) async fn log(
     Ok(())
 }
 
+type RelatedSelections = BTreeMap<String, BTreeSet<i64>>;
+
+async fn clean_memberships(
+    admin: &AdminRequest<'_>,
+    model: &Model,
+    widgets: &BTreeMap<String, Widget>,
+    values: &Values,
+    errors: &mut Errors,
+) -> Result<RelatedSelections, ApiError> {
+    let mut selections = RelatedSelections::new();
+    for (name, widget) in widgets {
+        let Some(field) = model.fields.get(name).filter(|field| {
+            field.through.is_some()
+                && field.kind != "Tags"
+                && !field.generic_through.unwrap_or_default()
+        }) else {
+            continue;
+        };
+        let selected = values.get(name).map_or(&[][..], Vec::as_slice);
+        let raw_selected;
+        let selected = if widget.kind == "ManyToManyRawIdWidget" {
+            raw_selected = raw(values, name)
+                .split(',')
+                .filter(|value| !value.is_empty())
+                .map(str::to_owned)
+                .collect::<Vec<_>>();
+            raw_selected.as_slice()
+        } else {
+            selected
+        };
+        if selected.is_empty() && widget.required {
+            error(errors, name, "This field is required.");
+            continue;
+        }
+        let mut ids = BTreeSet::new();
+        for input in selected {
+            match input.trim().parse::<i64>() {
+                Ok(id) if input == &id.to_string() => {
+                    ids.insert(id);
+                }
+                Ok(_) => error(
+                    errors,
+                    name,
+                    &format!("Select a valid choice. {input} is not one of the available choices."),
+                ),
+                Err(_) => error(errors, name, &format!("“{input}” is not a valid value.")),
+            }
+            if errors.contains_key(name) {
+                break;
+            }
+        }
+        if errors.contains_key(name) {
+            continue;
+        }
+        if !ids.is_empty() {
+            let target = related_model(field);
+            let table = match (target, field.related.as_deref()) {
+                (Some(target), _) => &target.table,
+                (_, Some("auth.permission")) => "auth_permission",
+                _ => return Err(ApiError::Serialization),
+            };
+            let filter = match (field.related.as_deref(), model.slug()) {
+                (Some("core.debater"), "teamresult") => "",
+                (Some("core.debater"), _) => " AND NOT (temporary OR synthetic)",
+                _ => "",
+            };
+            let list = ids.iter().map(i64::to_string).collect::<Vec<_>>().join(",");
+            let sql =
+                format!("SELECT CAST(id AS BIGINT) FROM {table} WHERE id IN ({list}){filter}");
+            let found = sqlx::query_scalar::<_, i64>(AssertSqlSafe(sql))
+                .fetch_all(&admin.state.pool)
+                .await?
+                .into_iter()
+                .collect::<BTreeSet<_>>();
+            if let Some(missing) = ids.difference(&found).next() {
+                error(
+                    errors,
+                    name,
+                    &format!(
+                        "Select a valid choice. {missing} is not one of the available choices."
+                    ),
+                );
+                continue;
+            }
+        }
+        selections.insert(name.clone(), ids);
+    }
+    Ok(selections)
+}
+
 async fn save_memberships(
     conn: &mut AnyConnection,
     model: &Model,
     widgets: &BTreeMap<String, Widget>,
     record: i64,
     values: &Values,
+    selections: &RelatedSelections,
 ) -> Result<(), ApiError> {
     for (name, field) in &model.fields {
         if field.kind == "Tags" && widgets.contains_key(name) {
             tags::save(conn, model, field, record, raw(values, name)).await?;
             continue;
         }
-        let Some([table, current, target]) = field
-            .through
-            .as_ref()
-            .filter(|_| widgets.contains_key(name))
-        else {
-            continue;
-        };
-        if field.generic_through.unwrap_or_default() {
-            continue;
+        if let (Some([table, current, target]), Some(new)) = (&field.through, selections.get(name))
+        {
+            sync_memberships(conn, [table, current, target], record, new).await?;
         }
-        let new = selected_fields(values, name)
-            .into_iter()
-            .flat_map(|value| value.split(',').map(str::to_owned).collect::<Vec<_>>())
-            .filter_map(|value| value.parse::<i64>().ok())
-            .collect::<BTreeSet<_>>();
-        sync_memberships(conn, [table, current, target], record, &new).await?;
     }
     Ok(())
 }
@@ -1047,6 +1126,7 @@ async fn save(
             }
         }
     }
+    let selections = clean_memberships(admin, model, &form.widgets, values, errors).await?;
     let inline_changes = inlines::prepare(admin, form, id, values, errors).await?;
     if !errors.is_empty() {
         return Ok(None);
@@ -1091,7 +1171,7 @@ async fn save(
             Err(error) => return Err(error),
         }
     };
-    save_memberships(&mut tx, model, &form.widgets, record, values).await?;
+    save_memberships(&mut tx, model, &form.widgets, record, values, &selections).await?;
     if model.slug() == "round"
         && id.is_some()
         && let Some(stage) = columns
@@ -1230,6 +1310,14 @@ pub(super) async fn page(
     id: Option<i64>,
     request: Request,
 ) -> Result<Response, ApiError> {
+    if id.is_none() && model.key == "core.user" && !admin.viewer.allows(model, "change") {
+        let status = if admin.viewer.allows(model, "add") && crate::web::debug_assets() {
+            StatusCode::NOT_FOUND
+        } else {
+            StatusCode::FORBIDDEN
+        };
+        return Ok(status.into_response());
+    }
     if id.is_none() && !admin.viewer.allows(model, "add")
         || id.is_some() && !admin.viewer.read(model)
     {
