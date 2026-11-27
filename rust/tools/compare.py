@@ -103,6 +103,7 @@ def servers(database, cold=False):
         "LIVE_MITTAB_DIRECTORY_URL": os.environ.get("LIVE_MITTAB_DIRECTORY_URL", "http://127.0.0.1:1"),
         "MITTAB_PRIVATE_API_TOKENS": "fixture-one, fixture-two",
         "FORUM_PROFILE_API_TOKEN": "fixture-forum",
+        "ROUND_AMENDMENTS_FILE": str(Path(os.environ["BR_STATE"]) / "round-amendments.json"),
     }
     rust_env = {
         "BLACK_ROD_DATABASE_URL": database_url,
@@ -111,6 +112,7 @@ def servers(database, cold=False):
         "BLACK_ROD_CACHE_TTL_SECONDS": "0" if cold else "300",
         "TOKIO_WORKER_THREADS": "8",
         "BLACK_ROD_MEDIA_ROOT": str(Path(os.environ["BR_STATE"]) / "media"),
+        "ROUND_AMENDMENTS_FILE": django_env["ROUND_AMENDMENTS_FILE"],
         "SECRET_KEY": django_env["SECRET_KEY"],
         "MITTAB_PRIVATE_API_TOKENS": django_env["MITTAB_PRIVATE_API_TOKENS"],
         "FORUM_PROFILE_API_TOKEN": django_env["FORUM_PROFILE_API_TOKEN"],

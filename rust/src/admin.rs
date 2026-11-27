@@ -1,3 +1,4 @@
+pub(crate) mod amendment;
 pub(crate) mod short_names;
 pub(crate) mod speaks;
 pub(crate) mod tournament_audit;
@@ -33,18 +34,8 @@ pub(crate) async fn require(
 }
 
 pub(super) fn recording_context() -> minijinja::Value {
-    let enabled =
-        std::env::var("ENV").is_ok_and(|mode| mode.trim().eq_ignore_ascii_case("development"));
-    let path = std::env::var("ROUND_AMENDMENTS_FILE")
-        .ok()
-        .filter(|value| !value.trim().is_empty())
-        .unwrap_or_else(|| {
-            std::env::current_dir()
-                .unwrap_or_default()
-                .join("apda/round-amendments.local.json")
-                .to_string_lossy()
-                .into_owned()
-        });
+    let enabled = amendment::record::enabled();
+    let path = amendment::record::path().to_string_lossy().into_owned();
     context! {enabled,path}
 }
 
@@ -57,6 +48,16 @@ pub(crate) async fn tools(
         Ok(user) => user,
         Err(response) => return *response,
     };
+    render_tools(&state, &uri, &headers, &user, &[]).await
+}
+
+async fn render_tools(
+    state: &AppState,
+    uri: &Uri,
+    headers: &HeaderMap,
+    user: &User,
+    errors: &[String],
+) -> Response {
     let Ok(username) =
         sqlx::query_scalar::<_, String>("SELECT username FROM core_user WHERE id=$1")
             .bind(user.id)
@@ -65,11 +66,11 @@ pub(crate) async fn tools(
     else {
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     };
-    let Ok((csrf, token)) = login::csrf_tokens(&headers) else {
+    let Ok((csrf, token)) = login::csrf_tokens(headers) else {
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     };
-    let common = web::base_context(&state, &user, &uri);
-    let bindings = context! {username, csrf=>token, round_amendment_errors=>Vec::<String>::new(), round_amendment_recording=>recording_context()};
+    let common = web::base_context(state, user, uri);
+    let bindings = context! {username, csrf=>token, round_amendment_errors=>errors, round_amendment_recording=>recording_context()};
     let html = match web::render("admin/admin_tools.html", context! {..bindings,..common}) {
         Ok(html) => html,
         Err(reason) => {
@@ -79,7 +80,7 @@ pub(crate) async fn tools(
     };
     let mut response = ([(header::VARY, "Cookie")], Html(html)).into_response();
     let secure = state
-        .origin(&headers)
+        .origin(headers)
         .is_some_and(|url| url.starts_with("https://"));
     login::set_csrf_cookie(&mut response, &csrf, secure);
     response

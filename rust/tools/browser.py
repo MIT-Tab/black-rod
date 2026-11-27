@@ -1505,6 +1505,107 @@ def assert_tournament_audit(driver, django, rust, fixture):
     driver.delete_all_cookies()
 
 
+def assert_tournament_audit_writes(driver, django, rust, fixture):
+    root = f"http://{HOST}:{rust.port}"
+    event = fixture["bundle_event"]
+    target = fixture["manual_event"]["id"]
+    prefix = f"/core/admin/tournament-audit/{event}/"
+    driver.delete_all_cookies()
+    driver.get(root + prefix)
+    driver.add_cookie({"name": "sessionid", "value": django_session()})
+    people = fixture["authors"]
+    payload = {"stage": "prelim", "round_number": "1", "victor": "1", "source_round_name": "Round 1 from fixture",
+               **{f"{slot}_debater":pk for slot,pk in zip(("gov_1","gov_2","opp_1","opp_2"),people)},
+               **{f"{slot}_role":role for slot,role in zip(("gov_1","gov_2","opp_1","opp_2"),
+                    ("PM","MG","LO","MO"))},
+               "gov_1_speaks": "27.1250", "gov_1_ranks": "2.0000", "gov_1_source_name": "Fixture manual source"}
+    db = Path(os.environ["BR_STATE"]) / "dev.sqlite3"
+
+    def post(page, path, inputs):
+        driver.get(root + page)
+        return driver.execute_async_script("""
+            const [path, inputs, done] = arguments;
+            const token = document.querySelector('input[name=csrfmiddlewaretoken]').value;
+            const body = new URLSearchParams({...inputs, csrfmiddlewaretoken:token});
+            fetch(path, {method:'POST',body}).then(async response => {
+                const page = new DOMParser().parseFromString(await response.text(), "text/html");
+                done({status:response.status,path:new URL(response.url).pathname, redirected:response.redirected,
+                    errors:[...page.querySelectorAll('.text-danger')].map(node => node.textContent.trim())});
+            }, () => done({status:0}));
+        """, path, inputs)
+
+    create = prefix + "round/new/"
+    invalid = post(create, create, {**payload, "opp_1_debater": people[0]})
+    assert "Each ballot slot must use a different debater." in invalid["errors"], invalid
+    created = post(create, create, payload)
+    assert created["redirected"] and created["path"] == prefix, created
+    with sqlite3.connect(f"{db.as_uri()}?mode=ro", uri=True) as database:
+        round_id, import_key = database.execute("""SELECT id,import_key FROM core_round
+            WHERE tournament_id=? AND import_origin='manual'""", (event,)).fetchone()
+        assert import_key.startswith("manual-amendment-"), import_key
+        assert database.execute("SELECT speaks,ranks,debater_role FROM core_roundstats WHERE round_id=? AND debater_id=?",
+                                (round_id, people[0])).fetchone() == (27.125, 2, "PM")
+
+    path = prefix + f"round/{round_id}/"
+    driver.get(f"http://{HOST}:{django.port}{path}")
+    assert driver.find_element("id", "id_gov_1_speaks").get_attribute("value") == "27.1250"
+    driver.get(root + path)
+    assert driver.find_element("id", "id_gov_1_speaks").get_attribute("value") == "27.1250"
+    changed = post(path, path, {**payload, "stage":"outround", "outround_stage":"2"})
+    assert changed["redirected"] and changed["path"] == prefix, changed
+    with sqlite3.connect(f"{db.as_uri()}?mode=ro", uri=True) as database:
+        assert database.execute("SELECT round_label,elim_size FROM core_round WHERE id=?", (round_id,)).fetchone() == ("Final", 2)
+        assert database.execute("SELECT COUNT(*) FROM core_roundstats WHERE round_id=? AND (speaks IS NOT NULL OR ranks IS NOT NULL OR debater_role IS NOT NULL)",
+                                (round_id,)).fetchone() == (0,)
+    source_key = "api-provenance-fixture"
+    upload = "/core/admin/round-amendments/"
+    document = {"rounds":{"update":[{"tournament_id":event,"import_key":import_key,
+                                     "round_label":source_key}]}}
+
+    def upload_amendment(value):
+        driver.get(root + "/core/admin-tools/")
+        return driver.execute_async_script("""
+            const [data, done] = arguments;
+            const form = document.querySelector('form[action="/core/admin/round-amendments/"]');
+            const body = new FormData(form);
+            body.set('amendment_file',new Blob([data],{type:'application/json'}),'fixture-amendments.json');
+            fetch(form.action,{method:'POST',body}).then(async response => {
+                const page = new DOMParser().parseFromString(await response.text(), "text/html");
+                done({status:response.status,redirected:response.redirected,text:page.body.textContent});
+            }, () => done({status:0}));
+        """, json.dumps(value))
+
+    failed = upload_amendment({"actions":[{"type":"update_round","round_id":round_id,"round_label":"rollback"},
+                                        {"type":"update_round","round_id":99999999,"round_label":"missing"}]})
+    assert not failed["redirected"] and "Round matching query does not exist" in failed["text"], failed["status"]
+    with sqlite3.connect(f"{db.as_uri()}?mode=ro", uri=True) as database:
+        assert database.execute("SELECT round_label FROM core_round WHERE id=?", (round_id,)).fetchone() == ("Final",)
+    assert upload_amendment(document)["redirected"]
+    with sqlite3.connect(f"{db.as_uri()}?mode=ro", uri=True) as database:
+        assert database.execute("SELECT round_label FROM core_round WHERE id=?", (round_id,)).fetchone() == (source_key,)
+        source = database.execute("""SELECT i.id FROM core_tournamentimport i
+            JOIN core_importedroundmetadata_sources s ON s.tournamentimport_id=i.id
+            WHERE i.tournament_id=? AND i.import_type='mittab_bundle'""", (event,)).fetchone()[0]
+    moved = post(prefix, prefix + f"imports/{source}/move/", {f"import-{source}-target_tournament":target})
+    assert moved["redirected"] and moved["path"] == prefix, moved
+    destination = f"/core/admin/tournament-audit/{target}/"
+    with sqlite3.connect(f"{db.as_uri()}?mode=ro", uri=True) as database:
+        assert database.execute("SELECT tournament_id FROM core_tournamentimport WHERE id=?", (source,)).fetchone() == (target,)
+        assert database.execute("SELECT COUNT(*) FROM core_round WHERE tournament_id=? AND import_key='prelim-1'", (target,)).fetchone() == (1,)
+    removed = post(destination, destination + f"imports/{source}/delete/", {})
+    assert removed["redirected"] and removed["path"] == destination, removed
+    deleted = post(prefix, path + "delete/", {})
+    assert deleted["redirected"], deleted
+    with sqlite3.connect(f"{db.as_uri()}?mode=ro", uri=True) as database:
+        assert database.execute("SELECT COUNT(*) FROM core_round WHERE id=?", (round_id,)).fetchone() == (0,)
+        assert database.execute("SELECT COUNT(*) FROM core_round WHERE tournament_id=? AND import_key='prelim-1'", (target,)).fetchone() == (0,)
+    log = json.loads((Path(os.environ["BR_STATE"]) / "round-amendments.json").read_bytes())
+    assert [row["type"] for row in log["actions"]] == ["create_round","update_round","move_tournament_import",
+        "delete_tournament_import","delete_round"], log["actions"]
+    assert log["actions"][0]["import_key"] == import_key
+    driver.delete_all_cookies()
+
+
 def assert_agent_reads(django, rust, fixture):
     base = "/api/agent/v1/"
     authorization = "Bearer " + fixture["agent"]
@@ -1862,6 +1963,7 @@ def browser_checks(database, options, output):
         assert_speaks_statistics(driver, django, rust, fixture)
         assert_mittab_bundle_upload(driver, django, rust, fixture)
         assert_tournament_audit(driver, django, rust, fixture)
+        assert_tournament_audit_writes(driver, django, rust, fixture)
         assert_generated_codes(driver, django, rust, fixture)
         assert_entities(driver, django, rust, fixture)
         assert_school_admin(driver, django, rust, fixture)

@@ -1,0 +1,18 @@
+{% macro control(item) -%}
+    {% set name = item.name %}
+    {% if item.kind == "select" or item.kind == "person" %}
+        <select name="{{ name }}" id="id_{{ name }}"
+                class="{{ 'modelselect2' if item.kind == 'person' else 'form-control' }}"
+                {% if item.kind == "person" %}data-rust-select-url="/core/debaters/autocomplete"{% endif %}
+                {% if item.required %}required{% endif %}>
+            {% for choice in item.choices %}
+            <option value="{{ choice[0] }}"{% if choice[0] == item.value %} selected{% endif %}>{{ choice[1] }}</option>
+            {% endfor %}
+        </select>
+    {% else %}
+        <input type="{{ item.kind }}" name="{{ name }}" id="id_{{ name }}" value="{{ item.value }}" class="form-control"
+               {% if item.step %}step="{{ item.step }}"{% endif %}
+               {% if item.min is not none %}min="{{ item.min }}"{% endif %}
+               {% if item.limit %}maxlength="{{ item.limit }}"{% endif %}>
+    {% endif %}
+{%- endmacro %}

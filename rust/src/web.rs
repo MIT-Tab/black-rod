@@ -19,6 +19,14 @@ use crate::{
 
 const VIEWS: &[(&str, &str)] = &[
     (
+        "admin/tournament_round_ballot.html",
+        include_str!("../../core/templates/admin/tournament_round_ballot.html"),
+    ),
+    (
+        "admin/tournament_ballot_control.html",
+        include_str!("../templates/tournament_ballot_control.html"),
+    ),
+    (
         "admin/tournament_audit_detail.html",
         include_str!("../../core/templates/admin/tournament_audit_detail.html"),
     ),
@@ -644,6 +652,45 @@ fn adapt_scheduler(template: &str) -> String {
 fn adapt_template(name: &str, template: &str) -> String {
     let adapted;
     let template = match name {
+        "admin/tournament_round_ballot.html" => {
+            let mut html = template
+                .replace(
+                    "{{ form.media }}",
+                    r#"{% from "admin/tournament_ballot_control.html" import control %}"#,
+                )
+                .replace("form.non_field_errors", "errors")
+                .replace("form.ballot_rows", "rows");
+            for name in [
+                "canonical_round_name",
+                "source_round_name",
+                "stage",
+                "outround_stage",
+                "round_number",
+                "victor",
+            ] {
+                html = html
+                    .replace(
+                        &format!("{{{{ form.{name}.id_for_label }}}}"),
+                        &format!("id_{name}"),
+                    )
+                    .replace(
+                        &format!("form.{name}.errors"),
+                        &format!("fields.{name}.errors"),
+                    )
+                    .replace(
+                        &format!("{{{{ form.{name} }}}}"),
+                        &format!("{{{{ control(fields.{name}) }}}}"),
+                    );
+            }
+            for name in ["debater", "role", "source_name", "speaks", "ranks"] {
+                html = html.replace(
+                    &format!("{{{{ row.{name} }}}}"),
+                    &format!("{{{{ control(row.{name}) }}}}"),
+                );
+            }
+            adapted = html;
+            &adapted
+        }
         "admin/tournament_pipeline_audit.html" | "admin/tournament_audit_detail.html" => {
             adapted = template
                 .replace(r#"|join:", ""#, r#"|join(", ")"#)

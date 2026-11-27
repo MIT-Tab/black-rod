@@ -1,5 +1,5 @@
 mod bundle;
-mod identity;
+pub(crate) mod identity;
 pub(crate) mod results;
 pub(crate) mod source;
 
@@ -16,7 +16,7 @@ use sqlx::AnyConnection;
 use crate::{ApiError, AppState, admin, flash, login, session::User, web};
 
 #[derive(Debug)]
-enum Error {
+pub(crate) enum Error {
     Invalid(String),
     Database(ApiError),
 }
@@ -37,13 +37,13 @@ fn invalid(message: impl Into<String>) -> Error {
     Error::Invalid(message.into())
 }
 
-fn as_id(value: &Value) -> Option<i64> {
+pub(crate) fn as_id(value: &Value) -> Option<i64> {
     value
         .as_i64()
         .or_else(|| value.as_str()?.trim().parse().ok())
 }
 
-fn truthy(value: &Value) -> bool {
+pub(crate) fn truthy(value: &Value) -> bool {
     match value {
         Value::Null => false,
         Value::Bool(value) => *value,
@@ -54,7 +54,7 @@ fn truthy(value: &Value) -> bool {
     }
 }
 
-fn text(value: &Value) -> String {
+pub(crate) fn text(value: &Value) -> String {
     if !truthy(value) {
         String::new()
     } else {

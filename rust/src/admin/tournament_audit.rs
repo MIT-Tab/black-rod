@@ -1,3 +1,5 @@
+pub(crate) mod edit;
+
 use std::{
     cmp::Ordering,
     collections::{BTreeMap, BTreeSet},

@@ -10,7 +10,7 @@ use super::{
 };
 use crate::{ApiError, claims, delete_relations, tournament_profile::edit};
 
-pub(super) enum Failure {
+pub(crate) enum Failure {
     Invalid(String),
     Stale(Value),
     Database(ApiError),

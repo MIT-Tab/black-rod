@@ -487,6 +487,13 @@ pub fn app(state: AppState) -> Router {
         )
         .route("/core/admin-tools/", get(admin::tools))
         .route(
+            "/core/admin/round-amendments/",
+            get(admin::amendment::upload)
+                .post(admin::amendment::upload)
+                .layer(axum::extract::DefaultBodyLimit::max(64 * 1024 * 1024)),
+        )
+        .route("/core/admin/round-amendments", get(append_slash))
+        .route(
             "/core/admin/tournament-pipeline-audit/",
             get(admin::tournament_audit::overview),
         )
@@ -496,6 +503,26 @@ pub fn app(state: AppState) -> Router {
             get(admin::tournament_audit::event),
         )
         .route("/core/admin/tournament-audit/{id}", get(append_slash))
+        .route(
+            "/core/admin/tournament-audit/{id}/round/new/",
+            get(admin::tournament_audit::edit::page).post(admin::tournament_audit::edit::page),
+        )
+        .route(
+            "/core/admin/tournament-audit/{id}/round/{round}/",
+            get(admin::tournament_audit::edit::page).post(admin::tournament_audit::edit::page),
+        )
+        .route(
+            "/core/admin/tournament-audit/{id}/round/{round}/delete/",
+            axum::routing::post(admin::tournament_audit::edit::change),
+        )
+        .route(
+            "/core/admin/tournament-audit/{id}/imports/{source}/delete/",
+            axum::routing::post(admin::tournament_audit::edit::change),
+        )
+        .route(
+            "/core/admin/tournament-audit/{id}/imports/{source}/move/",
+            axum::routing::post(admin::tournament_audit::edit::change),
+        )
         .route("/core/admin/speaks-stats/", get(admin::speaks::page))
         .route("/core/admin/speaks-stats", get(append_slash))
         .route("/core/admin-tools", get(append_slash))

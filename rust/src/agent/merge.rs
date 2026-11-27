@@ -105,6 +105,12 @@ pub(super) struct Actor<'a> {
     pub(super) reason: &'a str,
 }
 
+pub(crate) struct AuditActor<'a> {
+    pub(crate) user: Option<i64>,
+    pub(crate) reason: &'a str,
+    pub(crate) context: Value,
+}
+
 async fn log(
     conn: &mut AnyConnection,
     journal: &mut Journal,
@@ -112,14 +118,8 @@ async fn log(
     source: &Value,
     target: &Value,
     snapshot: Value,
-    actor: Actor<'_>,
+    actor: AuditActor<'_>,
 ) -> Result<(), Failure> {
-    let owner = sqlx::query_scalar::<_, i64>(
-        "SELECT CAST(created_by_id AS BIGINT) FROM core_agentcredential WHERE id=$1",
-    )
-    .bind(actor.credential)
-    .fetch_one(&mut *conn)
-    .await?;
     let name = |record: &Value| {
         record["name"]
             .as_str()
@@ -136,12 +136,9 @@ async fn log(
         ("synthetic_name".to_owned(), json!(name(source))),
         ("resolved_to_id".to_owned(), target["id"].clone()),
         ("resolved_to_name".to_owned(), json!(name(target))),
-        ("actor_id".to_owned(), json!(owner)),
+        ("actor_id".to_owned(), json!(actor.user)),
         ("reason".to_owned(), json!(actor.reason)),
-        (
-            "source_context".to_owned(),
-            json!({"agent_credential_id":actor.credential}),
-        ),
+        ("source_context".to_owned(), actor.context),
         ("synthetic_snapshot".to_owned(), snapshot),
         (
             "created_at".to_owned(),
@@ -179,12 +176,7 @@ pub(super) async fn apply(
             .and_then(Value::as_str)
             .unwrap_or_default()
     };
-    let (resource, table) = match entity {
-        "school" => ("schools", "core_school"),
-        "team" => ("teams", "core_team"),
-        "debater" => ("debaters", "core_debater"),
-        _ => return Err(invalid("entity_type must be debater, school, or team.")),
-    };
+    let (resource, table) = entity_table(entity)?;
     let model = &MODELS[resource];
     let source_id = operation
         .get("source_id")
@@ -211,6 +203,74 @@ pub(super) async fn apply(
         debater::merge(conn, journal, target_id, source_id).await?;
         return Ok(json!({"entity_type":entity,"source_id":source_id,"target_id":target_id}));
     }
+    let user = sqlx::query_scalar::<_, i64>(
+        "SELECT CAST(created_by_id AS BIGINT) FROM core_agentcredential WHERE id=$1",
+    )
+    .bind(actor.credential)
+    .fetch_one(&mut *conn)
+    .await?;
+    resolve_loaded(
+        conn,
+        journal,
+        entity,
+        table,
+        source,
+        target,
+        AuditActor {
+            user: Some(user),
+            reason: actor.reason,
+            context: json!({"agent_credential_id":actor.credential}),
+        },
+    )
+    .await?;
+    Ok(json!({"entity_type":entity,"source_id":source_id,"target_id":target_id}))
+}
+
+fn entity_table(entity: &str) -> Result<(&'static str, &'static str), Failure> {
+    Ok(match entity {
+        "school" => ("schools", "core_school"),
+        "team" => ("teams", "core_team"),
+        "debater" => ("debaters", "core_debater"),
+        _ => return Err(invalid("entity_type must be debater, school, or team.")),
+    })
+}
+
+pub(crate) async fn resolve(
+    conn: &mut AnyConnection,
+    entity: &str,
+    source_id: i64,
+    target_id: i64,
+    actor: AuditActor<'_>,
+) -> Result<(), Failure> {
+    let (resource, table) = entity_table(entity)?;
+    if source_id == target_id {
+        return Err(invalid("Cannot merge an identity into itself."));
+    }
+    let source = read(conn, &MODELS[resource], source_id).await?;
+    let target = read(conn, &MODELS[resource], target_id).await?;
+    resolve_loaded(
+        conn,
+        &mut Journal::default(),
+        entity,
+        table,
+        source,
+        target,
+        actor,
+    )
+    .await
+}
+
+async fn resolve_loaded(
+    conn: &mut AnyConnection,
+    journal: &mut Journal,
+    entity: &str,
+    table: &'static str,
+    source: Value,
+    target: Value,
+    actor: AuditActor<'_>,
+) -> Result<(), Failure> {
+    let source_id = source["id"].as_i64().ok_or(ApiError::Serialization)?;
+    let target_id = target["id"].as_i64().ok_or(ApiError::Serialization)?;
     if source["synthetic"] != true {
         return Err(invalid(format!(
             "Synthetic source {entity} must have synthetic=True"
@@ -229,7 +289,7 @@ pub(super) async fn apply(
         target["name"] = json!(debater::name(&target));
         log(conn, journal, entity, &source, &target, snapshot, actor).await?;
         debater::merge(conn, journal, target_id, source_id).await?;
-        return Ok(json!({"entity_type":entity,"source_id":source_id,"target_id":target_id}));
+        return Ok(());
     }
     let snapshot = if entity == "school" {
         for (label, field) in [
@@ -266,5 +326,5 @@ pub(super) async fn apply(
     };
     log(conn, journal, entity, &source, &target, snapshot, actor).await?;
     erase(conn, journal, table, source_id).await?;
-    Ok(json!({"entity_type":entity,"source_id":source_id,"target_id":target_id}))
+    Ok(())
 }

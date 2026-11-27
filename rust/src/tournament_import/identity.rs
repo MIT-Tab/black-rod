@@ -19,8 +19,8 @@ fn split(name: &str) -> Result<(&str, String), Error> {
 }
 
 #[derive(Clone)]
-pub(super) struct Person {
-    pub(super) id: i64,
+pub(crate) struct Person {
+    pub(crate) id: i64,
     pub(super) name: String,
 }
 
@@ -84,7 +84,7 @@ async fn school(conn: &mut AnyConnection, payload: &Value) -> Result<Option<i64>
     ))
 }
 
-async fn synthetic(
+pub(crate) async fn synthetic(
     conn: &mut AnyConnection,
     name: &str,
     school: Option<i64>,
@@ -179,7 +179,7 @@ pub(super) async fn judge(
     Ok(synthetic(conn, name, None, season).await?.id)
 }
 
-pub(super) async fn alias(conn: &mut AnyConnection, person: i64, name: &str) -> Result<i64, Error> {
+pub(crate) async fn alias(conn: &mut AnyConnection, person: i64, name: &str) -> Result<i64, Error> {
     if name.is_empty() {
         return Err(invalid(
             "Alias payloads require a source_name or a debater with a name.",
@@ -223,7 +223,7 @@ pub(super) async fn alias(conn: &mut AnyConnection, person: i64, name: &str) -> 
         .await?)
 }
 
-pub(super) async fn team(conn: &mut AnyConnection, roster: &[i64]) -> Result<i64, Error> {
+pub(crate) async fn team(conn: &mut AnyConnection, roster: &[i64]) -> Result<i64, Error> {
     let query=match roster {
         [_] => "SELECT CAST(m.team_id AS BIGINT) FROM core_team_debaters m
             WHERE m.debater_id=$1 AND (SELECT COUNT(*) FROM core_team_debaters t WHERE t.team_id=m.team_id)=1

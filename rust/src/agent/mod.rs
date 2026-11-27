@@ -1,8 +1,8 @@
 mod batch;
 mod catalog;
 pub(crate) mod journal;
-mod merge;
-mod mutation;
+pub(crate) mod merge;
+pub(crate) mod mutation;
 
 use std::collections::BTreeMap;
 
