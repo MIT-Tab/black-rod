@@ -103,6 +103,8 @@ def model_config(request, model, model_admin):
                 "attributes": {k: str(v) if not isinstance(v, (bool, int)) else v for k, v in attributes.items()},
                 "label_suffix": field.label_suffix,
                 "wrapped": wrapped,
+                "related_delete": wrapped and widget.can_delete_related,
+                "empty_label": getattr(field, "empty_label", None),
             }
             if type(actual).__name__ in ("RadioSelect", "Select") and hasattr(field, "_choices"):
                 widgets[name]["choices"] = [(str(value), str(label)) for value, label in field.choices]
@@ -161,6 +163,7 @@ def model_config(request, model, model_admin):
         "list_links": model_admin.get_list_display_links(request, model_admin.get_list_display(request)),
         "ordering": model_admin.get_ordering(request) or opts.ordering or ["-pk"],
         "choice_ordering": model_admin.get_ordering(request) or opts.ordering or ["pk"],
+        "model_ordering": opts.ordering,
         "filter": [display_filter(value) for value in model_admin.get_list_filter(request)],
         "search": model_admin.get_search_fields(request),
         "per_page": model_admin.list_per_page,

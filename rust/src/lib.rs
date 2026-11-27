@@ -22,6 +22,7 @@ mod merge_requests;
 mod motion;
 pub use live::Live;
 mod doty;
+mod drf;
 mod oauth;
 mod outreach;
 mod partnership;
@@ -332,7 +333,10 @@ fn api_routes() -> Router<AppState> {
 
 fn local_api(state: AppState) -> Router {
     api_routes()
-        .layer(axum::middleware::from_fn(api_protocol))
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            api_protocol,
+        ))
         .with_state(state)
 }
 
@@ -891,7 +895,10 @@ pub fn app(state: AppState) -> Router {
         .route("/llm/oty-guide/", get(oty_guide))
         .route("/llm/oty-guide", get(append_slash))
         .fallback(|| async { StatusCode::NOT_FOUND })
-        .layer(axum::middleware::from_fn(api_protocol))
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            api_protocol,
+        ))
         .layer(axum::middleware::from_fn(security_headers))
         .with_state(state)
 }
@@ -924,15 +931,44 @@ fn public_api_path(path: &str) -> bool {
         })
 }
 
-async fn api_protocol(request: Request, next: axum::middleware::Next) -> Response {
-    if !public_api_path(request.uri().path()) {
+async fn api_protocol(
+    State(state): State<AppState>,
+    request: Request,
+    next: axum::middleware::Next,
+) -> Response {
+    let path = request.uri().path();
+    let public = public_api_path(path);
+    let private = matches!(
+        path,
+        "/api/private/forum-profiles/" | "/api/private/debater-emails/"
+    ) || path.starts_with("/api/agent/v1/");
+    if !public && !private {
         return next.run(request).await;
     }
     let head = *request.method() == Method::HEAD;
     let format = url::form_urlencoded::parse(request.uri().query().unwrap_or_default().as_bytes())
         .filter(|(name, _)| name == "format")
-        .map(|(_, value)| value)
+        .map(|(_, value)| value.into_owned())
         .last();
+    let browse = format
+        .as_deref()
+        .is_none_or(|format| matches!(format, "" | "json" | "api"))
+        && drf::wants_html(request.headers(), format.as_deref());
+    let view = browse.then(|| {
+        (
+            request.uri().clone(),
+            request.method().clone(),
+            request.headers().clone(),
+        )
+    });
+    if private {
+        let result = next.run(request).await;
+        return if let Some((uri, method, headers)) = view {
+            drf::response(&state, &uri, &method, &headers, result).await
+        } else {
+            result
+        };
+    }
     let mut indent = 0;
     let mut suitable = false;
     for media in request
@@ -960,7 +996,9 @@ async fn api_protocol(request: Request, next: axum::middleware::Next) -> Respons
         .is_some_and(|format| !matches!(format, "" | "json" | "api"))
     {
         negotiation_error(StatusCode::NOT_FOUND, "Not found.")
-    } else if !suitable && request.headers().contains_key(header::ACCEPT) {
+    } else if (!suitable || (format.as_deref() == Some("api") && !browse))
+        && request.headers().contains_key(header::ACCEPT)
+    {
         negotiation_error(
             StatusCode::NOT_ACCEPTABLE,
             "Could not satisfy the request Accept header.",
@@ -977,7 +1015,17 @@ async fn api_protocol(request: Request, next: axum::middleware::Next) -> Respons
         next.run(request).await
     };
     if head {
-        return response.map(|_| axum::body::Body::empty());
+        let mut response = response.map(|_| axum::body::Body::empty());
+        if browse {
+            response.headers_mut().insert(
+                header::CONTENT_TYPE,
+                HeaderValue::from_static("text/html; charset=utf-8"),
+            );
+        }
+        return response;
+    }
+    if let Some((uri, method, headers)) = view {
+        return drf::response(&state, &uri, &method, &headers, response).await;
     }
     if indent == 0
         || response

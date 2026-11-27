@@ -1,0 +1,2517 @@
+{
+  "schools": {
+    "name": "Active School List Api",
+    "description": "API endpoint to list schools with recent activity.\n\nGET /api/schools/\nReturns: Top 25 schools by number of active debaters in last 2 years\nCached for 5 minutes.",
+    "shape": {
+      "keys": [
+        "count",
+        "schools"
+      ],
+      "children": {
+        "schools": {
+          "item": {
+            "keys": [
+              "id",
+              "name",
+              "included_in_oty",
+              "url",
+              "api_url"
+            ],
+            "children": {}
+          }
+        }
+      }
+    }
+  },
+  "all-schools": {
+    "name": "All School List Api",
+    "description": "API endpoint to list all schools.\n\nGET /api/schools/all/\nReturns: List of all schools in the database\nCached for 5 minutes.",
+    "shape": {
+      "keys": [
+        "count",
+        "schools"
+      ],
+      "children": {
+        "schools": {
+          "item": {
+            "keys": [
+              "id",
+              "name",
+              "included_in_oty",
+              "url",
+              "api_url"
+            ],
+            "children": {}
+          }
+        }
+      }
+    }
+  },
+  "schedule": {
+    "name": "Schedule Api",
+    "description": "Expose the APDA tournament schedule grouped by month/week.",
+    "shape": {
+      "keys": [
+        "season",
+        "season_display",
+        "notes",
+        "months",
+        "links"
+      ],
+      "children": {
+        "months": {
+          "item": {
+            "keys": [
+              "month",
+              "display",
+              "year",
+              "weeks"
+            ],
+            "children": {
+              "weeks": {
+                "item": {
+                  "keys": [
+                    "date",
+                    "one_more",
+                    "tournaments"
+                  ],
+                  "children": {
+                    "tournaments": {
+                      "item": {
+                        "keys": [
+                          "tournament",
+                          "otys"
+                        ],
+                        "children": {
+                          "tournament": {
+                            "keys": [
+                              "id",
+                              "name",
+                              "season",
+                              "season_display",
+                              "date",
+                              "display",
+                              "num_teams",
+                              "num_novice_debaters",
+                              "host",
+                              "url",
+                              "api_url"
+                            ],
+                            "children": {
+                              "host": {
+                                "keys": [
+                                  "id",
+                                  "name",
+                                  "included_in_oty",
+                                  "url",
+                                  "api_url"
+                                ],
+                                "children": {}
+                              }
+                            }
+                          },
+                          "otys": {
+                            "keys": [
+                              "toty_points",
+                              "soty_points",
+                              "coty_points",
+                              "qual_type",
+                              "autoqual_bar",
+                              "notes"
+                            ],
+                            "children": {}
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "links": {
+          "keys": [
+            "self"
+          ],
+          "children": {}
+        }
+      }
+    }
+  },
+  "standings": {
+    "name": "Season Standings Api",
+    "description": "Return TOTY/COTY/SOTY/NOTY/Online standings in a machine-friendly format.\nRequires a season query parameter (defaults to CURRENT_SEASON).",
+    "shape": {
+      "keys": [
+        "season",
+        "season_display",
+        "available_seasons",
+        "render_noty",
+        "using_online_quals",
+        "online_qual_bar",
+        "standings",
+        "links"
+      ],
+      "children": {
+        "available_seasons": {
+          "item": {
+            "keys": [
+              "value",
+              "label"
+            ],
+            "children": {}
+          }
+        },
+        "standings": {
+          "keys": [
+            "toty",
+            "soty",
+            "coty"
+          ],
+          "children": {
+            "toty": {
+              "item": {
+                "keys": [
+                  "season",
+                  "season_display",
+                  "place_display",
+                  "points",
+                  "markers",
+                  "team"
+                ],
+                "children": {
+                  "markers": {
+                    "item": {
+                      "keys": [
+                        "slot",
+                        "points",
+                        "tournament"
+                      ],
+                      "children": {
+                        "tournament": {
+                          "keys": [
+                            "id",
+                            "name",
+                            "display",
+                            "date",
+                            "url"
+                          ],
+                          "children": {}
+                        }
+                      }
+                    }
+                  },
+                  "team": {
+                    "keys": [
+                      "id",
+                      "name",
+                      "debaters",
+                      "url"
+                    ],
+                    "children": {
+                      "debaters": {
+                        "item": {
+                          "keys": [
+                            "id",
+                            "name",
+                            "school_id",
+                            "school_name",
+                            "url"
+                          ],
+                          "children": {}
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "soty": {
+              "item": {
+                "keys": [
+                  "season",
+                  "season_display",
+                  "place_display",
+                  "points",
+                  "markers",
+                  "debater",
+                  "school"
+                ],
+                "children": {
+                  "markers": {
+                    "item": {
+                      "keys": [
+                        "slot",
+                        "points",
+                        "tournament"
+                      ],
+                      "children": {
+                        "tournament": {
+                          "keys": [
+                            "id",
+                            "name",
+                            "display",
+                            "date",
+                            "url"
+                          ],
+                          "children": {}
+                        }
+                      }
+                    }
+                  },
+                  "debater": {
+                    "keys": [
+                      "id",
+                      "name",
+                      "school_id",
+                      "school_name",
+                      "url"
+                    ],
+                    "children": {}
+                  },
+                  "school": {
+                    "keys": [
+                      "id",
+                      "name",
+                      "url"
+                    ],
+                    "children": {}
+                  }
+                }
+              }
+            },
+            "coty": {
+              "item": {
+                "keys": [
+                  "season",
+                  "season_display",
+                  "place_display",
+                  "points",
+                  "markers",
+                  "school",
+                  "breakdown"
+                ],
+                "children": {
+                  "school": {
+                    "keys": [
+                      "id",
+                      "name",
+                      "url"
+                    ],
+                    "children": {}
+                  },
+                  "breakdown": {
+                    "item": {
+                      "keys": [
+                        "debater",
+                        "points",
+                        "qualled",
+                        "contribution",
+                        "auto_quals"
+                      ],
+                      "children": {
+                        "debater": {
+                          "keys": [
+                            "id",
+                            "name",
+                            "first_name",
+                            "last_name",
+                            "status",
+                            "status_code",
+                            "school_id",
+                            "school_name",
+                            "school",
+                            "url",
+                            "api_url"
+                          ],
+                          "children": {
+                            "school": {
+                              "keys": [
+                                "id",
+                                "name",
+                                "included_in_oty",
+                                "url",
+                                "api_url"
+                              ],
+                              "children": {}
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "links": {
+          "keys": [
+            "self"
+          ],
+          "children": {}
+        }
+      }
+    }
+  },
+  "replay": {
+    "name": "Season Standings Replay Api",
+    "description": "Return TOTY/SOTY/COTY standings along with all season markers for replay visualizations.",
+    "shape": {
+      "keys": [
+        "season",
+        "season_display",
+        "available_seasons",
+        "standings",
+        "timeline_dates",
+        "marker_limits",
+        "links"
+      ],
+      "children": {
+        "available_seasons": {
+          "item": {
+            "keys": [
+              "value",
+              "label"
+            ],
+            "children": {}
+          }
+        },
+        "standings": {
+          "keys": [
+            "toty",
+            "soty",
+            "coty"
+          ],
+          "children": {
+            "toty": {
+              "item": {
+                "keys": [
+                  "season",
+                  "season_display",
+                  "place_display",
+                  "points",
+                  "markers",
+                  "id",
+                  "place",
+                  "tied",
+                  "team",
+                  "all_markers"
+                ],
+                "children": {
+                  "markers": {
+                    "item": {
+                      "keys": [
+                        "slot",
+                        "points",
+                        "tournament"
+                      ],
+                      "children": {
+                        "tournament": {
+                          "keys": [
+                            "id",
+                            "name",
+                            "display",
+                            "date",
+                            "url"
+                          ],
+                          "children": {}
+                        }
+                      }
+                    }
+                  },
+                  "team": {
+                    "keys": [
+                      "id",
+                      "name",
+                      "debaters",
+                      "url"
+                    ],
+                    "children": {
+                      "debaters": {
+                        "item": {
+                          "keys": [
+                            "id",
+                            "name",
+                            "school_id",
+                            "school_name",
+                            "url"
+                          ],
+                          "children": {}
+                        }
+                      }
+                    }
+                  },
+                  "all_markers": {
+                    "item": {
+                      "keys": [
+                        "points",
+                        "place",
+                        "ghost_points",
+                        "type",
+                        "earned_on",
+                        "tournament",
+                        "result_id",
+                        "source_team_id",
+                        "from_reaff"
+                      ],
+                      "children": {
+                        "tournament": {
+                          "keys": [
+                            "id",
+                            "name",
+                            "display",
+                            "date",
+                            "url"
+                          ],
+                          "children": {}
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "soty": {
+              "item": {
+                "keys": [
+                  "season",
+                  "season_display",
+                  "place_display",
+                  "points",
+                  "markers",
+                  "id",
+                  "place",
+                  "tied",
+                  "debater",
+                  "school",
+                  "all_markers"
+                ],
+                "children": {
+                  "markers": {
+                    "item": {
+                      "keys": [
+                        "slot",
+                        "points",
+                        "tournament"
+                      ],
+                      "children": {
+                        "tournament": {
+                          "keys": [
+                            "id",
+                            "name",
+                            "display",
+                            "date",
+                            "url"
+                          ],
+                          "children": {}
+                        }
+                      }
+                    }
+                  },
+                  "debater": {
+                    "keys": [
+                      "id",
+                      "name",
+                      "school_id",
+                      "school_name",
+                      "url"
+                    ],
+                    "children": {}
+                  },
+                  "school": {
+                    "keys": [
+                      "id",
+                      "name",
+                      "url"
+                    ],
+                    "children": {}
+                  },
+                  "all_markers": {
+                    "item": {
+                      "keys": [
+                        "points",
+                        "place",
+                        "tie",
+                        "type",
+                        "earned_on",
+                        "tournament",
+                        "result_id",
+                        "source_debater_id",
+                        "from_reaff"
+                      ],
+                      "children": {
+                        "tournament": {
+                          "keys": [
+                            "id",
+                            "name",
+                            "display",
+                            "date",
+                            "url"
+                          ],
+                          "children": {}
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "coty": {
+              "item": {
+                "keys": [
+                  "season",
+                  "season_display",
+                  "place_display",
+                  "points",
+                  "place",
+                  "tied",
+                  "school",
+                  "markers",
+                  "all_markers"
+                ],
+                "children": {
+                  "school": {
+                    "keys": [
+                      "id",
+                      "name",
+                      "url"
+                    ],
+                    "children": {}
+                  },
+                  "all_markers": {
+                    "item": {
+                      "keys": [
+                        "points",
+                        "marker_type",
+                        "place",
+                        "ghost_points",
+                        "earned_on",
+                        "tournament",
+                        "result_id",
+                        "debater",
+                        "raw_points"
+                      ],
+                      "children": {
+                        "tournament": {
+                          "keys": [
+                            "id",
+                            "name",
+                            "display",
+                            "date",
+                            "url"
+                          ],
+                          "children": {}
+                        },
+                        "debater": {
+                          "keys": [
+                            "id",
+                            "name",
+                            "school_id",
+                            "school_name",
+                            "url"
+                          ],
+                          "children": {}
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "marker_limits": {
+          "keys": [
+            "toty",
+            "soty",
+            "coty"
+          ],
+          "children": {}
+        },
+        "links": {
+          "keys": [
+            "self",
+            "html"
+          ],
+          "children": {}
+        }
+      }
+    }
+  },
+  "through": {
+    "name": "Standings Through Date Api",
+    "description": "Return standings snapshots through a supplied ISO date.",
+    "shape": {
+      "keys": [
+        "season",
+        "season_display",
+        "through",
+        "marker_limits",
+        "standings",
+        "links"
+      ],
+      "children": {
+        "marker_limits": {
+          "keys": [
+            "toty",
+            "soty",
+            "coty"
+          ],
+          "children": {}
+        },
+        "standings": {
+          "keys": [
+            "toty",
+            "soty",
+            "coty"
+          ],
+          "children": {
+            "toty": {
+              "item": {
+                "keys": [
+                  "id",
+                  "season",
+                  "season_display",
+                  "markers",
+                  "points",
+                  "type",
+                  "team",
+                  "place",
+                  "tied",
+                  "place_display"
+                ],
+                "children": {
+                  "markers": {
+                    "item": {
+                      "keys": [
+                        "points",
+                        "place",
+                        "ghost_points",
+                        "type",
+                        "earned_on",
+                        "tournament",
+                        "result_id",
+                        "source_team_id",
+                        "from_reaff"
+                      ],
+                      "children": {
+                        "tournament": {
+                          "keys": [
+                            "id",
+                            "name",
+                            "display",
+                            "date",
+                            "url"
+                          ],
+                          "children": {}
+                        }
+                      }
+                    }
+                  },
+                  "team": {
+                    "keys": [
+                      "id",
+                      "name",
+                      "debaters",
+                      "url"
+                    ],
+                    "children": {
+                      "debaters": {
+                        "item": {
+                          "keys": [
+                            "id",
+                            "name",
+                            "school_id",
+                            "school_name",
+                            "url"
+                          ],
+                          "children": {}
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "soty": {
+              "item": {
+                "keys": [
+                  "id",
+                  "season",
+                  "season_display",
+                  "markers",
+                  "points",
+                  "type",
+                  "debater",
+                  "school",
+                  "place",
+                  "tied",
+                  "place_display"
+                ],
+                "children": {
+                  "markers": {
+                    "item": {
+                      "keys": [
+                        "points",
+                        "place",
+                        "tie",
+                        "type",
+                        "earned_on",
+                        "tournament",
+                        "result_id",
+                        "source_debater_id",
+                        "from_reaff"
+                      ],
+                      "children": {
+                        "tournament": {
+                          "keys": [
+                            "id",
+                            "name",
+                            "display",
+                            "date",
+                            "url"
+                          ],
+                          "children": {}
+                        }
+                      }
+                    }
+                  },
+                  "debater": {
+                    "keys": [
+                      "id",
+                      "name",
+                      "school_id",
+                      "school_name",
+                      "url"
+                    ],
+                    "children": {}
+                  },
+                  "school": {
+                    "keys": [
+                      "id",
+                      "name",
+                      "url"
+                    ],
+                    "children": {}
+                  }
+                }
+              }
+            },
+            "coty": {
+              "item": {
+                "keys": [
+                  "id",
+                  "season",
+                  "season_display",
+                  "markers",
+                  "points",
+                  "type",
+                  "school",
+                  "place",
+                  "tied",
+                  "place_display"
+                ],
+                "children": {
+                  "markers": {
+                    "item": {
+                      "keys": [
+                        "points",
+                        "marker_type",
+                        "place",
+                        "ghost_points",
+                        "earned_on",
+                        "tournament",
+                        "result_id",
+                        "debater",
+                        "raw_points"
+                      ],
+                      "children": {
+                        "tournament": {
+                          "keys": [
+                            "id",
+                            "name",
+                            "display",
+                            "date",
+                            "url"
+                          ],
+                          "children": {}
+                        },
+                        "debater": {
+                          "keys": [
+                            "id",
+                            "name",
+                            "school_id",
+                            "school_name",
+                            "url"
+                          ],
+                          "children": {}
+                        }
+                      }
+                    }
+                  },
+                  "school": {
+                    "keys": [
+                      "id",
+                      "name",
+                      "url"
+                    ],
+                    "children": {}
+                  }
+                }
+              }
+            }
+          }
+        },
+        "links": {
+          "keys": [
+            "self",
+            "replay_api",
+            "replay_html",
+            "full_standings"
+          ],
+          "children": {}
+        }
+      }
+    }
+  },
+  "school": {
+    "name": "School Detail Api",
+    "description": "Season-aware school profile with COTY history, hosted tournaments, and roster info.",
+    "shape": {
+      "keys": [
+        "school",
+        "season",
+        "season_display",
+        "available_seasons",
+        "coty_history",
+        "hosted_tournaments",
+        "season_summary",
+        "links"
+      ],
+      "children": {
+        "school": {
+          "keys": [
+            "id",
+            "name",
+            "included_in_oty",
+            "url",
+            "api_url"
+          ],
+          "children": {}
+        },
+        "available_seasons": {
+          "item": {
+            "keys": [
+              "value",
+              "label"
+            ],
+            "children": {}
+          }
+        },
+        "coty_history": {
+          "item": {
+            "keys": [
+              "season",
+              "season_display",
+              "place_display",
+              "points",
+              "markers",
+              "id",
+              "place",
+              "tied",
+              "school"
+            ],
+            "children": {
+              "school": {
+                "keys": [
+                  "id",
+                  "name",
+                  "url"
+                ],
+                "children": {}
+              }
+            }
+          }
+        },
+        "hosted_tournaments": {
+          "item": {
+            "keys": [
+              "id",
+              "name",
+              "season",
+              "season_display",
+              "date",
+              "display",
+              "num_teams",
+              "num_novice_debaters",
+              "host",
+              "url",
+              "api_url"
+            ],
+            "children": {
+              "host": {
+                "keys": [
+                  "id",
+                  "name",
+                  "included_in_oty",
+                  "url",
+                  "api_url"
+                ],
+                "children": {}
+              }
+            }
+          }
+        },
+        "season_summary": {
+          "keys": [
+            "season",
+            "season_display",
+            "members",
+            "coty_breakdown"
+          ],
+          "children": {}
+        },
+        "links": {
+          "keys": [
+            "self"
+          ],
+          "children": {}
+        }
+      }
+    }
+  },
+  "debater": {
+    "name": "Debater Detail Api",
+    "description": "Return a debater's public profile, standings history, and tournament results.",
+    "shape": {
+      "keys": [
+        "debater",
+        "first_season",
+        "latest_season",
+        "is_dino",
+        "contact_preferences",
+        "also_debated_under",
+        "teams",
+        "standings",
+        "season_summaries",
+        "videos",
+        "links"
+      ],
+      "children": {
+        "debater": {
+          "keys": [
+            "id",
+            "name",
+            "first_name",
+            "last_name",
+            "status",
+            "status_code",
+            "school_id",
+            "school_name",
+            "school",
+            "url",
+            "api_url"
+          ],
+          "children": {
+            "school": {
+              "keys": [
+                "id",
+                "name",
+                "included_in_oty",
+                "url",
+                "api_url"
+              ],
+              "children": {}
+            }
+          }
+        },
+        "contact_preferences": {
+          "keys": [
+            "paradigm_url",
+            "to_outreach",
+            "judge_outreach"
+          ],
+          "children": {}
+        },
+        "teams": {
+          "item": {
+            "keys": [
+              "team",
+              "tournament_count",
+              "toty_points"
+            ],
+            "children": {
+              "team": {
+                "keys": [
+                  "id",
+                  "name",
+                  "hybrid",
+                  "debaters",
+                  "url",
+                  "api_url"
+                ],
+                "children": {
+                  "debaters": {
+                    "item": {
+                      "keys": [
+                        "id",
+                        "name",
+                        "first_name",
+                        "last_name",
+                        "status",
+                        "status_code",
+                        "school_id",
+                        "school_name",
+                        "school",
+                        "url",
+                        "api_url"
+                      ],
+                      "children": {
+                        "school": {
+                          "keys": [
+                            "id",
+                            "name",
+                            "included_in_oty",
+                            "url",
+                            "api_url"
+                          ],
+                          "children": {}
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "standings": {
+          "keys": [
+            "toty",
+            "soty",
+            "noty"
+          ],
+          "children": {
+            "toty": {
+              "item": {
+                "keys": [
+                  "season",
+                  "season_display",
+                  "place_display",
+                  "points",
+                  "markers",
+                  "id",
+                  "place",
+                  "tied",
+                  "team"
+                ],
+                "children": {
+                  "markers": {
+                    "item": {
+                      "keys": [
+                        "slot",
+                        "points",
+                        "tournament"
+                      ],
+                      "children": {
+                        "tournament": {
+                          "keys": [
+                            "id",
+                            "name",
+                            "display",
+                            "date",
+                            "url"
+                          ],
+                          "children": {}
+                        }
+                      }
+                    }
+                  },
+                  "team": {
+                    "keys": [
+                      "id",
+                      "name",
+                      "debaters",
+                      "url"
+                    ],
+                    "children": {
+                      "debaters": {
+                        "item": {
+                          "keys": [
+                            "id",
+                            "name",
+                            "school_id",
+                            "school_name",
+                            "url"
+                          ],
+                          "children": {}
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "soty": {
+              "item": {
+                "keys": [
+                  "season",
+                  "season_display",
+                  "place_display",
+                  "points",
+                  "markers",
+                  "id",
+                  "place",
+                  "tied",
+                  "debater",
+                  "school"
+                ],
+                "children": {
+                  "markers": {
+                    "item": {
+                      "keys": [
+                        "slot",
+                        "points",
+                        "tournament"
+                      ],
+                      "children": {
+                        "tournament": {
+                          "keys": [
+                            "id",
+                            "name",
+                            "display",
+                            "date",
+                            "url"
+                          ],
+                          "children": {}
+                        }
+                      }
+                    }
+                  },
+                  "debater": {
+                    "keys": [
+                      "id",
+                      "name",
+                      "school_id",
+                      "school_name",
+                      "url"
+                    ],
+                    "children": {}
+                  },
+                  "school": {
+                    "keys": [
+                      "id",
+                      "name",
+                      "url"
+                    ],
+                    "children": {}
+                  }
+                }
+              }
+            }
+          }
+        },
+        "season_summaries": {
+          "item": {
+            "keys": [
+              "season",
+              "season_display",
+              "tournaments"
+            ],
+            "children": {
+              "tournaments": {
+                "item": {
+                  "keys": [
+                    "tournament",
+                    "team",
+                    "team_results",
+                    "speaker_results",
+                    "record",
+                    "tab_card"
+                  ],
+                  "children": {
+                    "tournament": {
+                      "keys": [
+                        "id",
+                        "name",
+                        "season",
+                        "season_display",
+                        "date",
+                        "display",
+                        "num_teams",
+                        "num_novice_debaters",
+                        "host",
+                        "url",
+                        "api_url"
+                      ],
+                      "children": {
+                        "host": {
+                          "keys": [
+                            "id",
+                            "name",
+                            "included_in_oty",
+                            "url",
+                            "api_url"
+                          ],
+                          "children": {}
+                        }
+                      }
+                    },
+                    "team": {
+                      "keys": [
+                        "id",
+                        "name",
+                        "hybrid",
+                        "debaters",
+                        "url",
+                        "api_url"
+                      ],
+                      "children": {
+                        "debaters": {
+                          "item": {
+                            "keys": [
+                              "id",
+                              "name",
+                              "first_name",
+                              "last_name",
+                              "status",
+                              "status_code",
+                              "school_id",
+                              "school_name",
+                              "school",
+                              "url",
+                              "api_url"
+                            ],
+                            "children": {
+                              "school": {
+                                "keys": [
+                                  "id",
+                                  "name",
+                                  "included_in_oty",
+                                  "url",
+                                  "api_url"
+                                ],
+                                "children": {}
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "team_results": {
+                      "item": {
+                        "keys": [
+                          "id",
+                          "place",
+                          "place_display",
+                          "type",
+                          "type_code",
+                          "ghost_points",
+                          "team",
+                          "tournament"
+                        ],
+                        "children": {
+                          "team": {
+                            "keys": [
+                              "id",
+                              "name",
+                              "hybrid",
+                              "debaters",
+                              "url",
+                              "api_url"
+                            ],
+                            "children": {
+                              "debaters": {
+                                "item": {
+                                  "keys": [
+                                    "id",
+                                    "name",
+                                    "first_name",
+                                    "last_name",
+                                    "status",
+                                    "status_code",
+                                    "school_id",
+                                    "school_name",
+                                    "school",
+                                    "url",
+                                    "api_url"
+                                  ],
+                                  "children": {
+                                    "school": {
+                                      "keys": [
+                                        "id",
+                                        "name",
+                                        "included_in_oty",
+                                        "url",
+                                        "api_url"
+                                      ],
+                                      "children": {}
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          },
+                          "tournament": {
+                            "keys": [
+                              "id",
+                              "name",
+                              "season",
+                              "season_display",
+                              "date",
+                              "display",
+                              "num_teams",
+                              "num_novice_debaters",
+                              "host",
+                              "url",
+                              "api_url"
+                            ],
+                            "children": {
+                              "host": {
+                                "keys": [
+                                  "id",
+                                  "name",
+                                  "included_in_oty",
+                                  "url",
+                                  "api_url"
+                                ],
+                                "children": {}
+                              }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "speaker_results": {
+                      "item": {
+                        "keys": [
+                          "id",
+                          "place",
+                          "type",
+                          "type_code",
+                          "tie",
+                          "debater",
+                          "tournament"
+                        ],
+                        "children": {
+                          "debater": {
+                            "keys": [
+                              "id",
+                              "name",
+                              "first_name",
+                              "last_name",
+                              "status",
+                              "status_code",
+                              "school_id",
+                              "school_name",
+                              "school",
+                              "url",
+                              "api_url"
+                            ],
+                            "children": {
+                              "school": {
+                                "keys": [
+                                  "id",
+                                  "name",
+                                  "included_in_oty",
+                                  "url",
+                                  "api_url"
+                                ],
+                                "children": {}
+                              }
+                            }
+                          },
+                          "tournament": {
+                            "keys": [
+                              "id",
+                              "name",
+                              "season",
+                              "season_display",
+                              "date",
+                              "display",
+                              "num_teams",
+                              "num_novice_debaters",
+                              "host",
+                              "url",
+                              "api_url"
+                            ],
+                            "children": {
+                              "host": {
+                                "keys": [
+                                  "id",
+                                  "name",
+                                  "included_in_oty",
+                                  "url",
+                                  "api_url"
+                                ],
+                                "children": {}
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "videos": {
+          "item": {
+            "keys": [
+              "id",
+              "round",
+              "round_code",
+              "link",
+              "description",
+              "case",
+              "permissions",
+              "tournament",
+              "participants",
+              "tags",
+              "url"
+            ],
+            "children": {
+              "tournament": {
+                "keys": [
+                  "id",
+                  "name",
+                  "season",
+                  "season_display",
+                  "date",
+                  "display",
+                  "num_teams",
+                  "num_novice_debaters",
+                  "host",
+                  "url",
+                  "api_url"
+                ],
+                "children": {
+                  "host": {
+                    "keys": [
+                      "id",
+                      "name",
+                      "included_in_oty",
+                      "url",
+                      "api_url"
+                    ],
+                    "children": {}
+                  }
+                }
+              },
+              "participants": {
+                "keys": [
+                  "pm",
+                  "mg",
+                  "lo",
+                  "mo"
+                ],
+                "children": {
+                  "pm": {
+                    "keys": [
+                      "id",
+                      "name",
+                      "first_name",
+                      "last_name",
+                      "status",
+                      "status_code",
+                      "school_id",
+                      "school_name",
+                      "school",
+                      "url",
+                      "api_url"
+                    ],
+                    "children": {
+                      "school": {
+                        "keys": [
+                          "id",
+                          "name",
+                          "included_in_oty",
+                          "url",
+                          "api_url"
+                        ],
+                        "children": {}
+                      }
+                    }
+                  },
+                  "mg": {
+                    "keys": [
+                      "id",
+                      "name",
+                      "first_name",
+                      "last_name",
+                      "status",
+                      "status_code",
+                      "school_id",
+                      "school_name",
+                      "school",
+                      "url",
+                      "api_url"
+                    ],
+                    "children": {
+                      "school": {
+                        "keys": [
+                          "id",
+                          "name",
+                          "included_in_oty",
+                          "url",
+                          "api_url"
+                        ],
+                        "children": {}
+                      }
+                    }
+                  },
+                  "lo": {
+                    "keys": [
+                      "id",
+                      "name",
+                      "first_name",
+                      "last_name",
+                      "status",
+                      "status_code",
+                      "school_id",
+                      "school_name",
+                      "school",
+                      "url",
+                      "api_url"
+                    ],
+                    "children": {
+                      "school": {
+                        "keys": [
+                          "id",
+                          "name",
+                          "included_in_oty",
+                          "url",
+                          "api_url"
+                        ],
+                        "children": {}
+                      }
+                    }
+                  },
+                  "mo": {
+                    "keys": [
+                      "id",
+                      "name",
+                      "first_name",
+                      "last_name",
+                      "status",
+                      "status_code",
+                      "school_id",
+                      "school_name",
+                      "school",
+                      "url",
+                      "api_url"
+                    ],
+                    "children": {
+                      "school": {
+                        "keys": [
+                          "id",
+                          "name",
+                          "included_in_oty",
+                          "url",
+                          "api_url"
+                        ],
+                        "children": {}
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "links": {
+          "keys": [
+            "self"
+          ],
+          "children": {}
+        }
+      }
+    }
+  },
+  "debaters": {
+    "name": "School Debaters Api",
+    "description": "API endpoint to list debaters from a specific school.\n\nGET /api/debaters/<school_id>/\nReturns: List of debaters active in the last 5 years for the specified school\nCached for 5 minutes per school.",
+    "shape": {
+      "keys": [
+        "school",
+        "count",
+        "debaters"
+      ],
+      "children": {
+        "school": {
+          "keys": [
+            "id",
+            "name",
+            "included_in_oty",
+            "url",
+            "api_url"
+          ],
+          "children": {}
+        },
+        "debaters": {
+          "item": {
+            "keys": [
+              "id",
+              "name",
+              "first_name",
+              "last_name",
+              "status",
+              "status_code",
+              "school_id",
+              "school_name",
+              "school",
+              "url",
+              "api_url"
+            ],
+            "children": {
+              "school": {
+                "keys": [
+                  "id",
+                  "name",
+                  "included_in_oty",
+                  "url",
+                  "api_url"
+                ],
+                "children": {}
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "team": {
+    "name": "Team Detail Api",
+    "description": "Expose a team's roster, TOTY history, and tournament performances.",
+    "shape": {
+      "keys": [
+        "team",
+        "toty_history",
+        "tournaments",
+        "links"
+      ],
+      "children": {
+        "team": {
+          "keys": [
+            "id",
+            "name",
+            "hybrid",
+            "debaters",
+            "url",
+            "api_url"
+          ],
+          "children": {
+            "debaters": {
+              "item": {
+                "keys": [
+                  "id",
+                  "name",
+                  "first_name",
+                  "last_name",
+                  "status",
+                  "status_code",
+                  "school_id",
+                  "school_name",
+                  "school",
+                  "url",
+                  "api_url"
+                ],
+                "children": {
+                  "school": {
+                    "keys": [
+                      "id",
+                      "name",
+                      "included_in_oty",
+                      "url",
+                      "api_url"
+                    ],
+                    "children": {}
+                  }
+                }
+              }
+            }
+          }
+        },
+        "toty_history": {
+          "item": {
+            "keys": [
+              "season",
+              "season_display",
+              "place_display",
+              "points",
+              "markers",
+              "id",
+              "place",
+              "tied",
+              "team"
+            ],
+            "children": {
+              "markers": {
+                "item": {
+                  "keys": [
+                    "slot",
+                    "points",
+                    "tournament"
+                  ],
+                  "children": {
+                    "tournament": {
+                      "keys": [
+                        "id",
+                        "name",
+                        "display",
+                        "date",
+                        "url"
+                      ],
+                      "children": {}
+                    }
+                  }
+                }
+              },
+              "team": {
+                "keys": [
+                  "id",
+                  "name",
+                  "debaters",
+                  "url"
+                ],
+                "children": {
+                  "debaters": {
+                    "item": {
+                      "keys": [
+                        "id",
+                        "name",
+                        "school_id",
+                        "school_name",
+                        "url"
+                      ],
+                      "children": {}
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tournaments": {
+          "item": {
+            "keys": [
+              "kind",
+              "team_result",
+              "record",
+              "tab_card",
+              "tournament"
+            ],
+            "children": {
+              "team_result": {
+                "keys": [
+                  "id",
+                  "place",
+                  "place_display",
+                  "type",
+                  "type_code",
+                  "ghost_points",
+                  "team",
+                  "tournament"
+                ],
+                "children": {
+                  "team": {
+                    "keys": [
+                      "id",
+                      "name",
+                      "hybrid",
+                      "debaters",
+                      "url",
+                      "api_url"
+                    ],
+                    "children": {
+                      "debaters": {
+                        "item": {
+                          "keys": [
+                            "id",
+                            "name",
+                            "first_name",
+                            "last_name",
+                            "status",
+                            "status_code",
+                            "school_id",
+                            "school_name",
+                            "school",
+                            "url",
+                            "api_url"
+                          ],
+                          "children": {
+                            "school": {
+                              "keys": [
+                                "id",
+                                "name",
+                                "included_in_oty",
+                                "url",
+                                "api_url"
+                              ],
+                              "children": {}
+                            }
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "tournament": {
+                    "keys": [
+                      "id",
+                      "name",
+                      "season",
+                      "season_display",
+                      "date",
+                      "display",
+                      "num_teams",
+                      "num_novice_debaters",
+                      "host",
+                      "url",
+                      "api_url"
+                    ],
+                    "children": {
+                      "host": {
+                        "keys": [
+                          "id",
+                          "name",
+                          "included_in_oty",
+                          "url",
+                          "api_url"
+                        ],
+                        "children": {}
+                      }
+                    }
+                  }
+                }
+              },
+              "tournament": {
+                "keys": [
+                  "id",
+                  "name",
+                  "season",
+                  "season_display",
+                  "date",
+                  "display",
+                  "num_teams",
+                  "num_novice_debaters",
+                  "host",
+                  "url",
+                  "api_url"
+                ],
+                "children": {
+                  "host": {
+                    "keys": [
+                      "id",
+                      "name",
+                      "included_in_oty",
+                      "url",
+                      "api_url"
+                    ],
+                    "children": {}
+                  }
+                }
+              }
+            }
+          }
+        },
+        "links": {
+          "keys": [
+            "self"
+          ],
+          "children": {}
+        }
+      }
+    }
+  },
+  "tournament": {
+    "name": "Tournament Detail Api",
+    "description": "Provide tournament metadata, awards, speaker results, tab cards, and videos.",
+    "shape": {
+      "keys": [
+        "tournament",
+        "team_awards",
+        "speaker_awards",
+        "tab_cards_available",
+        "team_tab_cards",
+        "videos",
+        "links"
+      ],
+      "children": {
+        "tournament": {
+          "keys": [
+            "id",
+            "name",
+            "season",
+            "season_display",
+            "date",
+            "display",
+            "num_teams",
+            "num_novice_debaters",
+            "host",
+            "url",
+            "api_url"
+          ],
+          "children": {
+            "host": {
+              "keys": [
+                "id",
+                "name",
+                "included_in_oty",
+                "url",
+                "api_url"
+              ],
+              "children": {}
+            }
+          }
+        },
+        "team_awards": {
+          "keys": [
+            "varsity",
+            "novice"
+          ],
+          "children": {
+            "varsity": {
+              "item": {
+                "keys": [
+                  "id",
+                  "place",
+                  "place_display",
+                  "type",
+                  "type_code",
+                  "ghost_points",
+                  "team",
+                  "tournament"
+                ],
+                "children": {
+                  "team": {
+                    "keys": [
+                      "id",
+                      "name",
+                      "hybrid",
+                      "debaters",
+                      "url",
+                      "api_url"
+                    ],
+                    "children": {
+                      "debaters": {
+                        "item": {
+                          "keys": [
+                            "id",
+                            "name",
+                            "first_name",
+                            "last_name",
+                            "status",
+                            "status_code",
+                            "school_id",
+                            "school_name",
+                            "school",
+                            "url",
+                            "api_url"
+                          ],
+                          "children": {
+                            "school": {
+                              "keys": [
+                                "id",
+                                "name",
+                                "included_in_oty",
+                                "url",
+                                "api_url"
+                              ],
+                              "children": {}
+                            }
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "tournament": {
+                    "keys": [
+                      "id",
+                      "name",
+                      "season",
+                      "season_display",
+                      "date",
+                      "display",
+                      "num_teams",
+                      "num_novice_debaters",
+                      "host",
+                      "url",
+                      "api_url"
+                    ],
+                    "children": {
+                      "host": {
+                        "keys": [
+                          "id",
+                          "name",
+                          "included_in_oty",
+                          "url",
+                          "api_url"
+                        ],
+                        "children": {}
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "novice": {
+              "item": {
+                "keys": [
+                  "id",
+                  "place",
+                  "place_display",
+                  "type",
+                  "type_code",
+                  "ghost_points",
+                  "team",
+                  "tournament"
+                ],
+                "children": {
+                  "team": {
+                    "keys": [
+                      "id",
+                      "name",
+                      "hybrid",
+                      "debaters",
+                      "url",
+                      "api_url"
+                    ],
+                    "children": {
+                      "debaters": {
+                        "item": {
+                          "keys": [
+                            "id",
+                            "name",
+                            "first_name",
+                            "last_name",
+                            "status",
+                            "status_code",
+                            "school_id",
+                            "school_name",
+                            "school",
+                            "url",
+                            "api_url"
+                          ],
+                          "children": {
+                            "school": {
+                              "keys": [
+                                "id",
+                                "name",
+                                "included_in_oty",
+                                "url",
+                                "api_url"
+                              ],
+                              "children": {}
+                            }
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "tournament": {
+                    "keys": [
+                      "id",
+                      "name",
+                      "season",
+                      "season_display",
+                      "date",
+                      "display",
+                      "num_teams",
+                      "num_novice_debaters",
+                      "host",
+                      "url",
+                      "api_url"
+                    ],
+                    "children": {
+                      "host": {
+                        "keys": [
+                          "id",
+                          "name",
+                          "included_in_oty",
+                          "url",
+                          "api_url"
+                        ],
+                        "children": {}
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "speaker_awards": {
+          "keys": [
+            "varsity",
+            "novice"
+          ],
+          "children": {
+            "varsity": {
+              "item": {
+                "keys": [
+                  "id",
+                  "place",
+                  "type",
+                  "type_code",
+                  "tie",
+                  "debater",
+                  "tournament",
+                  "display_place",
+                  "tie_display"
+                ],
+                "children": {
+                  "debater": {
+                    "keys": [
+                      "id",
+                      "name",
+                      "first_name",
+                      "last_name",
+                      "status",
+                      "status_code",
+                      "school_id",
+                      "school_name",
+                      "school",
+                      "url",
+                      "api_url"
+                    ],
+                    "children": {
+                      "school": {
+                        "keys": [
+                          "id",
+                          "name",
+                          "included_in_oty",
+                          "url",
+                          "api_url"
+                        ],
+                        "children": {}
+                      }
+                    }
+                  },
+                  "tournament": {
+                    "keys": [
+                      "id",
+                      "name",
+                      "season",
+                      "season_display",
+                      "date",
+                      "display",
+                      "num_teams",
+                      "num_novice_debaters",
+                      "host",
+                      "url",
+                      "api_url"
+                    ],
+                    "children": {
+                      "host": {
+                        "keys": [
+                          "id",
+                          "name",
+                          "included_in_oty",
+                          "url",
+                          "api_url"
+                        ],
+                        "children": {}
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "novice": {
+              "item": {
+                "keys": [
+                  "id",
+                  "place",
+                  "type",
+                  "type_code",
+                  "tie",
+                  "debater",
+                  "tournament",
+                  "display_place",
+                  "tie_display"
+                ],
+                "children": {
+                  "debater": {
+                    "keys": [
+                      "id",
+                      "name",
+                      "first_name",
+                      "last_name",
+                      "status",
+                      "status_code",
+                      "school_id",
+                      "school_name",
+                      "school",
+                      "url",
+                      "api_url"
+                    ],
+                    "children": {
+                      "school": {
+                        "keys": [
+                          "id",
+                          "name",
+                          "included_in_oty",
+                          "url",
+                          "api_url"
+                        ],
+                        "children": {}
+                      }
+                    }
+                  },
+                  "tournament": {
+                    "keys": [
+                      "id",
+                      "name",
+                      "season",
+                      "season_display",
+                      "date",
+                      "display",
+                      "num_teams",
+                      "num_novice_debaters",
+                      "host",
+                      "url",
+                      "api_url"
+                    ],
+                    "children": {
+                      "host": {
+                        "keys": [
+                          "id",
+                          "name",
+                          "included_in_oty",
+                          "url",
+                          "api_url"
+                        ],
+                        "children": {}
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "videos": {
+          "item": {
+            "keys": [
+              "id",
+              "round",
+              "round_code",
+              "link",
+              "description",
+              "case",
+              "permissions",
+              "tournament",
+              "participants",
+              "tags",
+              "url"
+            ],
+            "children": {
+              "tournament": {
+                "keys": [
+                  "id",
+                  "name",
+                  "season",
+                  "season_display",
+                  "date",
+                  "display",
+                  "num_teams",
+                  "num_novice_debaters",
+                  "host",
+                  "url",
+                  "api_url"
+                ],
+                "children": {
+                  "host": {
+                    "keys": [
+                      "id",
+                      "name",
+                      "included_in_oty",
+                      "url",
+                      "api_url"
+                    ],
+                    "children": {}
+                  }
+                }
+              },
+              "participants": {
+                "keys": [
+                  "pm",
+                  "mg",
+                  "lo",
+                  "mo"
+                ],
+                "children": {
+                  "pm": {
+                    "keys": [
+                      "id",
+                      "name",
+                      "first_name",
+                      "last_name",
+                      "status",
+                      "status_code",
+                      "school_id",
+                      "school_name",
+                      "school",
+                      "url",
+                      "api_url"
+                    ],
+                    "children": {
+                      "school": {
+                        "keys": [
+                          "id",
+                          "name",
+                          "included_in_oty",
+                          "url",
+                          "api_url"
+                        ],
+                        "children": {}
+                      }
+                    }
+                  },
+                  "mg": {
+                    "keys": [
+                      "id",
+                      "name",
+                      "first_name",
+                      "last_name",
+                      "status",
+                      "status_code",
+                      "school_id",
+                      "school_name",
+                      "school",
+                      "url",
+                      "api_url"
+                    ],
+                    "children": {
+                      "school": {
+                        "keys": [
+                          "id",
+                          "name",
+                          "included_in_oty",
+                          "url",
+                          "api_url"
+                        ],
+                        "children": {}
+                      }
+                    }
+                  },
+                  "lo": {
+                    "keys": [
+                      "id",
+                      "name",
+                      "first_name",
+                      "last_name",
+                      "status",
+                      "status_code",
+                      "school_id",
+                      "school_name",
+                      "school",
+                      "url",
+                      "api_url"
+                    ],
+                    "children": {
+                      "school": {
+                        "keys": [
+                          "id",
+                          "name",
+                          "included_in_oty",
+                          "url",
+                          "api_url"
+                        ],
+                        "children": {}
+                      }
+                    }
+                  },
+                  "mo": {
+                    "keys": [
+                      "id",
+                      "name",
+                      "first_name",
+                      "last_name",
+                      "status",
+                      "status_code",
+                      "school_id",
+                      "school_name",
+                      "school",
+                      "regions",
+                      "region_display",
+                      "url",
+                      "api_url"
+                    ],
+                    "children": {
+                      "school": {
+                        "keys": [
+                          "id",
+                          "name",
+                          "included_in_oty",
+                          "url",
+                          "api_url"
+                        ],
+                        "children": {}
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "links": {
+          "keys": [
+            "self"
+          ],
+          "children": {}
+        }
+      }
+    }
+  },
+  "guide": {
+    "name": "Oty Guide Api",
+    "description": "Expose the OTY scoring explainer in a machine-readable format.",
+    "shape": {
+      "keys": [
+        "title",
+        "season",
+        "season_display",
+        "format",
+        "body",
+        "last_modified",
+        "links"
+      ],
+      "children": {
+        "links": {
+          "keys": [
+            "plain_text",
+            "llm_proxy",
+            "self"
+          ],
+          "children": {}
+        }
+      }
+    }
+  },
+  "forum": {
+    "name": "Forum Profiles Api",
+    "description": "Resolve approved claims using the provider's immutable WordPress ID.",
+    "shape": {
+      "keys": [
+        "detail"
+      ],
+      "children": {}
+    }
+  },
+  "emails": {
+    "name": "Private Debater Emails Api",
+    "description": "Return private debater contact emails for trusted mit-tab instances.\n\nAuth is intentionally independent of browser sessions. Mittab-deploy injects a\nbearer token into each ephemeral mit-tab instance, and black-rod keeps the\nmatching token in MITTAB_PRIVATE_API_TOKENS for manual rotation.",
+    "shape": {
+      "keys": [
+        "detail"
+      ],
+      "children": {}
+    }
+  }
+}

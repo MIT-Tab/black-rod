@@ -1,4 +1,5 @@
 mod inlines;
+mod tags;
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -250,6 +251,10 @@ impl Bound<'_> {
         }
         let text = if let Some(values) = self.submitted {
             raw(values, name).to_owned()
+        } else if choice_kind == "TagWidget"
+            && let (Some(field), Some(id)) = (field, self.id)
+        {
+            tags::display(admin, model, field, id).await?
         } else {
             primitive(&value)
         };
@@ -326,8 +331,12 @@ impl Bound<'_> {
             options = choices(admin, model, field, &selected, autocomplete || dal, &team).await?;
             if autocomplete && !required && !multiple {
                 options.insert(0, (String::new(), String::new()));
-            } else if !autocomplete && !multiple && !multicheck && (!required || value.is_null()) {
-                options.insert(0, (String::new(), "---------".to_owned()));
+            } else if !autocomplete
+                && !multiple
+                && !multicheck
+                && let Some(empty_label) = widget.and_then(|widget| widget.empty_label.clone())
+            {
+                options.insert(0, (String::new(), empty_label));
             }
             if multicheck && team.is_empty() {
                 help.push_str(" Save the team first to select members.");
@@ -356,6 +365,7 @@ impl Bound<'_> {
         }
         let widget_required = required
             && (!select
+                || multiple
                 || autocomplete
                 || dal
                 || options.first().is_some_and(|option| option.0.is_empty()));
@@ -368,15 +378,14 @@ impl Bound<'_> {
                 slug=>target.slug(),url=>target.url(),singular=>&target.singular,
                 add=>admin.viewer.allows(target,"add"),
                 change=>!multiple&&admin.viewer.allows(target,"change"),
-                delete=>!multiple&&!required&&admin.viewer.allows(target,"delete"),
+                delete=>!multiple&&widget.is_some_and(|widget|widget.related_delete)&&admin.viewer.allows(target,"delete"),
                 view=>!multiple&&admin.viewer.read(target),
             }
         });
-        let related = related.or_else(|| {
-            field
-                .filter(|field| field.related.as_deref() == Some("auth.permission"))
-                .filter(|_| choice_kind == "FilteredSelectMultiple")
-                .map(|_| context! {slug=>"permission"})
+        let related = related.or_else(|| match field?.related.as_deref()? {
+            "auth.permission" => Some(context! {slug=>"permission"}),
+            "contenttypes.contenttype" => Some(context! {slug=>"contenttype"}),
+            _ => None,
         });
         let forward = widget.and_then(|widget| widget.forward.as_deref());
         let mut hash = text.split('$');
@@ -392,6 +401,11 @@ impl Bound<'_> {
         let salt = mask(hash.next().unwrap_or_default());
         let digest = mask(hash.next().unwrap_or_default());
         let mut preformatted = false;
+        let read_link = if read_only && let (Some(target), Ok(id)) = (target, text.parse::<i64>()) {
+            Some(format!("{}{id}/change/", target.url()))
+        } else {
+            None
+        };
         let read_value = if name == "metadata_pretty"
             && matches!(model.slug(), "round" | "roundstats")
         {
@@ -424,15 +438,39 @@ impl Bound<'_> {
                 Some(id) => Value::from(round_metadata(admin, id).await?),
                 None => Value::from("No imported metadata"),
             }
+        } else if name == "get_absolute_url" && matches!(model.slug(), "motion" | "resource") {
+            let resource = model.slug() == "resource";
+            caption = if resource {
+                "Resource URL:"
+            } else {
+                "Public URL:"
+            }
+            .to_owned();
+            Value::from(self.id.map_or_else(
+                || "-".to_owned(),
+                |id| {
+                    format!(
+                        "/core/{}/{id}",
+                        if resource { "resources" } else { "motions" }
+                    )
+                },
+            ))
         } else if password_status {
             Value::from("No password set.")
+        } else if let (Some(_), Some(target), Ok(id)) = (&read_link, target, text.parse::<i64>()) {
+            Value::from(object_label(admin, target, id).await?)
+        } else if read_only
+            && self.id.is_none()
+            && field.is_some_and(|field| field.kind == "JSONField")
+        {
+            Value::from("-")
         } else {
             display(Some(&text), field, false)
         };
         Ok(context! {
             name,label=>caption,help,required,widget_required,date_widget=>choice_kind == "AdminDateWidget",datetime,date,time=>time.split(['.','+','Z']).next().unwrap_or_default(),
-            checkbox, checked, readonly=>read_only, read_value, preformatted, wrapped=>widget.is_some_and(|widget|widget.wrapped),
-            value=>text_value,type=>kind, attrs=>attrs.iter().collect::<Vec<_>>(),related, select,multiple,radio,multicheck,
+            checkbox, checked, readonly=>read_only, read_value, read_link, preformatted, wrapped=>widget.is_some_and(|widget|widget.wrapped),
+            value=>text_value,type=>kind, attrs=>attrs.iter().collect::<Vec<_>>(),related, select,multiple,radio,multicheck,raw_id,
             raw_url,raw_caption,forward,hidden_initial=>widget.is_some_and(|widget|widget.hidden_initial),
             textarea,password_status,algorithm,iterations,salt,digest,usable=>!text.starts_with('!'),
             options=>items,error=>self.errors.get(name)
@@ -762,10 +800,14 @@ async fn save_memberships(
     values: &Values,
 ) -> Result<(), ApiError> {
     for (name, field) in &model.fields {
+        if field.kind == "Tags" && widgets.contains_key(name) {
+            tags::save(conn, model, field, record, raw(values, name)).await?;
+            continue;
+        }
         let Some([table, current, target]) = field
             .through
             .as_ref()
-            .filter(|_| widgets.contains_key(name) && field.kind != "Tags")
+            .filter(|_| widgets.contains_key(name))
         else {
             continue;
         };

@@ -26,6 +26,8 @@ use super::{
     page, selected,
 };
 
+mod shared;
+
 const CACHE_TTL: Duration = Duration::from_secs(24 * 60 * 60);
 
 type Cached = (u64, Instant, Arc<str>);
@@ -232,7 +234,23 @@ fn html(data: Arc<str>) -> Response {
     uncached(Html(data.to_string()).into_response())
 }
 
+async fn compute(state: &AppState) -> Result<Arc<str>, ApiError> {
+    let (people, graph) = whole_graph(state).await?;
+    tokio::task::spawn_blocking(move || calculate(people, graph))
+        .await
+        .map_err(|_| ApiError::Serialization)?
+        .map(Arc::from)
+}
+
 pub(crate) async fn results(State(state): State<AppState>) -> Response {
+    if let Some(cache) = &state.memcached {
+        match shared::results(&state, cache).await {
+            shared::Fragment::Ready(Ok(data)) => return html(data),
+            shared::Fragment::Ready(Err(error)) => return uncached(failed(error)),
+            shared::Fragment::Pending => return uncached(StatusCode::ACCEPTED.into_response()),
+            shared::Fragment::Unavailable => (),
+        }
+    }
     let cache = state.partnership_stats.clone();
     let generation = cache.generation.load(Ordering::Acquire);
     if let Some(data) = cache.current(generation) {
@@ -246,11 +264,7 @@ pub(crate) async fn results(State(state): State<AppState>) -> Response {
     }
     let pending = tokio::spawn(async move {
         let _guard = guard;
-        let (people, graph) = whole_graph(&state).await?;
-        let result = tokio::task::spawn_blocking(move || calculate(people, graph))
-            .await
-            .map_err(|_| ApiError::Serialization)??;
-        let result: Arc<str> = Arc::from(result);
+        let result = compute(&state).await?;
         if let Ok(mut data) = cache.data.write()
             && cache.generation.load(Ordering::Acquire) == generation
         {
@@ -329,6 +343,9 @@ pub(crate) async fn clear(State(state): State<AppState>, request: Request) -> Re
     };
     if !user.is_superuser {
         return web::permission_denied(&state, &user, &parts.uri);
+    }
+    if let Some(cache) = &state.memcached {
+        shared::clear(cache).await;
     }
     state
         .partnership_stats

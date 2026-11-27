@@ -43,6 +43,10 @@ const VIEWS: &[(&str, &str)] = &[
         include_str!("../templates/site_admin/change_form.html"),
     ),
     (
+        "rest_framework/browse.html",
+        include_str!("../templates/rest_framework/browse.html"),
+    ),
+    (
         "site_admin/exchange.html",
         include_str!("../templates/site_admin/exchange.html"),
     ),

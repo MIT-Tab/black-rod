@@ -13,8 +13,8 @@
                                 {% if line|length != 1 and row.error %}<ul class="errorlist" id="id_{{ row.name }}_error">{% for message in row.error %}<li>{{ message }}</li>{% endfor %}</ul>{% endif %}
                                 <div class="flex-container{% if line|length != 1 %} fieldBox field-{{ row.name }}{% if row.error %} errors{% endif %}{% endif %}{% if row.checkbox %} checkbox-row{% endif %}">
                                     {% if row.checkbox %}{% include "site_admin/widget.html" %}{% endif %}
-                                    <label{% if row.required or row.checkbox %} class="{% if row.checkbox %}vCheckboxLabel{% elif row.required %}required{% endif %}"{% endif %}{% if not row.readonly and not row.datetime and not row.radio and not row.password_status %} for="id_{{ row.name }}"{% endif %}>{{ row.label }}</label>
-                                    {% if row.readonly %}<div class="readonly">{% if row.preformatted %}<pre>{{ row.read_value }}</pre>{% else %}{{ row.read_value }}{% endif %}</div>
+                                    <label{% if row.required or row.checkbox %} class="{% if row.checkbox %}vCheckboxLabel{% elif row.required %}required{% endif %}"{% endif %}{% if not row.readonly and not row.datetime and not row.radio and not row.multicheck and not row.password_status %} for="id_{{ row.name }}"{% endif %}>{{ row.label }}</label>
+                                    {% if row.readonly %}<div class="readonly">{% if row.preformatted %}<pre>{{ row.read_value }}</pre>{% elif row.read_link %}<a href="{{ row.read_link }}">{{ row.read_value }}</a>{% else %}{{ row.read_value }}{% endif %}</div>
                                     {% elif not row.checkbox %}{% include "site_admin/widget.html" %}{% endif %}
                                 </div>
                                 {% if row.help %}<div class="help"{% if not row.readonly and not row.radio and not row.password_status %} id="id_{{ row.name }}{% if row.datetime %}_0{% endif %}_helptext"{% endif %}><div>{{ row.help|safe }}</div></div>{% endif %}

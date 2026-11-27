@@ -1,11 +1,15 @@
 """Compare both rendered HTML and desktop/mobile pixels against Django fixtures."""
 from argparse import ArgumentParser
+from contextlib import closing, contextmanager
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from itertools import zip_longest
 import json
 import os
 from pathlib import Path
 import sqlite3
 from tempfile import TemporaryDirectory
+from threading import Thread
+from types import SimpleNamespace
 
 from PIL import Image, ImageChops
 from selenium import webdriver
@@ -25,6 +29,10 @@ PUBLIC = [
     ("schedule", "/core/schedules/?season=2025", False),
     ("statistics", "/stats/", False),
     ("games", "/games/", False),
+    ("api-schools", "/api/schools/?format=api", False),
+    ("api-school", "/api/schools/7/detail/?format=api", False),
+    ("api-standings", "/api/standings/?season=2025&default=toty&limit=2&format=api", False),
+    ("api-agent-auth", "/api/agent/v1/?format=api", False),
     ("account-login", "/accounts/login/?next=/games/", False),
     ("account-signup", "/accounts/signup/?next=/games/", False),
     ("account-logout", "/accounts/logout/?next=/games/", True),
@@ -33,6 +41,7 @@ PUBLIC = [
     ("account-verify-email", "/accounts/confirm-email/", False),
     ("account-inactive", "/accounts/inactive/", False),
     ("account-connect", "/accounts/3rdparty/", True),
+    ("account-reauth", "/accounts/reauthenticate/?next=/games/", True),
     ("account-provider", "/accounts/apdaonline/login/?next=/games/", False),
     ("login", "/auth/login/", False),
 ]
@@ -84,6 +93,9 @@ const ignored = new Set(Array.from(arguments[0]));
 function node(element) {
     if (element.nodeType === Node.COMMENT_NODE) return null;
     if (element.nodeType === Node.TEXT_NODE) {
+        if (element.parentElement?.id === 'drf_csrf') {
+            return element.textContent.replace(/("csrfToken":\s*")[^"]+/g, '$1<csrf>');
+        }
         const verbatim = element.parentElement?.matches('pre, textarea, script, style');
         const raw = verbatim && element.textContent.trim() ? element.textContent : element.textContent.replace(/\s+/g, ' ').trim();
         return raw || null;
@@ -162,7 +174,38 @@ def pixels(left, right):
         return changed / (expected.width * expected.height)
 
 
-def compare(driver, django, rust, cases, session, output, viewports, exclude, pixel_only):
+@contextmanager
+def shared_origin():
+    """Use one browser-visible origin for pages whose rendered bodies show absolute URLs."""
+    class Proxy(BaseHTTPRequestHandler):
+        def do_GET(self):
+            with closing(proxy.target.connect()) as upstream:
+                headers = {key: value for key, value in self.headers.items() if key.lower() != "connection"}
+                upstream.request("GET", self.path, headers=headers)
+                response = upstream.getresponse()
+                body = response.read()
+                self.send_response_only(response.status, response.reason)
+                for key, value in response.getheaders():
+                    if key.lower() not in {"connection", "transfer-encoding", "content-length"}:
+                        self.send_header(key, value)
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+        def log_message(self, *args):
+            pass
+
+    with ThreadingHTTPServer((HOST, 0), Proxy) as proxy:
+        thread = Thread(target=proxy.serve_forever, daemon=True)
+        thread.start()
+        try:
+            yield proxy, SimpleNamespace(port=proxy.server_port)
+        finally:
+            proxy.shutdown()
+            thread.join()
+
+
+def compare(driver, django, rust, cases, session, output, viewports, exclude, pixel_only, proxy, origin):
     failures = []
     for mode in viewports:
         width, height = VIEWPORTS[mode]
@@ -172,8 +215,13 @@ def compare(driver, django, rust, cases, session, output, viewports, exclude, pi
         for slug, route, authenticated in cases:
             reference = output / f"{mode}-{slug}-django"
             candidate = output / f"{mode}-{slug}-rust"
-            left = capture(driver, django, route, session if authenticated else None, reference, exclude)
-            right = capture(driver, rust, route, session if authenticated else None, candidate, exclude)
+            through_proxy = route.startswith("/api/")
+            proxy.target = django
+            left = capture(driver, origin if through_proxy else django, route,
+                           session if authenticated else None, reference, exclude)
+            proxy.target = rust
+            right = capture(driver, origin if through_proxy else rust, route,
+                            session if authenticated else None, candidate, exclude)
             structural = first_difference(left, right)
             fraction = pixels(reference, candidate)
             print(f"{mode} {route} DOM {'match' if structural is None else 'differs'}, changed pixels {fraction:.4%}")
@@ -220,8 +268,9 @@ def main():
             parser.error("No matching pages in the selected group.")
         session = django_session()
         with oauth_provider(fixture), smtp_sink(), servers(local) as (django, rust), webdriver.Chrome(options=options) as browser:
-            failures = compare(browser, django, rust, cases, session, output, viewports,
-                               arguments.exclude_element, arguments.pixel_only)
+            with shared_origin() as (proxy, origin):
+                failures = compare(browser, django, rust, cases, session, output, viewports,
+                                   arguments.exclude_element, arguments.pixel_only, proxy, origin)
             if failures:
                 raise SystemExit(f"{len(failures)} HTML or screenshot comparisons differed. See {output}.")
 

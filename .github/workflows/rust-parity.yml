@@ -76,6 +76,21 @@ jobs:
           scripts=.agents/skills/black-rod-task/scripts
           "$scripts/br" venv/bin/python manage.py shell -c "from django.contrib.auth import get_user_model; u, _ = get_user_model().objects.get_or_create(username='tab'); u.is_staff = True; u.is_superuser = True; u.set_password('password'); u.save()"
           "$scripts/br" venv/screenshots/bin/python -u rust/tools/browser.py "${RUNNER_TEMP}/black-rod-replay"
+      - name: Compare rendered HTML and desktop and mobile screenshots
+        run: |
+          scripts=.agents/skills/black-rod-task/scripts
+          "$scripts/br" venv/screenshots/bin/python -u rust/tools/html_parity.py "${RUNNER_TEMP}/black-rod-html" \
+            --page home --page replay --page schools --page debaters --page teams --page schedule \
+            --page statistics --page games --page login \
+            --page api-schools --page api-school --page api-standings --page api-agent-auth \
+            --page account-login --page account-signup --page account-logout --page account-email \
+            --page account-confirm-email --page account-verify-email --page account-inactive \
+            --page account-connect --page account-provider --page account-reauth \
+            --page admin-login --page admin-index --page admin-core-index --page admin-school-list \
+            --page admin-school-add --page admin-school-change --page admin-school-history \
+            --page admin-school-import --page admin-school-export --page admin-password \
+            --page admin-password-done --page admin-user-list --page admin-tournament-list \
+            --page admin-user-add --page admin-credential-list --page admin-credential-add
       - name: Compare HTTP responses on PostgreSQL
         env:
           BLACK_ROD_PARITY_POSTGRES_URL: postgres://black_rod:fixture@127.0.0.1:5432/black_rod_parity

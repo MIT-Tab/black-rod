@@ -16,11 +16,11 @@ cargo build --release --locked --manifest-path rust/Cargo.toml
 
 The current server covers standings, legacy standings directories, replay, live results and retained tournament snapshots, the schedule, statistics, results directories, debater search, alumni outreach, public profile APIs, the private forum and MIT-Tab lookups, and API discovery. The browser port includes tournament, school, team, and debater profiles, career tab card exports, the recent-results widget, video and motion libraries, resource authoring, motion spreadsheet imports, account code generation, Immaculate Grid, profile claims and self-service editing, the scheduling workspace, DOTY preview, partnership network and statistics, video authoring and image attachments, and school, debater, team, and tournament editing. It reads Django sessions and creates compatible sessions for password login and APDAOnline OAuth.
 
-The statistics cache lasts one hour. Set `BLACK_ROD_MEMCACHED_ADDR` for shared directory and schedule caching across instances and to read existing MIT-Tab snapshots. Those entries use a separate key namespace and retain the five-minute lifetime. The debater search index uses a bounded in-process cache and refreshes from the shared database, with immediate invalidation after a native profile edit.
+The statistics cache lasts one hour. Set `BLACK_ROD_MEMCACHED_ADDR` for shared directory and schedule caching across instances and to read existing MIT-Tab snapshots. Those entries use a separate key namespace and retain the five-minute lifetime. The debater search index uses a bounded in-process cache and refreshes from the shared database, with immediate invalidation after a native profile edit. Partnership statistics use the existing 24-hour fragments, generation marker, and two-minute lock in shared Memcached. With no Memcached connection, Rust uses a bounded local equivalent.
 
 Rust also serves staff speaker-score statistics, manual tournament data entry, legacy bundle uploads, reviewed MIT-Tab imports, tournament audits and round amendments, and the ELO dashboard. Reviewed imports and ELO dashboard results are readable by both servers through shared Memcached, including after a server switch. ELO retains the six-hour result cache and two bounded ten-minute runtime caches.
 
-Django remains the application entry point while the rest of the Rust port is verified. Work remaining includes rankings administration, Django admin equivalents, remaining account flows and management commands, and the browsable API. The Rust correction API uses the same credential and change-set tables for authorized reads, atomic writes, previews, merges, and undo.
+The opt-in Rust server also includes rankings recomputation, the browsable API renderer, signup and email maintenance, password reauthentication, OAuth connection management, and native Django-style model administration. Admin exchange supports CSV, TSV, JSON, YAML, HTML, XLS, XLSX, and ODS. The Rust correction API uses the same credential and change-set tables for authorized reads, atomic writes, previews, merges, and undo. Django remains the default application entry point while the remaining admin pages, account flows, and management commands are verified.
 
 ## Parity tests
 
@@ -41,7 +41,11 @@ The Chrome harness compares the standings, directories, search, profiles, recent
 ```sh
 venv/screenshots/bin/python -m pip install Pillow==12.3.0
 "$scripts/br" venv/screenshots/bin/python rust/tools/browser.py /tmp/black-rod-replay
+"$scripts/br" venv/screenshots/bin/python rust/tools/html_parity.py /tmp/black-rod-html --group public
+"$scripts/br" venv/screenshots/bin/python rust/tools/html_parity.py /tmp/black-rod-admin --group admin-models
 ```
+
+The HTML harness compares the normalized live DOM, including the rendered controls and client-side widgets, and checks screenshots at desktop and mobile widths. The broad admin command reports all differences across model lists and records. The parity workflow checks the curated pages with established matches.
 
 ## PostgreSQL benchmark
 

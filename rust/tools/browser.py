@@ -210,6 +210,84 @@ def assert_partnership_stats(driver, django, rust):
                 assert left == right, (view, key, index, left, right)
 
 
+def assert_shared_partnership_cache(driver, django, rust):
+    import pickle
+    from uuid import UUID, uuid4
+
+    host, port = os.environ["BLACK_ROD_PARITY_MEMCACHED_ADDR"].split(":")
+    with socket.create_connection((host, int(port)), timeout=5) as connection, connection.makefile("rwb") as cache:
+        def command(line, body=b""):
+            cache.write(line.encode() + b"\r\n" + body)
+            cache.flush()
+            return cache.readline().strip()
+
+        def set_value(key, value, ttl=0):
+            flags = 16 if isinstance(value, str) else 1
+            packed = value.encode() if flags == 16 else pickle.dumps(value, protocol=5)
+            assert command(f"set {key} {flags} {ttl} {len(packed)}", packed + b"\r\n") == b"STORED"
+
+        def read_value(key):
+            first = command(f"get {key}")
+            if first == b"END":
+                return None
+            name, returned, flags, length = first.split()
+            assert (name, returned) == (b"VALUE", key.encode())
+            value = cache.read(int(length))
+            assert cache.read(7) == b"\r\nEND\r\n"
+            if flags == b"16":
+                return value.decode()
+            assert flags == b"1"
+            return pickle.loads(value)
+
+        def delete(key):
+            assert command(f"delete {key}") in (b"DELETED", b"NOT_FOUND")
+
+        key = ":1:public-partnership-stats:v3"
+        generation_key = f"{key}:generation"
+        generation = uuid4()
+        path = "/core/debaters/partnership-paths/stats/"
+        results = Case(path + "results/", accept="text/html")
+        sentinel = "<p>Shared partnership cache fixture</p>"
+        set_value(generation_key, generation)
+        fragment = f"{key}:{generation.hex}"
+        set_value(fragment + ":lock", True, ttl=120)
+        for server in (django, rust):
+            assert request(server, results)[0] == 202
+        delete(fragment + ":lock")
+        set_value(fragment, sentinel, ttl=60)
+        for server in (django, rust):
+            assert request(server, results)[2] == sentinel.encode()
+
+        driver.get(f"http://{HOST}:{rust.port}/robots.txt")
+        driver.add_cookie({"name": "sessionid", "value": django_session()})
+        driver.get(f"http://{HOST}:{rust.port}{path}")
+        driver.find_element("css selector", f'form[action="{path}clear-cache/"] button').click()
+        WebDriverWait(driver, 10).until(lambda browser: bool(browser.find_elements(
+            "xpath", '//*[contains(@class,"alert") and contains(., "Partnership statistics cache cleared.")]')))
+        replacement = read_value(generation_key)
+        assert isinstance(replacement, UUID) and replacement != generation
+        assert read_value(fragment) is None
+        def ready(server):
+            response = request(server, results)
+            assert response[0] in (200, 202), response[0]
+            return response if response[0] == 200 else False
+
+        generated = WebDriverWait(driver, 30).until(lambda _: ready(rust))
+        assert generated[2] != sentinel.encode()
+        assert read_value(f"{key}:{replacement.hex}").encode() == generated[2]
+        assert request(django, results)[2] == generated[2]
+
+        next_generation = uuid4()
+        set_value(generation_key, next_generation)
+        generated = request(django, results)
+        assert generated[0] == 200 and generated[2] != sentinel.encode()
+        assert request(rust, results)[2] == generated[2]
+        for current in (replacement, next_generation):
+            delete(f"{key}:{current.hex}")
+        delete(generation_key)
+        driver.delete_cookie("sessionid")
+
+
 def assert_search(driver, django, rust):
     paths = [
         "/search/",
@@ -1762,6 +1840,49 @@ def assert_native_site_admin(driver, django, rust):
     driver.delete_all_cookies()
 
 
+def assert_admin_topic_merges(driver, django, rust):
+    from selenium.webdriver.support.expected_conditions import staleness_of
+
+    code = """
+from django import setup
+setup()
+from core.models import Motion, Video
+import json
+
+motion = Motion.objects.filter(text__startswith="This House would use a disposable").get()
+video = Video.objects.filter(link__startswith="https://videos.example.test/access-").order_by("id").first()
+for record in (motion, video):
+    record.tags.add("Parity topic alpha", "Parity topic zeta")
+print(json.dumps([[motion.pk, video.pk]]))
+"""
+    output = subprocess.check_output([str(ROOT / "venv/bin/python"), "-c", code], text=True)
+    [(motion, video)] = json.loads(output.splitlines()[-1])
+    driver.get(f"http://{HOST}:{rust.port}/robots.txt")
+    driver.delete_all_cookies()
+    driver.add_cookie({"name": "sessionid", "value": django_session()})
+    for prefix, edit in (("/admin/core/motiontopic/", f"/admin/core/motion/{motion}/change/"),
+                         ("/admin/taggit/tag/", f"/admin/core/video/{video}/change/")):
+        for server in (django, rust):
+            driver.get(f"http://{HOST}:{server.port}{edit}")
+            tags = driver.find_element("id", "id_tags").get_attribute("value")
+            assert '"Parity topic alpha"' in tags and '"Parity topic zeta"' in tags, tags
+        driver.get(f"http://{HOST}:{rust.port}{prefix}?q=Parity+topic")
+        checkboxes = driver.find_elements("css selector", ".action-select")
+        assert len(checkboxes) == 2
+        for checkbox in checkboxes:
+            checkbox.click()
+        driver.find_element("css selector", 'select[name="action"] option[value="merge_topics"]').click()
+        old = driver.find_element("tag name", "html")
+        driver.find_element("css selector", ".actions button").click()
+        WebDriverWait(driver, 10).until(staleness_of(old))
+        assert "Merged 1 topics into 'Parity topic alpha'." in driver.find_element("tag name", "body").text
+        for server in (django, rust):
+            driver.get(f"http://{HOST}:{server.port}{edit}")
+            tags = driver.find_element("id", "id_tags").get_attribute("value")
+            assert '"Parity topic alpha"' in tags and '"Parity topic zeta"' not in tags, tags
+    driver.delete_all_cookies()
+
+
 def assert_admin_formats(driver, django, rust):
     import base64
     from selenium.webdriver.support.expected_conditions import staleness_of
@@ -2955,6 +3076,28 @@ def assert_oauth_connections(driver, django, rust, provider):
     driver.delete_all_cookies()
 
 
+def assert_account_reauthentication(driver, django, rust):
+    from selenium.webdriver.support.expected_conditions import staleness_of
+
+    for server in (django, rust):
+        origin = f"http://{HOST}:{server.port}"
+        driver.get(origin + "/robots.txt")
+        driver.delete_all_cookies()
+        driver.add_cookie({"name": "sessionid", "value": django_session()})
+        driver.get(origin + "/accounts/reauthenticate/?next=/games/")
+        old = driver.find_element("tag name", "html")
+        driver.find_element("id", "id_password").send_keys("parity-invalid-password")
+        driver.find_element("id", "id_password").submit()
+        WebDriverWait(driver, 10).until(staleness_of(old))
+        error = driver.find_element("id", "id_password_error").text
+        assert error == "Incorrect password."
+        driver.find_element("id", "id_password").send_keys("password")
+        driver.find_element("id", "id_password").submit()
+        WebDriverWait(driver, 10).until(lambda browser: browser.current_url == origin + "/games/")
+        assert "My Account" in driver.find_element("tag name", "nav").get_attribute("textContent")
+    driver.delete_all_cookies()
+
+
 def assert_login_roundtrip(driver, rust, django):
     root = f"http://{HOST}:{rust.port}"
     driver.get(f"{root}/auth/login/?next=/games/")
@@ -3039,6 +3182,7 @@ def browser_checks(database, options, output):
             assert result_home[key] == result, f"Home page {key} differs: {result!r} vs {result_home[key]!r}"
         assert_session_nav(driver, (django, rust))
         assert_login_roundtrip(driver, rust, django)
+        assert_account_reauthentication(driver, django, rust)
         assert_password_accounts(driver, django, rust, mail)
         assert_account_entry_and_email(driver, django, rust, mail)
         assert_oauth_roundtrip(driver, rust, django)
@@ -3047,6 +3191,8 @@ def browser_checks(database, options, output):
         assert_legacy_standings(driver, django, rust)
         assert_partnership_paths(driver, django, rust)
         assert_partnership_stats(driver, django, rust)
+        if os.environ.get("BLACK_ROD_PARITY_MEMCACHED_ADDR"):
+            assert_shared_partnership_cache(driver, django, rust)
         assert_search(driver, django, rust)
         assert_video_permissions(driver, django, rust, fixture)
         assert_video_editor(driver, django, rust, fixture)
@@ -3066,6 +3212,7 @@ def browser_checks(database, options, output):
         assert_doty(driver, django, rust)
         assert_admin_tools(driver, django, rust)
         assert_native_site_admin(driver, django, rust)
+        assert_admin_topic_merges(driver, django, rust)
         assert_admin_formats(driver, django, rust)
         assert_debater_aliases(driver, django, rust)
         assert_native_round_inlines(driver, django, rust)

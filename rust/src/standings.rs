@@ -185,7 +185,11 @@ pub(crate) async fn coty_breakdowns(
             "debater": Debater::from_row(&row, origin, Some(&school))?,
             "points": points,
             "qualled": types.is_some(),
-            "contribution": points.min(60.0) + if bonus { 6.0 } else { 0.0 },
+            "contribution": if points >= 60.0 {
+                json!(60 + if bonus { 6 } else { 0 })
+            } else {
+                json!(points + if bonus { 6.0 } else { 0.0 })
+            },
             "auto_quals": named_quals.into_iter().collect::<Vec<_>>().join(", "),
         }));
     }

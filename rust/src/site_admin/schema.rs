@@ -61,6 +61,8 @@ pub(super) struct Widget {
     pub(super) hidden_initial: bool,
     pub(super) attributes: BTreeMap<String, serde_json::Value>,
     pub(super) wrapped: bool,
+    pub(super) related_delete: bool,
+    pub(super) empty_label: Option<String>,
     pub(super) related_url: Option<String>,
     pub(super) forward: Option<String>,
     #[serde(default)]
@@ -145,6 +147,7 @@ pub(super) struct Model {
     pub(super) list_links: Option<Vec<String>>,
     pub(super) search: Vec<String>,
     pub(super) choice_ordering: Vec<String>,
+    pub(super) model_ordering: Vec<String>,
     pub(super) ordering: Vec<String>,
     pub(super) filter: Vec<String>,
     pub(super) fields: BTreeMap<String, Field>,

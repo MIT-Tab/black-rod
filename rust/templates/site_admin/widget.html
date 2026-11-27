@@ -19,9 +19,9 @@
         {%- endfor %}
     </div>
 {% elif row.textarea %}
-    <textarea name="{{ row.name }}" cols="40" rows="10" id="id_{{ row.name }}"{% if row.widget_required %} required{% endif %}{% if row.error %} aria-invalid="true"{% endif %}
+    <textarea name="{{ row.name }}" cols="40" rows="10" id="id_{{ row.name }}"{% if row.widget_required %} required{% endif %}{% if row.error %} aria-invalid="true"{% endif %}{% if row.help %} aria-describedby="id_{{ row.name }}_helptext"{% endif %}
         {% for name,value in row.attrs %}{% if name != 'cols' and name != 'rows' and value is not none %} {{ name }}="{{ value }}"{% endif %}{% endfor %}>
-{{ row.value }}</textarea>
+{{ row.value }}</textarea>{% if row.hidden_initial %}<input type="hidden" name="initial-{{ row.name }}" value="{{ row.value }}" id="initial-id_{{ row.name }}">{% endif %}
 {% elif row.password_status %}
     <div id="id_{{ row.name }}" disabled{% if row.help %} aria-describedby="id_{{ row.name }}_helptext"{% endif %}>
         {% if row.usable %}<p><strong>algorithm</strong>: <bdi>{{ row.algorithm }}</bdi> <strong>iterations</strong>: <bdi>{{ row.iterations }}</bdi> <strong>salt</strong>: <bdi>{{ row.salt }}</bdi> <strong>hash</strong>: <bdi>{{ row.digest }}</bdi></p>
@@ -30,7 +30,7 @@
     </div>
 {% else %}
     {% if row.date_widget %}<p class="date">{% endif %}{% if row.raw_url %}<div>{% endif %}
-    <input type="{{ row.type }}" name="{{ row.name }}"{% if row.checkbox %}{% if row.checked %} checked{% endif %}{% elif row.value and row.type != 'password' %} value="{{ row.value }}"{% endif %}
+    <input type="{{ row.type }}" name="{{ row.name }}"{% if row.checkbox %}{% if row.checked %} checked{% endif %}{% elif (row.value or row.raw_id) and row.type != 'password' %} value="{{ row.value }}"{% endif %}
         {% if row.widget_required %} required{% endif %}{% if row.error %} aria-invalid="true"{% endif %}{% if row.help %} aria-describedby="id_{{ row.name }}_helptext"{% endif %} id="id_{{ row.name }}"
         {% for name,value in row.attrs %}{% if value is true %} {{ name }}{% elif value is not false and value is not none %} {{ name }}="{{ value }}"{% endif %}{% endfor %}>
     {% if row.raw_url %}<a href="{{ row.raw_url }}" class="related-lookup" id="lookup_id_{{ row.name }}" title="Lookup"></a>{% endif %}

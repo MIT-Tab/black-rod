@@ -13,7 +13,7 @@ use super::{
     AdminRequest, cap_first, redirect,
     schema::{self, Field, Model, schema},
 };
-use crate::{ApiError, login};
+use crate::{ApiError, flash, login};
 
 pub(super) type Parameters = BTreeMap<String, String>;
 
@@ -37,6 +37,8 @@ fn query_string(params: &Parameters) -> String {
         url::form_urlencoded::Serializer::new(String::new())
             .extend_pairs(params)
             .finish()
+            .replace('*', "%2A")
+            .replace("%7E", "~")
     )
 }
 
@@ -184,6 +186,12 @@ pub(super) fn projection(source: &mut Source, name: &str) -> String {
         "tournament_import_count" => {
             "CAST((SELECT COUNT(*) FROM core_tournamentimport im WHERE im.batch_id=t0.id) AS TEXT)"
                 .to_owned()
+        }
+        "usage_count" if source.model.slug() == "motiontopic" => {
+            "CAST((SELECT COUNT(*) FROM core_taggedmotion WHERE tag_id=t0.id) AS TEXT)".to_owned()
+        }
+        "usage_count" if source.model.key == "taggit.tag" => {
+            "CAST((SELECT COUNT(*) FROM taggit_taggeditem WHERE tag_id=t0.id) AS TEXT)".to_owned()
         }
         _ => "NULL".to_owned(),
     }
@@ -514,18 +522,52 @@ pub(super) fn search_conditions(
     where_parts
 }
 
-pub(super) fn ordering_sql(source: &mut Source, ordering: &[String]) -> String {
-    let mut ordered = Vec::new();
-    for name in ordering {
-        if let Some((entry, _)) = source.resolve(name.trim_start_matches('-')) {
-            ordered.push(format!(
-                "{entry} {}",
-                if name.starts_with('-') { "DESC" } else { "ASC" }
-            ));
+fn sort_expressions(
+    source: &mut Source,
+    path: &str,
+    descending: bool,
+    depth: usize,
+    output: &mut Vec<String>,
+) {
+    let Some((column, field)) = source.resolve(path) else {
+        return;
+    };
+    if !path.ends_with("_id")
+        && depth < 3
+        && let Some((app, slug)) = field.related.as_deref().and_then(|key| key.split_once('.'))
+        && let Some(model) = schema().model(app, slug)
+        && !model.model_ordering.is_empty()
+    {
+        for order in &model.model_ordering {
+            sort_expressions(
+                source,
+                &format!("{path}__{}", order.trim_start_matches('-')),
+                descending ^ order.starts_with('-'),
+                depth + 1,
+                output,
+            );
         }
+        return;
     }
-    ordered.push("t0.id DESC".to_owned());
-    ordered.join(",")
+    output.push(format!(
+        "{column} {}",
+        if descending { "DESC" } else { "ASC" }
+    ));
+}
+
+pub(super) fn ordering_sql(source: &mut Source, ordering: &[String]) -> String {
+    let mut expressions = Vec::new();
+    for name in ordering {
+        sort_expressions(
+            source,
+            name.trim_start_matches('-'),
+            name.starts_with('-'),
+            0,
+            &mut expressions,
+        );
+    }
+    expressions.push("t0.id DESC".to_owned());
+    expressions.join(",")
 }
 
 pub(super) fn conditions(
@@ -698,7 +740,8 @@ async fn get_list(
         let idx=i+offset;
         let sort=requested.iter().position(|(index,_)|*index==idx);
         let descending=sort.is_some_and(|i|requested[i].1);
-        let css=format!("{}column-{}{}",if col.order_by.is_some(){"sortable "}else{""},col.name,
+        let sortable=col.order_by.is_some()||col.name=="__str__";
+        let css=format!("{}column-{}{}",if sortable{"sortable "}else{""},col.name,
             sort.map_or("", |_|if descending{" sorted descending"}else{" sorted ascending"}));
         let encode=|(idx,rev):(usize,bool)|format!("{}{idx}",if rev{"-"}else{""});
         let remaining=requested.iter().copied().filter(|(index,_)|*index!=idx).map(encode).collect::<Vec<_>>();
@@ -706,7 +749,7 @@ async fn get_list(
         let changed=std::iter::once(encode((idx,sort.is_some()&&!descending))).chain(remaining.clone()).collect::<Vec<_>>().join(".");
         let toggle=requested.iter().copied().map(|(number,rev)|encode((number,if number==idx{!rev}else{rev}))).collect::<Vec<_>>().join(".");
         context! {label=>cap_first(&col.label),classes=>css,position=>sort.map(|i|i+1),
-            sort=>col.order_by.as_ref().map(|_|link(params,"o",Some(&changed))),
+            sort=>sortable.then(||link(params,"o",Some(&changed))),
             remove=>link(params,"o",Some(&suffix)),
             toggle=>link(params,"o",Some(&toggle)),direction=>if descending{"descending"}else{"ascending"}}
     }).collect::<Vec<_>>();
@@ -1055,20 +1098,16 @@ fn filter_owner<'a>(
 }
 
 pub(super) fn choice_ordering(source: &mut Source, model: &Model) -> String {
-    let mut order = model
-        .choice_ordering
-        .iter()
-        .filter_map(|name| {
-            source
-                .resolve(name.trim_start_matches('-'))
-                .map(|(column, _)| {
-                    format!(
-                        "{column} {}",
-                        if name.starts_with('-') { "DESC" } else { "ASC" }
-                    )
-                })
-        })
-        .collect::<Vec<_>>();
+    let mut order = Vec::new();
+    for name in &model.choice_ordering {
+        sort_expressions(
+            source,
+            name.trim_start_matches('-'),
+            name.starts_with('-'),
+            0,
+            &mut order,
+        );
+    }
     order.push("t0.id ASC".to_owned());
     order.join(", ")
 }
@@ -1137,6 +1176,115 @@ fn date_filters(path: &str, field: &Field, params: &Parameters) -> Vec<Value> {
     choices
 }
 
+async fn merge_topics(
+    admin: &AdminRequest<'_>,
+    model: &'static Model,
+    params: &Parameters,
+    data: &[u8],
+    across: bool,
+) -> Result<Response, ApiError> {
+    if !admin.viewer.allows(model, "change") {
+        return Ok(StatusCode::FORBIDDEN.into_response());
+    }
+    let motion = model.slug() == "motiontopic";
+    let mut ids = url::form_urlencoded::parse(data)
+        .filter_map(|(name, id)| {
+            (name == "_selected_action")
+                .then(|| id.parse::<i64>().ok())
+                .flatten()
+        })
+        .collect::<Vec<_>>();
+    ids.sort_unstable();
+    ids.dedup();
+    let mut source = Source::new(model);
+    let mut bind = Vec::new();
+    let conditions = conditions(&mut source, model, params, &mut bind);
+    let restriction = if across {
+        String::new()
+    } else {
+        let ids = ids.iter().map(i64::to_string).collect::<Vec<_>>().join(",");
+        let ids = if ids.is_empty() { "NULL" } else { &ids };
+        format!(
+            "{} t0.id IN ({ids})",
+            if conditions.is_empty() {
+                "WHERE"
+            } else {
+                "AND"
+            }
+        )
+    };
+    let sql = format!(
+        "SELECT CAST(t0.id AS BIGINT),t0.name FROM {}{conditions} {restriction} ORDER BY t0.name",
+        source.sql()
+    );
+    let mut tx = admin.state.pool.begin().await?;
+    let mut query = sqlx::query_as::<_, (i64, String)>(AssertSqlSafe(sql));
+    for value in &bind {
+        query = query.bind(value);
+    }
+    let topics = query.fetch_all(&mut *tx).await?;
+    let (level, message) = if topics.len() < 2 {
+        (
+            30,
+            if motion {
+                "Select at least two motion topics."
+            } else {
+                "Select at least two topics."
+            }
+            .to_owned(),
+        )
+    } else {
+        let (target, name) = &topics[0];
+        let (table, columns) = if motion {
+            ("core_taggedmotion", "content_object_id")
+        } else {
+            ("taggit_taggeditem", "content_type_id,object_id")
+        };
+        let copy = format!(
+            "INSERT INTO {table} (tag_id,{columns}) SELECT $1,{columns} FROM {table}
+             WHERE tag_id=$2 ON CONFLICT DO NOTHING"
+        );
+        let unlink = format!("DELETE FROM {table} WHERE tag_id=$1");
+        let delete = format!("DELETE FROM {} WHERE id=$1", model.table);
+        for (source, _) in &topics[1..] {
+            sqlx::query(AssertSqlSafe(copy.as_str()))
+                .bind(target)
+                .bind(source)
+                .execute(&mut *tx)
+                .await?;
+            sqlx::query(AssertSqlSafe(unlink.as_str()))
+                .bind(source)
+                .execute(&mut *tx)
+                .await?;
+            sqlx::query(AssertSqlSafe(delete.as_str()))
+                .bind(source)
+                .execute(&mut *tx)
+                .await?;
+        }
+        (
+            20,
+            format!("Merged {} topics into '{name}'.", topics.len() - 1),
+        )
+    };
+    tx.commit().await?;
+    let target = admin
+        .uri
+        .path_and_query()
+        .map_or(admin.uri.path(), |path| path.as_str());
+    let mut response = redirect(target);
+    if let Some(secret) = admin.state.secret.as_deref() {
+        flash::push(
+            &mut response,
+            admin.headers,
+            secret,
+            level,
+            &message,
+            admin.secure(),
+        );
+    }
+    Ok(response)
+}
+
 pub(super) async fn page(
     admin: &AdminRequest<'_>,
     model: &'static Model,
@@ -1174,6 +1322,22 @@ pub(super) async fn page(
                 .collect::<Vec<_>>();
             return super::records::delete(admin, model, &ids, true, values.contains_key("post"))
                 .await;
+        }
+        if (model.slug() == "motiontopic" || model.key == "taggit.tag")
+            && values
+                .get("action")
+                .is_some_and(|action| action == "merge_topics")
+        {
+            return merge_topics(
+                admin,
+                model,
+                &params,
+                &data,
+                values
+                    .get("select_across")
+                    .is_some_and(|value| value == "1"),
+            )
+            .await;
         }
         if model.slug() == "agentcredential"
             && values
