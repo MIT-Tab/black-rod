@@ -6,7 +6,10 @@ use axum::{
     http::{HeaderMap, HeaderValue, Method, StatusCode, Uri, header},
     response::{Html, IntoResponse, Response},
 };
-use chrono::{Duration, Utc};
+use cookie::{
+    Cookie, SameSite,
+    time::{Duration, OffsetDateTime},
+};
 use minijinja::context;
 use sqlx::Row;
 use subtle::ConstantTimeEq;
@@ -149,19 +152,16 @@ pub(crate) fn set_cookie(
     https: bool,
     http_only: bool,
 ) {
-    let mut cookie = format!("{name}={value}; Path=/; SameSite=Lax");
+    let mut cookie = Cookie::build((name, value))
+        .path("/")
+        .same_site(SameSite::Lax)
+        .secure(https)
+        .http_only(http_only);
     if let Some(age) = age {
-        let expires =
-            (Utc::now() + Duration::seconds(i64::from(age))).format("%a, %d %b %Y %H:%M:%S GMT");
-        cookie.push_str(&format!("; Max-Age={age}; Expires={expires}"));
+        let age = Duration::seconds(i64::from(age));
+        cookie = cookie.max_age(age).expires(OffsetDateTime::now_utc() + age);
     }
-    if https {
-        cookie.push_str("; Secure");
-    }
-    if http_only {
-        cookie.push_str("; HttpOnly");
-    }
-    if let Ok(cookie) = HeaderValue::from_str(&cookie) {
+    if let Ok(cookie) = HeaderValue::from_str(&cookie.to_string()) {
         response.headers_mut().append(header::SET_COOKIE, cookie);
     }
 }
@@ -439,6 +439,43 @@ pub(crate) async fn logout(State(state): State<AppState>, request: Request) -> R
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cookie_builder_preserves_session_and_csrf_attributes() {
+        let mut response = StatusCode::OK.into_response();
+        set_cookie(&mut response, "sessionid", "session123", None, true, true);
+        set_cookie(
+            &mut response,
+            "csrftoken",
+            "csrf123",
+            Some(CSRF_AGE),
+            true,
+            false,
+        );
+        let mut cookies = response
+            .headers()
+            .get_all(header::SET_COOKIE)
+            .iter()
+            .map(|value| Cookie::parse(value.to_str().unwrap()).unwrap());
+        let session = cookies.next().unwrap();
+        assert_eq!(session.name_value(), ("sessionid", "session123"));
+        assert_eq!(session.secure(), Some(true));
+        assert_eq!(session.http_only(), Some(true));
+        assert_eq!(session.path(), Some("/"));
+        assert_eq!(session.same_site(), Some(SameSite::Lax));
+        assert_eq!(session.max_age(), None);
+        assert_eq!(session.expires(), None);
+
+        let csrf = cookies.next().unwrap();
+        assert_eq!(csrf.name_value(), ("csrftoken", "csrf123"));
+        assert_eq!(csrf.secure(), Some(true));
+        assert_ne!(csrf.http_only(), Some(true));
+        assert_eq!(csrf.path(), Some("/"));
+        assert_eq!(csrf.same_site(), Some(SameSite::Lax));
+        assert_eq!(csrf.max_age(), Some(Duration::seconds(i64::from(CSRF_AGE))));
+        assert!(csrf.expires().is_some());
+        assert!(cookies.next().is_none());
+    }
 
     #[test]
     fn csrf_token_round_trips_mask_without_leaking_secret() {

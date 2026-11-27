@@ -5,6 +5,9 @@ edition = "2024"
 rust-version = "1.94"
 publish = false
 
+[lints.rust]
+unsafe_code = "forbid"
+
 [dependencies]
 axum = { version = "0.8", features = ["multipart"] }
 chrono = { version = "0.4", features = ["serde"] }
@@ -52,6 +55,8 @@ bcrypt = "0.19"
 md-5 = "0.10"
 scrypt = { version = "0.11", default-features = false }
 lettre = { version = "0.11.24", default-features = false, features = ["builder", "smtp-transport", "tokio1-rustls-tls"] }
+oauth2 = { version = "5.0.0", default-features = false, features = ["reqwest"] }
+cookie = { version = "0.18.1", default-features = false }
 
 [dev-dependencies]
 http-body-util = "0.1"

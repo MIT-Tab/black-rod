@@ -30,6 +30,12 @@ Build the release binary with Rust 1.94 and build the existing frontend assets w
 
 Verify the staged service through the configured HTTPS origin before redirecting traffic. Check an existing account session, public standings, admin, uploaded media, and a representative existing import review. Switch the scheduled snapshot refresh to the Rust binary on the existing 12-hour interval. Preserve the previous service, release assets, and cron command for rollback. Restoring their routing and schedule uses the same database and files. The existing Linode deploy workflow invokes the host-managed deploy script, so switching the running service and scheduled command requires host configuration.
 
+## Runtime boundaries
+
+Cargo forbids unsafe code in this package. Axum and Tower own routing and HTTP transport, SQLx owns database connections and transactions, and reqwest uses Rustls for outbound TLS. The cookie crate serializes response cookies. The oauth2 client exchanges authorization codes with APDAOnline, while the provider adapter preserves allauth's callback, token envelope, and account-linking data.
+
+The session module loads existing Django sessions and applies permissions. Its signing adapter uses Ring for HMAC, flate2 for Django's compressed payloads, and Serde for decoding. The password verifier uses Ring, Argon2, bcrypt, and scrypt for the formats stored by Django. Successful verification upgrades legacy password hashes to Django-compatible PBKDF2. Route registration, request middleware, and Django template translation live in separate modules.
+
 ## Parity tests
 
 ```sh
@@ -41,7 +47,7 @@ cargo test --manifest-path rust/Cargo.toml --locked
 "$scripts/br" venv/bin/python rust/tools/command_parity.py
 ```
 
-The HTTP harness starts Django and Rust against the same fixture. It compares status, relevant headers, JSON fields, array order, and plain text. Equal-score COTY ties, equal-rank TOTY ties, school members with equal tenure, video lists, and tags are compared without requiring an order where the reference query has no final sort. The SQLite fixture is hashed before and after the run. Set `BLACK_ROD_PARITY_POSTGRES_URL` to a locally seeded PostgreSQL database for the PostgreSQL run. The Rust parity workflow loads the tracked fixture into both database engines.
+The HTTP harness starts Django and Rust against the same fixture. It compares status, relevant headers, JSON fields, array order, and plain text. The harness compares video lists and tags without requiring an order where the reference query has no final sort. The SQLite fixture is hashed before and after the run. Set `BLACK_ROD_PARITY_POSTGRES_URL` to a locally seeded PostgreSQL database for the PostgreSQL run. The Rust parity workflow loads the tracked fixture into both database engines.
 
 The Agent harness tests both runtimes against the same local database. It covers atomic and reversible correction batches, stale revisions, preview hashes, concurrent idempotent requests, cascading deletes, and identity merges. It copies SQLite to a temporary file and clones the supplied loopback PostgreSQL fixture before testing writes. The PostgreSQL fixture name must start with `black_rod_parity`.
 

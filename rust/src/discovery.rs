@@ -11,7 +11,11 @@ use minijinja::context;
 use serde_json::{Value, json};
 use tower::ServiceExt;
 
-use crate::{AppState, local_api, public_api_path, web};
+use crate::{
+    AppState,
+    routing::{local_api, public_api_path},
+    web,
+};
 
 const SCHEMA: &str = include_str!("../assets/openapi.json");
 const DOC: &str = include_str!("../assets/llms.txt");

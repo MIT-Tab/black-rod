@@ -1,15 +1,14 @@
-use std::{collections::HashMap, time::Duration};
+mod provider;
+
+use std::collections::HashMap;
 
 use axum::{
     extract::{OriginalUri, Request, State},
     http::{HeaderMap, StatusCode, header},
     response::{Html, IntoResponse, Response},
 };
-use reqwest::Client;
-use serde::Deserialize;
 use serde_json::{Value, json};
 use sqlx::{AnyPool, Row};
-use url::Url;
 
 use crate::{
     ApiError, AppState, account, flash,
@@ -17,44 +16,8 @@ use crate::{
     session, web,
 };
 
-const CALLBACK: &str = "/accounts/apdaonline/login/callback/";
-const DEFAULT_BASE: &str = "https://apda.online/";
-
-pub struct OAuth {
-    base: Url,
-    client_id: String,
-    secret: String,
-    client: Client,
-}
-
-impl OAuth {
-    pub fn new(
-        client_id: String,
-        secret: String,
-        base: Option<String>,
-    ) -> Result<Self, Box<dyn std::error::Error>> {
-        let base = Url::parse(base.as_deref().unwrap_or(DEFAULT_BASE))?;
-        let loopback = matches!(base.host_str(), Some("127.0.0.1" | "localhost" | "[::1]"));
-        if !(base.scheme() == "https" || (base.scheme() == "http" && loopback))
-            || base.host().is_none()
-        {
-            return Err("Invalid APDAOnline OAuth base URL".into());
-        }
-        Ok(Self {
-            base,
-            client_id,
-            secret,
-            client: Client::builder()
-                .timeout(Duration::from_secs(30))
-                .redirect(reqwest::redirect::Policy::none())
-                .build()?,
-        })
-    }
-
-    fn endpoint(&self, name: &str) -> Url {
-        self.base.join(name).expect("absolute OAuth base URL")
-    }
-}
+pub use provider::OAuth;
+use provider::{Profile, Token};
 
 pub(crate) async fn start(state: &AppState, origin: &str, next: &str, remember: bool) -> Response {
     start_process(state, origin, next, remember, None).await
@@ -96,14 +59,7 @@ async fn start_process(
             return StatusCode::INTERNAL_SERVER_ERROR.into_response();
         }
     };
-    let mut authorize = config.endpoint("oauth/authorize");
-    authorize
-        .query_pairs_mut()
-        .append_pair("client_id", &config.client_id)
-        .append_pair("redirect_uri", &format!("{origin}{CALLBACK}"))
-        .append_pair("scope", "")
-        .append_pair("response_type", "code")
-        .append_pair("state", &state_id);
+    let authorize = config.authorization_url(origin, &state_id);
     let mut response = (
         StatusCode::FOUND,
         [
@@ -123,79 +79,6 @@ async fn start_process(
         );
     }
     response
-}
-
-#[derive(Deserialize)]
-struct Token {
-    access_token: String,
-    #[serde(default)]
-    refresh_token: String,
-    #[serde(default)]
-    expires_in: Option<i64>,
-}
-
-#[derive(Deserialize)]
-struct Profile {
-    #[serde(rename = "ID")]
-    id: Value,
-    user_nicename: String,
-    user_email: String,
-    display_name: String,
-    user_roles: Vec<String>,
-}
-
-impl Profile {
-    fn uid(&self) -> Option<String> {
-        match &self.id {
-            Value::String(id) if id.bytes().all(|byte| byte.is_ascii_digit()) && !id.is_empty() => {
-                Some(id.clone())
-            }
-            Value::Number(id) if id.as_u64().is_some() => Some(id.to_string()),
-            _ => None,
-        }
-    }
-
-    fn can_view_video(&self) -> bool {
-        self.user_roles
-            .iter()
-            .any(|role| role == "private_side_viewer")
-    }
-}
-
-async fn profile(config: &OAuth, origin: &str, code: &str) -> Option<(Token, Value, Profile)> {
-    let callback = format!("{origin}{CALLBACK}");
-    let token = config
-        .client
-        .post(config.endpoint("oauth/token"))
-        .form(&[
-            ("client_id", config.client_id.as_str()),
-            ("client_secret", config.secret.as_str()),
-            ("grant_type", "authorization_code"),
-            ("redirect_uri", callback.as_str()),
-            ("code", code),
-        ])
-        .send()
-        .await
-        .ok()?
-        .error_for_status()
-        .ok()?
-        .json::<Token>()
-        .await
-        .ok()?;
-    let fields = config
-        .client
-        .get(config.endpoint("oauth/me"))
-        .bearer_auth(&token.access_token)
-        .send()
-        .await
-        .ok()?
-        .error_for_status()
-        .ok()?
-        .json::<Value>()
-        .await
-        .ok()?;
-    let profile = serde_json::from_value(fields.clone()).ok()?;
-    Some((token, fields, profile))
 }
 
 #[derive(Debug)]
@@ -456,7 +339,7 @@ async fn pending_signup(
         vec![json!({"email":profile.user_email,"primary":true,"verified":false})]
     };
     let value = json!({
-        "provider":{"id":"apdaonline","app.client_id":provider.client_id},
+        "provider":{"id":"apdaonline","app.client_id":provider.client_id()},
         "account":{"provider":"apdaonline","uid":uid,"extra_data":fields},
         "user":{"username":profile.user_nicename,"email":profile.user_email,
             "first_name":first_name,"last_name":last_name,"can_view_private_videos":profile.can_view_video()},
@@ -722,7 +605,7 @@ pub(crate) async fn callback(
     let Some(code) = params.get("code").filter(|code| !code.is_empty()) else {
         return failed(&state, &uri, &headers).await;
     };
-    let Some((token, fields, profile)) = profile(config, &origin, code).await else {
+    let Some((token, fields, profile)) = config.profile(&origin, code).await else {
         eprintln!("OAuth provider rejected the exchange or sent an invalid response");
         return failed(&state, &uri, &headers).await;
     };

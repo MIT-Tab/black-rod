@@ -6,7 +6,7 @@ import django
 from django.urls import get_resolver, URLPattern
 
 
-ROUTER = Path(__file__).resolve().parents[1] / "src/lib.rs"
+ROUTER = Path(__file__).resolve().parents[1] / "src/routing.rs"
 PARAMETER = re.compile(r"<[^<>]+>")
 RUST_PARAMETER = re.compile(r"\{[^{}]+}")
 REGEX_ROUTES = {
