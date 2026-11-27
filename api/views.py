@@ -47,6 +47,7 @@ from core.utils.rounds import get_record, get_tab_card_data
 from core.utils.result_visibility import DebaterProfileResults, team_profile_results
 from core.utils.schools import get_debaters_for_season
 from .serializers import (
+    ordered_team_members,
     serialize_debater,
     serialize_school,
     serialize_speaker_result,
@@ -598,7 +599,7 @@ def _lite_team(team, request):
     data = {
         "id": team.id,
         "name": team.name,
-        "debaters": [_lite_debater(debater, request) for debater in team.debaters.all()],
+        "debaters": [_lite_debater(debater, request) for debater in ordered_team_members(team)],
     }
     if request:
         data["url"] = request.build_absolute_uri(team.get_absolute_url())

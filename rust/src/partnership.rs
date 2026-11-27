@@ -12,6 +12,7 @@ use axum::{
 };
 use minijinja::context;
 use serde_json::{Value, json};
+use sqlx::{AssertSqlSafe, Row};
 
 use crate::{ApiError, AppState, is_django_integer, session, team_profile::read_transaction, web};
 
@@ -146,59 +147,72 @@ pub(crate) async fn autocomplete(
     let values = url::form_urlencoded::parse(uri.query().unwrap_or_default().as_bytes())
         .into_owned()
         .collect::<BTreeMap<_, _>>();
+    autocomplete_results(&state, &values)
+        .await
+        .unwrap_or_else(failed)
+}
+
+async fn autocomplete_results(
+    state: &AppState,
+    values: &BTreeMap<String, String>,
+) -> Result<Response, ApiError> {
     let words = values
         .get("q")
         .map_or("", String::as_str)
         .split_whitespace()
-        .map(str::to_lowercase)
         .collect::<Vec<_>>();
     if words.is_empty() {
-        return Json(json!({"results":[],"pagination":{"more":false}})).into_response();
+        return Ok(Json(json!({"results":[],"pagination":{"more":false}})).into_response());
     }
-    let mut conn = match state.pool.acquire().await {
-        Ok(conn) => conn,
-        Err(error) => return failed(error.into()),
-    };
-    let people = match People::load(&mut conn).await {
-        Ok(people) => people,
-        Err(error) => return failed(error),
-    };
-    let query = words.join(" ");
-    let mut matches = people
-        .profiles
-        .values()
-        .filter_map(|person| {
-            let normalized = person.name.to_lowercase();
-            if words.iter().all(|word| normalized.contains(word)) {
-                let rank = if normalized == query {
-                    0
-                } else if normalized.starts_with(&query) {
-                    1
-                } else {
-                    2
-                };
-                Some((rank, normalized, person.id, person))
-            } else {
-                None
-            }
-        })
-        .collect::<Vec<_>>();
-    matches.sort_by(|left, right| (&left.0, &left.1, &left.2).cmp(&(&right.0, &right.1, &right.2)));
     let page = values
         .get("page")
-        .and_then(|page| page.parse::<usize>().ok())
+        .and_then(|page| page.parse::<i64>().ok())
         .unwrap_or(1)
         .max(1);
     let offset = (page - 1).saturating_mul(10);
-    let results = matches
+    let mut sql = String::from(
+        "SELECT CAST(id AS BIGINT) AS id, name, school FROM (
+            SELECT d.id, TRIM(d.first_name || ' ' || d.last_name) AS name,
+                   COALESCE(s.name, 'Unaffiliated') AS school
+            FROM core_debater d LEFT JOIN core_school s ON s.id = d.school_id
+            WHERE NOT d.synthetic AND NOT d.temporary
+        ) AS people WHERE ",
+    );
+    let filters = (1..=words.len())
+        .map(|index| format!("UPPER(name) LIKE UPPER(${index}) ESCAPE '!'"))
+        .collect::<Vec<_>>();
+    sql.push_str(&filters.join(" AND "));
+    let exact = words.len() + 1;
+    let prefix = exact + 1;
+    let skip = prefix + 1;
+    sql.push_str(&format!(
+        " ORDER BY CASE WHEN UPPER(name) = UPPER(${exact}) THEN 0
+                        WHEN UPPER(name) LIKE UPPER(${prefix}) ESCAPE '!' THEN 1
+                        ELSE 2 END, LOWER(name), id
+          LIMIT 11 OFFSET ${skip}"
+    ));
+    let mut query = sqlx::query(AssertSqlSafe(sql));
+    for word in &words {
+        query = query.bind(crate::autocomplete::quote_pattern(word));
+    }
+    let phrase = words.join(" ");
+    let prefix_pattern = crate::autocomplete::quote_pattern(&phrase);
+    let rows = query
+        .bind(phrase)
+        .bind(prefix_pattern[1..].to_owned())
+        .bind(offset)
+        .fetch_all(&state.pool)
+        .await?;
+    let results = rows
         .iter()
-        .skip(offset)
         .take(10)
-        .map(|(_, _, _, person)| {
-            let label = person.label();
-            json!({"id":person.id.to_string(),"text":label,"selected_text":label})
+        .map(|row| {
+            let id: i64 = row.try_get("id")?;
+            let name: &str = row.try_get("name")?;
+            let school: &str = row.try_get("school")?;
+            let label = format!("{name} ({school}) · #{id}");
+            Ok(json!({"id":id.to_string(),"text":label,"selected_text":label}))
         })
-        .collect::<Vec<Value>>();
-    Json(json!({"results":results,"pagination":{"more":matches.len().saturating_sub(offset)>10}}))
-        .into_response()
+        .collect::<Result<Vec<Value>, sqlx::Error>>()?;
+    Ok(Json(json!({"results":results,"pagination":{"more":rows.len()>10}})).into_response())
 }

@@ -34,17 +34,6 @@ pub(super) struct Person {
     pub(super) latest_season: Option<String>,
 }
 
-impl Person {
-    pub(super) fn label(&self) -> String {
-        format!(
-            "{} ({}) · #{}",
-            self.name,
-            self.school.as_deref().unwrap_or("Unaffiliated"),
-            self.id
-        )
-    }
-}
-
 pub(super) struct People {
     pub(super) profiles: BTreeMap<i64, Person>,
     pub(super) canonical: HashMap<i64, i64>,

@@ -176,9 +176,10 @@ class TeamDeleteView(CustomDeleteView):
 
 class TeamAutocomplete(autocomplete.Select2QuerySetView):
     def get_result_label(self, record):
-        visible_names = [d.name for d in record.debaters.exclude(synthetic=True)]
+        members = record.debaters.order_by("pk")
+        visible_names = [d.name for d in members.exclude(synthetic=True)]
         if not visible_names:
-            visible_names = [d.name for d in record.debaters.all()]
+            visible_names = [d.name for d in members]
         member_suffix = f" ({', '.join(visible_names)})" if visible_names else ""
         synthetic_label = " [Synthetic]" if record.synthetic else ""
         return f"<{record.id}> {record.name}{member_suffix}{synthetic_label}"

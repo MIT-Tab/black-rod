@@ -114,7 +114,7 @@ fn synthetic(value: &str) -> Option<bool> {
     }
 }
 
-fn quote_pattern(value: &str) -> String {
+pub(crate) fn quote_pattern(value: &str) -> String {
     let value = value
         .replace('!', "!!")
         .replace('%', "!%")
