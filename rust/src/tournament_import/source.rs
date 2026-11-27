@@ -217,7 +217,7 @@ async fn publish(state: &AppState, url: &str, data: Arc<Value>) -> Result<(), Er
     };
     let previous = before.insert(id.clone(), row);
     let published = match serde_pickle::to_vec(&before, Default::default()) {
-        Ok(bytes) => match cache.write_raw_checked(INDEX, 1, &bytes, 0, true).await {
+        Ok(bytes) => match cache.update_raw_checked(INDEX, 1, &bytes, 0).await {
             Ok(stored) => Some(stored),
             Err(_) => {
                 // A lost acknowledgement can leave an index that references these chunks.
@@ -679,7 +679,10 @@ async fn refresh_presence(
     }
     let bytes = serde_pickle::to_vec(&cached, Default::default())
         .map_err(|_| "Could not encode the tournament snapshot index")?;
-    if !cache.write_raw(INDEX, 1, &bytes, 0, true).await {
+    if !matches!(
+        cache.update_raw_checked(INDEX, 1, &bytes, 0).await,
+        Ok(true)
+    ) {
         return Err("Could not save tournament snapshot retention");
     }
     // Shorten chunk lifetimes only after the index records when they disappeared.

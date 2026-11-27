@@ -176,10 +176,36 @@ impl Memcached {
         seconds: u32,
         replace: bool,
     ) -> io::Result<bool> {
+        let operation = if replace { "set" } else { "add" };
+        self.store_raw(operation, key, flags, body, seconds).await
+    }
+
+    // Memcached can remove an existing item when a SET is rejected on allocation.
+    // REPLACE updates an existing item without that behavior. ADD covers a miss.
+    pub(crate) async fn update_raw_checked(
+        &self,
+        key: &str,
+        flags: u32,
+        body: &[u8],
+        seconds: u32,
+    ) -> io::Result<bool> {
+        if self.store_raw("replace", key, flags, body, seconds).await? {
+            return Ok(true);
+        }
+        self.store_raw("add", key, flags, body, seconds).await
+    }
+
+    async fn store_raw(
+        &self,
+        operation: &str,
+        key: &str,
+        flags: u32,
+        body: &[u8],
+        seconds: u32,
+    ) -> io::Result<bool> {
         if !valid_key(key) || body.len() > MAX_VALUE {
             return Ok(false);
         }
-        let operation = if replace { "set" } else { "add" };
         let command = format!("{operation} {key} {flags} {seconds} {}\r\n", body.len());
         let reply = self.reply(&command, Some(body)).await?;
         match reply.as_slice() {
