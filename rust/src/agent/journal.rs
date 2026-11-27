@@ -129,7 +129,10 @@ impl Table {
         let columns = fields
             .iter()
             .map(|(name, value)| {
-                let field = self.fields.get(name).ok_or(ApiError::Serialization)?;
+                let field = self.fields.get(name).ok_or_else(|| {
+                    eprintln!("{} has no writable column {name}", self.table);
+                    ApiError::Serialization
+                })?;
                 Ok((field, value))
             })
             .collect::<Result<Vec<_>, ApiError>>()?;

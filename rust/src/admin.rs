@@ -1,4 +1,6 @@
 pub(crate) mod amendment;
+pub(crate) mod debater_aliases;
+pub(crate) mod merge_suggestions;
 pub(crate) mod mittab;
 pub(crate) mod rankings;
 pub(crate) mod short_names;

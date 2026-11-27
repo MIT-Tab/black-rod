@@ -80,25 +80,34 @@ const VIDEOS: &str = "
     WHERE NOT d.synthetic AND NOT d.temporary ORDER BY c.count DESC LIMIT 10
 ";
 
-fn script_json(value: &[Value]) -> String {
-    json!(value)
-        .to_string()
+fn script_json(rows: &[Value], columns: &[&str]) -> String {
+    let objects = rows
+        .iter()
+        .map(|row| {
+            let fields = columns
+                .iter()
+                .map(|column| format!(r#""{column}": {}"#, row[*column]))
+                .collect::<Vec<_>>();
+            format!("{{{}}}", fields.join(", "))
+        })
+        .collect::<Vec<_>>();
+    format!("[{}]", objects.join(", "))
         .replace('<', "\\u003c")
         .replace('>', "\\u003e")
         .replace('&', "\\u0026")
 }
 
-fn median(numbers: &mut [i64]) -> f64 {
+fn median(numbers: &mut [i64]) -> Value {
     let len = numbers.len();
     if len == 0 {
-        return 0.0;
+        return json!(0);
     }
     numbers.sort_unstable();
     let middle = len / 2;
     if len % 2 == 1 {
-        numbers[middle] as f64
+        json!(numbers[middle])
     } else {
-        (numbers[middle - 1] + numbers[middle]) as f64 / 2.0
+        json!((numbers[middle - 1] + numbers[middle]) as f64 / 2.0)
     }
 }
 
@@ -239,11 +248,11 @@ async fn data(pool: &AnyPool, season: i32) -> Result<Arc<Value>, ApiError> {
         "current_season":season.to_string(), "current_season_display":season_display(season),
         "avg_tournament_size":average,"multi_season_percentage":percent,
         "teams_with_multiple_tournaments":totals.try_get::<i64,_>("recurring")?,
-        "debaters_by_season":script_json(&debaters_by_season),
-        "teams_by_season":script_json(&teams_by_season),
-        "toty_points_by_season":script_json(&toty),
-        "tournaments_by_season":script_json(&tournaments),
-        "median_stats_by_season":script_json(&medians),
+        "debaters_by_season":script_json(&debaters_by_season, &["season", "count"]),
+        "teams_by_season":script_json(&teams_by_season, &["season", "count"]),
+        "toty_points_by_season":script_json(&toty, &["season", "total_points"]),
+        "tournaments_by_season":script_json(&tournaments, &["season", "tournament_count", "avg_size", "median_size"]),
+        "median_stats_by_season":script_json(&medians, &["season", "median_size", "median_novices"]),
         "schools_by_tournament_count":school_table(pool,true).await?,
         "schools_by_coty_points":school_table(pool,false).await?,
         "debaters_by_tournament_count":people_table(pool,false).await?,

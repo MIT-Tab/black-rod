@@ -19,6 +19,18 @@ use crate::{
 
 const VIEWS: &[(&str, &str)] = &[
     (
+        "school_admin/merge_debater_request_form.html",
+        include_str!("../../core/templates/school_admin/merge_debater_request_form.html"),
+    ),
+    (
+        "admin/merge_debater_requests.html",
+        include_str!("../../core/templates/admin/merge_debater_requests.html"),
+    ),
+    (
+        "school_admin/merge_controls.html",
+        include_str!("../templates/merge_controls.html"),
+    ),
+    (
         "site_admin/object_history.html",
         include_str!("../templates/site_admin/object_history.html"),
     ),
@@ -29,6 +41,34 @@ const VIEWS: &[(&str, &str)] = &[
     (
         "site_admin/change_form.html",
         include_str!("../templates/site_admin/change_form.html"),
+    ),
+    (
+        "site_admin/fieldset.html",
+        include_str!("../templates/site_admin/fieldset.html"),
+    ),
+    (
+        "site_admin/inline.html",
+        include_str!("../templates/site_admin/inline.html"),
+    ),
+    (
+        "site_admin/inline_fields.html",
+        include_str!("../templates/site_admin/inline_fields.html"),
+    ),
+    (
+        "site_admin/submit.html",
+        include_str!("../templates/site_admin/submit.html"),
+    ),
+    (
+        "site_admin/password_self.html",
+        include_str!("../templates/site_admin/password_self.html"),
+    ),
+    (
+        "site_admin/password_other.html",
+        include_str!("../templates/site_admin/password_other.html"),
+    ),
+    (
+        "site_admin/password_fields.html",
+        include_str!("../templates/site_admin/password_fields.html"),
     ),
     (
         "site_admin/widget.html",
@@ -89,6 +129,14 @@ const VIEWS: &[(&str, &str)] = &[
     (
         "admin/rankings_recompute.html",
         include_str!("../../core/templates/admin/rankings_recompute.html"),
+    ),
+    (
+        "admin/debater_alias_suggestions.html",
+        include_str!("../../core/templates/admin/debater_alias_suggestions.html"),
+    ),
+    (
+        "admin/merge_suggestions.html",
+        include_str!("../../core/templates/admin/merge_suggestions.html"),
     ),
     (
         "admin/mittab_dashboard.html",
@@ -736,6 +784,51 @@ fn adapt_scheduler(template: &str) -> String {
 fn adapt_template(name: &str, template: &str) -> String {
     let adapted;
     let template = match name {
+        "school_admin/merge_debater_request_form.html" | "admin/merge_debater_requests.html" => {
+            let mut html = template
+                .replace("{{ message }}","{{ message.text }}")
+                .replace(r#"|date:"M d, Y H:i""#, "")
+                .replace("|default:request.requested_by.username", "")
+                .replace("|default:request.processed_by.username", "")
+                .replace("request.requested_by.get_full_name", "request.requested_by")
+                .replace("request.processed_by.get_full_name", "request.processed_by")
+                .replace(r#"|default:"""#, "")
+                .replace(r#"|join:" or ""#, r#"|join(" or ")"#)
+                .replace("{{ user_pending_requests|length|pluralize }}", "{% if user_pending_requests|length != 1 %}s{% endif %}")
+                .replace("{{ form.media }}", r#"{% with media=true %}{% include "school_admin/merge_controls.html" %}{% endwith %}"#)
+                .replace("{% for subwidget in form.keep_debater %}", "{% for value, label in choices %}")
+                .replace("{{ subwidget.id_for_label }}", "id_keep_debater_{{ loop.index0 }}")
+                .replace("{{ subwidget.choice_label }}", "{{ label }}")
+                .replace("{{ subwidget.tag }}", r#"<input type="radio" name="keep_debater" value="{{ value }}" class="form-check-input" required id="id_keep_debater_{{ loop.index0 }}"{% if keep == value %} checked{% endif %}>"#);
+            for (name, label) in [
+                ("school_one", "Debater A School"),
+                ("school_two", "Debater B School"),
+                ("debater_one", "Debater A"),
+                ("debater_two", "Debater B"),
+            ] {
+                html = html.replace(&format!("{{{{ form.{name}.label_tag }}}}"),&format!(r#"<label for="id_{name}">{label}:</label>"#))
+                    .replace(&format!("{{{{ form.{name} }}}}"),&format!(r#"{{% with field="{name}", field_info=form.{name} %}}{{% include "school_admin/merge_controls.html" %}}{{% endwith %}}"#));
+            }
+            adapted = html;
+            &adapted
+        }
+        "admin/debater_alias_suggestions.html" => {
+            adapted = template
+                .replace(r#"|default:"?""#, r#"|default("?", true)"#)
+                .replace("pair.season_gap is not None", "pair.season_gap is not none")
+                .replace("{{ message }}", "{{ message.text }}");
+            &adapted
+        }
+        "admin/merge_suggestions.html" => {
+            adapted = template
+                .replace(r#"|default:"?""#, r#"|default("?", true)"#)
+                .replace(
+                    "{% widthratio pair.name_similarity 1 100 %}",
+                    "{{ pair.percent_match }}",
+                )
+                .replace("{{ message }}", "{{ message.text }}");
+            &adapted
+        }
         "admin/mittab_dashboard.html" => {
             adapted = template.replace(
                 "{{ tournaments|length|pluralize }}",
@@ -1638,7 +1731,7 @@ pub(crate) async fn show(
         render_noty => season <= 2020,
         using_online_quals => matches!(season, 2020 | 2021),
         online_qual_bar => 10,
-        online_seasons => [(2021, "2021-22"), (2020, "2020-21")].map(|(year, label)| (year.to_string(), label)),
+        online_seasons => matches!(season, 2020 | 2021).then_some([("2021", "2021-22"), ("2020", "2020-21")]),
         toty => rows("toty"),
         soty => rows("soty"),
         coty => rows("coty"),

@@ -1,3 +1,5 @@
+mod inlines;
+
 use std::collections::{BTreeMap, BTreeSet};
 
 use axum::{
@@ -13,7 +15,7 @@ use ring::{
     rand::{SecureRandom, SystemRandom},
 };
 use serde_json::{Map, Value as Json, json};
-use sqlx::{AnyConnection, AssertSqlSafe};
+use sqlx::{AnyConnection, AssertSqlSafe, Row};
 
 use super::{
     AdminRequest, cap_first,
@@ -187,6 +189,8 @@ impl Bound<'_> {
                 && self.id.is_some()
             {
                 self.loaded[column].clone()
+            } else if field.auto_now || field.auto_now_add {
+                Json::Null
             } else {
                 default(field)
             }
@@ -208,7 +212,11 @@ impl Bound<'_> {
         );
         let datetime = choice_kind == "AdminSplitDateTime";
         let password_status = choice_kind == "ReadOnlyPasswordHashWidget";
-        let required = widget.is_some_and(|widget| widget.required) && !read_only;
+        let required = widget.is_some_and(|widget| widget.required)
+            && !read_only
+            && !(model.slug() == "user"
+                && self.id.is_none()
+                && matches!(name, "password1" | "password2"));
         let mut caption = widget
             .and_then(|widget| widget.label.clone())
             .or_else(|| field.map(|field| cap_first(&field.label)))
@@ -219,6 +227,9 @@ impl Bound<'_> {
         let mut attrs = widget
             .map(|widget| widget.attributes.clone())
             .unwrap_or_default();
+        if model.slug() == "user" && self.id.is_none() && name == "username" {
+            attrs.insert("autofocus".into(), json!(true));
+        }
         let text = if let Some(values) = self.submitted {
             raw(values, name).to_owned()
         } else {
@@ -236,7 +247,7 @@ impl Bound<'_> {
         let mut help = widget_help.to_owned();
         let kind = match choice_kind {
             "CheckboxInput" => "checkbox",
-            "NumberInput" => "number",
+            "NumberInput" | "AdminIntegerFieldWidget" | "AdminBigIntegerFieldWidget" => "number",
             "AdminEmailInputWidget" | "EmailInput" => "email",
             "PasswordInput" => "password",
             "URLInput" | "AdminURLFieldWidget" => "url",
@@ -257,6 +268,7 @@ impl Bound<'_> {
             };
         }
         if let Some(size) = field.and_then(|field| field.size)
+            && !select
             && matches!(kind, "text" | "email" | "url")
             && !attrs.contains_key("maxlength")
         {
@@ -277,7 +289,9 @@ impl Bound<'_> {
                 primitive(&self.loaded["team_id"])
             };
             options = choices(admin, model, field, &selected, autocomplete, &team).await?;
-            if !multiple && !multicheck && (!required || value.is_null() || autocomplete) {
+            if autocomplete && !required && !multiple {
+                options.insert(0, (String::new(), String::new()));
+            } else if !autocomplete && !multiple && !multicheck && (!required || value.is_null()) {
                 options.insert(0, (String::new(), "---------".to_owned()));
             }
             if multicheck && team.is_empty() {
@@ -294,7 +308,6 @@ impl Bound<'_> {
                 ("data-theme", "admin-autocomplete"),
                 ("data-allow-clear", if required { "false" } else { "true" }),
                 ("data-placeholder", ""),
-                ("data-ajax--data-type", "json"),
                 ("data-app-label", model.app()),
                 ("data-model-name", model.slug()),
                 ("data-field-name", name),
@@ -306,9 +319,13 @@ impl Bound<'_> {
         if radio && selected == [String::new()] && name == "usable_password" {
             selected = vec!["true".to_owned()];
         }
+        let widget_required = required
+            && (!select
+                || autocomplete
+                || options.first().is_some_and(|option| option.0.is_empty()));
         let items = options
             .into_iter()
-            .map(|(value, label)| context! {selected=>selected.contains(&value),value,label})
+            .map(|(value, label)| context! {selected=>!(autocomplete && value.is_empty()) && selected.contains(&value),value,label})
             .collect::<Vec<_>>();
         let related = target.map(|target| {
             context! {
@@ -331,19 +348,97 @@ impl Bound<'_> {
         };
         let salt = mask(hash.next().unwrap_or_default());
         let digest = mask(hash.next().unwrap_or_default());
-        let read_value = if password_status {
+        let mut preformatted = false;
+        let read_value = if name == "metadata_pretty"
+            && matches!(model.slug(), "round" | "roundstats")
+        {
+            caption = "Metadata JSON:".to_owned();
+            let metadata = &self.loaded["metadata"];
+            if metadata.is_null() || metadata.as_object().is_some_and(|object| object.is_empty()) {
+                Value::from("No metadata")
+            } else {
+                let formatted = serde_json::to_string_pretty(metadata).map_err(ApiError::from)?;
+                preformatted = true;
+                Value::from(crate::django_json::ascii(&formatted))
+            }
+        } else if model.slug() == "round" && name == "stats_count" {
+            caption = "Stats:".to_owned();
+            match self.id {
+                Some(id) => {
+                    let count = sqlx::query_scalar::<_, i64>(
+                        "SELECT COUNT(*) FROM core_roundstats WHERE round_id=$1",
+                    )
+                    .bind(id)
+                    .fetch_one(&admin.state.pool)
+                    .await?;
+                    Value::from(count)
+                }
+                None => Value::from("-"),
+            }
+        } else if model.slug() == "round" && name == "imported_metadata_summary" {
+            caption = "Imported Metadata:".to_owned();
+            match self.id {
+                Some(id) => Value::from(round_metadata(admin, id).await?),
+                None => Value::from("No imported metadata"),
+            }
+        } else if password_status {
             Value::from("No password set.")
         } else {
             display(Some(&text), field, false)
         };
         Ok(context! {
-            name,label=>caption,help,required,datetime,date,time=>time.split(['.','+','Z']).next().unwrap_or_default(),
-            checkbox, checked, readonly=>read_only, read_value, wrapped=>widget.is_some_and(|widget|widget.wrapped),
+            name,label=>caption,help,required,widget_required,datetime,date,time=>time.split(['.','+','Z']).next().unwrap_or_default(),
+            checkbox, checked, readonly=>read_only, read_value, preformatted, wrapped=>widget.is_some_and(|widget|widget.wrapped),
             value=>&text,type=>kind, attrs=>attrs.iter().collect::<Vec<_>>(),related, select,multiple,radio,multicheck,
             textarea,password_status,algorithm,iterations,salt,digest,usable=>!text.starts_with('!'),
             options=>items,error=>self.errors.get(name)
         })
     }
+}
+
+async fn round_metadata(admin: &AdminRequest<'_>, id: i64) -> Result<String, ApiError> {
+    let row = sqlx::query(
+        "SELECT m.raw_result_code,m.raw_outcome_text,
+            g1.source_name AS g1,g2.source_name AS g2,o1.source_name AS o1,o2.source_name AS o2
+         FROM core_importedroundmetadata m
+         LEFT JOIN core_debateralias g1 ON g1.id=m.gov_1_alias_id
+         LEFT JOIN core_debateralias g2 ON g2.id=m.gov_2_alias_id
+         LEFT JOIN core_debateralias o1 ON o1.id=m.opp_1_alias_id
+         LEFT JOIN core_debateralias o2 ON o2.id=m.opp_2_alias_id
+         WHERE m.round_id=$1",
+    )
+    .bind(id)
+    .fetch_optional(&admin.state.pool)
+    .await?;
+    let Some(row) = row else {
+        return Ok("No imported metadata".to_owned());
+    };
+    let mut summary = Vec::new();
+    let code = row.try_get::<&str, _>("raw_result_code")?;
+    if !code.is_empty() {
+        summary.push(format!("Result code: {code}"));
+    }
+    for (side, keys) in [("Gov", ["g1", "g2"]), ("Opp", ["o1", "o2"])] {
+        let aliases = keys
+            .into_iter()
+            .map(|name| row.try_get::<Option<&str>, _>(name))
+            .collect::<Result<Vec<_>, _>>()?
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>();
+        if !aliases.is_empty() {
+            summary.push(format!("{side} aliases: {}", aliases.join(", ")));
+        }
+    }
+    let outcome = row.try_get::<&str, _>("raw_outcome_text")?;
+    if !outcome.is_empty() {
+        summary.push(outcome.to_owned());
+    }
+    Ok(if summary.is_empty() {
+        "Imported metadata present".to_owned()
+    } else {
+        summary.join(" | ")
+    })
 }
 
 async fn render_form(
@@ -387,6 +482,7 @@ async fn render_form(
             collapsible=>set.classes.iter().any(|class|class=="collapse"),lines=>rows},
         );
     }
+    let inlines = inlines::render(admin, form, id, submitted, errors).await?;
     let app = schema().app(model.app()).expect("admin app metadata");
     let original = if let Some(id) = id {
         object_label(admin, model, id).await?
@@ -395,14 +491,6 @@ async fn render_form(
     };
     let url = model.url();
     let object_url = id.map(|id| format!("{url}{id}/")).unwrap_or_default();
-    let assets = |a: &[String], b: &[String]| {
-        let mut seen = BTreeSet::new();
-        a.iter()
-            .chain(b)
-            .filter(|name| seen.insert(name.as_str()))
-            .cloned()
-            .collect::<Vec<_>>()
-    };
     let site_object = if let Some(id) = id.filter(|_| {
         matches!(
             model.slug(),
@@ -424,9 +512,9 @@ async fn render_form(
         title=>format!("{} {}",if adding{"Add"}else if admin.viewer.allows(model,"change"){"Change"}else{"View"},model.singular),
         subtitle=>id.map(|_|&original), original,
         plural=>cap_first(&model.plural), app_label=>model.app(),app_name=>&app.name,app_url=>app.url(),
-        model_name=>model.slug(),model_url=>url,object_url, fieldsets,add=>adding,errors,
-        css=>assets(&model.list_media.css,&form.media.css),
-        js=>assets(&model.list_media.js,&form.media.js), can_view=>admin.viewer.read(model),
+        model_name=>model.slug(),model_url=>url,object_url, fieldsets,inlines,save_on_top=>model.save_on_top,add=>adding,errors,
+        css=>&form.media.css, js=>&form.media.js,
+        add_user=>adding && model.slug()=="user", can_view=>admin.viewer.read(model),
         can_add=>admin.viewer.allows(model,"add"),can_change=>admin.viewer.allows(model,"change"),
         can_delete=>admin.viewer.allows(model,"delete"),save=>if adding{admin.viewer.allows(model,"add")}else{admin.viewer.allows(model,"change")},
         site_object,
@@ -439,12 +527,21 @@ pub(super) async fn object_label(
     model: &Model,
     id: i64,
 ) -> Result<String, ApiError> {
+    let mut conn = admin.state.pool.acquire().await?;
+    loaded_label(&mut conn, model, id).await
+}
+
+async fn loaded_label(
+    conn: &mut AnyConnection,
+    model: &Model,
+    id: i64,
+) -> Result<String, ApiError> {
     let mut source = Source::new(model);
     let repr = label(&mut source, model, "");
     let sql = format!("SELECT {repr} FROM {} WHERE t0.id=$1", source.sql());
     Ok(sqlx::query_scalar::<_, Option<String>>(AssertSqlSafe(sql))
         .bind(id)
-        .fetch_optional(&admin.state.pool)
+        .fetch_optional(conn)
         .await?
         .flatten()
         .unwrap_or_else(|| id.to_string()))
@@ -590,6 +687,69 @@ pub(super) async fn log(
     Ok(())
 }
 
+async fn record_rules(
+    conn: &mut AnyConnection,
+    model: &Model,
+    fields: &mut Map<String, Json>,
+) -> Result<(), ApiError> {
+    if model.slug() == "roundstats"
+        && let Some(round) = fields.get("round_id").and_then(Json::as_i64)
+        && let Some(stage) =
+            sqlx::query_scalar::<_, String>("SELECT stage FROM core_round WHERE id=$1")
+                .bind(round)
+                .fetch_optional(conn)
+                .await?
+    {
+        if stage == "outround" {
+            for field in ["speaks", "ranks", "debater_role"] {
+                fields.insert(field.to_owned(), Json::Null);
+            }
+        }
+        fields.insert("stage".to_owned(), json!(stage));
+    }
+    Ok(())
+}
+
+async fn save_memberships(
+    conn: &mut AnyConnection,
+    model: &Model,
+    widgets: &BTreeMap<String, Widget>,
+    record: i64,
+    values: &Values,
+) -> Result<(), ApiError> {
+    for (name, field) in &model.fields {
+        let Some([table, current, target]) = field
+            .through
+            .as_ref()
+            .filter(|_| widgets.contains_key(name) && field.kind != "Tags")
+        else {
+            continue;
+        };
+        if field.generic_through.unwrap_or_default() {
+            continue;
+        }
+        let new = selected_fields(values, name)
+            .into_iter()
+            .filter_map(|value| value.parse::<i64>().ok())
+            .collect::<BTreeSet<_>>();
+        let statement = format!("DELETE FROM {table} WHERE {current}=$1");
+        sqlx::query(AssertSqlSafe(statement))
+            .bind(record)
+            .execute(&mut *conn)
+            .await?;
+        let insert = format!("INSERT INTO {table} ({current},{target}) VALUES ($1,$2)");
+        for related in new {
+            sqlx::query(AssertSqlSafe(insert.clone()))
+                .bind(record)
+                .bind(related)
+                .execute(&mut *conn)
+                .await
+                .map_err(storage_error)?;
+        }
+    }
+    Ok(())
+}
+
 async fn save(
     admin: &AdminRequest<'_>,
     model: &Model,
@@ -606,7 +766,11 @@ async fn save(
     let mut columns = Map::new();
     let mut changed = Vec::new();
     for (name, field) in &model.fields {
-        let Some(column) = field.column.as_ref().filter(|_| !field.primary) else {
+        let Some(column) = field
+            .column
+            .as_ref()
+            .filter(|_| !field.primary && field.through.is_none())
+        else {
             continue;
         };
         if let Some(widget) = form
@@ -651,6 +815,7 @@ async fn save(
             columns.insert("password".to_owned(), json!(format!("!{random}")));
         }
     }
+    let inline_changes = inlines::prepare(admin, form, id, values, errors).await?;
     if !errors.is_empty() {
         return Ok(None);
     }
@@ -676,6 +841,7 @@ async fn save(
         return Ok(Some(redirect(&model.url())));
     }
     let mut tx = admin.state.pool.begin().await?;
+    record_rules(&mut tx, model, &mut columns).await?;
     let record = if columns.is_empty() && id.is_some() {
         id.unwrap_or_default()
     } else {
@@ -692,36 +858,37 @@ async fn save(
             Err(error) => return Err(error),
         }
     };
-    for (name, field) in &model.fields {
-        let Some([table, current, target]) = field
-            .through
-            .as_ref()
-            .filter(|_| form.widgets.contains_key(name) && field.kind != "Tags")
-        else {
-            continue;
-        };
-        if field.generic_through.unwrap_or_default() {
-            continue;
-        }
-        let new = selected_fields(values, name)
-            .into_iter()
-            .filter_map(|value| value.parse::<i64>().ok())
-            .collect::<BTreeSet<_>>();
-        let statement = format!("DELETE FROM {table} WHERE {current}=$1");
-        sqlx::query(AssertSqlSafe(statement))
-            .bind(record)
-            .execute(&mut *tx)
-            .await?;
-        let insert = format!("INSERT INTO {table} ({current},{target}) VALUES ($1,$2)");
-        for related in new {
-            sqlx::query(AssertSqlSafe(insert.clone()))
-                .bind(record)
-                .bind(related)
-                .execute(&mut *tx)
-                .await
-                .map_err(storage_error)?;
-        }
+    save_memberships(&mut tx, model, &form.widgets, record, values).await?;
+    if model.slug() == "round"
+        && id.is_some()
+        && let Some(stage) = columns
+            .get("stage")
+            .and_then(Json::as_str)
+            .filter(|stage| loaded["stage"] != *stage)
+    {
+        sqlx::query(
+            "UPDATE core_roundstats SET stage=$1,
+            speaks=CASE WHEN $1='outround' THEN NULL ELSE speaks END,
+            ranks=CASE WHEN $1='outround' THEN NULL ELSE ranks END,
+            debater_role=CASE WHEN $1='outround' THEN NULL ELSE debater_role END WHERE round_id=$2",
+        )
+        .bind(stage)
+        .bind(record)
+        .execute(&mut *tx)
+        .await?;
     }
+    let inline_changes = match inlines::apply(&mut tx, record, inline_changes).await {
+        Ok(changes) => changes,
+        Err(ApiError::Constraint) => {
+            error(
+                errors,
+                "form",
+                "An inline record conflicts with existing data or references an invalid record.",
+            );
+            return Ok(None);
+        }
+        Err(reason) => return Err(reason),
+    };
     if model.slug() == "debater" {
         crate::claims::edit::team_names(&mut tx, record).await?;
         if values.contains_key("immaculate_hidden") {
@@ -738,21 +905,14 @@ async fn save(
                 .bind(record).execute(&mut *tx).await?;
         }
     }
-    let mut source = Source::new(model);
-    let repr = label(&mut source, model, "");
-    let query = format!("SELECT {repr} FROM {} WHERE t0.id=$1", source.sql());
-    let name = sqlx::query_scalar::<_, Option<String>>(AssertSqlSafe(query))
-        .bind(record)
-        .fetch_one(&mut *tx)
-        .await?
-        .unwrap_or_else(|| record.to_string());
-    let message = if id.is_none() {
-        json!([{"added":{}}])
+    let name = loaded_label(&mut tx, model, record).await?;
+    let mut message = Vec::new();
+    if id.is_none() {
+        message.push(json!({"added":{}}));
     } else if !changed.is_empty() {
-        json!([{"changed":{"fields":changed}}])
-    } else {
-        json!([])
-    };
+        message.push(json!({"changed":{"fields":changed}}));
+    }
+    message.extend(inline_changes);
     log(
         &mut tx,
         model,
@@ -760,7 +920,7 @@ async fn save(
         record,
         &name,
         if id.is_none() { 1 } else { 2 },
-        message,
+        Json::Array(message),
     )
     .await?;
     tx.commit().await?;

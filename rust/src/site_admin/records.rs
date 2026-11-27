@@ -130,7 +130,7 @@ pub(super) async fn history(
     admin.view(
         "site_admin/object_history.html",
         context! {title=>format!("Change history: {original}"),
-        subtitle=>&original, actions,pages,total=>count,..base},
+        actions,pages,total=>count,..base},
     )
 }
 

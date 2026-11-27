@@ -1,0 +1,2 @@
+<input type="hidden" name="{{ item.prefix }}-id"{% if item.id %} value="{{ item.id }}"{% endif %} id="id_{{ item.prefix }}-id">
+<input type="hidden" name="{{ item.prefix }}-{{ item.foreign_key }}"{% if item.parent %} value="{{ item.parent }}"{% endif %} id="id_{{ item.prefix }}-{{ item.foreign_key }}">

@@ -35,11 +35,11 @@
                                 <label class="">Season Filter</label>
                                 <div>
                                     {% for field in season_filters %}
-                                        <select name="{{ field.name }}" class="form-control select" id="id_{{ field.name }}" aria-describedby="id_season_filter_helptext">
+                                        <select name="{{ field.name }}" class="form-control select" id="id_{{ field.name }}">
                                             {% for value, label in field.options %}<option value="{{ value }}"{% if field.value == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
                                         </select>
                                     {% endfor %}
-                                    <small id="id_season_filter_helptext" class="form-text text-muted">Select filter type and season</small>
+                                    <small id="hint_id_season_filter" class="form-text text-muted">Select filter type and season</small>
                                 </div>
                             </div>
                         {% endif %}

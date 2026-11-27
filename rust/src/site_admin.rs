@@ -1,6 +1,8 @@
 mod auth;
+mod autocomplete;
 mod form;
 mod listing;
+mod passwords;
 mod records;
 mod schema;
 
@@ -308,6 +310,19 @@ async fn endpoint(state: &AppState, request: Request) -> Result<Response, ApiErr
     }
     match segments.as_slice() {
         [""] => admin.index(None).await,
+        ["password_change"] => passwords::change(&admin, None, parts.method, body).await,
+        ["password_change", "done"] => passwords::done(&admin),
+        ["core", "user", id, "password"] => match id.parse::<i64>() {
+            Ok(id) => passwords::change(&admin, Some(id), parts.method, body).await,
+            Err(_) => Ok(StatusCode::NOT_FOUND.into_response()),
+        },
+        ["autocomplete"] => autocomplete::endpoint(&admin).await,
+        ["r", content, id] => {
+            let (Ok(content), Ok(id)) = (content.parse::<i64>(), id.parse::<i64>()) else {
+                return Ok(StatusCode::NOT_FOUND.into_response());
+            };
+            autocomplete::view_on_site(&admin, content, id).await
+        }
         ["jsi18n"] => Ok((
             [(header::CONTENT_TYPE, "text/javascript; charset=utf-8")],
             include_str!("../schema/admin_jsi18n.js"),

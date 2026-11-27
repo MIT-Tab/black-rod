@@ -26,7 +26,7 @@ from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
 
-from compare import Case, HOST, ROOT, compare as compare_responses, servers
+from compare import Case, HOST, ROOT, compare as compare_responses, request, servers
 
 CASE = "/standings/replay/?season=2025&default=coty"
 
@@ -1604,6 +1604,327 @@ def assert_elo_dashboard(driver, django, rust, fixture):
     driver.delete_all_cookies()
 
 
+def assert_native_site_admin(driver, django, rust):
+    from selenium.webdriver.support.expected_conditions import staleness_of
+
+    login_cookie = django_session()
+    root = f"http://{HOST}:{rust.port}"
+    reference = f"http://{HOST}:{django.port}"
+    school_admin = "/admin/core/school/"
+    credentials = "/admin/core/agentcredential/"
+
+    def submit(css):
+        element = driver.find_element("css selector", css)
+        old = driver.find_element("tag name", "html")
+        element.click()
+        WebDriverWait(driver, 10).until(staleness_of(old))
+
+    driver.delete_all_cookies()
+    driver.get(root + school_admin)
+    assert urlsplit(driver.current_url).path == "/admin/login/"
+    driver.add_cookie({"name":"sessionid","value":login_cookie})
+    driver.get(root + school_admin + "add/")
+    driver.find_element("id","id_name").send_keys("Disposable native admin school")
+    driver.find_element("id","id_short_name").send_keys("Native admin")
+    submit('input[name="_continue"]')
+    edit = urlsplit(driver.current_url).path
+    assert edit.endswith("/change/") and edit.startswith(school_admin)
+    driver.get(reference + edit)
+    assert driver.find_element("id","id_name").get_attribute("value") == "Disposable native admin school"
+    driver.get(root + edit)
+    field = driver.find_element("id","id_short_name")
+    field.clear()
+    field.send_keys("Admin renamed")
+    submit('input[name="_continue"]')
+    assert urlsplit(driver.current_url).path == edit
+    history = edit.replace("/change/","/history/")
+    actions = []
+    for origin in (root, reference):
+        driver.get(origin + history)
+        actions.append(driver.find_elements("css selector","#change-history tbody tr td:last-child"))
+        actions[-1] = [row.text for row in actions[-1]]
+    assert actions[0] == actions[1] == ["Added.", "Changed Short name."], actions
+    driver.get(root + edit)
+    submit("a.deletelink")
+    assert "Are you sure?" in driver.title
+    submit('input[value="Yes, I’m sure"]')
+    assert urlsplit(driver.current_url).path == school_admin
+    assert "was deleted successfully" in driver.page_source
+
+    driver.get(root + credentials + "add/")
+    driver.find_element("id","id_name").send_keys("Disposable native admin credential")
+    # Fixed future expiration keeps fixture behavior independent of the user's clock.
+    driver.find_element("id","id_expires_at_0").send_keys("2035-01-01")
+    driver.find_element("id","id_expires_at_1").send_keys("12:00:00")
+    submit('input[name="_save"]')
+    assert "Agent credential issued" in driver.title
+    token = driver.find_element("css selector","#content code").text
+    assert token.startswith("br_agent_")
+    endpoint = "/api/agent/v1/"
+    for server in (django,rust):
+        status, _, _ = request(server, Case(
+            endpoint,authorization=f"Bearer {token}",
+        ))
+        assert status == 200
+    driver.get(root + credentials)
+    checkbox = driver.find_element("xpath",
+        "//tr[th/a[normalize-space()='Disposable native admin credential']]/td/input[@name='_selected_action']")
+    checkbox.click()
+    driver.find_element("css selector",'select[name="action"] option[value="revoke_credentials"]').click()
+    submit('.actions button[type="submit"]')
+    for server in (django,rust):
+        status, _, _ = request(server, Case(
+            endpoint,authorization=f"Bearer {token}",
+        ))
+        assert status in (401,403)
+    driver.delete_all_cookies()
+
+
+def assert_native_round_inlines(driver, django, rust):
+    from selenium.webdriver.support.expected_conditions import staleness_of
+
+    code = """
+from django import setup
+setup()
+from core.models import Debater, ImportedRoundMetadata, Round, RoundStats
+import json
+original = Round.objects.order_by("id").first()
+created = Round.objects.create(tournament=original.tournament, gov=original.gov, opp=original.opp,
+    round_number=71, round_label="Disposable inline round")
+people = list(Debater.objects.order_by("id")[:3])
+discard = RoundStats.objects.create(round=created, debater=people[0], speaks="27.5", ranks="1", debater_role="PM")
+keep = RoundStats.objects.create(round=created, debater=people[1], speaks="25.5", ranks="2", debater_role="MG")
+metadata = ImportedRoundMetadata.objects.create(round=created, raw_result_code="Before")
+print(json.dumps({"round":created.id,"discard":discard.id,"keep":keep.id,"new_debater":people[2].id,"metadata":metadata.id}))
+"""
+    output = subprocess.check_output([str(ROOT / "venv/bin/python"), "-c", code],
+        env={**os.environ, "SECRET_KEY": "disposable-local-parity-key"}, text=True)
+    records = json.loads(output.splitlines()[-1])
+    route = f'/admin/core/round/{records["round"]}/change/'
+    cookie = django_session()
+
+    def open_page(server):
+        root = f"http://{HOST}:{server.port}"
+        driver.get(root + "/robots.txt")
+        driver.delete_all_cookies()
+        driver.add_cookie({"name": "sessionid", "value": cookie})
+        driver.get(root + route)
+
+    def submit():
+        old = driver.find_element("tag name", "html")
+        driver.find_element("name", "_continue").click()
+        WebDriverWait(driver, 10).until(staleness_of(old))
+
+    open_page(rust)
+    driver.find_element("css selector", "#stats-group .add-row a").click()
+    third = driver.find_element("name", "stats-2-debater")
+    driver.execute_script("arguments[0].append(new Option('Fixture debater',arguments[1],true,true));",
+                          third, str(records["new_debater"]))
+    driver.find_element("name", "stats-2-speaks").send_keys("26.75")
+    edit = driver.find_element("name","stats-1-speaks")
+    edit.clear()
+    edit.send_keys("28.125")
+    driver.find_element("name","stats-0-DELETE").click()
+    field = driver.find_element("name", "imported_metadata-0-raw_result_code")
+    field.clear()
+    field.send_keys("After")
+    submit()
+    assert "Please correct" not in driver.find_element("tag name","body").text
+    assert "was changed successfully" in driver.find_element("tag name","body").text
+
+    open_page(django)
+    assert driver.find_element("name","imported_metadata-0-raw_result_code").get_attribute("value") == "After"
+    assert driver.find_element("name","stats-0-speaks").get_attribute("value") == "28.1250"
+    assert driver.find_element("name","stats-1-speaks").get_attribute("value") == "26.7500"
+
+    open_page(rust)
+    driver.find_element("css selector", '#id_stage option[value="outround"]').click()
+    submit()
+    db = Path(os.environ["BR_STATE"]) / "dev.sqlite3"
+    with sqlite3.connect(f"{db.as_uri()}?mode=ro", uri=True) as connection:
+        rows = connection.execute(
+            "SELECT id,debater_id,stage,speaks,ranks,debater_role FROM core_roundstats WHERE round_id=? ORDER BY id",
+            (records["round"],)).fetchall()
+        assert len(rows) == 2 and rows[0][0] == records["keep"] and rows[1][1] == records["new_debater"], rows
+        assert [row[2:] for row in rows] == [("outround", None, None, None)] * 2, rows
+        assert connection.execute("SELECT raw_result_code FROM core_importedroundmetadata WHERE id=?",
+                                  (records["metadata"],)).fetchone() == ("After",)
+    driver.delete_all_cookies()
+
+
+def assert_merge_suggestions(driver, django, rust):
+    code = """
+from django import setup
+setup()
+from core.models import Debater, School, SpeakerResult, Tournament
+import json
+school = School.objects.create(name="Disposable suggestion school")
+tournament = Tournament.objects.first()
+one = Debater.objects.create(first_name="UniqueFixture", last_name="Mergecandidate", school=school)
+two = Debater.objects.create(first_name="UniqueFixture", last_name="Mergecandidate", school=school)
+SpeakerResult.objects.create(debater=one, tournament=tournament, place=97)
+print(json.dumps([one.id,two.id]))
+"""
+    output = subprocess.check_output([str(ROOT / "venv/bin/python"), "-c", code],
+        env={**os.environ, "SECRET_KEY": "disposable-local-parity-key"}, text=True)
+    first, second = json.loads(output.splitlines()[-1])
+    route = "/core/admin/merge-suggestions/"
+    fixture = f'tr[data-debater-one="{second}"][data-debater-two="{first}"]'
+    cookie = django_session()
+    rows = []
+    for server in (django, rust):
+        root = f"http://{HOST}:{server.port}"
+        driver.get(root + "/robots.txt")
+        driver.delete_all_cookies()
+        driver.add_cookie({"name": "sessionid", "value": cookie})
+        driver.get(root + route + "?refresh=1")
+        row = driver.find_element("css selector", fixture)
+        assert "100% Match" in row.text and "SAME SCHOOL" in row.text.upper()
+        rows.append(driver.execute_script("""
+            return [...document.querySelectorAll('#suggestions-tbody tr')]
+              .map(row=>[row.dataset.debaterOne,row.dataset.debaterTwo,row.innerText.replace(/\\s+/g, " ").trim()]);
+        """))
+    assert rows[0] == rows[1], (len(rows[0]),len(rows[1]),next(
+        ((a,b) for a,b in zip(*rows) if a!=b),None))
+    driver.find_element("css selector", fixture + " .make-request-btn").click()
+    WebDriverWait(driver, 10).until(lambda browser: not browser.find_elements("css selector", fixture))
+    db = Path(os.environ["BR_STATE"]) / "dev.sqlite3"
+    with sqlite3.connect(f"{db.as_uri()}?mode=ro", uri=True) as connection:
+        assert connection.execute(
+            "SELECT primary_debater_id,secondary_debater_id FROM core_mergedebaterrequest WHERE primary_debater_id=?",
+            (first,)).fetchone() == (first,second)
+    driver.get(root + route)
+    assert not driver.find_elements("css selector", fixture)
+    driver.get(root + route)
+    assert driver.find_element("css selector",'a[href="?refresh=1"]').is_displayed()
+    driver.delete_all_cookies()
+
+
+def assert_debater_aliases(driver, django, rust):
+    code = """
+from django import setup
+setup()
+from core.models import Debater, DebaterAliasGroup, School
+import json
+schools = [School.objects.create(name=f"Disposable alias school {i}") for i in range(3)]
+first = DebaterAliasGroup.objects.create(label="First alias fixture")
+second = DebaterAliasGroup.objects.create(label="Second alias fixture")
+one = Debater.objects.create(first_name="Disposable", last_name="Aliascheck",
+    school=schools[0], first_season="2025", latest_season="2026", alias_group=first)
+two = Debater.objects.create(first_name="Disposable", last_name="Aliascheck",
+    school=schools[1], first_season="2024", latest_season="2025", alias_group=second)
+three = Debater.objects.create(first_name="Related", last_name="Aliascheck",
+    school=schools[2], alias_group=first)
+print(json.dumps({"one":one.id, "two":two.id, "three":three.id, "kept":second.id, "removed":first.id}))
+"""
+    output = subprocess.check_output([str(ROOT / "venv/bin/python"), "-c", code],
+        env={**os.environ, "SECRET_KEY": "disposable-local-parity-key"}, text=True)
+    records = json.loads(output.splitlines()[-1])
+    route = "/core/admin/debater-aliases/"
+    fixture = f'input[name="debater_one"][value="{records["two"]}"]'
+    cookie = django_session()
+    for server in (django, rust):
+        driver.get(f"http://{HOST}:{server.port}/robots.txt")
+        driver.delete_all_cookies()
+        driver.add_cookie({"name": "sessionid", "value": cookie})
+        driver.get(f"http://{HOST}:{server.port}{route}")
+        form = driver.find_element("css selector", fixture).find_element("xpath", "..")
+        assert form.find_element("name", "debater_two").get_attribute("value") == str(records["one"])
+        assert "gap 0 yrs" in form.find_element("xpath", "../..").text.lower()
+    form.find_element("tag name", "button").click()
+    alert = WebDriverWait(driver, 10).until(
+        lambda browser: browser.find_element("css selector",".alert-success"))
+    assert "Linked Disposable Aliascheck" in alert.text
+    assert not driver.find_elements("css selector", fixture)
+    db = Path(os.environ["BR_STATE"]) / "dev.sqlite3"
+    with sqlite3.connect(f"{db.as_uri()}?mode=ro", uri=True) as connection:
+        rows = connection.execute(
+            "SELECT alias_group_id FROM core_debater WHERE id IN (?,?,?)",
+            (records["one"], records["two"], records["three"])).fetchall()
+        assert rows == [(records["kept"],)] * 3
+        assert connection.execute("SELECT id FROM core_debateraliasgroup WHERE id=?",
+                                  (records["removed"],)).fetchone() is None
+    driver.delete_all_cookies()
+
+
+def assert_merge_requests(driver, django, rust, fixture):
+    code = """
+from django import setup
+setup()
+from core.models import Debater, School, SchoolAdmin, User
+import json
+school = School.objects.create(name="Disposable merge request school")
+SchoolAdmin.objects.create(school=school,user_id=int(USER_ID))
+one = Debater.objects.create(first_name="Merge",last_name="Alpha",school=school,latest_season="2026")
+two = Debater.objects.create(first_name="Merge",last_name="Zeta",school=school,latest_season="2025")
+print(json.dumps({"school":school.id, "one":one.id,"two":two.id}))
+""".replace("USER_ID",repr(str(fixture["users"]["ordinary"])))
+    output = subprocess.check_output([str(ROOT / "venv/bin/python"), "-c", code],
+        env={**os.environ, "SECRET_KEY": "disposable-local-parity-key"}, text=True)
+    data = json.loads(output.splitlines()[-1])
+    create = "/core/merge-debaters/request/"
+    review = "/core/merge-debaters/review/"
+    regular = fixture["sessions"]["ordinary"]
+    admin = django_session()
+
+    def open_page(server, path, cookie):
+        root = f"http://{HOST}:{server.port}"
+        driver.get(root + "/robots.txt")
+        driver.delete_all_cookies()
+        driver.add_cookie({"name":"sessionid","value":cookie})
+        driver.get(root+path)
+
+    def submit(path, values):
+        return driver.execute_async_script("""
+            const [path, values, done] = arguments;
+            values.csrfmiddlewaretoken = document.querySelector('input[name=csrfmiddlewaretoken]').value;
+            fetch(path,{method:'POST',body:new URLSearchParams(values)}).then(async response=>{
+                const body=new DOMParser().parseFromString(await response.text(),'text/html');
+                done({status:response.status,path:new URL(response.url).pathname,redirected:response.redirected,
+                    content:body.body.textContent.replace(/\s+/g,' ').trim()});
+            },()=>done({status:0}));
+        """, path, values)
+
+    for server in (django,rust):
+        open_page(server, create, regular)
+        assert "Request Debater Merge" in driver.page_source
+        options = driver.execute_script("""
+            return [...document.querySelectorAll('#id_school_one option')].map(option=>option.text);
+        """)
+        assert options == ["---------","Disposable merge request school"]
+        paths = "/core/debaters/autocomplete/merge?" + urlencode(
+            {"q":"Merge","forward":json.dumps({"school":data["school"]})})
+        found = driver.execute_async_script("""
+            fetch(arguments[0]).then(response=>response.json()).then(arguments[1]);
+        """, paths)
+        assert [row["id"] for row in found["results"]] == [str(data["one"]),str(data["two"])]
+        assert found["results"][0]["selected_text"] == f"<{data['one']}> Merge Alpha (Disposable merge request school)"
+    open_page(rust,create,regular)
+    values = {"school_one":data["school"],"school_two":data["school"],
+              "debater_one":data["one"],"debater_two":data["two"],"keep_debater":"debater_one"}
+    rejected = submit(create,{**values,"debater_two":values["debater_one"]})
+    assert "Debaters must be different." in rejected["content"]
+    created = submit(create,values)
+    assert created["redirected"] and "Merge request submitted." in created["content"], created
+    duplicate = submit(create, values)
+    assert "A pending merge request already exists" in duplicate["content"]
+    open_page(django,review,admin)
+    request_id = driver.find_element("name","request_id").get_attribute("value")
+    open_page(rust,review,admin)
+    swapped = submit(review,{"request_id":request_id,"action":"swap"})
+    assert "Debaters swapped successfully." in swapped["content"]
+    approved = submit(review,{"request_id":request_id,"action":"approve"})
+    assert "Merged Merge Alpha into Merge Zeta." in approved["content"], approved
+    open_page(django,review,admin)
+    assert "Merge Zeta" in driver.page_source and "Approved" in driver.find_element("tag name","body").text
+    db = Path(os.environ["BR_STATE"]) / "dev.sqlite3"
+    with sqlite3.connect(f"{db.as_uri()}?mode=ro", uri=True) as connection:
+        assert connection.execute("SELECT id FROM core_debater WHERE id=?",(data["one"],)).fetchone() is None
+        assert connection.execute("SELECT status,primary_debater_id,secondary_debater_id FROM core_mergedebaterrequest WHERE id=?",
+                                  (request_id,)).fetchone() == ("approved",data["two"],None)
+    driver.delete_all_cookies()
+
+
 def assert_mittab_dashboard(driver, django, rust):
     path = "/core/mittab-dashboard/"
     session = django_session()
@@ -2443,6 +2764,10 @@ def browser_checks(database, options, output):
         assert_scheduling(driver, django, rust, fixture)
         assert_doty(driver, django, rust)
         assert_admin_tools(driver, django, rust)
+        assert_native_site_admin(driver, django, rust)
+        assert_debater_aliases(driver, django, rust)
+        assert_native_round_inlines(driver, django, rust)
+        assert_merge_suggestions(driver, django, rust)
         assert_speaks_statistics(driver, django, rust, fixture)
         assert_elo_dashboard(driver, django, rust, fixture)
         assert_synthetic_cleanup(driver, django, rust)
@@ -2453,6 +2778,7 @@ def browser_checks(database, options, output):
         assert_generated_codes(driver, django, rust, fixture)
         assert_entities(driver, django, rust, fixture)
         assert_school_admin(driver, django, rust, fixture)
+        assert_merge_requests(driver, django, rust, fixture)
         assert_agent_reads(django, rust, fixture)
         assert_claims(driver, django, rust, fixture)
         assert_live_standings(driver, django, rust)

@@ -18,6 +18,7 @@ mod generated_code;
 mod immaculate;
 mod live;
 mod login;
+mod merge_requests;
 mod motion;
 pub use live::Live;
 mod doty;
@@ -94,6 +95,7 @@ pub struct AppState {
     public_json: Cache<(String, Endpoint), cache::CachedBody>,
     memcached: Option<cache::Memcached>,
     elo: elo::Cache,
+    merge_suggestions: admin::merge_suggestions::Cache,
     cache_lifetime: Duration,
     import_cache: tournament_import::source::Cache,
     standings: Cache<(String, i32), Arc<standings::Boards>>,
@@ -175,6 +177,7 @@ impl AppState {
                 .build(),
             memcached: None,
             elo: elo::Cache::new(!lifetime.is_zero()),
+            merge_suggestions: admin::merge_suggestions::cache(!lifetime.is_zero()),
             partnership_stats: Arc::default(),
             school_admin_limits: Cache::builder()
                 .time_to_live(Duration::from_secs(86_400))
@@ -350,6 +353,20 @@ pub fn app(state: AppState) -> Router {
         .route(
             "/core/claim-debater/review/",
             get(claims::review).post(claims::review),
+        )
+        .route(
+            "/core/merge-debaters/request/",
+            get(merge_requests::page).post(merge_requests::page),
+        )
+        .route(
+            "/core/merge-debaters/review/",
+            get(merge_requests::page).post(merge_requests::page),
+        )
+        .route("/core/merge-debaters/request", get(append_slash))
+        .route("/core/merge-debaters/review", get(append_slash))
+        .route(
+            "/core/debaters/autocomplete/merge",
+            get(merge_requests::autocomplete),
         )
         .route("/search/", get(search::page))
         .route("/search", get(append_slash))
@@ -531,6 +548,16 @@ pub fn app(state: AppState) -> Router {
         )
         .route("/core/admin/elo-cache/invalidate", get(append_slash))
         .route("/core/admin-tools/", get(admin::tools))
+        .route(
+            "/core/admin/debater-aliases/",
+            get(admin::debater_aliases::endpoint).post(admin::debater_aliases::endpoint),
+        )
+        .route("/core/admin/debater-aliases", get(append_slash))
+        .route(
+            "/core/admin/merge-suggestions/",
+            get(admin::merge_suggestions::endpoint).post(admin::merge_suggestions::endpoint),
+        )
+        .route("/core/admin/merge-suggestions", get(append_slash))
         .route("/core/mittab-dashboard/", get(admin::mittab::page))
         .route(
             "/core/rankings-recompute/",

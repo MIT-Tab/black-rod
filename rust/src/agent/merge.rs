@@ -235,6 +235,19 @@ fn entity_table(entity: &str) -> Result<(&'static str, &'static str), Failure> {
     })
 }
 
+pub(crate) async fn merge_debaters(
+    conn: &mut AnyConnection,
+    primary: i64,
+    secondary: i64,
+) -> Result<(), Failure> {
+    if primary == secondary {
+        return Err(invalid("Cannot merge a debater into itself."));
+    }
+    read(conn, &MODELS["debaters"], primary).await?;
+    read(conn, &MODELS["debaters"], secondary).await?;
+    debater::merge(conn, &mut Journal::default(), primary, secondary).await
+}
+
 pub(crate) async fn resolve(
     conn: &mut AnyConnection,
     entity: &str,

@@ -28,8 +28,16 @@ fn link(params: &Parameters, name: &str, value: Option<&str>) -> String {
             params.remove(name);
         }
     }
-    let mut query = url::form_urlencoded::Serializer::new(String::new());
-    format!("?{}", query.extend_pairs(params).finish())
+    query_string(&params)
+}
+
+fn query_string(params: &Parameters) -> String {
+    format!(
+        "?{}",
+        url::form_urlencoded::Serializer::new(String::new())
+            .extend_pairs(params)
+            .finish()
+    )
 }
 
 pub(super) struct Source<'a> {
@@ -47,7 +55,7 @@ impl<'a> Source<'a> {
         }
     }
 
-    fn resolve(&mut self, path: &str) -> Option<(String, &Field)> {
+    pub(super) fn resolve(&mut self, path: &str) -> Option<(String, &Field)> {
         let mut model = self.model;
         let mut index = 0;
         let mut prefix = String::new();
@@ -61,6 +69,9 @@ impl<'a> Source<'a> {
                     .unwrap_or(raw)
             };
             let field = model.fields.get(name)?;
+            if field.through.is_some() {
+                return None;
+            }
             let field_column = field.column.as_ref()?;
             let expr = format!("t{index}.{field_column}");
             if parts.peek().is_none() {
@@ -138,6 +149,34 @@ pub(super) fn projection(source: &mut Source, name: &str) -> String {
         return format!("CAST({expr} AS TEXT)");
     }
     match name {
+        "round_summary" => {
+            let round = if source.model.slug() == "round" {
+                ""
+            } else {
+                "round__"
+            };
+            let number = source
+                .resolve(&format!("{round}round_number"))
+                .map(|(sql, _)| sql);
+            let name = source
+                .resolve(&format!("{round}round_label"))
+                .map(|(sql, _)| sql);
+            if let (Some(number), Some(name)) = (number, name) {
+                let fallback = format!("'Round ' || CAST({number} AS TEXT)");
+                if round.is_empty() {
+                    return format!(
+                        "CASE WHEN {name}='' THEN {fallback} ELSE {name} || ' (#' || CAST({number} AS TEXT) || ')' END"
+                    );
+                }
+                let team = schema().model("core", "team").expect("Team schema");
+                let gov = label(source, team, "round__gov");
+                let opp = label(source, team, "round__opp");
+                return format!(
+                    "COALESCE(NULLIF({name},''),{fallback}) || ' / ' || {gov} || ' vs ' || {opp}"
+                );
+            }
+            "NULL".to_owned()
+        }
         "stats_count" => {
             "CAST((SELECT COUNT(*) FROM core_roundstats stat WHERE stat.round_id=t0.id) AS TEXT)"
                 .to_owned()
@@ -174,9 +213,17 @@ pub(super) fn label(source: &mut Source, target: &Model, prefix: &str) -> String
                 return format!("{name} || CASE WHEN {temporary} THEN ' (New)' ELSE '' END");
             }
         }
-        "round" => {
-            if let (Some(label), Some(number)) = (expr("round_label"), expr("round_number")) {
-                return format!("COALESCE(NULLIF({label},''),'Round ' || CAST({number} AS TEXT))");
+        "round" | "roundstats" => {
+            if let Some(id) = expr("id") {
+                return format!(
+                    "'{} object (' || CAST({id} AS TEXT) || ')'",
+                    target.object_name
+                );
+            }
+        }
+        "importedroundmetadata" => {
+            if let Some(round) = expr("round_id") {
+                return format!("'Imported metadata for round ' || CAST({round} AS TEXT)");
             }
         }
         _ => {}
@@ -264,6 +311,36 @@ pub(super) fn date(input: &str) -> String {
     input.to_owned()
 }
 
+pub(super) fn search_conditions(
+    source: &mut Source<'_>,
+    model: &Model,
+    search: &str,
+    values: &mut Vec<String>,
+) -> Vec<String> {
+    let mut where_parts = Vec::new();
+    for term in search.split_whitespace() {
+        let mut options = Vec::new();
+        for name in &model.search {
+            let name = name.trim_start_matches(['^', '=', '@']);
+            if let Some((entry, _)) = source.resolve(name) {
+                let value = term
+                    .to_lowercase()
+                    .replace('\\', "\\\\")
+                    .replace('%', "\\%")
+                    .replace('_', "\\_");
+                let marker = add_values(values, &format!("%{value}%"));
+                options.push(format!(
+                    "LOWER(CAST({entry} AS TEXT)) LIKE {marker} ESCAPE '\\'"
+                ));
+            }
+        }
+        if !options.is_empty() {
+            where_parts.push(format!("({})", options.join(" OR ")));
+        }
+    }
+    where_parts
+}
+
 async fn get_list(
     admin: &AdminRequest<'_>,
     model: &Model,
@@ -276,26 +353,7 @@ async fn get_list(
     if model.slug() == "school" {
         where_parts.push("NOT t0.temporary".to_owned());
     }
-    for term in search.split_whitespace() {
-        let mut options = Vec::new();
-        for name in &model.search {
-            let name = name.trim_start_matches(['^', '=', '@']);
-            if let Some((entry, _)) = source.resolve(name) {
-                let value = term
-                    .to_lowercase()
-                    .replace('\\', "\\\\")
-                    .replace('%', "\\%")
-                    .replace('_', "\\_");
-                let marker = add_values(&mut values, &format!("%{value}%"));
-                options.push(format!(
-                    "LOWER(CAST({entry} AS TEXT)) LIKE {marker} ESCAPE '\\'"
-                ));
-            }
-        }
-        if !options.is_empty() {
-            where_parts.push(format!("({})", options.join(" OR ")));
-        }
-    }
+    where_parts.extend(search_conditions(&mut source, model, search, &mut values));
     for (parameter, value) in params {
         if matches!(
             parameter.as_str(),
@@ -304,7 +362,7 @@ async fn get_list(
             continue;
         }
         let (path, look_up) = parameter.rsplit_once("__").unwrap_or((parameter, "exact"));
-        let path = if matches!(look_up, "exact" | "isnull" | "id") {
+        let path = if matches!(look_up, "exact" | "isnull" | "id" | "gte" | "lt") {
             path
         } else {
             parameter
@@ -316,7 +374,25 @@ async fn get_list(
         if !allowed {
             continue;
         }
-        if let Some((column, field)) = source.resolve(path) {
+        let root = path.split("__").next().unwrap_or(path);
+        if let Some([table, from, to]) = model
+            .fields
+            .get(root)
+            .and_then(|field| field.through.as_ref())
+        {
+            let condition = format!("member.{from}=t0.id");
+            if look_up == "isnull" {
+                let negated = if value == "True" { "NOT " } else { "" };
+                where_parts.push(format!(
+                    "{negated}EXISTS (SELECT 1 FROM {table} member WHERE {condition})"
+                ));
+            } else {
+                let parameter = add_values(&mut values, value);
+                where_parts.push(format!(
+                    "EXISTS (SELECT 1 FROM {table} member WHERE {condition} AND CAST(member.{to} AS TEXT)={parameter})"
+                ));
+            }
+        } else if let Some((column, field)) = source.resolve(path) {
             if look_up == "isnull" {
                 where_parts.push(format!(
                     "{column} IS {}NULL",
@@ -326,6 +402,19 @@ async fn get_list(
                         "NOT "
                     }
                 ));
+            } else if matches!(look_up, "gte" | "lt")
+                && matches!(field.kind.as_str(), "DateField" | "DateTimeField")
+            {
+                let date = value
+                    .get(..10)
+                    .filter(|value| chrono::NaiveDate::parse_from_str(value, "%Y-%m-%d").is_ok());
+                if let Some(date) = date {
+                    let placeholder = add_values(&mut values, date);
+                    let comparison = if look_up == "gte" { ">=" } else { "<" };
+                    where_parts.push(format!(
+                        "SUBSTR(CAST({column} AS TEXT),1,10){comparison}{placeholder}"
+                    ));
+                }
             } else if field.kind == "BooleanField" {
                 where_parts.push(format!(
                     "{column} {}",
@@ -582,7 +671,7 @@ fn cells(row: &AnyRow, model: &Model, params: &Parameters) -> Result<Value, ApiE
                 column.name,
                 if tracked_column(model, &column.name).is_some_and(|field| matches!(
                     field.kind.as_str(),
-                    "DateField" | "DateTimeField" | "TimeField"
+                    "DateField" | "DateTimeField" | "TimeField" | "ForeignKey" | "OneToOneField"
                 )) {
                     " nowrap"
                 } else {
@@ -603,6 +692,46 @@ async fn filters(
 ) -> Result<Vec<Value>, ApiError> {
     let mut filters = Vec::new();
     for filter in &model.filter {
+        if let Some(field) = model
+            .fields
+            .get(filter)
+            .filter(|field| field.through.is_some())
+        {
+            if let Some(target) = field
+                .related
+                .as_ref()
+                .and_then(|label| label.split_once('.'))
+                .and_then(|(app, model)| schema().model(app, model))
+            {
+                let mut source = Source::new(target);
+                let label = label(&mut source, target, "");
+                let sql = format!(
+                    "SELECT CAST(t0.id AS TEXT),{label} AS label FROM {} ORDER BY label,t0.id",
+                    source.sql()
+                );
+                let rows = sqlx::query_as::<_, (String, String)>(AssertSqlSafe(sql))
+                    .fetch_all(&admin.state.pool)
+                    .await?;
+                if !rows.is_empty() {
+                    let exact = format!("{filter}__id__exact");
+                    let null = format!("{filter}__isnull");
+                    let active = params.get(&exact);
+                    let empty = params.contains_key(&null);
+                    let mut clean = params.clone();
+                    clean.remove(&exact);
+                    clean.remove(&null);
+                    let mut links = vec![
+                        context! {label=>"All",url=>link(&clean,&exact,None),selected=>active.is_none()&&!empty},
+                    ];
+                    links.extend(rows.iter().map(|(id,label)|context!{label,url=>link(&clean,&exact,Some(id)),selected=>active==Some(id)}));
+                    links.push(
+                        context! {label=>"-",url=>link(&clean,&null,Some("True")),selected=>empty},
+                    );
+                    filters.push(context! {title=>&field.label,choices=>links});
+                }
+            }
+            continue;
+        }
         let mut source = Source::new(model);
         let Some((expression, field)) = source.resolve(filter) else {
             continue;
@@ -635,23 +764,42 @@ async fn filters(
                 choices.push(context!{label,url=>link(&cleared,&exact,Some(&value)),selected=>active==Some(&value)});
             }
         } else if matches!(field.kind.as_str(), "DateField" | "DateTimeField") {
-            for label in [
-                "Any date",
-                "Today",
-                "Past 7 days",
-                "This month",
-                "This year",
-            ] {
-                choices.push(context! {label,url=>"?",selected=>label=="Any date"});
-            }
-            choices.remove(0);
+            choices = date_filters(filter, field, params);
         } else {
-            let projected = projection(&mut source, filter);
+            let ordering = if matches!(
+                field.kind.as_str(),
+                "AutoField" | "BigAutoField" | "IntegerField"
+            ) {
+                "CAST(value AS BIGINT)"
+            } else {
+                "label"
+            };
+            let root = filter.split_once("__").and_then(|(name, path)| {
+                let (app, related) = model
+                    .fields
+                    .get(name)?
+                    .related
+                    .as_deref()?
+                    .split_once('.')?;
+                Some((schema().model(app, related)?, path))
+            });
+            let mut parent;
+            let (source, path, expression) = if let Some((related, path)) = root {
+                parent = Source::new(related);
+                if let Some((selected, _)) = parent.resolve(path) {
+                    (&mut parent, path, selected)
+                } else {
+                    (&mut source, filter.as_str(), expression)
+                }
+            } else {
+                (&mut source, filter.as_str(), expression)
+            };
+            let projected = projection(source, path);
             let query = format!(
-                "SELECT DISTINCT CAST({expression} AS TEXT) AS value,{projected} AS label
-                FROM {} WHERE {expression} IS NOT NULL{} ORDER BY label",
+                "SELECT value,label FROM (SELECT DISTINCT CAST({expression} AS TEXT) AS value,{projected} AS label
+                FROM {} WHERE {expression} IS NOT NULL{}) choices ORDER BY {ordering}",
                 source.sql(),
-                if model.slug() == "school" {
+                if source.model.slug() == "school" {
                     " AND NOT t0.temporary"
                 } else {
                     ""
@@ -663,7 +811,7 @@ async fn filters(
             {
                 let value: &str = row.try_get("value")?;
                 let label: Option<&str> = row.try_get("label")?;
-                let label = label.filter(|label| !label.is_empty()).unwrap_or("-");
+                let label = label.unwrap_or("-");
                 choices.push(context!{label,url=>link(&cleared,&exact,Some(value)),selected=>active.is_some_and(|active|active==value)});
             }
         }
@@ -672,6 +820,70 @@ async fn filters(
         }
     }
     Ok(filters)
+}
+
+fn date_filters(path: &str, field: &Field, params: &Parameters) -> Vec<Value> {
+    use chrono::{Datelike, Days, NaiveDate, Utc};
+
+    let today = Utc::now().date_naive();
+    let month = today.with_day(1).expect("first day of current month");
+    let year = today
+        .with_month(1)
+        .and_then(|date| date.with_day(1))
+        .expect("first day of current year");
+    let next_month = month
+        .checked_add_months(chrono::Months::new(1))
+        .expect("first day of next month");
+    let next_year = year
+        .checked_add_months(chrono::Months::new(12))
+        .expect("first day of next year");
+    let tomorrow = today + Days::new(1);
+    let prefix = format!("{path}__");
+    let since = format!("{prefix}gte");
+    let until = format!("{prefix}lt");
+    let null = format!("{prefix}isnull");
+    let format = |date: NaiveDate| {
+        if field.kind == "DateTimeField" {
+            format!("{date} 00:00:00+00:00")
+        } else {
+            date.to_string()
+        }
+    };
+    let active = params
+        .iter()
+        .filter(|(name, _)| name.starts_with(&prefix))
+        .map(|(name, value)| (name.clone(), value.clone()))
+        .collect::<Parameters>();
+    let mut clean = params.clone();
+    clean.retain(|name, _| !name.starts_with(&prefix) && name != "p");
+    let choice = |label: &str, options: Parameters| {
+        let selected = active == options;
+        let mut query = clean.clone();
+        query.extend(options);
+        context! {label,url=>query_string(&query),selected}
+    };
+    let mut choices = vec![choice("Any date", Parameters::new())];
+    for (label, start, end) in [
+        ("Today", today, tomorrow),
+        ("Past 7 days", today - Days::new(7), tomorrow),
+        ("This month", month, next_month),
+        ("This year", year, next_year),
+    ] {
+        choices.push(choice(
+            label,
+            Parameters::from([(since.clone(), format(start)), (until.clone(), format(end))]),
+        ));
+    }
+    if field.null {
+        choices.extend([
+            choice(
+                "No date",
+                Parameters::from([(null.clone(), "True".to_owned())]),
+            ),
+            choice("Has date", Parameters::from([(null, "False".to_owned())])),
+        ]);
+    }
+    choices
 }
 
 pub(super) async fn page(

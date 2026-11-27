@@ -2,8 +2,9 @@
 {% block title %}{% if errors %}Error: {% endif %}{{ super() }}{% endblock %}
 {% block extrahead %}{{ super() }}
     <script src="/admin/jsi18n/"></script>
-    {% for asset in css %}<link href="/static/{{ asset }}" media="all" rel="stylesheet">{% endfor %}
+    {% for medium,asset in css %}<link href="/static/{{ asset }}" media="{{ medium }}" rel="stylesheet">{% endfor %}
     {% for asset in js %}<script src="/static/{{ asset }}"></script>{% endfor %}
+    {% if add_user %}<link rel="stylesheet" href="/static/admin/css/unusable_password_field.css">{% endif %}
 {% endblock %}
 {% block extrastyle %}{{ super() }}<link rel="stylesheet" href="/static/admin/css/forms.css">{% endblock %}
 {% block bodyclass %}{{ super() }} app-{{ app_label }} model-{{ model_name }} change-form{% endblock %}
@@ -25,50 +26,26 @@
     {% endif %}
     <form method="post" id="{{ model_name }}_form" novalidate>
         <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf }}">
+        {% if add_user and not is_popup %}<p>After you’ve created a user, you’ll be able to edit more user options.</p>{% endif %}
         <div>
             {% if is_popup %}<input type="hidden" name="_popup" value="1">{% endif %}
             {% if to_field %}<input type="hidden" name="_to_field" value="{{ to_field }}">{% endif %}
+            {% if save_on_top %}{% include "site_admin/submit.html" %}{% endif %}
             {% if errors %}
                 <p class="errornote">Please correct the error{% if errors|length != 1 %}s{% endif %} below.</p>
                 {% if errors.form %}<ul class="errorlist nonfield">{% for message in errors.form %}<li>{{ message }}</li>{% endfor %}</ul>{% endif %}
             {% endif %}
             {% for set in fieldsets %}
-            <fieldset class="module aligned {{ set.classes|join(' ') }}"{% if set.title %} aria-labelledby="fieldset-0-{{ loop.index0 }}-heading"{% endif %}>
-                {% if set.title %}
-                    {% if set.collapsible %}<details><summary>{% endif %}
-                    <h2 id="fieldset-0-{{ loop.index0 }}-heading" class="fieldset-heading">{{ set.title }}</h2>
-                    {% if set.collapsible %}</summary>{% endif %}
-                {% endif %}
-                {% if set.description %}<div class="description">{{ set.description|safe }}</div>{% endif %}
-                {% for line in set.lines %}
-                    <div class="form-row{% if line|length == 1 and line[0].error %} errors{% endif %}{% for row in line %} field-{{ row.name }}{% endfor %}">
-                        {% if line|length == 1 and line[0].error %}<ul class="errorlist" id="id_{{ line[0].name }}_error">{% for message in line[0].error %}<li>{{ message }}</li>{% endfor %}</ul>{% elif line|length != 1 %}<div class="flex-container form-multiline">{% endif %}
-                        {% for row in line %}
-                            <div>
-                                {% if line|length != 1 and row.error %}<ul class="errorlist" id="id_{{ row.name }}_error">{% for message in row.error %}<li>{{ message }}</li>{% endfor %}</ul>{% endif %}
-                                <div class="flex-container{% if line|length != 1 %} fieldBox field-{{ row.name }}{% if row.error %} errors{% endif %}{% endif %}{% if row.checkbox %} checkbox-row{% endif %}">
-                                    {% if row.checkbox %}{% include "site_admin/widget.html" %}{% endif %}
-                                    <label{% if row.required or row.checkbox %} class="{% if row.checkbox %}vCheckboxLabel{% elif row.required %}required{% endif %}"{% endif %}{% if not row.readonly %} for="id_{{ row.name }}{% if row.datetime %}_0{% endif %}"{% endif %}>{{ row.label }}</label>
-                                    {% if row.readonly %}<div class="readonly">{{ row.read_value }}</div>
-                                    {% elif not row.checkbox %}{% include "site_admin/widget.html" %}{% endif %}
-                                </div>
-                                {% if row.help %}<div class="help"{% if not row.readonly %} id="id_{{ row.name }}{% if row.datetime %}_0{% endif %}_helptext"{% endif %}><div>{{ row.help|safe }}</div></div>{% endif %}
-                            </div>
-                        {% endfor %}
-                        {% if line|length != 1 %}</div>{% endif %}
-                    </div>
-                {% endfor %}
-                {% if set.title and set.collapsible %}</details>{% endif %}
-            </fieldset>
+            {% set fieldset_id = "fieldset-0-" ~ loop.index0 %}
+            {% include "site_admin/fieldset.html" %}
             {% endfor %}
-            <div class="submit-row">
-                {% if save %}<input type="submit" value="Save" class="default" name="_save">{% endif %}
-                {% if save and can_add and not is_popup %}<input type="submit" value="Save and add another" name="_addanother">{% endif %}
-                {% if save and can_view and not is_popup %}<input type="submit" value="{% if can_change %}Save and continue editing{% else %}Save and view{% endif %}" name="_continue">{% endif %}
-                {% if not save %}<a href="{{ model_url }}" class="closelink">Close</a>{% endif %}
-                {% if can_delete and not add and not is_popup %}<a href="{{ object_url }}delete/" class="deletelink">Delete</a>{% endif %}
-            </div>
+            {% for group in inlines %}
+                {% set last_group = loop.last %}
+                {% include "site_admin/inline.html" %}
+            {% endfor %}
+            {% include "site_admin/submit.html" %}
             <script id="django-admin-form-add-constants" src="/static/admin/js/change_form.js"{% if add %} data-model-name="{{ model_name }}"{% endif %} async></script>
+            {% if add_user %}<script src="/static/admin/js/unusable_password_field.js" defer></script>{% endif %}
             <script id="django-admin-prepopulated-fields-constants" src="/static/admin/js/prepopulate_init.js" data-prepopulated-fields="[]"></script>
         </div>
     </form>

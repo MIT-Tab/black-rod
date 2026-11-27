@@ -1,0 +1,78 @@
+{% macro heading(group) %}
+    <h2 id="{{ group.prefix }}-heading" class="inline-heading">{{ group.heading }}</h2>
+{% endmacro %}
+{% macro management(group) %}
+    <input type="hidden" name="{{ group.prefix }}-TOTAL_FORMS" value="{{ group.total }}" id="id_{{ group.prefix }}-TOTAL_FORMS">
+    <input type="hidden" name="{{ group.prefix }}-INITIAL_FORMS" value="{{ group.initial }}" id="id_{{ group.prefix }}-INITIAL_FORMS">
+    <input type="hidden" name="{{ group.prefix }}-MIN_NUM_FORMS" value="{{ group.min }}" id="id_{{ group.prefix }}-MIN_NUM_FORMS">
+    <input type="hidden" name="{{ group.prefix }}-MAX_NUM_FORMS" value="{{ group.max }}" id="id_{{ group.prefix }}-MAX_NUM_FORMS">
+{% endmacro %}
+{% macro original(group,item) %}
+    {{ item.label }}{% if item.change_url %} <a href="{{ item.change_url }}" class="{% if group.can_change %}inlinechangelink{% else %}inlineviewlink{% endif %}">{% if group.can_change %}Change{% else %}View{% endif %}</a>{% endif %}
+{% endmacro %}
+{% macro deletion(item) %}
+    <input type="checkbox" name="{{ item.prefix }}-DELETE" id="id_{{ item.prefix }}-DELETE"{% if item.deleting %} checked{% endif %}>
+{% endmacro %}
+{% macro errors(messages) %}
+    {% if messages %}<ul class="errorlist nonform">{% for message in messages %}<li>{{ message }}</li>{% endfor %}</ul>{% endif %}
+{% endmacro %}
+<div class="js-inline-admin-formset inline-group" id="{{ group.prefix }}-group" data-inline-type="{{ group.kind }}" data-inline-formset="{{ group.data }}">
+{% if group.kind == "tabular" %}
+    <div class="tabular inline-related{% if last_group %} last-related{% endif %}">
+    {{ management(group) }}
+    <fieldset class="module {{ group.classes|join(' ') }}" aria-labelledby="{{ group.prefix }}-heading">
+        {{ heading(group) }}
+        {{ errors(group.errors) }}
+        <table>
+            <thead><tr><th class="original"></th>
+                {% for column in group.columns %}<th class="column-{{ column.name }}{% if column.required %} required{% endif %}">{{ column.label }}
+                    {% if column.help %}<img src="/static/admin/img/icon-unknown.svg" class="help help-tooltip" width="10" height="10" alt="({{ column.help|striptags }})" title="{{ column.help|striptags }}">{% endif %}
+                </th>{% endfor %}
+                <th>{% if group.can_delete %}Delete?{% endif %}</th>
+            </tr></thead>
+            <tbody>
+            {% for item in group.rows %}
+                {% if item.errors %}<tr class="row-form-errors"><td colspan="{{ group.columns|length + 2 }}">{{ errors(item.errors) }}</td></tr>{% endif %}
+                <tr class="form-row{% if item.id %} has_original{% endif %}{% if item.empty %} empty-form{% endif %}" id="{{ item.dom_id }}">
+                    <td class="original">
+                        {% if item.id %}<p>{{ original(group,item) }}</p>{% endif %}
+                        {% include "site_admin/inline_fields.html" %}
+                    </td>
+                    {% for row in item.fields %}<td class="field-{{ row.field_name }}">
+                        {% if row.readonly %}<p>{% if row.preformatted %}<pre>{{ row.read_value }}</pre>{% else %}{{ row.read_value }}{% endif %}</p>
+                        {% else %}{{ errors(row.error) }}{% include "site_admin/widget.html" %}{% endif %}
+                    </td>{% endfor %}
+                    <td class="delete">{% if group.can_delete and item.id %}{{ deletion(item) }}{% endif %}</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </fieldset>
+    </div>
+{% else %}
+    <fieldset class="module {{ group.classes|join(' ') }}" aria-labelledby="{{ group.prefix }}-heading">
+        {{ heading(group) }}
+        {{ management(group) }}
+        {{ errors(group.errors) }}
+        {% for item in group.rows %}
+            <div class="inline-related{% if item.id %} has_original{% endif %}{% if item.empty %} empty-form last-related{% endif %}" id="{{ item.dom_id }}">
+                <h3><b>{{ group.singular }}:</b> <span class="inline_label">{% if item.id %}{{ original(group,item) }}{% else %}#{{ item.number }}{% endif %}</span>
+                    {% if group.can_delete and item.id %}<span class="delete">{{ deletion(item) }} <label class="vCheckboxLabel" for="id_{{ item.prefix }}-DELETE">Delete:</label></span>{% endif %}
+                </h3>
+                {{ errors(item.errors) }}
+                <fieldset class="module aligned ">
+                    {% for row in item.fields %}
+                    <div class="form-row field-{{ row.field_name }}{% if row.error %} errors{% endif %}">
+                        {{ errors(row.error) }}
+                        <div><div class="flex-container"><label{% if row.label_required %} class="required"{% endif %}{% if not row.readonly %} for="id_{{ row.name }}"{% endif %}>{{ row.label }}</label>
+                            {% if row.readonly %}<div class="readonly">{% if row.preformatted %}<pre>{{ row.read_value }}</pre>{% else %}{{ row.read_value }}{% endif %}</div>{% else %}{% include "site_admin/widget.html" %}{% endif %}
+                        </div>{% if row.help %}<div class="help" id="id_{{ row.name }}_helptext"><div>{{ row.help|safe }}</div></div>{% endif %}</div>
+                    </div>
+                    {% endfor %}
+                </fieldset>
+                {% include "site_admin/inline_fields.html" %}
+            </div>
+        {% endfor %}
+    </fieldset>
+{% endif %}
+</div>

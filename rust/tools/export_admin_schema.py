@@ -73,10 +73,9 @@ def model_config(request, model, model_admin):
             for title, options in model_admin.get_fieldsets(request, obj)
         ] if not change or model_admin.has_view_permission(request) else []
 
-    def form_meta(obj, change):
-        form = model_admin.get_form(request, obj, change=change)
+    def widgets_for(fields):
         widgets = {}
-        for name, field in form.base_fields.items():
+        for name, field in fields.items():
             widget = field.widget
             wrapped = type(widget).__name__ == "RelatedFieldWidgetWrapper"
             actual = widget.widget if wrapped else widget
@@ -91,8 +90,39 @@ def model_config(request, model, model_admin):
             }
             if type(actual).__name__ in ("RadioSelect", "Select") and hasattr(field, "_choices"):
                 widgets[name]["choices"] = [(str(value), str(label)) for value, label in field.choices]
-        media = form().media
-        return {"widgets": widgets, "media": {"css": [path for paths in media._css.values() for path in paths], "js": media._js}}
+        return widgets
+
+    def form_meta(obj, change):
+        form = model_admin.get_form(request, obj, change=change)
+        media = model_admin.media + form().media
+        inlines = []
+        for formset, inline in model_admin.get_formsets_with_inlines(request, obj):
+            prefix = formset.get_default_prefix()
+            fields = list(inline.get_fields(request, obj))
+            verbose_name = str(inline.opts.verbose_name)
+            media += inline.media + formset().media
+            inlines.append({
+                "model": inline.opts.label_lower,
+                "kind": "tabular" if inline.template.endswith("tabular.html") else "stacked",
+                "prefix": prefix,
+                "foreign_key": formset.fk.name,
+                "min": formset.min_num,
+                "max": formset.max_num,
+                "absolute_max": formset.absolute_max,
+                "extra": formset.extra,
+                "classes": list(inline.classes or []),
+                "fields": fields,
+                "widgets": widgets_for(formset.form.base_fields),
+                "ordering": inline.get_ordering(request) or inline.opts.ordering or ["id"],
+                "show_change_link": inline.show_change_link,
+                "data": json.dumps({
+                    "name": f"#{prefix}",
+                    "options": {"prefix": prefix, "addText": f"Add another {verbose_name[:1].upper()}{verbose_name[1:]}",
+                                "deleteText": "Remove"},
+                }),
+            })
+        return {"widgets": widgets_for(form.base_fields), "inlines": inlines,
+                "media": {"css": [(section, path) for section, paths in sorted(media._css.items()) for path in paths], "js": media._js}}
 
     def display_filter(entry):
         if isinstance(entry, str):
@@ -126,7 +156,8 @@ def model_config(request, model, model_admin):
         "form_change": form_meta(model(), True),
         "actions": [list(entry[1:]) for entry in model_admin.get_actions(request).values()],
         "import_export": hasattr(model_admin, "get_import_formats"),
-        "list_media": {"css": [path for paths in model_admin.media._css.values() for path in paths],
+        "save_on_top": model_admin.save_on_top,
+        "list_media": {"css": [(section, path) for section, paths in sorted(model_admin.media._css.items()) for path in paths],
                        "js": model_admin.media._js},
     }
     assert model_admin.get_changelist(request) is not None

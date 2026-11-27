@@ -46,7 +46,7 @@ pub(super) struct Field {
 
 #[derive(Deserialize)]
 pub(super) struct Media {
-    pub(super) css: Vec<String>,
+    pub(super) css: Vec<(String, String)>,
     pub(super) js: Vec<String>,
 }
 
@@ -66,6 +66,32 @@ pub(super) struct Widget {
 pub(super) struct Form {
     pub(super) widgets: BTreeMap<String, Widget>,
     pub(super) media: Media,
+    pub(super) inlines: Vec<Inline>,
+}
+
+#[derive(Deserialize)]
+pub(super) struct Inline {
+    pub(super) model: String,
+    pub(super) kind: String,
+    pub(super) prefix: String,
+    pub(super) foreign_key: String,
+    pub(super) min: usize,
+    pub(super) max: usize,
+    pub(super) absolute_max: usize,
+    pub(super) extra: usize,
+    pub(super) classes: Vec<String>,
+    pub(super) fields: Vec<String>,
+    pub(super) widgets: BTreeMap<String, Widget>,
+    pub(super) ordering: Vec<String>,
+    pub(super) show_change_link: bool,
+    pub(super) data: String,
+}
+
+impl Inline {
+    pub(super) fn model(&self) -> &'static Model {
+        let (app, slug) = self.model.split_once('.').expect("inline model key");
+        schema().model(app, slug).expect("registered inline model")
+    }
 }
 
 #[derive(Deserialize)]
@@ -110,6 +136,7 @@ pub(super) struct Model {
     pub(super) per_page: usize,
     pub(super) max_show_all: usize,
     pub(super) import_export: bool,
+    pub(super) save_on_top: bool,
     pub(super) list_media: Media,
     pub(super) actions: Vec<(String, String)>,
     pub(super) fieldsets_add: Vec<Fieldset>,

@@ -441,12 +441,12 @@ impl Kind {
 
     fn initial_order(self) -> &'static str {
         match self {
-            Self::Standing(_) => "x.id DESC",
+            Self::Standing(_) | Self::Debaters => "x.id DESC",
             Self::Schools => "x.name",
             Self::Tournaments => "x.date",
             Self::Motions => "x.date_set DESC, x.id DESC",
             Self::Resources { .. } => "x.created_at DESC",
-            Self::Teams | Self::Debaters | Self::Videos | Self::Outreach { .. } => "x.id",
+            Self::Teams | Self::Videos | Self::Outreach { .. } => "x.id",
         }
     }
 }

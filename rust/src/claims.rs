@@ -47,7 +47,7 @@ fn school(row: &AnyRow) -> Result<Option<Value>, ApiError> {
         .map(|(id, name)| json!({"id":id,"name":name,"url":format!("/core/schools/{id}")})))
 }
 
-fn date(value: Option<&str>, fmt: &str) -> String {
+pub(crate) fn date(value: Option<&str>, fmt: &str) -> String {
     value
         .and_then(|input| {
             let naive = input.split('+').next().unwrap_or(input);
@@ -128,7 +128,7 @@ async fn profile_data(
     Ok((profiles, pending, recent))
 }
 
-fn render(
+pub(crate) fn render(
     state: &AppState,
     user: &User,
     uri: &Uri,
@@ -276,7 +276,7 @@ async fn submit_claim(
     Ok(None)
 }
 
-fn redirect(
+pub(crate) fn redirect(
     state: &AppState,
     headers: &HeaderMap,
     path: &str,

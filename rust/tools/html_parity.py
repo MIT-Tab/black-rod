@@ -22,19 +22,51 @@ PUBLIC = [
     ("schools", "/core/schools/", False),
     ("debaters", "/core/debaters/", False),
     ("teams", "/core/teams/", False),
-    ("schedule", "/core/schedule/?season=2025", False),
+    ("schedule", "/core/schedules/?season=2025", False),
     ("statistics", "/stats/", False),
     ("games", "/games/", False),
     ("login", "/auth/login/", False),
 ]
 ADMIN = [
     ("admin-login", "/admin/login/", False),
+    ("admin-password", "/admin/password_change/", True),
+    ("admin-password-done", "/admin/password_change/done/", True),
     ("admin-index", "/admin/", True),
     ("admin-core-index", "/admin/core/", True),
     ("admin-school-list", "/admin/core/school/?q=Harvard", True),
     ("admin-school-add", "/admin/core/school/add/", True),
     ("admin-school-change", "/admin/core/school/7/change/", True),
+    ("admin-school-history", "/admin/core/school/7/history/", True),
+    ("admin-user-list", "/admin/core/user/", True),
+    ("admin-tournament-list", "/admin/core/tournament/?season=2025", True),
+    ("admin-user-add", "/admin/core/user/add/", True),
+    ("admin-credential-list", "/admin/core/agentcredential/", True),
+    ("admin-credential-add", "/admin/core/agentcredential/add/", True),
 ]
+
+def admin_models(database):
+    metadata = json.loads(Path(__file__).resolve().parents[1].joinpath("schema/admin.json").read_text())
+    cases = []
+    with sqlite3.connect(f"{database.as_uri()}?mode=ro", uri=True) as connection:
+        for app in metadata["apps"]:
+            for model in app["models"]:
+                application, slug = model["key"].split(".")
+                route = f"/admin/{application}/{slug}/"
+                prefix = f"admin-model-{application}-{slug}"
+                cases.extend([
+                    (f"{prefix}-list", route, True),
+                    (f"{prefix}-add", route + "add/", True),
+                ])
+                table = model["table"]
+                saved = connection.execute(f'SELECT id FROM "{table}" ORDER BY id LIMIT 1').fetchone()
+                if saved:
+                    if model["key"] == "core.user":
+                        cases.append(("admin-model-core-user-password", f"{route}{saved[0]}/password/", True))
+                    record = f"{route}{saved[0]}/"
+                    cases.extend((f"{prefix}-{view}", record + view + "/", True)
+                                 for view in ("change", "history", "delete"))
+    return cases
+
 
 DOM = r"""
 const ignored = new Set(Array.from(arguments[0]));
@@ -95,6 +127,15 @@ def open_page(driver, server, route, session):
 
 def capture(driver, server, route, session, target, exclude):
     open_page(driver, server, route, session)
+    driver.execute_cdp_cmd("Input.dispatchMouseEvent", {"type": "mouseMoved", "x": 0, "y": 0})
+    driver.execute_async_script("""
+        const done = arguments[0];
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+            const transitions = document.getAnimations().filter(animation => animation instanceof CSSTransition);
+            Promise.race([Promise.allSettled(transitions.map(transition => transition.finished)),
+                          new Promise(resolve => setTimeout(resolve, 750))]).then(() => done());
+        }));
+    """)
     html = driver.execute_script(DOM, exclude)
     target.with_suffix(".json").write_text(json.dumps(html, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     target.with_suffix(".html").write_text(driver.page_source, encoding="utf-8")
@@ -136,7 +177,7 @@ def compare(driver, django, rust, cases, session, output, viewports, exclude, pi
 def main():
     parser = ArgumentParser(description=__doc__)
     parser.add_argument("output", type=Path)
-    parser.add_argument("--group", choices=("public", "admin", "all"), default="all")
+    parser.add_argument("--group", choices=("public", "admin", "admin-models", "all"), default="all")
     parser.add_argument("--page", metavar="NAME", action="append")
     parser.add_argument("--viewport", choices=VIEWPORTS, action="append")
     parser.add_argument("--exclude-element", action="append", default=[])
@@ -144,11 +185,6 @@ def main():
     arguments = parser.parse_args()
     output = arguments.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
-    cases = {"public":PUBLIC, "admin":ADMIN, "all":[*PUBLIC, *ADMIN]}[arguments.group]
-    if arguments.page:
-        cases = [case for case in cases if case[0] in arguments.page]
-    if not cases:
-        parser.error("No matching pages in the selected group.")
     viewports = arguments.viewport or list(VIEWPORTS)
     database = Path(os.environ["BR_STATE"]) / "dev.sqlite3"
     os.environ["BLACK_ROD_PARITY_STATIC"] = "1"
@@ -164,12 +200,19 @@ def main():
             source.backup(copy)
         os.environ["BR_STATE"] = folder
         fixture = seed_browser_cases()
+        model_cases = admin_models(local) if arguments.group in ("admin-models", "all") else []
+        cases = {"public": PUBLIC, "admin": ADMIN, "admin-models": model_cases,
+                 "all": [*PUBLIC, *ADMIN, *model_cases]}[arguments.group]
+        if arguments.page:
+            cases = [case for case in cases if case[0] in arguments.page]
+        if not cases:
+            parser.error("No matching pages in the selected group.")
         session = django_session()
         with oauth_provider(fixture), smtp_sink(), servers(local) as (django, rust), webdriver.Chrome(options=options) as browser:
             failures = compare(browser, django, rust, cases, session, output, viewports,
                                arguments.exclude_element, arguments.pixel_only)
-        if failures:
-            raise SystemExit(f"{len(failures)} HTML or screenshot comparisons differed. See {output}.")
+            if failures:
+                raise SystemExit(f"{len(failures)} HTML or screenshot comparisons differed. See {output}.")
 
 
 if __name__ == "__main__":

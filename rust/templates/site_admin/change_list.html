@@ -2,7 +2,7 @@
 {% block extrastyle %}
     {{ super() }}<link rel="stylesheet" href="/static/admin/css/changelists.css">
     {% if actions %}<script src="/admin/jsi18n/"></script>{% endif %}
-    {% for asset in css %}<link href="/static/{{ asset }}" media="all" rel="stylesheet">{% endfor %}
+    {% for medium,asset in css %}<link href="/static/{{ asset }}" media="{{ medium }}" rel="stylesheet">{% endfor %}
     {% if not actions %}<style>#changelist table thead th:first-child {width: inherit}</style>{% endif %}
 {% endblock %}
 {% block extrahead %}
@@ -50,7 +50,7 @@
                     <button type="submit" class="button" title="Run the selected action" name="index" value="0">Go</button>
                     <span class="action-counter" data-actions-icnt="{{ rows|length }}">0 of {{ rows|length }} selected</span>
                     {% if count != rows|length %}
-                        <span class="all hidden">{{ count }} selected</span>
+                        <span class="all hidden">All {{ count }} selected</span>
                         <span class="question hidden"><a role="button" href="#" title="Click here to select the objects across all pages">Select all {{ count }} {{ plural }}</a></span>
                         <span class="clear hidden"><a role="button" href="#">Clear selection</a></span>
                     {% endif %}
