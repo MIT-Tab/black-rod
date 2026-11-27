@@ -148,7 +148,9 @@ async fn render_entry(
                     row.errors.push(error.to_owned());
                 }
                 if matches!(panel.tab.kind, "school" | "debater")
-                    && (row.name.chars().count() > max || row.last_name.chars().count() > max)
+                    && (row.name.chars().count() > max
+                        || row.last_name.chars().count() > max
+                        || row.short_name.chars().count() > max)
                 {
                     row.errors
                         .push(format!("Ensure this value has at most {max} characters."));

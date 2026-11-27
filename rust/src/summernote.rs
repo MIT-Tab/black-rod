@@ -8,16 +8,17 @@ use axum::{
     response::{Html, IntoResponse, Response},
 };
 use chrono::{NaiveDate, Utc};
-use image::ImageReader;
+use image::{ImageReader, Limits};
 use minijinja::context;
 use serde_json::{Value, json};
-use tokio::io::AsyncWriteExt;
+use tokio::{io::AsyncWriteExt, sync::Semaphore};
 use uuid::Uuid;
 
 use crate::{AppState, login, web};
 
 const FOLDER: &str = "django-summernote";
 const FILE_LIMIT: usize = 1024 * 1024;
+static IMAGE_VALIDATORS: Semaphore = Semaphore::const_new(2);
 
 fn media_root() -> PathBuf {
     std::env::var_os("BLACK_ROD_MEDIA_ROOT")
@@ -96,22 +97,42 @@ async fn read_uploads(state: &AppState, request: Request) -> Result<Vec<Upload>,
     if !login::csrf_valid(&headers, csrf.as_deref(), &origin) {
         return Err(Box::new(login::csrf_failure()));
     }
-    tokio::task::spawn_blocking(move|| {
-        files.into_iter().map(|(name,bytes)|{
-            if bytes.len()>FILE_LIMIT {
-                return Err(Box::new(error(StatusCode::BAD_REQUEST,"File size exceeds the limit allowed and cannot be saved")))
-            }
-            let mime=ImageReader::new(Cursor::new(&bytes)).with_guessed_format().ok().and_then(|reader|{
-                let format=reader.format()?;
-                reader.decode().ok().map(|_|format.to_mime_type())
-            });
-            let Some(mime)=mime else{
+    if files.is_empty() {
+        return Ok(Vec::new());
+    }
+    let failed = || {
+        Box::new(error(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to read attachment",
+        ))
+    };
+    let permit = IMAGE_VALIDATORS.acquire().await.map_err(|_| failed())?;
+    tokio::task::spawn_blocking(move || {
+        let _permit = permit;
+        files.into_iter().map(|(name, bytes)| {
+            if bytes.len() > FILE_LIMIT {
                 return Err(Box::new(error(StatusCode::BAD_REQUEST,
-                    "Upload a valid image. The file you uploaded was either not an image or a corrupted image.")))
+                    "File size exceeds the limit allowed and cannot be saved")));
+            }
+            let mime = ImageReader::new(Cursor::new(&bytes))
+                .with_guessed_format()
+                .ok()
+                .and_then(|mut reader| {
+                    let format = reader.format()?;
+                    let mut limits = Limits::default();
+                    limits.max_alloc = Some(64 * 1024 * 1024);
+                    limits.max_image_width = Some(16_384);
+                    limits.max_image_height = Some(16_384);
+                    reader.limits(limits);
+                    reader.decode().ok().map(|_| format.to_mime_type())
+                });
+            let Some(mime) = mime else {
+                return Err(Box::new(error(StatusCode::BAD_REQUEST,
+                    "Upload a valid image. The file you uploaded was either not an image or a corrupted image.")));
             };
-            Ok(Upload{name,mime,bytes})
+            Ok(Upload {name, mime, bytes})
         }).collect()
-    }).await.map_err(|_|Box::new(error(StatusCode::INTERNAL_SERVER_ERROR,"Failed to read attachment")))?
+    }).await.map_err(|_| failed())?
 }
 
 pub(crate) async fn write_attachment(

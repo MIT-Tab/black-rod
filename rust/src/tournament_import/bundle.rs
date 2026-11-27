@@ -230,6 +230,27 @@ impl Importer<'_> {
         gov: Vec<(&Value, &Value)>,
         opp: Vec<(&Value, &Value)>,
     ) -> Result<bool, Error> {
+        let integer = |field: &str| {
+            crate::django_int(&round[field])
+                .ok_or_else(|| invalid(format!("Round '{key}' {field} must be an integer.")))
+        };
+        let round_number = if super::truthy(&round["round_number"]) {
+            integer("round_number")?
+        } else {
+            0
+        };
+        let victor = if super::truthy(&round["victor"]) {
+            integer("victor")?
+        } else {
+            0
+        };
+        let elim = &round["elim_size"];
+        let elim_size = if elim.is_null() || elim.as_str() == Some("") {
+            None
+        } else {
+            Some(integer("elim_size")?)
+        };
+
         let (gov, gov_aliases) = self.side(conn, gov).await?;
         let (opp, opp_aliases) = self.side(conn, opp).await?;
         let judges = self.judge_rows(conn, round, key).await?;
@@ -250,18 +271,15 @@ impl Importer<'_> {
             ("import_origin", json!(KIND)),
             ("gov_id", json!(gov)),
             ("opp_id", json!(opp)),
-            (
-                "round_number",
-                json!(as_id(&round["round_number"]).unwrap_or_default()),
-            ),
+            ("round_number", json!(round_number)),
             ("stage", json!(text(&round["stage"]).trim())),
             (
                 "division",
                 json!(round["division"].as_str().filter(|s| !s.is_empty())),
             ),
-            ("elim_size", json!(as_id(&round["elim_size"]))),
+            ("elim_size", json!(elim_size)),
             ("round_label", json!(text(&round["label"]))),
-            ("victor", json!(as_id(&round["victor"]).unwrap_or_default())),
+            ("victor", json!(victor)),
             ("metadata", metadata),
         ] {
             fields.insert(name.to_owned(), value);

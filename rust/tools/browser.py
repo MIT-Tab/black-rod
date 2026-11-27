@@ -2961,7 +2961,8 @@ def assert_mittab_bundle_upload(driver, django, rust, fixture):
         with sqlite3.connect(f"{db.as_uri()}?mode=ro", uri=True) as connection:
             return connection.execute("""
                 SELECT r.id, r.import_key, r.victor, r.stage, a.source_name, a.normalized_name,
-                    j.original_name, j.is_chair, i.source_hash
+                    j.original_name, j.is_chair, i.source_hash,
+                    (SELECT COUNT(*) FROM core_roundstats stats WHERE stats.round_id=r.id)
                 FROM core_round r JOIN core_importedroundmetadata m ON m.round_id=r.id
                 JOIN core_debateralias a ON a.id=m.gov_1_alias_id
                 JOIN core_importedroundjudge j ON j.round_metadata_id=m.id
@@ -3003,6 +3004,10 @@ def assert_mittab_bundle_upload(driver, django, rust, fixture):
     saved = submit(rust, reference)
     assert saved["redirected"] and saved["path"] == f"/core/tournaments/{event}", saved
     assert "Created 2 rounds" in saved["message"], saved
+    with sqlite3.connect(db) as connection:
+        connection.execute("""INSERT INTO core_roundstats
+            (round_id,debater_id,stage,debater_role,speaks,ranks,score_index,source_status,metadata)
+            VALUES (?,?, 'prelim','PM',27,1,0,'','{}')""", (snapshot()[0][0], fixture["authors"][0]))
     before = snapshot()
     assert len(before) == 2 and before[0][4:8] == ("Grüße A", "grüsse a", "Disposable Judge", 1), before
     for server in (django, rust):
@@ -3012,10 +3017,16 @@ def assert_mittab_bundle_upload(driver, django, rust, fixture):
                                       {**fixture_round, "import_key": "bad", "stage": "invalid"}]}
     failed = submit(rust, invalid)
     assert failed["error"] == "Round 'bad' has an unsupported stage." and snapshot() == before, failed
+    for field in ("round_number", "victor", "elim_size"):
+        broken = {**reference, "rounds": [{**fixture_round, "victor": 2},
+                  {**fixture_round, "import_key": "prelim-2", field: "invalid integer"}]}
+        response = submit(rust, broken)
+        assert response["error"] == f"Round 'prelim-2' {field} must be an integer.", response
+        assert snapshot() == before
     skipped = {**reference, "rounds": [{**fixture_round, "opp": {}}]}
     answer = submit(rust, skipped)
     assert "Skipped 1 round with incomplete rosters." in answer["message"] and snapshot() == before, answer
-    updated = {**reference, "rounds": [{**fixture_round, "victor": 2}]}
+    updated = {**reference, "rounds": [{**fixture_round, "victor": " 2 "}]}
     result = submit(rust, updated)
     assert "updated 1 rounds, deleted 1 stale rounds." in result["message"], result
     after = snapshot()
@@ -3290,13 +3301,22 @@ print(target.pk)
     provider.import_payload["debater_counts"]["teams"] = 99
     try:
         result = driver.execute_async_script("""
-            const done = arguments[0], form = document.querySelector('#data-entry-form');
+            const [school, done] = arguments;
+            const form = document.querySelector('#data-entry-form');
             const body = new URLSearchParams(new FormData(form));
-            body.set('debaters-TOTAL_FORMS', Number(body.get('debaters-TOTAL_FORMS')) + 1);
+            const debaters = Number(body.get('debaters-TOTAL_FORMS'));
+            const schools = Number(body.get('schools-TOTAL_FORMS'));
+            body.set('debaters-TOTAL_FORMS', debaters + 2);
+            body.set(`debaters-${debaters}-first_name`, 'Manual');
+            body.set(`debaters-${debaters}-last_name`, 'Review Entry');
+            body.set(`debaters-${debaters}-school`, school);
+            body.set('schools-TOTAL_FORMS', schools + 1);
+            body.set(`schools-${schools}-server_name`, 'School fallback parity');
+            body.set(`schools-${schools}-included_in_oty`, 'True');
             fetch(location.pathname + location.search, {method:'POST', body})
                 .then(async response => done({status:response.status,path:new URL(response.url).pathname,
                     text:(await response.text()).slice(0,160)}), () => done({status:0}));
-        """)
+        """, str(mapped_school))
     finally:
         provider.import_payload["debater_counts"]["teams"] = original_teams
     assert result["status"] == 200 and result["path"] == f"/core/tournaments/{event}", result
@@ -3314,7 +3334,12 @@ print(target.pk)
         assert database.execute("SELECT COUNT(*) FROM core_speakerresult WHERE tournament_id=?", (event,)).fetchone() == (1,)
         assert database.execute("SELECT COUNT(*) FROM core_round WHERE tournament_id=? AND import_key='review-prelim-1'", (event,)).fetchone() == (1,)
         assert database.execute("SELECT COUNT(*) FROM core_tournamentimport WHERE tournament_id=? AND original_file_name='api-bundle.json'", (event,)).fetchone() == (1,)
-        assert database.execute("SELECT temporary FROM core_school WHERE name='Reviewed Fixture School'").fetchone() == (0,)
+        assert database.execute("SELECT temporary,short_name FROM core_school WHERE name='Reviewed Fixture School'").fetchone() == (
+            0, "Reviewed Fixture School")
+        assert database.execute("SELECT short_name FROM core_school WHERE name='School fallback parity'").fetchone() == (
+            "School fallback parity",)
+        assert database.execute("""SELECT temporary,status FROM core_debater
+            WHERE first_name='Manual' AND last_name='Review Entry' AND school_id=?""", (mapped_school,)).fetchone() == (0, 1)
         assert database.execute("""SELECT d.temporary,s.name FROM core_debater d JOIN core_school s ON s.id=d.school_id
             WHERE d.first_name='Incoming' AND d.last_name='Participant'""").fetchone() == (0, "Reviewed Fixture School")
     driver.get(f"http://{HOST}:{django.port}/core/tournaments/{event}")
@@ -3440,6 +3465,14 @@ def assert_tournament_audit_writes(driver, django, rust, fixture):
     assert not failed["redirected"] and "Round matching query does not exist" in failed["text"], failed["status"]
     with sqlite3.connect(f"{db.as_uri()}?mode=ro", uri=True) as database:
         assert database.execute("SELECT round_label FROM core_round WHERE id=?", (round_id,)).fetchone() == ("Final",)
+    for field in ("tournament_id", "round_id"):
+        lookup = {"type": "update_round", "import_key": import_key, "round_label": "invalid lookup",
+                  field: "invalid ID"}
+        rejected = upload_amendment({"actions": [lookup]})
+        assert not rejected["redirected"] and "must be an integer" in rejected["text"], field
+        with sqlite3.connect(f"{db.as_uri()}?mode=ro", uri=True) as database:
+            assert database.execute("SELECT round_label FROM core_round WHERE id=?",
+                                    (round_id,)).fetchone() == ("Final",)
     assert upload_amendment(document)["redirected"]
     with sqlite3.connect(f"{db.as_uri()}?mode=ro", uri=True) as database:
         assert database.execute("SELECT round_label FROM core_round WHERE id=?", (round_id,)).fetchone() == (source_key,)

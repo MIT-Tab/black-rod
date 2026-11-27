@@ -315,31 +315,12 @@ pub(crate) fn limit(raw: &str) -> Option<i64> {
             previous_digit = false;
             continue;
         }
-        let digit = decimal_digit(ch)?;
+        let digit = crate::decimal_digit(ch)?;
         digits += 1;
         limit = (limit * 10 + digit).min(200);
         previous_digit = true;
     }
     (previous_digit && digits <= 4300 && limit > 0).then_some(limit)
-}
-
-fn decimal_digit(ch: char) -> Option<i64> {
-    if let Some(digit) = ch.to_digit(10) {
-        return Some(i64::from(digit));
-    }
-    static DECIMAL: std::sync::LazyLock<regex::Regex> =
-        std::sync::LazyLock::new(|| regex::Regex::new(r"^\p{Nd}$").expect("decimal digit pattern"));
-    let is_decimal = |ch: char| DECIMAL.is_match(ch.encode_utf8(&mut [0; 4]));
-    if !is_decimal(ch) {
-        return None;
-    }
-    // Unicode decimal digit sets are contiguous blocks of ten, beginning at zero.
-    let point = u32::from(ch);
-    let start = (0..point)
-        .rev()
-        .take_while(|&point| char::from_u32(point).is_some_and(is_decimal))
-        .count();
-    Some((start % 10) as i64)
 }
 
 #[cfg(test)]

@@ -101,20 +101,22 @@ async fn same_person(
     Ok(None)
 }
 
-async fn seed_person(
+async fn insert_person(
     conn: &mut AnyConnection,
     first: &str,
     last: &str,
     school: Option<i64>,
     season: i32,
+    temporary: bool,
 ) -> Result<i64, ApiError> {
     let first = claims::edit::sanitize_name(first, "Removed");
     let last = claims::edit::sanitize_name(last, "");
     Ok(sqlx::query_scalar::<_,i64>(
         "INSERT INTO core_debater (first_name,last_name,school_id,first_season,latest_season,status,region,
             dino_to_contact_opt_in,dino_judge_contact_opt_in,elo_manual_opt,temporary,synthetic)
-        VALUES ($1,$2,$3,$4,$4,0,'[]',FALSE,FALSE,'',TRUE,FALSE) RETURNING CAST(id AS BIGINT)")
-        .bind(first).bind(last).bind(school).bind(season.to_string()).fetch_one(conn).await?)
+        VALUES ($1,$2,$3,$4,$4,$5,'[]',FALSE,FALSE,'',$6,FALSE) RETURNING CAST(id AS BIGINT)")
+        .bind(first).bind(last).bind(school).bind(season.to_string())
+        .bind(i64::from(!temporary)).bind(temporary).fetch_one(conn).await?)
 }
 
 async fn lookup_person(
@@ -203,7 +205,8 @@ pub(super) async fn seed(
         {
             id
         } else {
-            let id = seed_person(&mut tx, first, &last, school, state.current_season).await?;
+            let id =
+                insert_person(&mut tx, first, &last, school, state.current_season, true).await?;
             created_debaters.insert(id);
             id
         };
@@ -353,7 +356,16 @@ async fn resolve_schools(
     let mut cleanup = Vec::new();
     for row in rows {
         let source = row.record;
-        let name = row.name.trim();
+        let name = if row.name.trim().is_empty() {
+            row.first_source.trim()
+        } else {
+            row.name.trim()
+        };
+        let short_name = if row.short_name.is_empty() {
+            name
+        } else {
+            row.short_name.as_str()
+        };
         if source.is_none() && row.first.is_none() && name.is_empty() {
             continue;
         }
@@ -391,16 +403,16 @@ async fn resolve_schools(
             school_by_name(conn, name).await?
         };
         let id = if let Some(id) = old {
-            sqlx::query("UPDATE core_school SET name=$1,short_name=CASE WHEN short_name='' THEN $1 ELSE short_name END,
-                included_in_oty=$2,temporary=FALSE WHERE id=$3")
-                .bind(name).bind(row.included).bind(id).execute(&mut *conn).await?;
+            sqlx::query("UPDATE core_school SET name=$1,short_name=$2,included_in_oty=$3,temporary=FALSE WHERE id=$4")
+                .bind(name).bind(short_name).bind(row.included).bind(id).execute(&mut *conn).await?;
             id
         } else {
             sqlx::query_scalar::<_, i64>(
                 "INSERT INTO core_school (name,short_name,included_in_oty,temporary,synthetic)
-                VALUES($1,$1,$2,FALSE,FALSE) RETURNING CAST(id AS BIGINT)",
+                VALUES($1,$2,$3,FALSE,FALSE) RETURNING CAST(id AS BIGINT)",
             )
             .bind(name)
+            .bind(short_name)
             .bind(row.included)
             .fetch_one(&mut *conn)
             .await?
@@ -451,7 +463,7 @@ async fn resolve_people(
         };
         let id = match matched {
             Some(id) => id,
-            None => seed_person(conn, &first, &last, school, season).await?,
+            None => insert_person(conn, &first, &last, school, season, false).await?,
         };
         sqlx::query("UPDATE core_debater SET first_name=$1,last_name=$2,school_id=$3,temporary=FALSE WHERE id=$4")
             .bind(first).bind(last).bind(school).bind(id).execute(&mut *conn).await?;

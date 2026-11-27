@@ -675,7 +675,7 @@ pub(crate) async fn detail(
     Path(id): Path<String>,
     OriginalUri(uri): OriginalUri,
     headers: HeaderMap,
-    Extension(user): Extension<User>,
+    user: Option<Extension<User>>,
 ) -> Response {
     if !is_django_integer(&id) {
         return StatusCode::NOT_FOUND.into_response();
@@ -687,6 +687,7 @@ pub(crate) async fn detail(
         return StatusCode::BAD_REQUEST.into_response();
     };
     let max = limit(uri.query().unwrap_or_default());
+    let Extension(user) = user.unwrap_or_default();
     let path = uri
         .path_and_query()
         .map(|path| path.as_str())

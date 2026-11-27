@@ -231,6 +231,8 @@ async fn append_slash_redirects_only_to_registered_routes() {
             Some("/core/my-profile/?source=legacy"),
         ),
         ("/api/debaters/not-a-number/detail", None),
+        ("/api/debaters/not-a-number/detail/", None),
+        ("/api/tournaments/not-a-number/detail/", None),
         ("/core/missing-endpoint", None),
     ] {
         let response = router

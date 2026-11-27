@@ -81,6 +81,7 @@ pub(super) struct ResultRow {
     pub(super) record: Option<i64>,
     pub(super) name: String,
     pub(super) last_name: String,
+    pub(super) short_name: String,
     pub(super) school: Option<i64>,
     pub(super) school_name: String,
     pub(super) included: bool,
@@ -207,6 +208,9 @@ pub(super) fn submitted(values: &FormValues, reviewing: bool) -> Vec<Panel> {
                     .cloned()
                     .unwrap_or_default();
                     row.last_name = field("last_name").cloned().unwrap_or_default();
+                    row.short_name = field("short_name")
+                        .map(|name| name.trim().to_owned())
+                        .unwrap_or_default();
                     row.school = extract_person(field("school"), &mut row.errors);
                     let field_name = if tab.kind == "school" {
                         "existing_school"

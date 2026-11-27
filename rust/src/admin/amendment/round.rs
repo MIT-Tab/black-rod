@@ -15,12 +15,21 @@ pub(in crate::admin) const SLOTS: [(&str, &str); 4] = [
 
 type Fields = Map<String, Value>;
 
+fn optional_id(value: &Value, field: &str) -> Result<Option<i64>, Error> {
+    if value.is_null() {
+        return Ok(None);
+    }
+    crate::django_int(value)
+        .map(Some)
+        .ok_or_else(|| invalid(format!("'{field}' must be an integer.")))
+}
+
 pub(super) async fn resolve(conn: &mut AnyConnection, action: &Value) -> Result<i64, Error> {
-    if let Some(id) = action
+    let supplied_id = action
         .get("round_id")
         .or_else(|| action.get("id"))
-        .and_then(integer)
-    {
+        .unwrap_or(&Value::Null);
+    if let Some(id) = optional_id(supplied_id, "round_id")? {
         let exists =
             sqlx::query_scalar::<_, i64>("SELECT CAST(id AS BIGINT) FROM core_round WHERE id=$1")
                 .bind(id)
@@ -40,7 +49,7 @@ pub(super) async fn resolve(conn: &mut AnyConnection, action: &Value) -> Result<
         AND (CAST($2 AS BIGINT) IS NULL OR tournament_id=$2) LIMIT 2",
     )
     .bind(key)
-    .bind(integer(&action["tournament_id"]))
+    .bind(optional_id(&action["tournament_id"], "tournament_id")?)
     .fetch_all(conn)
     .await?;
     match rows.as_slice() {
@@ -69,9 +78,12 @@ async fn team(conn: &mut AnyConnection, action: &Value, side: &str) -> Result<Op
             "'{side}' must be an object when provided."
         )));
     }
-    if let Some(id) =
-        integer(&action[format!("{side}_team_id")]).or_else(|| integer(&nested["team_id"]))
-    {
+    let field = format!("{side}_team_id");
+    let supplied = action
+        .get(&field)
+        .filter(|value| !value.is_null())
+        .unwrap_or(&nested["team_id"]);
+    if let Some(id) = optional_id(supplied, &field)? {
         let row =
             sqlx::query_scalar::<_, i64>("SELECT CAST(id AS BIGINT) FROM core_team WHERE id=$1")
                 .bind(id)
@@ -516,7 +528,7 @@ pub(super) async fn save(
             ("import_key".into(), json!("")),
         ]);
     }
-    if let Some(event) = integer(&action["tournament_id"]) {
+    if let Some(event) = optional_id(&action["tournament_id"], "tournament_id")? {
         let found = sqlx::query_scalar::<_, i64>(
             "UPDATE core_tournament SET id=id WHERE id=$1 RETURNING CAST(id AS BIGINT)",
         )
@@ -560,8 +572,16 @@ pub(super) async fn save(
     }
     for key in ["round_number", "victor", "elim_size"] {
         if let Some(value) = action.get(key) {
-            let parsed =
-                integer(value).or_else(|| (key == "round_number" && value.is_null()).then_some(0));
+            let parsed = if key == "round_number" && !super::truthy(value) {
+                Some(0)
+            } else if key == "elim_size" && (value.is_null() || value.as_str() == Some("")) {
+                None
+            } else {
+                Some(
+                    crate::django_int(value)
+                        .ok_or_else(|| invalid(format!("'{key}' must be an integer.")))?,
+                )
+            };
             fields.insert(key.into(), json!(parsed));
         }
     }

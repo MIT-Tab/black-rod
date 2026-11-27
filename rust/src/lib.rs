@@ -372,6 +372,55 @@ fn is_django_integer(raw: &str) -> bool {
     !raw.is_empty() && raw.bytes().all(|byte| byte.is_ascii_digit())
 }
 
+fn django_int(value: &serde_json::Value) -> Option<i64> {
+    if let Some(number) = value.as_i64() {
+        return Some(number);
+    }
+    if let Some(value) = value.as_bool() {
+        return Some(i64::from(value));
+    }
+    if let Some(number) = value.as_f64() {
+        return ((i64::MIN as f64..i64::MAX as f64).contains(&number)).then_some(number as i64);
+    }
+    let source = value.as_str()?.trim();
+    if let Ok(number) = source.parse::<i64>() {
+        return Some(number);
+    }
+    let negative = source.starts_with('-');
+    let source = source.strip_prefix(['+', '-']).unwrap_or(source);
+    let mut result = 0_i64;
+    for segment in source.split('_') {
+        if segment.is_empty() {
+            return None;
+        }
+        for ch in segment.chars() {
+            let digit = decimal_digit(ch)?;
+            let digit = if negative { -digit } else { digit };
+            result = result.checked_mul(10)?.checked_add(digit)?;
+        }
+    }
+    Some(result)
+}
+
+fn decimal_digit(ch: char) -> Option<i64> {
+    if let Some(digit) = ch.to_digit(10) {
+        return Some(i64::from(digit));
+    }
+    static DECIMAL: std::sync::LazyLock<regex::Regex> =
+        std::sync::LazyLock::new(|| regex::Regex::new(r"^\p{Nd}$").expect("decimal digit pattern"));
+    let is_decimal = |ch: char| DECIMAL.is_match(ch.encode_utf8(&mut [0; 4]));
+    if !is_decimal(ch) {
+        return None;
+    }
+    // Unicode decimal digit sets are contiguous blocks of ten, beginning at zero.
+    let point = u32::from(ch);
+    let start = (0..point)
+        .rev()
+        .take_while(|&point| char::from_u32(point).is_some_and(is_decimal))
+        .count();
+    Some((start % 10) as i64)
+}
+
 async fn robots() -> &'static str {
     "User-agent: *\nAllow: /"
 }
