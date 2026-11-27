@@ -55,6 +55,8 @@ round = Round.objects.create(tournament=tournament, gov=gov, opp=opp, round_numb
 stat = RoundStats.objects.create(round=round, debater=real, speaks='27.5000', ranks='1.0000', debater_role='PM')
 synthetic_stat = RoundStats.objects.create(round=round, debater=synthetic, speaks='28.5000', ranks='1.0000', debater_role='LO')
 synthetic_alias = DebaterAlias.objects.create(debater=synthetic, source_name='Example', normalized_name='example')
+instant = timezone.now().replace(microsecond=1)
+DebaterAlias.objects.filter(pk=synthetic_alias.pk).update(created_at=instant, updated_at=instant)
 alias = DebaterAlias.objects.create(debater=real, source_name='Example', normalized_name='example')
 metadata = ImportedRoundMetadata.objects.create(round=round, gov_1_alias=alias, raw_result_code='G')
 ImportedRoundJudge.objects.create(round_metadata=metadata, original_name='Fixture', debater_alias=alias, is_chair=True)
@@ -183,6 +185,9 @@ def exercise(django, rust, fixture):
     stat_path = f"records/round_stats/{fixture['synthetic_stat']}/"
     alias_path = f"records/aliases/{fixture['synthetic_alias']}/"
     synthetic_stat = run(django, stat_path)
+    synthetic_alias = run(django, alias_path)
+    assert synthetic_alias == run(rust, alias_path)
+    assert "." not in synthetic_alias["created_at"]
     for action in ("merge_synthetic", "merge_debaters"):
         operation = {
             "op": action, "source_id": source_id, "target_id": target_id,
@@ -208,6 +213,7 @@ def exercise(django, rust, fixture):
         run(undo_server, f"batches/{merged['id']}/undo/", payload=prepare())
         assert run(rust, source_path) == source and run(rust, target_path) == target
         assert run(rust, stat_path) == synthetic_stat
+        assert run(rust, alias_path) == synthetic_alias
     print("Agent write parity passed: preview hashes, concurrent cross-runtime retries, stale revisions, "
           "atomic rollback, references, teams, cascade restoration, conflicting later edits, and school, team, and debater merges")
 

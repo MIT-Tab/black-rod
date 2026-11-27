@@ -74,7 +74,12 @@ pub(super) fn datetime(input: &str, abbreviate: bool) -> String {
     parsed.map_or_else(
         || input.to_owned(),
         |instant| {
-            let seconds = if instant.timestamp_subsec_nanos() == 0 {
+            let whole_second = if abbreviate {
+                instant.timestamp_subsec_millis() == 0
+            } else {
+                instant.timestamp_subsec_nanos() == 0
+            };
+            let seconds = if whole_second {
                 SecondsFormat::Secs
             } else if abbreviate {
                 SecondsFormat::Millis

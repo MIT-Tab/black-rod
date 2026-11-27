@@ -12,7 +12,7 @@ use sqlx::{AnyConnection, Row};
 
 use super::{
     BATCH, Endpoint, catalog,
-    journal::{self, Journal, TABLES},
+    journal::{self, Journal, TABLES, Table},
     mutation::{self, Failure},
 };
 use crate::{ApiError, AppState};
@@ -39,12 +39,40 @@ fn truthy(value: &Value) -> bool {
     }
 }
 
+fn matches_journal_row(table: &Table, current: &Value, expected: &Value) -> bool {
+    if current == expected {
+        return true;
+    }
+    let (Some(current), Some(expected)) = (current.as_object(), expected.as_object()) else {
+        return false;
+    };
+    current.len() == expected.len()
+        && expected.iter().all(|(name, value)| {
+            let Some(actual) = current.get(name) else {
+                return false;
+            };
+            if actual == value {
+                return true;
+            }
+            table
+                .fields
+                .get(name)
+                .is_some_and(|field| field.kind() == "DateTimeField")
+                && value
+                    .as_str()
+                    .and_then(|timestamp| timestamp.strip_suffix(".000Z"))
+                    .is_some_and(|whole_second| {
+                        actual.as_str() == Some(&format!("{whole_second}Z"))
+                    })
+        })
+}
+
 async fn restore(conn: &mut AnyConnection, changes: &[Value]) -> Result<(), Failure> {
     for row in changes {
         let label = row["model"].as_str().ok_or(ApiError::Serialization)?;
         let table = TABLES.get(label).ok_or(ApiError::Serialization)?;
         let id = row["id"].as_i64().ok_or(ApiError::Serialization)?;
-        if table.get(conn, id).await? != row["after"] {
+        if !matches_journal_row(table, &table.get(conn, id).await?, &row["after"]) {
             return Err(Failure::Stale(
                 json!({"model":label,"id":id,"detail":"Later edits prevent undo."}),
             ));
@@ -352,4 +380,29 @@ pub(super) async fn post(
         }
     };
     complete(state, endpoint, credential, undo, payload).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn journal_undo_matches_legacy_zero_millisecond_timestamps() {
+        let table = &TABLES["core.SyntheticResolutionLog"];
+        let timestamp = "2026-11-27T15:25:41.000001Z";
+        assert_eq!(catalog::datetime(timestamp, true), "2026-11-27T15:25:41Z");
+        assert_eq!(
+            catalog::datetime(timestamp, false),
+            "2026-11-27T15:25:41.000001Z"
+        );
+
+        let restored = json!({"created_at": "2026-11-27T15:25:41Z", "reason": "same"});
+        let mut legacy = json!({"created_at": "2026-11-27T15:25:41.000Z", "reason": "same"});
+        assert!(matches_journal_row(table, &restored, &legacy));
+        legacy["reason"] = json!("changed");
+        assert!(!matches_journal_row(table, &restored, &legacy));
+        legacy["reason"] = json!("same");
+        legacy["created_at"] = json!("2026-11-27T15:25:41.001Z");
+        assert!(!matches_journal_row(table, &restored, &legacy));
+    }
 }
