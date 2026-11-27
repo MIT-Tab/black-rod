@@ -907,6 +907,7 @@ fn options(name: &str, description: &str) -> Response {
 enum ApiError {
     NotFound(&'static str),
     Database,
+    Constraint,
     Serialization,
     InvalidStoredDate,
 }

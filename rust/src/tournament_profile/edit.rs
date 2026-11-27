@@ -10,7 +10,7 @@ use chrono::NaiveDate;
 use minijinja::context;
 use regex::Regex;
 use serde::Serialize;
-use sqlx::{AssertSqlSafe, Row};
+use sqlx::{AnyConnection, AssertSqlSafe, Row};
 
 use crate::{
     ApiError, AppState, directory::TOURNAMENT_TYPES, is_django_integer, login, session, web,
@@ -230,43 +230,50 @@ fn event_suffix(code: i64) -> &'static str {
     }
 }
 
-async fn save(state: &AppState, fields: &Fields, id: Option<i64>) -> Result<Option<i64>, ApiError> {
-    let mut tx = state.pool.begin().await?;
-    let host = fields.host.parse::<i64>().ok();
-    let code = fields.qual_type.parse::<i64>().unwrap_or_default();
-    let date = if state.pool.connect_options().database_url.scheme() == "sqlite" {
-        "$4"
-    } else {
-        "CAST(CAST($4 AS TEXT) AS DATE)"
-    };
-    let host=sqlx::query("UPDATE core_school SET id=id WHERE id=$1 RETURNING CAST(id AS BIGINT) AS id,name,short_name")
-        .bind(host).fetch_one(&mut *tx).await?;
-    let host_id: i64 = host.try_get("id")?;
-    let host_name: &str = host.try_get("name")?;
-    let host_short: Option<&str> = host.try_get("short_name")?;
+pub(crate) struct Naming<'a> {
+    pub(crate) season: &'a str,
+    pub(crate) date: &'a str,
+    pub(crate) name_suffix: &'a str,
+    pub(crate) manual_name: &'a str,
+    pub(crate) short_name: &'a str,
+}
+
+pub(crate) async fn names(
+    conn: &mut AnyConnection,
+    host_id: i64,
+    code: i64,
+    id: Option<i64>,
+    event: Naming<'_>,
+) -> Result<(String, String), ApiError> {
+    let row = sqlx::query("SELECT name,short_name FROM core_school WHERE id=$1")
+        .bind(host_id)
+        .fetch_one(&mut *conn)
+        .await?;
+    let host_name: &str = row.try_get("name")?;
+    let host_short: Option<&str> = row.try_get("short_name")?;
     let mut suffix = event_suffix(code).to_owned();
     if code == 0 {
         let dates=sqlx::query_scalar::<_,String>("SELECT CAST(date AS TEXT) FROM core_tournament
             WHERE host_id=$1 AND season=$2 AND qual_type=0 AND (CAST($3 AS BIGINT) IS NULL OR id<>$3)")
-            .bind(host_id).bind(&fields.season).bind(id).fetch_all(&mut *tx).await?;
+            .bind(host_id).bind(event.season).bind(id).fetch_all(&mut *conn).await?;
         if !dates.is_empty() {
             let prior = dates
                 .iter()
-                .filter(|date| date.as_str() < fields.date.as_str())
+                .filter(|date| date.as_str() < event.date)
                 .count();
             suffix = format!(" {}", "I".repeat(prior + 1));
         }
     }
     let name_suffix = NAME_SUFFIXES
         .iter()
-        .find(|(key, _)| *key == fields.name_suffix)
+        .find(|(key, _)| *key == event.name_suffix)
         .map_or("", |(_, label)| *label);
-    let name = if fields.manual_name.is_empty() {
+    let name = if event.manual_name.is_empty() {
         format!("{host_name}{suffix}{name_suffix}")
     } else {
-        fields.manual_name.clone()
+        event.manual_name.to_owned()
     };
-    let short_name = if fields.short_name.is_empty() {
+    let short_name = if event.short_name.is_empty() {
         let base = host_short
             .filter(|value| !value.is_empty())
             .unwrap_or(host_name);
@@ -277,8 +284,20 @@ async fn save(state: &AppState, fields: &Fields, id: Option<i64>) -> Result<Opti
             .collect::<Vec<_>>()
             .join(" ")
     } else {
-        fields.short_name.clone()
+        event.short_name.to_owned()
     };
+    Ok((name, short_name))
+}
+
+pub(crate) struct Scoring {
+    pub(crate) toty: bool,
+    pub(crate) soty: bool,
+    pub(crate) qual: bool,
+    pub(crate) online: Option<bool>,
+    pub(crate) bar: Option<i64>,
+}
+
+pub(crate) fn scoring(code: i64, season: &str) -> Scoring {
     let toty = matches!(code, 0 | 4 | 12);
     let soty = matches!(code, 0 | 4 | 7 | 12 | 13);
     let qual = matches!(code, 0 | 4 | 7 | 10 | 12 | 13 | 14 | 15);
@@ -293,13 +312,58 @@ async fn save(state: &AppState, fields: &Fields, id: Option<i64>) -> Result<Opti
         4 => Some(1),
         5 => Some(48),
         16 => Some(0),
-        10 | 15 => Some(if fields.season.parse::<i32>().unwrap_or_default() < 2025 {
+        10 | 15 => Some(if season.parse::<i32>().unwrap_or_default() < 2025 {
             0
         } else {
             2
         }),
         _ => None,
     };
+    Scoring {
+        toty,
+        soty,
+        qual,
+        online,
+        bar,
+    }
+}
+
+async fn save(state: &AppState, fields: &Fields, id: Option<i64>) -> Result<Option<i64>, ApiError> {
+    let mut tx = state.pool.begin().await?;
+    let host = fields.host.parse::<i64>().ok();
+    let code = fields.qual_type.parse::<i64>().unwrap_or_default();
+    let date = if state.pool.connect_options().database_url.scheme() == "sqlite" {
+        "$4"
+    } else {
+        "CAST(CAST($4 AS TEXT) AS DATE)"
+    };
+    let host_id = sqlx::query_scalar::<_, i64>(
+        "UPDATE core_school SET id=id WHERE id=$1 RETURNING CAST(id AS BIGINT)",
+    )
+    .bind(host)
+    .fetch_one(&mut *tx)
+    .await?;
+    let (name, short_name) = names(
+        &mut tx,
+        host_id,
+        code,
+        id,
+        Naming {
+            season: &fields.season,
+            date: &fields.date,
+            name_suffix: &fields.name_suffix,
+            manual_name: &fields.manual_name,
+            short_name: &fields.short_name,
+        },
+    )
+    .await?;
+    let Scoring {
+        toty,
+        soty,
+        qual,
+        online,
+        bar,
+    } = scoring(code, &fields.season);
     let sql = if id.is_some() {
         format!("UPDATE core_tournament SET name=$1,short_name=$2,manual_name=$3,date={date},
             host_id=$5,season=$6,num_teams=$7,num_novice_debaters=$8,qual_type=$9,name_suffix=$10,toty=$11,soty=$12,qual=$13,

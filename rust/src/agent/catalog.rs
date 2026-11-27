@@ -15,6 +15,13 @@ pub(super) struct Field {
     pub(super) column: String,
     pub(super) exposed: bool,
     scale: Option<usize>,
+    pub(super) max_length: Option<usize>,
+    #[serde(default)]
+    pub(super) default: Value,
+    #[serde(default)]
+    pub(super) auto_now: bool,
+    #[serde(default)]
+    pub(super) auto_now_add: bool,
     pub(super) schema: Value,
 }
 
@@ -23,7 +30,7 @@ impl Field {
         self.schema["type"].as_str().unwrap_or_default()
     }
 
-    fn convert(&self, input: &str) -> Value {
+    pub(super) fn convert(&self, input: &str) -> Value {
         match self.kind() {
             "AutoField"
             | "BigAutoField"
@@ -80,21 +87,22 @@ pub(super) fn datetime(input: &str, abbreviate: bool) -> String {
 }
 
 #[derive(Deserialize)]
-struct Membership {
-    table: String,
-    label: String,
-    source: String,
-    target: String,
-    exposed: bool,
+pub(super) struct Membership {
+    pub(super) table: String,
+    pub(super) label: String,
+    pub(super) source: String,
+    pub(super) target: String,
+    pub(super) exposed: bool,
+    pub(super) related_table: String,
 }
 
 #[derive(Deserialize)]
 pub(super) struct Model {
     pub(super) table: String,
-    label: String,
-    writable: bool,
+    pub(super) label: String,
+    pub(super) writable: bool,
     pub(super) fields: BTreeMap<String, Field>,
-    memberships: BTreeMap<String, Membership>,
+    pub(super) memberships: BTreeMap<String, Membership>,
 }
 
 pub(super) static MODELS: LazyLock<BTreeMap<String, Model>> =

@@ -2,7 +2,10 @@
   "alias_groups": {
     "fields": {
       "id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -17,7 +20,10 @@
         }
       },
       "label": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "label",
+        "default": "",
         "exposed": true,
         "max_length": 64,
         "scale": null,
@@ -40,7 +46,10 @@
   "aliases": {
     "fields": {
       "created_at": {
+        "auto_now": false,
+        "auto_now_add": true,
         "column": "created_at",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -55,7 +64,10 @@
         }
       },
       "debater_id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "debater_id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -70,7 +82,10 @@
         }
       },
       "id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -85,7 +100,10 @@
         }
       },
       "normalized_name": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "normalized_name",
+        "default": "",
         "exposed": true,
         "max_length": 128,
         "scale": null,
@@ -100,7 +118,10 @@
         }
       },
       "source_name": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "source_name",
+        "default": "",
         "exposed": true,
         "max_length": 128,
         "scale": null,
@@ -115,7 +136,10 @@
         }
       },
       "updated_at": {
+        "auto_now": true,
+        "auto_now_add": false,
         "column": "updated_at",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -138,7 +162,10 @@
   "coty": {
     "fields": {
       "id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -153,7 +180,10 @@
         }
       },
       "place": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "place",
+        "default": -1,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -168,7 +198,10 @@
         }
       },
       "points": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "points",
+        "default": -1,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -183,7 +216,10 @@
         }
       },
       "school_id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "school_id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -198,7 +234,10 @@
         }
       },
       "season": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "season",
+        "default": "",
         "exposed": true,
         "max_length": 16,
         "scale": null,
@@ -213,7 +252,10 @@
         }
       },
       "tied": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "tied",
+        "default": false,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -236,7 +278,10 @@
   "debaters": {
     "fields": {
       "alias_group_id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "alias_group_id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -251,7 +296,10 @@
         }
       },
       "dino_judge_contact_opt_in": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "dino_judge_contact_opt_in",
+        "default": false,
         "exposed": false,
         "max_length": null,
         "scale": null,
@@ -266,7 +314,10 @@
         }
       },
       "dino_to_contact_opt_in": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "dino_to_contact_opt_in",
+        "default": false,
         "exposed": false,
         "max_length": null,
         "scale": null,
@@ -281,7 +332,10 @@
         }
       },
       "elo_manual_opt": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "elo_manual_opt",
+        "default": "",
         "exposed": true,
         "max_length": 8,
         "scale": null,
@@ -309,7 +363,10 @@
         }
       },
       "email": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "email",
+        "default": null,
         "exposed": false,
         "max_length": 254,
         "scale": null,
@@ -324,7 +381,10 @@
         }
       },
       "first_name": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "first_name",
+        "default": "",
         "exposed": true,
         "max_length": 32,
         "scale": null,
@@ -339,7 +399,10 @@
         }
       },
       "first_season": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "first_season",
+        "default": null,
         "exposed": true,
         "max_length": 16,
         "scale": null,
@@ -354,7 +417,10 @@
         }
       },
       "id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -369,7 +435,10 @@
         }
       },
       "last_name": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "last_name",
+        "default": "",
         "exposed": true,
         "max_length": 32,
         "scale": null,
@@ -384,7 +453,10 @@
         }
       },
       "latest_season": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "latest_season",
+        "default": null,
         "exposed": true,
         "max_length": 16,
         "scale": null,
@@ -399,7 +471,10 @@
         }
       },
       "paradigm": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "paradigm",
+        "default": null,
         "exposed": false,
         "max_length": 500,
         "scale": null,
@@ -414,7 +489,10 @@
         }
       },
       "region": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "region",
+        "default": [],
         "exposed": false,
         "max_length": null,
         "scale": null,
@@ -429,7 +507,10 @@
         }
       },
       "school_id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "school_id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -444,7 +525,10 @@
         }
       },
       "status": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "status",
+        "default": 1,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -472,7 +556,10 @@
         }
       },
       "synthetic": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "synthetic",
+        "default": false,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -487,7 +574,10 @@
         }
       },
       "temporary": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "temporary",
+        "default": false,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -502,7 +592,10 @@
         }
       },
       "user_id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "user_id",
+        "default": null,
         "exposed": false,
         "max_length": null,
         "scale": null,
@@ -525,7 +618,10 @@
   "import_batches": {
     "fields": {
       "created_at": {
+        "auto_now": false,
+        "auto_now_add": true,
         "column": "created_at",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -540,7 +636,10 @@
         }
       },
       "id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -563,7 +662,10 @@
   "imports": {
     "fields": {
       "batch_id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "batch_id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -578,7 +680,10 @@
         }
       },
       "id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -593,7 +698,10 @@
         }
       },
       "import_type": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "import_type",
+        "default": "",
         "exposed": true,
         "max_length": 16,
         "scale": null,
@@ -629,7 +737,10 @@
         }
       },
       "imported_at": {
+        "auto_now": false,
+        "auto_now_add": true,
         "column": "imported_at",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -644,7 +755,10 @@
         }
       },
       "original_file_name": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "original_file_name",
+        "default": "",
         "exposed": true,
         "max_length": 255,
         "scale": null,
@@ -659,7 +773,10 @@
         }
       },
       "source_hash": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "source_hash",
+        "default": "",
         "exposed": true,
         "max_length": 64,
         "scale": null,
@@ -674,7 +791,10 @@
         }
       },
       "tournament_id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "tournament_id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -697,7 +817,10 @@
   "noty": {
     "fields": {
       "debater_id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "debater_id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -712,7 +835,10 @@
         }
       },
       "id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -727,7 +853,10 @@
         }
       },
       "marker_five": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "marker_five",
+        "default": 0,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -742,7 +871,10 @@
         }
       },
       "marker_four": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "marker_four",
+        "default": 0,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -757,7 +889,10 @@
         }
       },
       "marker_one": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "marker_one",
+        "default": 0,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -772,7 +907,10 @@
         }
       },
       "marker_six": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "marker_six",
+        "default": 0,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -787,7 +925,10 @@
         }
       },
       "marker_three": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "marker_three",
+        "default": 0,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -802,7 +943,10 @@
         }
       },
       "marker_two": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "marker_two",
+        "default": 0,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -817,7 +961,10 @@
         }
       },
       "place": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "place",
+        "default": -1,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -832,7 +979,10 @@
         }
       },
       "points": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "points",
+        "default": -1,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -847,7 +997,10 @@
         }
       },
       "season": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "season",
+        "default": "",
         "exposed": true,
         "max_length": 16,
         "scale": null,
@@ -862,7 +1015,10 @@
         }
       },
       "tied": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "tied",
+        "default": false,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -877,7 +1033,10 @@
         }
       },
       "tournament_five_id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "tournament_five_id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -892,7 +1051,10 @@
         }
       },
       "tournament_four_id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "tournament_four_id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -907,7 +1069,10 @@
         }
       },
       "tournament_one_id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "tournament_one_id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -922,7 +1087,10 @@
         }
       },
       "tournament_six_id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "tournament_six_id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -937,7 +1105,10 @@
         }
       },
       "tournament_three_id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "tournament_three_id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -952,7 +1123,10 @@
         }
       },
       "tournament_two_id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "tournament_two_id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -975,7 +1149,10 @@
   "online_qual": {
     "fields": {
       "debater_id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "debater_id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -990,7 +1167,10 @@
         }
       },
       "id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -1005,7 +1185,10 @@
         }
       },
       "marker_five": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "marker_five",
+        "default": 0,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -1020,7 +1203,10 @@
         }
       },
       "marker_four": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "marker_four",
+        "default": 0,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -1035,7 +1221,10 @@
         }
       },
       "marker_one": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "marker_one",
+        "default": 0,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -1050,7 +1239,10 @@
         }
       },
       "marker_six": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "marker_six",
+        "default": 0,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -1065,7 +1257,10 @@
         }
       },
       "marker_three": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "marker_three",
+        "default": 0,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -1080,7 +1275,10 @@
         }
       },
       "marker_two": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "marker_two",
+        "default": 0,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -1095,7 +1293,10 @@
         }
       },
       "place": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "place",
+        "default": -1,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -1110,7 +1311,10 @@
         }
       },
       "points": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "points",
+        "default": -1,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -1125,7 +1329,10 @@
         }
       },
       "season": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "season",
+        "default": "",
         "exposed": true,
         "max_length": 16,
         "scale": null,
@@ -1140,7 +1347,10 @@
         }
       },
       "tied": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "tied",
+        "default": false,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -1155,7 +1365,10 @@
         }
       },
       "tournament_five_id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "tournament_five_id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -1170,7 +1383,10 @@
         }
       },
       "tournament_four_id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "tournament_four_id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -1185,7 +1401,10 @@
         }
       },
       "tournament_one_id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "tournament_one_id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -1200,7 +1419,10 @@
         }
       },
       "tournament_six_id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "tournament_six_id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -1215,7 +1437,10 @@
         }
       },
       "tournament_three_id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "tournament_three_id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -1230,7 +1455,10 @@
         }
       },
       "tournament_two_id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "tournament_two_id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -1253,7 +1481,10 @@
   "qual_points": {
     "fields": {
       "debater_id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "debater_id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -1268,7 +1499,10 @@
         }
       },
       "id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -1283,7 +1517,10 @@
         }
       },
       "points": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "points",
+        "default": 0,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -1298,7 +1535,10 @@
         }
       },
       "season": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "season",
+        "default": "",
         "exposed": true,
         "max_length": 16,
         "scale": null,
@@ -1321,7 +1561,10 @@
   "qualifications": {
     "fields": {
       "debater_id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "debater_id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -1336,7 +1579,10 @@
         }
       },
       "id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -1351,7 +1597,10 @@
         }
       },
       "place": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "place",
+        "default": -1,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -1366,7 +1615,10 @@
         }
       },
       "points": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "points",
+        "default": -1,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -1381,7 +1633,10 @@
         }
       },
       "qual_type": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "qual_type",
+        "default": 0,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -1449,7 +1704,10 @@
         }
       },
       "season": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "season",
+        "default": "",
         "exposed": true,
         "max_length": 16,
         "scale": null,
@@ -1464,7 +1722,10 @@
         }
       },
       "tied": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "tied",
+        "default": false,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -1479,7 +1740,10 @@
         }
       },
       "tournament_id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "tournament_id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -1502,7 +1766,10 @@
   "reaffiliations": {
     "fields": {
       "id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -1517,7 +1784,10 @@
         }
       },
       "new_debater_id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "new_debater_id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -1532,7 +1802,10 @@
         }
       },
       "old_debater_id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "old_debater_id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -1547,7 +1820,10 @@
         }
       },
       "reaff_date": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "reaff_date",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -1562,7 +1838,10 @@
         }
       },
       "season": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "season",
+        "default": "",
         "exposed": true,
         "max_length": 16,
         "scale": null,
@@ -1585,7 +1864,10 @@
   "round_judges": {
     "fields": {
       "debater_alias_id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "debater_alias_id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -1600,7 +1882,10 @@
         }
       },
       "id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -1615,7 +1900,10 @@
         }
       },
       "is_chair": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "is_chair",
+        "default": false,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -1630,7 +1918,10 @@
         }
       },
       "original_name": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "original_name",
+        "default": "",
         "exposed": true,
         "max_length": 128,
         "scale": null,
@@ -1645,7 +1936,10 @@
         }
       },
       "round_metadata_id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "round_metadata_id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -1668,7 +1962,10 @@
   "round_metadata": {
     "fields": {
       "gov_1_alias_id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "gov_1_alias_id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -1683,7 +1980,10 @@
         }
       },
       "gov_2_alias_id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "gov_2_alias_id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -1698,7 +1998,10 @@
         }
       },
       "id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -1713,7 +2016,10 @@
         }
       },
       "opp_1_alias_id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "opp_1_alias_id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -1728,7 +2034,10 @@
         }
       },
       "opp_2_alias_id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "opp_2_alias_id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -1743,7 +2052,10 @@
         }
       },
       "raw_outcome_text": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "raw_outcome_text",
+        "default": "",
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -1758,7 +2070,10 @@
         }
       },
       "raw_result_code": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "raw_result_code",
+        "default": "",
         "exposed": true,
         "max_length": 32,
         "scale": null,
@@ -1773,7 +2088,10 @@
         }
       },
       "round_id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "round_id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -1793,6 +2111,7 @@
       "sources": {
         "exposed": true,
         "label": "core.ImportedRoundMetadata_sources",
+        "related_table": "core_tournamentimport",
         "source": "importedroundmetadata_id",
         "table": "core_importedroundmetadata_sources",
         "target": "tournamentimport_id"
@@ -1804,7 +2123,10 @@
   "round_stats": {
     "fields": {
       "debater_id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "debater_id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -1819,7 +2141,10 @@
         }
       },
       "debater_role": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "debater_role",
+        "default": null,
         "exposed": true,
         "max_length": 4,
         "scale": null,
@@ -1834,7 +2159,10 @@
         }
       },
       "id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -1849,7 +2177,10 @@
         }
       },
       "metadata": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "metadata",
+        "default": {},
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -1864,7 +2195,10 @@
         }
       },
       "ranks": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "ranks",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": 4,
@@ -1879,7 +2213,10 @@
         }
       },
       "round_id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "round_id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -1894,7 +2231,10 @@
         }
       },
       "score_index": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "score_index",
+        "default": 1,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -1909,7 +2249,10 @@
         }
       },
       "source_status": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "source_status",
+        "default": "",
         "exposed": true,
         "max_length": 32,
         "scale": null,
@@ -1924,7 +2267,10 @@
         }
       },
       "speaks": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "speaks",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": 4,
@@ -1939,7 +2285,10 @@
         }
       },
       "stage": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "stage",
+        "default": "prelim",
         "exposed": true,
         "max_length": 16,
         "scale": null,
@@ -1971,7 +2320,10 @@
   "rounds": {
     "fields": {
       "division": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "division",
+        "default": null,
         "exposed": true,
         "max_length": 16,
         "scale": null,
@@ -1995,7 +2347,10 @@
         }
       },
       "elim_size": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "elim_size",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -2010,7 +2365,10 @@
         }
       },
       "gov_id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "gov_id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -2025,7 +2383,10 @@
         }
       },
       "id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -2040,7 +2401,10 @@
         }
       },
       "import_key": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "import_key",
+        "default": "",
         "exposed": true,
         "max_length": 128,
         "scale": null,
@@ -2055,7 +2419,10 @@
         }
       },
       "import_origin": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "import_origin",
+        "default": "",
         "exposed": true,
         "max_length": 32,
         "scale": null,
@@ -2070,7 +2437,10 @@
         }
       },
       "metadata": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "metadata",
+        "default": {},
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -2085,7 +2455,10 @@
         }
       },
       "opp_id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "opp_id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -2100,7 +2473,10 @@
         }
       },
       "round_label": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "round_label",
+        "default": "",
         "exposed": true,
         "max_length": 32,
         "scale": null,
@@ -2115,7 +2491,10 @@
         }
       },
       "round_number": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "round_number",
+        "default": 0,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -2130,7 +2509,10 @@
         }
       },
       "stage": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "stage",
+        "default": "prelim",
         "exposed": true,
         "max_length": 16,
         "scale": null,
@@ -2154,7 +2536,10 @@
         }
       },
       "tournament_id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "tournament_id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -2169,7 +2554,10 @@
         }
       },
       "victor": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "victor",
+        "default": 0,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -2225,7 +2613,10 @@
   "school_lookups": {
     "fields": {
       "id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -2240,7 +2631,10 @@
         }
       },
       "school_id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "school_id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -2255,7 +2649,10 @@
         }
       },
       "server_name": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "server_name",
+        "default": "",
         "exposed": true,
         "max_length": 64,
         "scale": null,
@@ -2278,7 +2675,10 @@
   "schools": {
     "fields": {
       "id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -2293,7 +2693,10 @@
         }
       },
       "included_in_oty": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "included_in_oty",
+        "default": true,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -2308,7 +2711,10 @@
         }
       },
       "name": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "name",
+        "default": "",
         "exposed": true,
         "max_length": 64,
         "scale": null,
@@ -2323,7 +2729,10 @@
         }
       },
       "short_name": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "short_name",
+        "default": "",
         "exposed": true,
         "max_length": 64,
         "scale": null,
@@ -2338,7 +2747,10 @@
         }
       },
       "synthetic": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "synthetic",
+        "default": false,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -2353,7 +2765,10 @@
         }
       },
       "temporary": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "temporary",
+        "default": false,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -2376,7 +2791,10 @@
   "soty": {
     "fields": {
       "debater_id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "debater_id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -2391,7 +2809,10 @@
         }
       },
       "id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -2406,7 +2827,10 @@
         }
       },
       "marker_five": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "marker_five",
+        "default": 0,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -2421,7 +2845,10 @@
         }
       },
       "marker_four": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "marker_four",
+        "default": 0,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -2436,7 +2863,10 @@
         }
       },
       "marker_one": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "marker_one",
+        "default": 0,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -2451,7 +2881,10 @@
         }
       },
       "marker_six": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "marker_six",
+        "default": 0,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -2466,7 +2899,10 @@
         }
       },
       "marker_three": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "marker_three",
+        "default": 0,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -2481,7 +2917,10 @@
         }
       },
       "marker_two": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "marker_two",
+        "default": 0,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -2496,7 +2935,10 @@
         }
       },
       "place": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "place",
+        "default": -1,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -2511,7 +2953,10 @@
         }
       },
       "points": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "points",
+        "default": -1,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -2526,7 +2971,10 @@
         }
       },
       "season": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "season",
+        "default": "",
         "exposed": true,
         "max_length": 16,
         "scale": null,
@@ -2541,7 +2989,10 @@
         }
       },
       "tied": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "tied",
+        "default": false,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -2556,7 +3007,10 @@
         }
       },
       "tournament_five_id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "tournament_five_id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -2571,7 +3025,10 @@
         }
       },
       "tournament_four_id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "tournament_four_id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -2586,7 +3043,10 @@
         }
       },
       "tournament_one_id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "tournament_one_id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -2601,7 +3061,10 @@
         }
       },
       "tournament_six_id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "tournament_six_id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -2616,7 +3079,10 @@
         }
       },
       "tournament_three_id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "tournament_three_id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -2631,7 +3097,10 @@
         }
       },
       "tournament_two_id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "tournament_two_id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -2654,7 +3123,10 @@
   "speaker_results": {
     "fields": {
       "counts_for_points": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "counts_for_points",
+        "default": true,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -2669,7 +3141,10 @@
         }
       },
       "debater_id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "debater_id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -2684,7 +3159,10 @@
         }
       },
       "hidden_from_profile": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "hidden_from_profile",
+        "default": false,
         "exposed": false,
         "max_length": null,
         "scale": null,
@@ -2699,7 +3177,10 @@
         }
       },
       "id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -2714,7 +3195,10 @@
         }
       },
       "place": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "place",
+        "default": -1,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -2729,7 +3213,10 @@
         }
       },
       "tie": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "tie",
+        "default": false,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -2744,7 +3231,10 @@
         }
       },
       "tournament_id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "tournament_id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -2759,7 +3249,10 @@
         }
       },
       "type_of_place": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "type_of_place",
+        "default": 1,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -2791,7 +3284,10 @@
   "synthetic_logs": {
     "fields": {
       "action": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "action",
+        "default": "resolved",
         "exposed": true,
         "max_length": 16,
         "scale": null,
@@ -2815,7 +3311,10 @@
         }
       },
       "actor_id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "actor_id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -2830,7 +3329,10 @@
         }
       },
       "created_at": {
+        "auto_now": false,
+        "auto_now_add": true,
         "column": "created_at",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -2845,7 +3347,10 @@
         }
       },
       "entity_type": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "entity_type",
+        "default": "",
         "exposed": true,
         "max_length": 16,
         "scale": null,
@@ -2873,7 +3378,10 @@
         }
       },
       "id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -2888,7 +3396,10 @@
         }
       },
       "reason": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "reason",
+        "default": "",
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -2903,7 +3414,10 @@
         }
       },
       "resolved_to_id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "resolved_to_id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -2918,7 +3432,10 @@
         }
       },
       "resolved_to_name": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "resolved_to_name",
+        "default": "",
         "exposed": true,
         "max_length": 255,
         "scale": null,
@@ -2933,7 +3450,10 @@
         }
       },
       "source_context": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "source_context",
+        "default": {},
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -2948,7 +3468,10 @@
         }
       },
       "synthetic_id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "synthetic_id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -2963,7 +3486,10 @@
         }
       },
       "synthetic_name": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "synthetic_name",
+        "default": "",
         "exposed": true,
         "max_length": 255,
         "scale": null,
@@ -2978,7 +3504,10 @@
         }
       },
       "synthetic_snapshot": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "synthetic_snapshot",
+        "default": {},
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -3001,7 +3530,10 @@
   "team_reaffiliations": {
     "fields": {
       "id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -3016,7 +3548,10 @@
         }
       },
       "new_team_id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "new_team_id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -3031,7 +3566,10 @@
         }
       },
       "old_team_id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "old_team_id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -3046,7 +3584,10 @@
         }
       },
       "reaff_date": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "reaff_date",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -3061,7 +3602,10 @@
         }
       },
       "season": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "season",
+        "default": "",
         "exposed": true,
         "max_length": 16,
         "scale": null,
@@ -3084,7 +3628,10 @@
   "team_results": {
     "fields": {
       "counts_for_points": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "counts_for_points",
+        "default": true,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -3099,7 +3646,10 @@
         }
       },
       "ghost_points": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "ghost_points",
+        "default": false,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -3114,7 +3664,10 @@
         }
       },
       "id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -3129,7 +3682,10 @@
         }
       },
       "place": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "place",
+        "default": -1,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -3144,7 +3700,10 @@
         }
       },
       "team_id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "team_id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -3159,7 +3718,10 @@
         }
       },
       "tournament_id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "tournament_id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -3174,7 +3736,10 @@
         }
       },
       "type_of_place": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "type_of_place",
+        "default": 1,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -3203,6 +3768,7 @@
       "hidden_from_debaters": {
         "exposed": false,
         "label": "core.TeamResult_hidden_from_debaters",
+        "related_table": "core_debater",
         "source": "teamresult_id",
         "table": "core_teamresult_hidden_from_debaters",
         "target": "debater_id"
@@ -3214,7 +3780,10 @@
   "teams": {
     "fields": {
       "id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -3229,7 +3798,10 @@
         }
       },
       "name": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "name",
+        "default": "",
         "exposed": true,
         "max_length": 128,
         "scale": null,
@@ -3244,7 +3816,10 @@
         }
       },
       "short_name": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "short_name",
+        "default": "",
         "exposed": true,
         "max_length": 128,
         "scale": null,
@@ -3259,7 +3834,10 @@
         }
       },
       "synthetic": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "synthetic",
+        "default": false,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -3279,6 +3857,7 @@
       "debaters": {
         "exposed": true,
         "label": "core.Team_debaters",
+        "related_table": "core_debater",
         "source": "team_id",
         "table": "core_team_debaters",
         "target": "debater_id"
@@ -3290,7 +3869,10 @@
   "toty": {
     "fields": {
       "id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -3305,7 +3887,10 @@
         }
       },
       "marker_five": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "marker_five",
+        "default": 0,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -3320,7 +3905,10 @@
         }
       },
       "marker_four": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "marker_four",
+        "default": 0,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -3335,7 +3923,10 @@
         }
       },
       "marker_one": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "marker_one",
+        "default": 0,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -3350,7 +3941,10 @@
         }
       },
       "marker_six": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "marker_six",
+        "default": 0,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -3365,7 +3959,10 @@
         }
       },
       "marker_three": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "marker_three",
+        "default": 0,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -3380,7 +3977,10 @@
         }
       },
       "marker_two": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "marker_two",
+        "default": 0,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -3395,7 +3995,10 @@
         }
       },
       "place": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "place",
+        "default": -1,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -3410,7 +4013,10 @@
         }
       },
       "points": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "points",
+        "default": -1,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -3425,7 +4031,10 @@
         }
       },
       "season": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "season",
+        "default": "",
         "exposed": true,
         "max_length": 16,
         "scale": null,
@@ -3440,7 +4049,10 @@
         }
       },
       "team_id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "team_id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -3455,7 +4067,10 @@
         }
       },
       "tied": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "tied",
+        "default": false,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -3470,7 +4085,10 @@
         }
       },
       "tournament_five_id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "tournament_five_id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -3485,7 +4103,10 @@
         }
       },
       "tournament_four_id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "tournament_four_id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -3500,7 +4121,10 @@
         }
       },
       "tournament_one_id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "tournament_one_id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -3515,7 +4139,10 @@
         }
       },
       "tournament_six_id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "tournament_six_id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -3530,7 +4157,10 @@
         }
       },
       "tournament_three_id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "tournament_three_id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -3545,7 +4175,10 @@
         }
       },
       "tournament_two_id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "tournament_two_id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -3568,7 +4201,10 @@
   "tournaments": {
     "fields": {
       "autoqual_bar": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "autoqual_bar",
+        "default": 0,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -3583,7 +4219,10 @@
         }
       },
       "date": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "date",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -3598,7 +4237,10 @@
         }
       },
       "host_id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "host_id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -3613,7 +4255,10 @@
         }
       },
       "id": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "id",
+        "default": null,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -3628,7 +4273,10 @@
         }
       },
       "manual_name": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "manual_name",
+        "default": "",
         "exposed": true,
         "max_length": 128,
         "scale": null,
@@ -3643,7 +4291,10 @@
         }
       },
       "name": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "name",
+        "default": "",
         "exposed": true,
         "max_length": 128,
         "scale": null,
@@ -3658,7 +4309,10 @@
         }
       },
       "name_suffix": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "name_suffix",
+        "default": 0,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -3686,7 +4340,10 @@
         }
       },
       "noty": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "noty",
+        "default": true,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -3701,7 +4358,10 @@
         }
       },
       "num_debaters": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "num_debaters",
+        "default": -1,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -3716,7 +4376,10 @@
         }
       },
       "num_novice_debaters": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "num_novice_debaters",
+        "default": -1,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -3731,7 +4394,10 @@
         }
       },
       "num_novice_teams": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "num_novice_teams",
+        "default": -1,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -3746,7 +4412,10 @@
         }
       },
       "num_rounds": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "num_rounds",
+        "default": 5,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -3761,7 +4430,10 @@
         }
       },
       "num_teams": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "num_teams",
+        "default": -1,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -3776,7 +4448,10 @@
         }
       },
       "online_qual_points": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "online_qual_points",
+        "default": false,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -3791,7 +4466,10 @@
         }
       },
       "qual": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "qual",
+        "default": true,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -3806,7 +4484,10 @@
         }
       },
       "qual_type": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "qual_type",
+        "default": 0,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -3890,7 +4571,10 @@
         }
       },
       "season": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "season",
+        "default": "",
         "exposed": true,
         "max_length": 16,
         "scale": null,
@@ -3905,7 +4589,10 @@
         }
       },
       "short_name": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "short_name",
+        "default": "",
         "exposed": true,
         "max_length": 128,
         "scale": null,
@@ -3920,7 +4607,10 @@
         }
       },
       "soty": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "soty",
+        "default": true,
         "exposed": true,
         "max_length": null,
         "scale": null,
@@ -3935,7 +4625,10 @@
         }
       },
       "toty": {
+        "auto_now": false,
+        "auto_now_add": false,
         "column": "toty",
+        "default": true,
         "exposed": true,
         "max_length": null,
         "scale": null,

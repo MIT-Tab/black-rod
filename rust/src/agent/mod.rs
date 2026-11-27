@@ -1,4 +1,8 @@
+mod batch;
 mod catalog;
+mod journal;
+mod merge;
+mod mutation;
 
 use std::collections::BTreeMap;
 
@@ -23,7 +27,7 @@ enum Endpoint<'a> {
     Guide,
     Records(&'a str, Option<i64>),
     History(Option<i64>),
-    Undo,
+    Undo(i64),
 }
 
 impl Endpoint<'_> {
@@ -43,14 +47,16 @@ impl Endpoint<'_> {
             ["batches", raw] if is_django_integer(raw) => {
                 Some(Endpoint::History(Some(raw.parse().ok()?)))
             }
-            ["batches", raw, "undo"] if is_django_integer(raw) => Some(Endpoint::Undo),
+            ["batches", raw, "undo"] if is_django_integer(raw) => {
+                Some(Endpoint::Undo(raw.parse().ok()?))
+            }
             _ => None,
         }
     }
 
     fn methods(self) -> &'static str {
         match self {
-            Self::Undo => "POST, OPTIONS",
+            Self::Undo(_) => "POST, OPTIONS",
             Self::History(_) => "GET, POST, HEAD, OPTIONS",
             _ => "GET, HEAD, OPTIONS",
         }
@@ -62,7 +68,7 @@ impl Endpoint<'_> {
             Self::Guide => "Agent Guide",
             Self::Records(..) => "Agent Records",
             Self::History(_) => "Agent Batches",
-            Self::Undo => "Agent Undo",
+            Self::Undo(_) => "Agent Undo",
         }
     }
 
@@ -94,7 +100,10 @@ impl Endpoint<'_> {
     }
 }
 
-async fn credential(state: &AppState, headers: &HeaderMap) -> Result<Option<bool>, ApiError> {
+async fn credential(
+    state: &AppState,
+    headers: &HeaderMap,
+) -> Result<Option<(i64, bool)>, ApiError> {
     let parts = headers
         .get(header::AUTHORIZATION)
         .and_then(|value| value.to_str().ok())
@@ -115,12 +124,16 @@ async fn credential(state: &AppState, headers: &HeaderMap) -> Result<Option<bool
     if possible.is_none() {
         return Ok(None);
     }
-    let credential=sqlx::query_scalar::<_,i64>("UPDATE core_agentcredential SET last_used_at=CURRENT_TIMESTAMP
+    let credential=sqlx::query("UPDATE core_agentcredential SET last_used_at=CURRENT_TIMESTAMP
         WHERE token_hash=$1 AND revoked_at IS NULL AND expires_at>CURRENT_TIMESTAMP AND EXISTS (
             SELECT 1 FROM core_user WHERE id=core_agentcredential.created_by_id AND is_active AND is_superuser
-        ) RETURNING CAST(CASE WHEN can_write THEN 1 ELSE 0 END AS BIGINT)")
+        ) RETURNING CAST(id AS BIGINT) AS id, CAST(CASE WHEN can_write THEN 1 ELSE 0 END AS BIGINT) AS writable")
         .bind(hash).fetch_optional(&state.pool).await?;
-    Ok(credential.map(|value| value != 0))
+    Ok(credential
+        .map(|row| {
+            Ok::<_, sqlx::Error>((row.try_get("id")?, row.try_get::<i64, _>("writable")? != 0))
+        })
+        .transpose()?)
 }
 
 fn well_formed(headers: &HeaderMap) -> bool {
@@ -453,11 +466,10 @@ async fn history(
 async fn view(
     state: &AppState,
     endpoint: Endpoint<'_>,
-    uri: &Uri,
-    method: &Method,
-    headers: &HeaderMap,
+    request: Request,
 ) -> Result<Response, ApiError> {
-    let Some(can_write) = credential(state, headers).await? else {
+    let (uri, method, headers) = (request.uri(), request.method(), request.headers());
+    let Some((credential_id, can_write)) = credential(state, headers).await? else {
         let detail = if well_formed(headers) {
             "Invalid, expired, or revoked agent credential."
         } else {
@@ -470,6 +482,15 @@ async fn view(
             StatusCode::FORBIDDEN,
             json!({"detail":"You do not have permission to perform this action."}),
         ));
+    }
+    if method == Method::POST
+        && let Endpoint::History(None) | Endpoint::Undo(_) = endpoint
+    {
+        let undo = match endpoint {
+            Endpoint::Undo(id) => Some(id),
+            _ => None,
+        };
+        return batch::post(state, endpoint, credential_id, undo, request).await;
     }
     if method == Method::OPTIONS {
         return Ok(endpoint.render(StatusCode::OK,json!({
@@ -486,7 +507,7 @@ async fn view(
                 return records(state, endpoint, uri, resource, id).await;
             }
             Endpoint::History(id) => return history(state, endpoint, uri, id).await,
-            Endpoint::Undo => (),
+            Endpoint::Undo(_) => (),
         }
     }
     Ok(endpoint.render(
@@ -496,11 +517,15 @@ async fn view(
 }
 
 pub(crate) async fn endpoint(State(state): State<AppState>, request: Request) -> Response {
-    let Some(endpoint) = Endpoint::parse(request.uri().path()) else {
+    let path = request.uri().path().to_owned();
+    let Some(endpoint) = Endpoint::parse(&path) else {
         return StatusCode::NOT_FOUND.into_response();
     };
-    view(&state,endpoint,request.uri(),request.method(),request.headers()).await.unwrap_or_else(|error|{
+    view(&state, endpoint, request).await.unwrap_or_else(|error| {
+        if matches!(error, ApiError::Constraint) {
+            return endpoint.invalid(json!(["A database constraint prevents this change. The entire request was rolled back."]));
+        }
         eprintln!("Agent data request failed: {error:?}");
-        endpoint.render(StatusCode::CONFLICT,json!({"detail":"The database could not safely complete the change. The request was rolled back; retry with the same request_id."}))
+        endpoint.render(StatusCode::CONFLICT, json!({"detail":"The database could not safely complete the change. The request was rolled back; retry with the same request_id."}))
     })
 }

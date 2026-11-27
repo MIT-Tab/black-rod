@@ -123,12 +123,17 @@ async fn delete_tags(
     Ok(())
 }
 
-/// Apply the model deletion rules inside the caller's transaction.
-pub(crate) async fn delete(
+pub(crate) struct Deletion {
+    root: &'static str,
+    selected: BTreeMap<&'static str, BTreeSet<i64>>,
+    nulls: BTreeMap<(&'static str, &'static str), BTreeSet<i64>>,
+}
+
+pub(crate) async fn plan(
     conn: &mut AnyConnection,
     root: &'static str,
     id: i64,
-) -> Result<(), DeleteError> {
+) -> Result<Deletion, DeleteError> {
     let lock = format!("UPDATE {root} SET id=id WHERE id=$1");
     let selected = sqlx::query(AssertSqlSafe(lock))
         .bind(id)
@@ -166,42 +171,74 @@ pub(crate) async fn delete(
             }
         }
     }
-    for ((table, field), rows) in nulls {
-        let ids = rows
-            .into_iter()
-            .filter(|id| {
-                selected
-                    .get(table)
-                    .is_none_or(|records| !records.contains(id))
-            })
-            .collect::<Vec<_>>();
-        for chunk in ids.chunks(200) {
-            let marks = placeholders(chunk.len());
-            let sql = format!("UPDATE {table} SET {field}=NULL WHERE id IN ({marks})");
-            let mut query = sqlx::query(AssertSqlSafe(sql));
-            for id in chunk {
-                query = query.bind(id);
-            }
-            query.execute(&mut *conn).await?;
-        }
+    Ok(Deletion {
+        root,
+        selected,
+        nulls,
+    })
+}
+
+impl Deletion {
+    pub(crate) fn affected(&self) -> impl Iterator<Item = (&'static str, i64)> + '_ {
+        self.selected
+            .iter()
+            .map(|(&table, rows)| (table, rows))
+            .chain(self.nulls.iter().map(|(&(table, _), rows)| (table, rows)))
+            .flat_map(|(table, rows)| rows.iter().map(move |&id| (table, id)))
     }
-    let mut ordered = Vec::new();
-    delete_order(root, &mut HashSet::new(), &mut ordered);
-    for table in ordered {
-        let Some(ids) = selected.remove(table) else {
-            continue;
-        };
-        let ids = ids.into_iter().collect::<Vec<_>>();
-        delete_tags(conn, table, &ids).await?;
-        for chunk in ids.chunks(200) {
-            let marks = placeholders(chunk.len());
-            let sql = format!("DELETE FROM {table} WHERE id IN ({marks})");
-            let mut query = sqlx::query(AssertSqlSafe(sql));
-            for id in chunk {
-                query = query.bind(id);
+
+    pub(crate) async fn apply(self, conn: &mut AnyConnection) -> Result<(), DeleteError> {
+        let Self {
+            root,
+            mut selected,
+            nulls,
+        } = self;
+        for ((table, field), rows) in nulls {
+            let ids = rows
+                .into_iter()
+                .filter(|id| {
+                    selected
+                        .get(table)
+                        .is_none_or(|records| !records.contains(id))
+                })
+                .collect::<Vec<_>>();
+            for chunk in ids.chunks(200) {
+                let marks = placeholders(chunk.len());
+                let sql = format!("UPDATE {table} SET {field}=NULL WHERE id IN ({marks})");
+                let mut query = sqlx::query(AssertSqlSafe(sql));
+                for id in chunk {
+                    query = query.bind(id);
+                }
+                query.execute(&mut *conn).await?;
             }
-            query.execute(&mut *conn).await?;
         }
+        let mut ordered = Vec::new();
+        delete_order(root, &mut HashSet::new(), &mut ordered);
+        for table in ordered {
+            let Some(ids) = selected.remove(table) else {
+                continue;
+            };
+            let ids = ids.into_iter().collect::<Vec<_>>();
+            delete_tags(conn, table, &ids).await?;
+            for chunk in ids.chunks(200) {
+                let marks = placeholders(chunk.len());
+                let sql = format!("DELETE FROM {table} WHERE id IN ({marks})");
+                let mut query = sqlx::query(AssertSqlSafe(sql));
+                for id in chunk {
+                    query = query.bind(id);
+                }
+                query.execute(&mut *conn).await?;
+            }
+        }
+        Ok(())
     }
-    Ok(())
+}
+
+/// Apply the model deletion rules inside the caller's transaction.
+pub(crate) async fn delete(
+    conn: &mut AnyConnection,
+    root: &'static str,
+    id: i64,
+) -> Result<(), DeleteError> {
+    plan(conn, root, id).await?.apply(conn).await
 }

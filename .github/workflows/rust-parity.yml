@@ -52,6 +52,8 @@ jobs:
           git diff --exit-code -- rust/schema/
       - name: Compare HTTP responses on SQLite
         run: .agents/skills/black-rod-task/scripts/br venv/bin/python rust/tools/compare.py
+      - name: Compare reversible Agent corrections on SQLite
+        run: .agents/skills/black-rod-task/scripts/br venv/bin/python rust/tools/agent_write_parity.py
       - uses: actions/setup-node@v4
         with:
           node-version-file: '.nvmrc'
@@ -79,3 +81,4 @@ jobs:
           call_command("loaddata", "dev_fixtures")
           '
           "$scripts/br" venv/bin/python rust/tools/compare.py
+          "$scripts/br" venv/bin/python rust/tools/agent_write_parity.py
