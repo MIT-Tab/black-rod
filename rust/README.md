@@ -43,7 +43,7 @@ cargo test --manifest-path rust/Cargo.toml --locked
 
 The HTTP harness starts Django and Rust against the same fixture. It compares status, relevant headers, JSON fields, array order, and plain text. Equal-score COTY ties, equal-rank TOTY ties, school members with equal tenure, video lists, and tags are compared without requiring an order where the reference query has no final sort. The SQLite fixture is hashed before and after the run. Set `BLACK_ROD_PARITY_POSTGRES_URL` to a locally seeded PostgreSQL database for the PostgreSQL run. The Rust parity workflow loads the tracked fixture into both database engines.
 
-The Agent harness tests both runtimes against the same local database. It covers atomic and reversible correction batches, stale revisions, preview hashes, concurrent idempotent requests, cascading deletes, and identity merges. It copies SQLite to a temporary file and accepts PostgreSQL only against a disposable loopback database whose name starts with `black_rod_parity`.
+The Agent harness tests both runtimes against the same local database. It covers atomic and reversible correction batches, stale revisions, preview hashes, concurrent idempotent requests, cascading deletes, and identity merges. It copies SQLite to a temporary file and clones the supplied loopback PostgreSQL fixture before testing writes. The PostgreSQL fixture name must start with `black_rod_parity`.
 
 The Chrome harness compares the standings, directories, search, profiles, recent-results widget, live results, media permissions, motion progress, authoring, and spreadsheet imports, career CSV exports, profile claims, outreach, scheduling, legacy standings, DOTY, resource authoring, account code generation, and the daily and infinite Immaculate Grid flows. It also checks password and OAuth session compatibility, theme persistence, desktop and mobile replay screenshots, manual and imported results, audit write rollback, and ELO computation, filters, sorting, and pagination. With local Memcached enabled, it verifies that both servers can open each other's import reviews and cached ELO results and can invalidate the shared ELO cache. The harness makes writes only against a temporary copy of the SQLite fixture.
 
@@ -54,7 +54,7 @@ venv/screenshots/bin/python -m pip install Pillow==12.3.0
 "$scripts/br" venv/screenshots/bin/python rust/tools/html_parity.py /tmp/black-rod-admin --group admin-models
 ```
 
-The HTML harness compares the normalized live DOM, including the rendered controls and client-side widgets, and checks screenshots at desktop and mobile widths. The broad admin command reports all differences across model lists and records. The parity workflow runs the public, staff, and full admin model groups. A second independent capture confirms any initial difference, and the harness retains the first artifacts. A comparison passes only when the normalized DOM matches and no screenshot pixel exceeds the RGB channel tolerance of 8.
+The HTML harness compares the normalized live DOM, including the rendered controls and client-side widgets, and checks screenshots at desktop and mobile widths. The broad admin command reports all differences across model lists and records. The parity workflow runs the public, staff, and full admin model groups. The harness checks any initial difference in a fresh Chrome session and retains the first artifacts. A comparison passes only when the normalized DOM matches and no screenshot pixel exceeds the RGB channel tolerance of 8.
 
 ## PostgreSQL benchmark
 

@@ -85,7 +85,9 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         state = state.with_session_secret(secret);
     }
     let stats = env::var("WEBPACK_STATS_FILE").unwrap_or_else(|_| "webpack-stats.json".into());
-    if Path::new(&stats).is_file() {
+    if enabled("BLACK_ROD_WATCH_WEBPACK") {
+        state = state.watch_webpack_stats(Path::new(&stats));
+    } else if Path::new(&stats).is_file() {
         state = state.with_webpack_stats(Path::new(&stats))?;
     }
     state = state.with_private_tokens(PrivateTokens::new(

@@ -1,6 +1,6 @@
 """Compare both rendered HTML and desktop/mobile pixels against Django fixtures."""
 from argparse import ArgumentParser
-from contextlib import closing, contextmanager
+from contextlib import closing, contextmanager, nullcontext
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from itertools import zip_longest
 import json
@@ -356,29 +356,32 @@ def shared_origin():
             thread.join()
 
 
-def compare(driver, django, rust, cases, sessions, output, viewports, exclude, pixel_only, proxy, origin):
+def compare(driver, django, rust, cases, sessions, output, viewports, exclude, pixel_only, proxy, origin, options):
     failures = []
     for mode in viewports:
         width, height = VIEWPORTS[mode]
-        driver.execute_cdp_cmd("Emulation.setDeviceMetricsOverride", {
-            "width":width, "height":height, "deviceScaleFactor":1, "mobile":False,
-        })
+        metrics = {"width": width, "height": height, "deviceScaleFactor": 1, "mobile": False}
+        driver.execute_cdp_cmd("Emulation.setDeviceMetricsOverride", metrics)
         for slug, route, authenticated in cases:
             session = sessions.get("admin" if authenticated is True else authenticated)
             reference = output / f"{mode}-{slug}-django"
             candidate = output / f"{mode}-{slug}-rust"
             for attempt in range(2):
-                proxy.target = django
-                left_navigation, left = capture(driver, origin, route, session, reference, exclude)
-                proxy.target = rust
-                right_navigation, right = capture(driver, origin, route, session, candidate, exclude)
+                browser = nullcontext(driver) if attempt == 0 else webdriver.Chrome(options=options)
+                with browser as active:
+                    if attempt:
+                        active.execute_cdp_cmd("Emulation.setDeviceMetricsOverride", metrics)
+                    proxy.target = django
+                    left_navigation, left = capture(active, origin, route, session, reference, exclude)
+                    proxy.target = rust
+                    right_navigation, right = capture(active, origin, route, session, candidate, exclude)
                 structural = first_difference(left, right)
                 if left_navigation != right_navigation:
                     structural = ("navigation URL or status", left_navigation, right_navigation)
                 fraction = pixels(reference, candidate)
                 if (structural is None and not fraction) or attempt == 1:
                     break
-                print(f"{mode} {route} initial comparison differed, repeating both browser navigations")
+                print(f"{mode} {route} first comparison differed, repeating in a fresh Chrome session")
                 for target in (reference, candidate):
                     for suffix in (".html", ".json", ".png"):
                         target.with_suffix(suffix).replace(target.with_name(target.name + "-initial").with_suffix(suffix))
@@ -433,7 +436,7 @@ def main():
         with oauth_provider(fixture), smtp_sink(), servers(local) as (django, rust), webdriver.Chrome(options=options) as browser:
             with shared_origin() as (proxy, origin):
                 failures = compare(browser, django, rust, cases, sessions, output, viewports,
-                                   arguments.exclude_element, arguments.pixel_only, proxy, origin)
+                                   arguments.exclude_element, arguments.pixel_only, proxy, origin, options)
             if failures:
                 raise SystemExit(f"{len(failures)} HTML or screenshot comparisons differed. See {output}.")
 

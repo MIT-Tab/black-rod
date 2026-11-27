@@ -146,10 +146,25 @@ pub(super) async fn seed(
         .execute(&mut *tx)
         .await?;
     let data = &review.data;
+    let mut offered_schools = BTreeSet::new();
+    let mut created_debaters = BTreeSet::new();
     for row in data["new_schools"].as_array().into_iter().flatten() {
         let name = text(row).trim().to_owned();
         if !name.is_empty() {
-            let id = seed_school(&mut tx, &name).await?;
+            let exact = sqlx::query_scalar::<_, i64>(
+                "SELECT CAST(id AS BIGINT) FROM core_school WHERE name=$1",
+            )
+            .bind(&name)
+            .fetch_optional(&mut *tx)
+            .await?;
+            let id = match exact {
+                Some(id) => id,
+                None => {
+                    let id = seed_school(&mut tx, &name).await?;
+                    offered_schools.insert(id);
+                    id
+                }
+            };
             review.mappings.schools.insert(name, id);
         }
     }
@@ -188,64 +203,59 @@ pub(super) async fn seed(
         {
             id
         } else {
-            seed_person(&mut tx, first, &last, school, state.current_season).await?
+            let id = seed_person(&mut tx, first, &last, school, state.current_season).await?;
+            created_debaters.insert(id);
+            id
         };
         if !key.is_empty() {
             review.mappings.debaters.insert(key, id);
         }
     }
     let mut schools = Panel::new(SCHOOL);
-    let mut ids = BTreeSet::new();
-    for (server, &id) in &review.mappings.schools {
-        if !ids.insert(id) {
-            continue;
-        }
-        let row = sqlx::query(
-            "SELECT name,CAST(CASE WHEN included_in_oty THEN 1 ELSE 0 END AS BIGINT) AS included
-            FROM core_school WHERE id=$1 AND temporary",
-        )
-        .bind(id)
-        .fetch_optional(&mut *tx)
-        .await?;
-        if let Some(row) = row {
+    for row in sqlx::query(
+        "SELECT CAST(id AS BIGINT) AS id,name,
+         CAST(CASE WHEN included_in_oty THEN 1 ELSE 0 END AS BIGINT) AS included,
+         CAST(CASE WHEN temporary THEN 1 ELSE 0 END AS BIGINT) AS temporary
+         FROM core_school ORDER BY name",
+    )
+    .fetch_all(&mut *tx)
+    .await?
+    {
+        let id = row.try_get("id")?;
+        let eligible = if offered_schools.is_empty() {
+            row.try_get::<i64, _>("temporary")? == 1
+        } else {
+            offered_schools.contains(&id)
+        };
+        if eligible {
             schools.rows.push(ResultRow {
                 record: Some(id),
                 name: row.try_get("name")?,
-                first_source: server.to_owned(),
                 included: row.try_get::<i64, _>("included")? == 1,
                 ..Default::default()
             });
         }
     }
-    schools
-        .rows
-        .sort_by(|left, right| left.name.cmp(&right.name));
     schools.initial_count = schools.rows.len();
     let mut debaters = Panel::new(DEBATER);
-    ids.clear();
-    for (remote, &id) in &review.mappings.debaters {
-        if !ids.insert(id) {
-            continue;
-        }
-        let row = sqlx::query(
-            "SELECT first_name,last_name,CAST(school_id AS BIGINT) AS school
-            FROM core_debater WHERE id=$1 AND temporary",
-        )
-        .bind(id)
-        .fetch_optional(&mut *tx)
-        .await?;
-        if let Some(row) = row {
+    for row in sqlx::query(
+        "SELECT CAST(id AS BIGINT) AS id,first_name,last_name,CAST(school_id AS BIGINT) AS school
+         FROM core_debater WHERE temporary ORDER BY id",
+    )
+    .fetch_all(&mut *tx)
+    .await?
+    {
+        let id = row.try_get("id")?;
+        if created_debaters.is_empty() || created_debaters.contains(&id) {
             debaters.rows.push(ResultRow {
                 record: Some(id),
                 name: row.try_get("first_name")?,
                 last_name: row.try_get("last_name")?,
                 school: row.try_get("school")?,
-                first_source: remote.to_owned(),
                 ..Default::default()
             });
         }
     }
-    debaters.rows.sort_by_key(|row| row.record);
     debaters.initial_count = debaters.rows.len();
     let mut panels = Vec::from([schools, debaters]);
     for (tab, key) in forms::TABS.into_iter().zip(RESULT_KEYS) {

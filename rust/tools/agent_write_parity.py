@@ -1,15 +1,18 @@
 """Verify reversible Agent writes across runtimes on disposable fixture databases."""
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import closing
+from contextlib import closing, contextmanager
 import json
 import os
 from pathlib import Path
 import sqlite3
 import subprocess
 from tempfile import TemporaryDirectory
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 from uuid import uuid4
+
+import psycopg2
+from psycopg2 import sql
 
 from compare import Case, ROOT, request, servers
 
@@ -18,6 +21,7 @@ SEED = """
 from reference import application
 from datetime import date, timedelta
 import json
+from uuid import uuid4
 from django.utils import timezone
 from core.models import (
     AgentCredential, COTY, TOTY, Debater, DebaterAlias, ImportBatch, ImportedRoundJudge,
@@ -28,8 +32,9 @@ from core.models import (
 admin = User.objects.create_superuser(username='parity-agent-writer-' + str(timezone.now().timestamp()))
 _, token = AgentCredential.issue(admin=admin, name='Disposable parity writer', can_write=True,
     expires_at=timezone.now() + timedelta(hours=1))
-school = School.objects.create(name='Agent fixture college', short_name='AF')
-synthetic_school = School.all_objects.create(name='Agent synthetic fixture school', short_name='ASF', synthetic=True)
+suffix = uuid4().hex[:8]
+school = School.objects.create(name=f'Agent fixture college {suffix}', short_name='AF')
+synthetic_school = School.all_objects.create(name=f'Agent synthetic fixture school {suffix}', short_name='ASF', synthetic=True)
 real = Debater.objects.create(first_name='Éva', last_name='Example', school=synthetic_school)
 COTY.objects.create(school=school, season='2025', points=4)
 COTY.objects.create(school=synthetic_school, season='2025', points=13)
@@ -207,26 +212,47 @@ def exercise(django, rust, fixture):
           "atomic rollback, references, teams, cascade restoration, conflicting later edits, and school, team, and debater merges")
 
 
+
+@contextmanager
+def fixture_database(seed, local, postgres):
+    if not postgres:
+        with closing(sqlite3.connect(f"{seed.as_uri()}?mode=ro", uri=True)) as source, closing(sqlite3.connect(local)) as copy:
+            source.backup(copy)
+        yield
+        return
+    parsed = urlsplit(postgres)
+    source = unquote(parsed.path.removeprefix("/"))
+    if parsed.hostname != "127.0.0.1" or not source.startswith("black_rod_parity"):
+        raise ValueError("Agent writes require a local black_rod_parity PostgreSQL fixture")
+    clone = f"black_rod_parity_{uuid4().hex}"
+    with closing(psycopg2.connect(
+        dbname="postgres", host=parsed.hostname, port=parsed.port,
+        user=unquote(parsed.username or ""), password=unquote(parsed.password or ""),
+    )) as admin:
+        admin.autocommit = True
+        with admin.cursor() as cursor:
+            cursor.execute(sql.SQL("CREATE DATABASE {} TEMPLATE {}").format(sql.Identifier(clone), sql.Identifier(source)))
+            try:
+                os.environ["BLACK_ROD_PARITY_POSTGRES_URL"] = parsed._replace(path=f"/{clone}").geturl()
+                yield
+            finally:
+                os.environ["BLACK_ROD_PARITY_POSTGRES_URL"] = postgres
+                cursor.execute(sql.SQL("DROP DATABASE {} WITH (FORCE)").format(sql.Identifier(clone)))
+
+
 def main():
     seed = Path(os.environ["BR_STATE"]) / "dev.sqlite3"
     postgres = os.environ.get("BLACK_ROD_PARITY_POSTGRES_URL")
-    if postgres:
-        parsed = urlsplit(postgres)
-        if parsed.hostname != "127.0.0.1" or not parsed.path.startswith("/black_rod_parity"):
-            raise ValueError("Agent writes require a disposable local black_rod_parity PostgreSQL database")
     with TemporaryDirectory(prefix="black-rod-agent-fixture-") as folder:
         db = Path(folder) / "dev.sqlite3"
-        if not postgres:
-            with closing(sqlite3.connect(f"{seed.as_uri()}?mode=ro", uri=True)) as source:
-                with closing(sqlite3.connect(db)) as copy:
-                    source.backup(copy)
-        os.environ.update(BR_STATE=folder, BLACK_ROD_PARITY_WRITABLE="1")
-        env = {**os.environ, "PYTHONPATH": f"{Path(__file__).resolve().parent}{os.pathsep}{os.environ['PYTHONPATH']}",
-               "SECRET_KEY": "disposable-local-parity-key"}
-        result = subprocess.check_output([str(ROOT / "venv/bin/python"), "-c", SEED], env=env, text=True)
-        fixture = json.loads(result.splitlines()[-1])
-        with servers(db) as (django, rust):
-            exercise(django, rust, fixture)
+        with fixture_database(seed, db, postgres):
+            os.environ.update(BR_STATE=folder, BLACK_ROD_PARITY_WRITABLE="1")
+            env = {**os.environ, "PYTHONPATH": f"{Path(__file__).resolve().parent}{os.pathsep}{os.environ['PYTHONPATH']}",
+                   "SECRET_KEY": "disposable-local-parity-key"}
+            result = subprocess.check_output([str(ROOT / "venv/bin/python"), "-c", SEED], env=env, text=True)
+            fixture = json.loads(result.splitlines()[-1])
+            with servers(db) as (django, rust):
+                exercise(django, rust, fixture)
 
 
 if __name__ == "__main__":

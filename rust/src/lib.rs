@@ -82,6 +82,11 @@ enum Endpoint {
     Schedule(i32),
 }
 
+struct WatchedWebpack {
+    path: std::path::PathBuf,
+    bundles: std::sync::RwLock<Arc<Vec<String>>>,
+}
+
 #[derive(Clone)]
 pub struct AppState {
     pool: AnyPool,
@@ -90,6 +95,7 @@ pub struct AppState {
     oauth: Option<Arc<OAuth>>,
     live: Option<Arc<Live>>,
     bundles: Arc<Vec<String>>,
+    watched_webpack: Option<Arc<WatchedWebpack>>,
     current_season: i32,
     debater_tab_cards: bool,
     tournament_tab_card_search: bool,
@@ -135,6 +141,7 @@ impl AppState {
             oauth: None,
             live: None,
             bundles: Arc::default(),
+            watched_webpack: None,
             current_season,
             debater_tab_cards: false,
             tournament_tab_card_search: false,
@@ -243,6 +250,31 @@ impl AppState {
     pub fn with_webpack_stats(mut self, path: &Path) -> Result<Self, Box<dyn std::error::Error>> {
         self.bundles = Arc::new(web::bundles(path)?);
         Ok(self)
+    }
+
+    pub fn watch_webpack_stats(mut self, path: &Path) -> Self {
+        self.watched_webpack = Some(Arc::new(WatchedWebpack {
+            path: path.to_owned(),
+            bundles: std::sync::RwLock::new(Arc::new(web::bundles(path).unwrap_or_default())),
+        }));
+        self
+    }
+
+    fn bundles(&self) -> Arc<Vec<String>> {
+        if let Some(watch) = &self.watched_webpack {
+            if let Ok(bundles) = web::bundles(&watch.path)
+                && let Ok(mut current) = watch.bundles.write()
+            {
+                if **current != bundles {
+                    *current = Arc::new(bundles);
+                }
+                return current.clone();
+            }
+            if let Ok(current) = watch.bundles.read() {
+                return current.clone();
+            }
+        }
+        self.bundles.clone()
     }
 
     pub async fn refresh_tournament_sources(&self) -> usize {

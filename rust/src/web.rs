@@ -1856,7 +1856,7 @@ pub(crate) async fn show(
     let bindings = context! {
         request => context! { path, user, GET => query },
         left_menu,
-        bundles => state.bundles.as_ref(),
+        bundles => state.bundles().as_ref(),
         seasons,
         current_season => season.to_string(),
         season_display => season_display(season),
@@ -1896,7 +1896,7 @@ pub(crate) fn base_context(
     context! {
         request => context! { path, user, GET => query },
         user,
-        bundles => state.bundles.as_ref(),
+        bundles => state.bundles().as_ref(),
         left_menu,
         seasons => seasons(state.current_season),
     }

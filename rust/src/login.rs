@@ -201,7 +201,7 @@ async fn page(state: &AppState, headers: &HeaderMap, https: bool, page: LoginPag
         context! {
             request => context! { path, user, GET => context! { q => "" } },
             left_menu => web::menu(&user, path),
-            bundles => state.bundles.as_ref(),
+            bundles => state.bundles().as_ref(),
             csrf => token,
             next => page.next,
             username => page.username,

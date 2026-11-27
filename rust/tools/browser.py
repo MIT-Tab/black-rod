@@ -2415,7 +2415,12 @@ print(json.dumps({"school":school.id, "one":one.id,"two":two.id}))
     duplicate = submit(create, values)
     assert "A pending merge request already exists" in duplicate["content"]
     open_page(django,review,admin)
-    request_id = driver.find_element("name","request_id").get_attribute("value")
+    request_id = driver.execute_script("""
+        const pending = [...document.querySelectorAll("tr")].find(
+            row => row.textContent.includes("Merge Alpha") && row.textContent.includes("Merge Zeta"));
+        return pending.querySelector('input[name="request_id"]').value;
+    """)
+
     open_page(rust,review,admin)
     swapped = submit(review,{"request_id":request_id,"action":"swap"})
     assert "Debaters swapped successfully." in swapped["content"]
@@ -2700,15 +2705,25 @@ def assert_reviewed_tournament_import(driver, django, rust, fixture, provider):
     assert event != fixture["manual_event"]["id"]
     if os.environ.get("BLACK_ROD_PARITY_MEMCACHED_ADDR"):
         rust_review = driver.current_url
+
+        def imported_rows(prefix, field):
+            return driver.execute_script("""
+                const [prefix, field] = arguments;
+                return [...document.querySelectorAll(`input[id^="id_${prefix}-"][id$="-${field}"]`)]
+                    .map(input => input.value);
+            """, prefix, field)
+
         driver.get(f"http://{HOST}:{django.port}{urlsplit(rust_review).path}?{urlsplit(rust_review).query}")
-        assert driver.find_element("id", "id_debaters-0-first_name").get_attribute("value") == "Incoming"
+        reopened = (imported_rows("schools", "name"), imported_rows("debaters", "first_name"))
+        assert "Incoming" in reopened[1], reopened
         driver.get(rust_review)
-    school_input = driver.find_element("id", "id_schools-0-name")
-    assert school_input.get_attribute("value") == "Fixture School From MIT-Tab"
-    school_input.clear()
-    school_input.send_keys("Reviewed Fixture School")
-    first = driver.find_element("id", "id_debaters-0-first_name")
-    assert first.get_attribute("value") == "Incoming"
+        assert reopened == (imported_rows("schools", "name"), imported_rows("debaters", "first_name"))
+
+    school_input = next(field for field in driver.find_elements("css selector", 'input[id^=id_schools-][id$=-name]')
+                        if field.get_property("value") == "Fixture School From MIT-Tab")
+    driver.execute_script("arguments[0].value = 'Reviewed Fixture School';", school_input)
+    assert any(field.get_property("value") == "Incoming" for field in
+               driver.find_elements("css selector", 'input[id^=id_debaters-][id$=-first_name]'))
 
     original_teams = provider.import_payload["debater_counts"]["teams"]
     provider.import_payload["debater_counts"]["teams"] = 99

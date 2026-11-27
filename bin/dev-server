@@ -6,8 +6,32 @@ cd "$(dirname "$0")/.."
 export BLACK_ROD_DATABASE_URL="${BLACK_ROD_DATABASE_URL:-sqlite://apda/db.sqlite3?mode=rw}"
 export BLACK_ROD_BIND="${BLACK_ROD_BIND:-0.0.0.0:8000}"
 
-npm run watch &
+export BLACK_ROD_WATCH_WEBPACK=1
+webpack_stats="${WEBPACK_STATS_FILE:-webpack-stats.json}"
+
+webpack_previous=$(node -e '
+  try { console.log(require("node:fs").statSync(process.argv[1]).mtimeMs); }
+  catch { console.log(0); }
+' "$webpack_stats")
+
+node_modules/.bin/webpack --config webpack.config.js --watch --mode=development &
 webpack_pid=$!
 trap 'kill "$webpack_pid" 2>/dev/null || true' EXIT
+
+webpack_start=$SECONDS
+until node -e '
+  try {
+    const fs = require("node:fs"), path = process.argv[1], previous = Number(process.argv[2]);
+    const stats = JSON.parse(fs.readFileSync(path, "utf8"));
+    if (fs.statSync(path).mtimeMs !== previous && stats.status === "done" && stats.chunks?.main?.length) process.exit(0);
+  } catch {}
+  process.exit(1);
+' "$webpack_stats" "$webpack_previous"; do
+  if ! kill -0 "$webpack_pid" 2>/dev/null || ((SECONDS - webpack_start >= 60)); then
+    echo "Webpack did not produce its development manifest." >&2
+    exit 1
+  fi
+  sleep 0.25
+done
 
 cargo +1.94.0 run --locked --manifest-path rust/Cargo.toml -- serve

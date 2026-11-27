@@ -94,7 +94,7 @@ pub(crate) fn render(
     let html = web::render(
         page,
         context! {
-            csrf=>token, user, next=>&visit.next, messages=>&notices, bundles=>state.bundles.as_ref(), ..bindings
+            csrf=>token, user, next=>&visit.next, messages=>&notices, bundles=>state.bundles().as_ref(), ..bindings
         },
     )
     .map_err(|error| {
