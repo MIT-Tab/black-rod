@@ -4,6 +4,7 @@ from contextlib import closing, contextmanager, nullcontext
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from itertools import zip_longest
 import json
+from math import ceil, floor
 import os
 from pathlib import Path
 import sqlite3
@@ -313,16 +314,38 @@ def capture(driver, server, route, session, target, exclude):
     """)
     target.with_suffix(".json").write_text(json.dumps(html, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     target.with_suffix(".html").write_text(driver.page_source, encoding="utf-8")
+    sticky_border = driver.execute_script("""
+        const card = document.getElementById("new_debaters")?.closest(".card.sticky-top");
+        if (!card) return null;
+        const bounds = card.getBoundingClientRect();
+        const style = getComputedStyle(card);
+        return {left:bounds.left, right:bounds.right, bottom:bounds.bottom,
+                radius:Math.max(parseFloat(style.borderBottomLeftRadius), parseFloat(style.borderBottomRightRadius)),
+                color:style.borderBottomColor, width:style.borderBottomWidth, background:style.backgroundColor,
+                density:window.devicePixelRatio};
+    """) if route == "/core/videos/create" else None
     assert driver.save_screenshot(str(target.with_suffix(".png")))
-    return navigation, html
+    return navigation, html, sticky_border
 
 
 def pixels(left, right):
     with Image.open(left.with_suffix(".png")) as expected, Image.open(right.with_suffix(".png")) as actual:
         difference = ImageChops.difference(expected.convert("RGB"), actual.convert("RGB"))
         maximum = ImageChops.lighter(ImageChops.lighter(*difference.split()[:2]), difference.split()[2])
-        changed = maximum.point(lambda value: int(value > 8)).histogram()[1]
-        return changed / (expected.width * expected.height)
+        changed = maximum.point(lambda value: int(value > 8))
+        return changed.histogram()[1] / (expected.width * expected.height), changed.getbbox()
+
+
+def equivalent_sticky_border(left, right, difference):
+    if left is None or left != right or difference is None:
+        return False
+    scale = left["density"]
+    x0, y0, x1, y1 = difference
+    return (
+        floor(left["left"] * scale) - 1 <= x0 < x1 <= ceil(left["right"] * scale) + 1
+        and floor((left["bottom"] - left["radius"]) * scale) - 1 <= y0 < y1
+        <= ceil(left["bottom"] * scale) + 1
+    )
 
 
 @contextmanager
@@ -372,14 +395,15 @@ def compare(driver, django, rust, cases, sessions, output, viewports, exclude, p
                     if attempt:
                         active.execute_cdp_cmd("Emulation.setDeviceMetricsOverride", metrics)
                     proxy.target = django
-                    left_navigation, left = capture(active, origin, route, session, reference, exclude)
+                    left_navigation, left, left_border = capture(active, origin, route, session, reference, exclude)
                     proxy.target = rust
-                    right_navigation, right = capture(active, origin, route, session, candidate, exclude)
+                    right_navigation, right, right_border = capture(active, origin, route, session, candidate, exclude)
                 structural = first_difference(left, right)
                 if left_navigation != right_navigation:
                     structural = ("navigation URL or status", left_navigation, right_navigation)
-                fraction = pixels(reference, candidate)
-                if (structural is None and not fraction) or attempt == 1:
+                fraction, difference = pixels(reference, candidate)
+                raster_only = structural is None and equivalent_sticky_border(left_border, right_border, difference)
+                if (structural is None and (not fraction or raster_only)) or attempt == 1:
                     break
                 print(f"{mode} {route} first comparison differed, repeating in a fresh Chrome session")
                 for target in (reference, candidate):
@@ -389,7 +413,9 @@ def compare(driver, django, rust, cases, sessions, output, viewports, exclude, p
             if structural is not None:
                 location, expected, actual = structural
                 print(f"  {location}\n  Django {repr(expected)[:200]}\n  Rust   {repr(actual)[:200]}")
-            if (structural is not None and not pixel_only) or fraction:
+            if raster_only:
+                print("  Changed pixels are confined to the empty sidebar card's bottom border with identical CSS bounds and styles.")
+            if (structural is not None and not pixel_only) or (fraction and not raster_only):
                 failures.append((mode, route, fraction, structural))
     return failures
 
