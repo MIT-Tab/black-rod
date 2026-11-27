@@ -217,3 +217,38 @@ async fn private_lookup_applies_the_bound_after_deduplication() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(data["debaters"].as_array().unwrap().len(), 1);
 }
+
+#[tokio::test]
+async fn append_slash_redirects_only_to_registered_routes() {
+    let router = app(AppState::new(fixture().await, 2026));
+    for (path, expected) in [
+        (
+            "/api/debaters/%37/detail?limit=2",
+            Some("/api/debaters/%37/detail/?limit=2"),
+        ),
+        (
+            "/core/my-profile?source=legacy",
+            Some("/core/my-profile/?source=legacy"),
+        ),
+        ("/api/debaters/not-a-number/detail", None),
+        ("/core/missing-endpoint", None),
+    ] {
+        let response = router
+            .clone()
+            .oneshot(
+                Request::get(path)
+                    .header(header::HOST, "localhost")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        if let Some(location) = expected {
+            assert_eq!(response.status(), StatusCode::MOVED_PERMANENTLY, "{path}");
+            assert_eq!(response.headers()[header::LOCATION], location);
+        } else {
+            assert_eq!(response.status(), StatusCode::NOT_FOUND, "{path}");
+            assert!(!response.headers().contains_key(header::LOCATION));
+        }
+    }
+}

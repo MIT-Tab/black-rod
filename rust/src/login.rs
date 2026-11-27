@@ -367,6 +367,44 @@ pub(crate) async fn authenticate(
     .map_err(|_| ApiError::Serialization)
 }
 
+impl VerifiedPassword {
+    async fn apply_upgrade(&mut self, pool: &AnyPool) -> Result<bool, sqlx::Error> {
+        let Some(upgraded) = self.upgrade.take() else {
+            return Ok(true);
+        };
+        let changed = sqlx::query(
+            "UPDATE core_user SET password=$1 WHERE id=$2 AND password=$3 AND is_active",
+        )
+        .bind(&upgraded)
+        .bind(self.id)
+        .bind(&self.hash)
+        .execute(pool)
+        .await?;
+        if changed.rows_affected() != 1 {
+            return Ok(false);
+        }
+        self.hash = upgraded;
+        Ok(true)
+    }
+}
+
+pub(crate) async fn basic_user(
+    pool: &AnyPool,
+    username: &str,
+    password: &str,
+) -> Result<Option<session::User>, ApiError> {
+    let Some(mut verified) = authenticate(pool, username, password).await? else {
+        return Ok(None);
+    };
+    if !verified.apply_upgrade(pool).await? {
+        return Ok(None);
+    }
+    Ok(session::active_user(pool, verified.id)
+        .await?
+        .filter(|(_, hash)| *hash == verified.hash)
+        .map(|(user, _)| user))
+}
+
 pub(crate) async fn finish_password_login(
     state: &AppState,
     headers: &HeaderMap,
@@ -375,22 +413,12 @@ pub(crate) async fn finish_password_login(
     remember: bool,
     mut verified: VerifiedPassword,
 ) -> Response {
-    if let Some(upgraded) = verified.upgrade {
-        let updated = sqlx::query(
-            "UPDATE core_user SET password=$1 WHERE id=$2 AND password=$3 AND is_active",
-        )
-        .bind(&upgraded)
-        .bind(verified.id)
-        .bind(&verified.hash)
-        .execute(&state.pool)
-        .await;
-        match updated {
-            Ok(changed) if changed.rows_affected() == 1 => verified.hash = upgraded,
-            Ok(_) => return StatusCode::CONFLICT.into_response(),
-            Err(error) => {
-                eprintln!("Password hash upgrade failed: {error}");
-                return StatusCode::INTERNAL_SERVER_ERROR.into_response();
-            }
+    match verified.apply_upgrade(&state.pool).await {
+        Ok(true) => (),
+        Ok(false) => return StatusCode::CONFLICT.into_response(),
+        Err(error) => {
+            eprintln!("Password hash upgrade failed: {error}");
+            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
         }
     }
     sign_in(

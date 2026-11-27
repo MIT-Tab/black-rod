@@ -3,7 +3,7 @@ pub(crate) mod edit;
 use std::collections::{HashMap, HashSet};
 
 use axum::{
-    Json,
+    Extension, Json,
     extract::{OriginalUri, Path, State},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
@@ -337,6 +337,7 @@ pub(crate) async fn detail(
     Path(id): Path<String>,
     OriginalUri(uri): OriginalUri,
     headers: HeaderMap,
+    Extension(user): Extension<User>,
 ) -> Response {
     if !is_django_integer(&id) {
         return StatusCode::NOT_FOUND.into_response();
@@ -346,9 +347,6 @@ pub(crate) async fn detail(
     };
     let Some(origin) = state.origin(&headers) else {
         return StatusCode::BAD_REQUEST.into_response();
-    };
-    let Ok(user) = session::user(&state.pool, &headers, state.secret.as_deref()).await else {
-        return json_error(StatusCode::INTERNAL_SERVER_ERROR, "Internal server error.");
     };
     let path = uri
         .path_and_query()

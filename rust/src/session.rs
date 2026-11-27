@@ -16,7 +16,7 @@ pub(crate) use signing::{decode_signed, decode_timed, encode_compressed, encode_
 const SESSION_SALT: &[u8] = b"django.contrib.sessions.SessionStoresigner";
 const AUTH_SALT: &[u8] = b"django.contrib.auth.models.AbstractBaseUser.get_session_auth_hash";
 
-#[derive(Serialize, Default)]
+#[derive(Clone, Serialize, Default)]
 pub(crate) struct User {
     pub(crate) id: Option<i64>,
     pub(crate) is_authenticated: bool,
@@ -542,6 +542,25 @@ pub(crate) async fn user(
     ) else {
         return Ok(User::default());
     };
+    let Some((user, password_hash)) = active_user(pool, user_id).await? else {
+        return Ok(User::default());
+    };
+    if hmac::verify(
+        &key(AUTH_SALT, secret),
+        password_hash.as_bytes(),
+        &auth_hash,
+    )
+    .is_err()
+    {
+        return Ok(User::default());
+    }
+    Ok(user)
+}
+
+pub(crate) async fn active_user(
+    pool: &AnyPool,
+    user_id: i64,
+) -> Result<Option<(User, String)>, sqlx::Error> {
     let Some(row) = sqlx::query(
         "
         SELECT u.password,
@@ -582,19 +601,9 @@ pub(crate) async fn user(
     .fetch_optional(pool)
     .await?
     else {
-        return Ok(User::default());
+        return Ok(None);
     };
-    let password_hash: &str = row.try_get("password")?;
-    if hmac::verify(
-        &key(AUTH_SALT, secret),
-        password_hash.as_bytes(),
-        &auth_hash,
-    )
-    .is_err()
-    {
-        return Ok(User::default());
-    }
-    Ok(User {
+    let user = User {
         id: Some(user_id),
         is_authenticated: true,
         is_superuser: row.try_get::<i64, _>("superuser")? != 0,
@@ -603,7 +612,8 @@ pub(crate) async fn user(
         has_exclusive_pre_access: row.try_get::<i64, _>("exclusive_pre_access")? != 0,
         can_view_private_videos: row.try_get::<i64, _>("private_videos")? != 0,
         can_view_video: row.try_get::<i64, _>("view_video")? != 0,
-    })
+    };
+    Ok(Some((user, row.try_get("password")?)))
 }
 
 pub(crate) async fn has_permission(

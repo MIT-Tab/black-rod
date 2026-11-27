@@ -5,12 +5,62 @@ use axum::{
     http::{HeaderMap, HeaderValue, Method, StatusCode, Uri, header},
     response::{Html, IntoResponse, Response},
 };
+use base64::{Engine, engine::general_purpose::STANDARD};
 use minijinja::context;
 use regex::Regex;
 use serde::Deserialize;
 use serde_json::Value;
 
-use crate::{AppState, login, web};
+use crate::{AppState, json_error, login, session, web};
+
+fn basic_credentials(headers: &HeaderMap) -> Result<Option<(String, String)>, &'static str> {
+    let Some(authorization) = headers.get(header::AUTHORIZATION) else {
+        return Ok(None);
+    };
+    let mut parts = authorization
+        .as_bytes()
+        .split(|byte| byte.is_ascii_whitespace())
+        .filter(|part| !part.is_empty());
+    if !parts
+        .next()
+        .is_some_and(|scheme| scheme.eq_ignore_ascii_case(b"basic"))
+    {
+        return Ok(None);
+    }
+    let Some(encoded) = parts.next() else {
+        return Err("Invalid basic header. No credentials provided.");
+    };
+    if parts.next().is_some() {
+        return Err("Invalid basic header. Credentials string should not contain spaces.");
+    }
+    let invalid = "Invalid basic header. Credentials not correctly base64 encoded.";
+    let decoded = STANDARD.decode(encoded).map_err(|_| invalid)?;
+    let decoded = String::from_utf8(decoded)
+        .unwrap_or_else(|error| error.as_bytes().iter().copied().map(char::from).collect());
+    let (username, password) = decoded.split_once(':').ok_or(invalid)?;
+    Ok(Some((username.to_owned(), password.to_owned())))
+}
+
+pub(super) async fn public_user(
+    state: &AppState,
+    headers: &HeaderMap,
+) -> Result<session::User, Response> {
+    let internal = |_| json_error(StatusCode::INTERNAL_SERVER_ERROR, "Internal server error.");
+    let failed = |detail| json_error(StatusCode::FORBIDDEN, detail);
+    let user = session::user(&state.pool, headers, state.secret.as_deref())
+        .await
+        .map_err(internal)?;
+    if user.is_authenticated {
+        return Ok(user);
+    }
+    let Some((username, password)) = basic_credentials(headers).map_err(failed)? else {
+        return Ok(user);
+    };
+    login::basic_user(&state.pool, &username, &password)
+        .await
+        .map_err(|_| json_error(StatusCode::INTERNAL_SERVER_ERROR, "Internal server error."))?
+        .ok_or_else(|| failed("Invalid username/password."))
+}
 
 #[derive(Deserialize)]
 struct Schema {

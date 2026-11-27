@@ -1,3 +1,5 @@
+use std::sync::LazyLock;
+
 use axum::{
     extract::{OriginalUri, Request, State},
     http::{HeaderValue, Method, StatusCode, header},
@@ -36,7 +38,7 @@ pub(crate) fn public_api_path(path: &str) -> bool {
 
 pub(super) async fn api_protocol(
     State(state): State<AppState>,
-    request: Request,
+    mut request: Request,
     next: axum::middleware::Next,
 ) -> Response {
     let path = request.uri().path();
@@ -114,16 +116,23 @@ pub(super) async fn api_protocol(
         } else {
             negotiation_error(status, detail)
         }
-    } else if public
-        && !matches!(
-            *request.method(),
-            Method::GET | Method::HEAD | Method::OPTIONS
-        )
-    {
-        json_error(
-            StatusCode::METHOD_NOT_ALLOWED,
-            &format!("Method \"{}\" not allowed.", request.method()),
-        )
+    } else if public {
+        match drf::public_user(&state, request.headers()).await {
+            Err(response) => response,
+            Ok(user)
+                if matches!(
+                    *request.method(),
+                    Method::GET | Method::HEAD | Method::OPTIONS
+                ) =>
+            {
+                request.extensions_mut().insert(user);
+                next.run(request).await
+            }
+            Ok(_) => json_error(
+                StatusCode::METHOD_NOT_ALLOWED,
+                &format!("Method \"{}\" not allowed.", request.method()),
+            ),
+        }
     } else {
         next.run(request).await
     };
@@ -253,10 +262,18 @@ pub(super) async fn security_headers(request: Request, next: axum::middleware::N
     response
 }
 
+static SLASH_ROUTES: LazyLock<regex::RegexSet> = LazyLock::new(|| {
+    regex::RegexSet::new(include_str!("../../schema/slash_routes.txt").lines())
+        .expect("Django append-slash route patterns")
+});
+
 pub(super) async fn append_slash(OriginalUri(uri): OriginalUri) -> Response {
-    if let Some(id) = uri.path().strip_prefix("/api/debaters/")
-        && !is_django_integer(id)
-    {
+    let path = uri.path();
+    if path.ends_with('/') {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+    let decoded = percent_encoding::percent_decode_str(path).decode_utf8_lossy();
+    if path != "/admin" && !SLASH_ROUTES.is_match(&format!("{decoded}/")) {
         return StatusCode::NOT_FOUND.into_response();
     }
     let mut location = uri.path().to_owned();

@@ -495,6 +495,59 @@ def assert_video_permissions(driver, django, rust, fixture):
                 assert left == right, f"{path} {key}[{index}] differed: {left!r} vs {right!r}"
 
 
+def assert_api_basic_auth(django, rust, fixture):
+    from base64 import b64encode
+    from contextlib import closing
+
+    code = """
+from django import setup
+setup()
+from core.models import Debater, Round, Team, Tournament, Video
+import sys
+
+event = Tournament.objects.get(pk=sys.argv[1])
+gov = Team.objects.get(pk=sys.argv[2])
+opp = Team.objects.create(name="Basic API parity opponent")
+opp.debaters.add(Debater.objects.get(pk=sys.argv[3]))
+Round.objects.create(tournament=event, gov=gov, opp=opp, round_number=1, victor=Round.GOV)
+speakers = dict(zip(("pm_id", "lo_id", "mg_id", "mo_id"), map(int, sys.argv[4:])))
+Video.objects.create(tournament=event, round=Video.VF, permissions=Video.DEBATERS_IN_ROUND,
+    link="https://videos.example.test/api-parity", password="api-parity-fixture", **speakers)
+"""
+    manual = fixture["manual_event"]
+    subprocess.run([str(ROOT / "venv/bin/python"), "-c", code,
+                    str(manual["id"]), str(manual["team"]), str(manual["people"][2]),
+                    *map(str, fixture["authors"])], check=True)
+    path = f"/api/tournaments/{manual['id']}/detail/"
+    good = "Basic " + b64encode(b"tab:password").decode()
+    bad = "Basic " + b64encode(b"tab:wrong-password").decode()
+    cases = [
+        Case(path), Case(path, authorization=good), Case(path, authorization=bad),
+        Case(path, authorization="Basic"),
+        Case(path, authorization="Basic invalid extra"),
+        Case(path, authorization="Basic !!"),
+        Case(path, method="OPTIONS", authorization=bad),
+        Case("/api/schools/", authorization=bad),
+    ]
+    compare_responses(django, rust, cases)
+    for server in (django, rust):
+        authenticated = json.loads(request(server, Case(path, authorization=good))[2])
+        assert authenticated["team_tab_cards"], server.name
+        assert any(video["link"] == "https://videos.example.test/api-parity"
+                   for video in authenticated["videos"]), server.name
+        anonymous = json.loads(request(server, Case(path))[2])
+        assert not anonymous["team_tab_cards"], server.name
+        assert all(video["link"] != "https://videos.example.test/api-parity"
+                   for video in anonymous["videos"]), server.name
+
+        with closing(server.connect()) as connection:
+            headers = {"Authorization": bad, "Cookie": f"sessionid={django_session()}"}
+            connection.request("GET", path, headers=headers)
+            response = connection.getresponse()
+            assert response.status == 200, server.name
+            assert json.loads(response.read())["team_tab_cards"], server.name
+
+
 def assert_video_editor(driver, django, rust, fixture):
     rust_root = f"http://{HOST}:{rust.port}"
     django_root = f"http://{HOST}:{django.port}"
@@ -1962,6 +2015,71 @@ print(json.dumps(pairs))
         assert not driver.find_element("id", "id_dino_judge_contact_opt_in").is_selected()
         assert driver.find_element("id", "id_dino_to_contact_opt_in").is_selected()
         assert json.loads(driver.find_element("id", "id_region").get_attribute("value")) == ["west"]
+    driver.delete_all_cookies()
+
+
+def assert_admin_preserves_linked_state(driver, django, rust):
+    code = """
+from django import setup
+setup()
+from core.models import Debater, DebaterAliasGroup, ImmaculateGridHiddenDebater, Team
+import json
+
+group = DebaterAliasGroup.objects.create(label="Admin linked privacy fixture")
+first = Debater.objects.create(first_name="Privacy", last_name="Existing", alias_group=group)
+second = Debater.objects.create(first_name="Roster", last_name="Second")
+ImmaculateGridHiddenDebater.objects.create(debater=first)
+ImmaculateGridHiddenDebater.objects.create(debater=second)
+team = Team.objects.create(name="Reverse roster")
+team.debaters.add(second)
+team.debaters.add(first)
+print(json.dumps((group.pk, first.pk, second.pk, team.pk)))
+"""
+    output = subprocess.check_output([str(ROOT / "venv/bin/python"), "-c", code], text=True)
+    group, first, second, team = json.loads(output.splitlines()[-1])
+    db = Path(os.environ["BR_STATE"]) / "dev.sqlite3"
+    root = f"http://{HOST}:{rust.port}"
+    driver.get(root + "/robots.txt")
+    driver.add_cookie({"name": "sessionid", "value": django_session()})
+
+    def save():
+        previous = driver.find_element("tag name", "html")
+        driver.find_element("name", "_continue").click()
+        WebDriverWait(driver, 10).until(document_replaced(previous))
+
+    with sqlite3.connect(f"{db.as_uri()}?mode=ro", uri=True) as connection:
+        def hidden(debater):
+            return connection.execute(
+                "SELECT 1 FROM core_immaculategridhiddendebater WHERE debater_id=?", (debater,)).fetchone()
+
+        driver.get(root + "/admin/core/debater/add/")
+        driver.find_element("id", "id_first_name").send_keys("Privacy new member")
+        driver.find_element("css selector", f'#id_alias_group option[value="{group}"]').click()
+        assert not driver.find_element("id", "id_immaculate_hidden").is_selected()
+        save()
+        edit = urlsplit(driver.current_url).path
+        assert edit.endswith("/change/"), edit
+        assert hidden(first) and hidden(second)
+        for server in (django, rust):
+            driver.get(f"http://{HOST}:{server.port}{edit}")
+            assert driver.find_element("id", "id_immaculate_hidden").is_selected()
+        driver.find_element("id", "id_immaculate_hidden").click()
+        save()
+        assert not hidden(first) and hidden(second)
+
+        def roster():
+            return connection.execute("SELECT id,debater_id FROM core_team_debaters WHERE team_id=? ORDER BY id",
+                                      (team,)).fetchall()
+
+        before = roster()
+        assert [member for _, member in before] == [second, first]
+        driver.get(root + f"/admin/core/team/{team}/change/")
+        field = driver.find_element("id", "id_short_name")
+        field.clear()
+        field.send_keys("Roster edit")
+        save()
+        assert roster() == before
+        assert driver.find_element("id", "id_short_name").get_attribute("value") == "Roster edit"
     driver.delete_all_cookies()
 
 
@@ -3659,6 +3777,7 @@ def browser_checks(database, options, output):
         if os.environ.get("BLACK_ROD_PARITY_MEMCACHED_ADDR"):
             assert_search_reindex(rust)
         assert_video_permissions(driver, django, rust, fixture)
+        assert_api_basic_auth(django, rust, fixture)
         assert_video_editor(driver, django, rust, fixture)
         assert_random_video(driver, django, rust, fixture)
         assert_recent_results(driver, django, rust)
@@ -3677,6 +3796,7 @@ def browser_checks(database, options, output):
         assert_admin_tools(driver, django, rust)
         assert_native_site_admin(driver, django, rust)
         assert_admin_model_saves(driver, django, rust)
+        assert_admin_preserves_linked_state(driver, django, rust)
         assert_admin_across_pages(driver, rust)
         assert_admin_topic_merges(driver, django, rust)
         assert_admin_speaker_visibility(driver, django, rust)

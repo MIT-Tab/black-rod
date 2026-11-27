@@ -12,7 +12,7 @@ use axum::{
 use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, SecondsFormat, Utc};
 use minijinja::{Value, context};
 use serde_json::{Map, Value as Json, json};
-use sqlx::{AnyConnection, AssertSqlSafe, Row};
+use sqlx::{Any, AnyConnection, AssertSqlSafe, Executor, Row};
 
 use super::{
     AdminRequest, cap_first,
@@ -236,6 +236,29 @@ fn label_debater(person: &Json) -> String {
     )
 }
 
+const GRID_GROUP: &str = "SELECT id FROM core_debater
+    WHERE id=$1 OR alias_group_id=(SELECT alias_group_id FROM core_debater WHERE id=$1)";
+
+async fn grid_hidden<'e>(db: impl Executor<'e, Database = Any>, id: i64) -> Result<bool, ApiError> {
+    let statement = format!(
+        "SELECT CAST(CASE WHEN EXISTS (
+        SELECT 1 FROM core_immaculategridhiddendebater WHERE debater_id IN ({GRID_GROUP})
+    ) THEN 1 ELSE 0 END AS BIGINT)"
+    );
+    let hidden = sqlx::query_scalar::<_, i64>(AssertSqlSafe(statement))
+        .bind(id)
+        .fetch_one(db)
+        .await?;
+    Ok(hidden != 0)
+}
+
+fn checkbox_posted(values: &Values, name: &str) -> bool {
+    values
+        .get(name)
+        .and_then(|items| items.last())
+        .is_some_and(|value| !value.is_empty() && !value.eq_ignore_ascii_case("false"))
+}
+
 struct Bound<'a> {
     spec: &'a Model,
     loaded: &'a Json,
@@ -323,11 +346,18 @@ impl Bound<'_> {
             primitive(&value)
         };
         let (date, time) = text.split_once(['T', ' ']).unwrap_or((text.as_str(), ""));
-        let checked = self
-            .submitted
-            .map_or(value.as_bool().unwrap_or_default(), |values| {
-                values.contains_key(name)
-            });
+        let checked = if name == "immaculate_hidden" {
+            match (self.submitted, self.id) {
+                (Some(values), _) => checkbox_posted(values, name),
+                (None, Some(id)) => grid_hidden(&admin.state.pool, id).await?,
+                (None, None) => false,
+            }
+        } else {
+            self.submitted
+                .map_or(value.as_bool().unwrap_or_default(), |values| {
+                    values.contains_key(name)
+                })
+        };
         let widget_help = widget
             .map(|widget| widget.help.as_str())
             .unwrap_or_default();
@@ -888,13 +918,23 @@ async fn save_memberships(
             .flat_map(|value| value.split(',').map(str::to_owned).collect::<Vec<_>>())
             .filter_map(|value| value.parse::<i64>().ok())
             .collect::<BTreeSet<_>>();
-        let statement = format!("DELETE FROM {table} WHERE {current}=$1");
-        sqlx::query(AssertSqlSafe(statement))
+        let statement = format!("SELECT CAST({target} AS BIGINT) FROM {table} WHERE {current}=$1");
+        let existing = sqlx::query_scalar::<_, i64>(AssertSqlSafe(statement))
             .bind(record)
-            .execute(&mut *conn)
-            .await?;
+            .fetch_all(&mut *conn)
+            .await?
+            .into_iter()
+            .collect::<BTreeSet<_>>();
+        let delete = format!("DELETE FROM {table} WHERE {current}=$1 AND {target}=$2");
+        for related in existing.difference(&new) {
+            sqlx::query(AssertSqlSafe(delete.as_str()))
+                .bind(record)
+                .bind(related)
+                .execute(&mut *conn)
+                .await?;
+        }
         let insert = format!("INSERT INTO {table} ({current},{target}) VALUES ($1,$2)");
-        for related in new {
+        for related in new.difference(&existing) {
             sqlx::query(AssertSqlSafe(insert.clone()))
                 .bind(record)
                 .bind(related)
@@ -1013,6 +1053,17 @@ async fn save(
         return Ok(Some(redirect(&model.url())));
     }
     let mut tx = admin.state.pool.begin().await?;
+    let mut was_grid_hidden = false;
+    let hide_from_grid =
+        model.key == "core.debater" && checkbox_posted(values, "immaculate_hidden");
+    if model.key == "core.debater"
+        && let Some(id) = id
+    {
+        was_grid_hidden = grid_hidden(&mut *tx, id).await?;
+        if was_grid_hidden != hide_from_grid {
+            changed.push("Hide from Immaculate Grid clues".to_owned());
+        }
+    }
     model_rules::before_save(&mut tx, model, admin.state.current_season, id, &mut columns).await?;
     let record = if columns.is_empty() && id.is_some() {
         id.unwrap_or_default()
@@ -1070,7 +1121,7 @@ async fn save(
     };
     if model.slug() == "debater" {
         crate::claims::edit::team_names(&mut tx, record).await?;
-        if values.contains_key("immaculate_hidden") {
+        if hide_from_grid {
             sqlx::query(
                 "INSERT INTO core_immaculategridhiddendebater (debater_id,created_at)
                 VALUES ($1,CURRENT_TIMESTAMP) ON CONFLICT(debater_id) DO NOTHING",
@@ -1078,10 +1129,14 @@ async fn save(
             .bind(record)
             .execute(&mut *tx)
             .await?;
-        } else {
-            sqlx::query("DELETE FROM core_immaculategridhiddendebater WHERE debater_id IN (
-                SELECT id FROM core_debater WHERE id=$1 OR alias_group_id=(SELECT alias_group_id FROM core_debater WHERE id=$1))")
-                .bind(record).execute(&mut *tx).await?;
+        } else if was_grid_hidden {
+            let statement = format!(
+                "DELETE FROM core_immaculategridhiddendebater WHERE debater_id IN ({GRID_GROUP})"
+            );
+            sqlx::query(AssertSqlSafe(statement))
+                .bind(record)
+                .execute(&mut *tx)
+                .await?;
         }
     }
     let name = loaded_label(&mut tx, model, record).await?;
@@ -1103,6 +1158,9 @@ async fn save(
     )
     .await?;
     tx.commit().await?;
+    if model.key == "core.debater" {
+        admin.state.search.invalidate_all();
+    }
     if model.table == "core_tournament" {
         crate::recent_results::invalidate(admin.state).await;
     }
