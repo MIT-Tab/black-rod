@@ -18,7 +18,9 @@ module.exports = {
   },
 
   plugins: [
-    new BundleTracker({ filename: process.env.WEBPACK_STATS_FILE || "webpack-stats.json" }),
+    new BundleTracker({
+      filename: process.env.WEBPACK_STATS_FILE || "webpack-stats.json",
+    }),
     new webpack.ProvidePlugin({
       $: "jquery",
       jQuery: "jquery",
