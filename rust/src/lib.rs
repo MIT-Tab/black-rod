@@ -96,6 +96,7 @@ pub struct AppState {
     memcached: Option<cache::Memcached>,
     elo: elo::Cache,
     merge_suggestions: admin::merge_suggestions::Cache,
+    synthetic_suggestions: admin::synthetic::suggestions::Cache,
     cache_lifetime: Duration,
     import_cache: tournament_import::source::Cache,
     standings: Cache<(String, i32), Arc<standings::Boards>>,
@@ -105,6 +106,8 @@ pub struct AppState {
     recent_results: Cache<(), Arc<String>>,
     search: Cache<(), Arc<search::SearchIndex>>,
     partnership_stats: Arc<partnership::stats::Cache>,
+    claim_limits: claims::Limits,
+    account_limits: account::limits::Limits,
     school_admin_limits: school_admin::debater::Limits,
     snapshots: Cache<(String, i32, String), Arc<standings::Boards>>,
 }
@@ -178,7 +181,13 @@ impl AppState {
             memcached: None,
             elo: elo::Cache::new(!lifetime.is_zero()),
             merge_suggestions: admin::merge_suggestions::cache(!lifetime.is_zero()),
+            synthetic_suggestions: admin::synthetic::suggestions::Cache::new(!lifetime.is_zero()),
             partnership_stats: Arc::default(),
+            account_limits: account::limits::cache(),
+            claim_limits: Cache::builder()
+                .time_to_live(Duration::from_secs(86_400))
+                .max_capacity(4096)
+                .build(),
             school_admin_limits: Cache::builder()
                 .time_to_live(Duration::from_secs(86_400))
                 .max_capacity(4096)
@@ -265,7 +274,9 @@ fn api_routes() -> Router<AppState> {
         .route("/admin/logout/", axum::routing::post(site_admin::logout))
         .route(
             "/admin/{*path}",
-            get(site_admin::dispatch).post(site_admin::dispatch),
+            get(site_admin::dispatch)
+                .post(site_admin::dispatch)
+                .layer(axum::extract::DefaultBodyLimit::max(65 * 1024 * 1024)),
         )
         .route(
             "/api/schools/",
@@ -373,6 +384,47 @@ pub fn app(state: AppState) -> Router {
         .route("/stats/", get(stats::page))
         .route("/stats", get(append_slash))
         .route("/auth/login/", get(login::view).post(login::view))
+        .route(
+            "/accounts/login/",
+            get(account::entrance).post(account::entrance),
+        )
+        .route("/accounts/login", get(append_slash))
+        .route(
+            "/accounts/signup/",
+            get(account::entrance).post(account::entrance),
+        )
+        .route("/accounts/signup", get(append_slash))
+        .route(
+            "/accounts/logout/",
+            get(account::entrance).post(account::entrance),
+        )
+        .route("/accounts/logout", get(append_slash))
+        .route("/accounts/inactive/", get(account::entrance))
+        .route("/accounts/confirm-email/", get(account::entrance))
+        .route(
+            "/accounts/confirm-email/{key}/",
+            get(account::emails).post(account::emails),
+        )
+        .route(
+            "/accounts/email/",
+            get(account::emails).post(account::emails),
+        )
+        .route("/accounts/email", get(append_slash))
+        .route(
+            "/accounts/reauthenticate/",
+            get(account::reauthenticate).post(account::reauthenticate),
+        )
+        .route(
+            "/accounts/3rdparty/",
+            get(account::connections).post(account::connections),
+        )
+        .route("/accounts/social/connections/", get(account::connections))
+        .route("/accounts/social/login/error/", get(account::entrance))
+        .route(
+            "/accounts/apdaonline/login/",
+            get(oauth::provider).post(oauth::provider),
+        )
+        .route("/accounts/apdaonline/login", get(append_slash))
         .route("/accounts/apdaonline/login/callback/", get(oauth::callback))
         .route(
             "/accounts/password/change/",
@@ -568,6 +620,15 @@ pub fn app(state: AppState) -> Router {
         .route(
             "/core/admin/synthetic-cleanup/",
             get(admin::synthetic::cleanup_page).post(admin::synthetic::cleanup_page),
+        )
+        .route(
+            "/core/admin/synthetic-resolution-suggestions/",
+            get(admin::synthetic::suggestions::endpoint)
+                .post(admin::synthetic::suggestions::endpoint),
+        )
+        .route(
+            "/core/admin/synthetic-resolution-suggestions",
+            get(append_slash),
         )
         .route("/core/admin/synthetic-cleanup", get(append_slash))
         .route(

@@ -7,6 +7,7 @@ pub(super) struct Schema {
     pub(super) title: String,
     pub(super) header: String,
     pub(super) index: String,
+    pub(super) content_types: BTreeMap<String, String>,
     pub(super) apps: Vec<Application>,
 }
 
@@ -37,6 +38,7 @@ pub(super) struct Field {
     pub(super) auto_now_add: bool,
     pub(super) primary: bool,
     pub(super) size: Option<usize>,
+    pub(super) scale: Option<usize>,
     pub(super) default: Option<serde_json::Value>,
     pub(super) default_fn: Option<String>,
     pub(super) through: Option<[String; 3]>,
@@ -56,8 +58,11 @@ pub(super) struct Widget {
     pub(super) label: Option<String>,
     pub(super) help: String,
     pub(super) required: bool,
+    pub(super) hidden_initial: bool,
     pub(super) attributes: BTreeMap<String, serde_json::Value>,
     pub(super) wrapped: bool,
+    pub(super) related_url: Option<String>,
+    pub(super) forward: Option<String>,
     #[serde(default)]
     pub(super) choices: Vec<(String, String)>,
 }
@@ -119,9 +124,19 @@ impl FieldLine {
 }
 
 #[derive(Deserialize)]
+pub(super) struct Exchange {
+    pub(super) headers: Vec<String>,
+    pub(super) fields: Vec<String>,
+    pub(super) import_formats: Vec<String>,
+    pub(super) import_media: Vec<String>,
+    pub(super) export_formats: Vec<String>,
+}
+
+#[derive(Deserialize)]
 pub(super) struct Model {
     pub(super) key: String,
     pub(super) object_name: String,
+    pub(super) default_repr: bool,
     pub(super) singular: String,
     pub(super) plural: String,
     pub(super) table: String,
@@ -129,6 +144,7 @@ pub(super) struct Model {
     pub(super) list_display: Vec<Column>,
     pub(super) list_links: Option<Vec<String>>,
     pub(super) search: Vec<String>,
+    pub(super) choice_ordering: Vec<String>,
     pub(super) ordering: Vec<String>,
     pub(super) filter: Vec<String>,
     pub(super) fields: BTreeMap<String, Field>,
@@ -136,6 +152,7 @@ pub(super) struct Model {
     pub(super) per_page: usize,
     pub(super) max_show_all: usize,
     pub(super) import_export: bool,
+    pub(super) exchange: Option<Exchange>,
     pub(super) save_on_top: bool,
     pub(super) list_media: Media,
     pub(super) actions: Vec<(String, String)>,

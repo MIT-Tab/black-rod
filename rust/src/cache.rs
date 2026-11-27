@@ -34,6 +34,40 @@ impl Memcached {
         format!("black-rod:rust:v1:{}", hex::encode(hash))
     }
 
+    pub(crate) async fn read_counter(&self, key: &str) -> Option<u32> {
+        let (flags, value) = self.read_raw(key).await?;
+        if flags != 2 {
+            return None;
+        }
+        std::str::from_utf8(&value).ok()?.parse().ok()
+    }
+
+    pub(crate) async fn advance_counter(&self, key: &str, seconds: u32) -> bool {
+        if self.write_raw(key, 2, b"1", seconds, false).await {
+            return true;
+        }
+        if !valid_key(key) {
+            return false;
+        }
+        let advanced = timeout(SERVICE_TIMEOUT, async {
+            let stream = TcpStream::connect(self.0).await?;
+            let mut reader = BufReader::new(stream);
+            reader
+                .get_mut()
+                .write_all(format!("incr {key} 1\r\n").as_bytes())
+                .await?;
+            let mut reply = String::new();
+            (&mut reader).take(40).read_line(&mut reply).await?;
+            Ok::<_, io::Error>(reply.trim_end().parse::<u64>().is_ok())
+        })
+        .await
+        .is_ok_and(|result| result.unwrap_or_default());
+        if advanced {
+            let _ = self.touch_raw(key, seconds).await;
+        }
+        advanced
+    }
+
     pub(crate) async fn read_raw(&self, key: &str) -> Option<(u32, Vec<u8>)> {
         if !valid_key(key) {
             return None;

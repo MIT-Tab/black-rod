@@ -75,10 +75,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     let listener = TcpListener::bind(address).await?;
     eprintln!("Black Rod listening on {}", listener.local_addr()?);
-    axum::serve(listener, app(state))
-        .with_graceful_shutdown(async {
-            let _ = tokio::signal::ctrl_c().await;
-        })
-        .await?;
+    axum::serve(
+        listener,
+        app(state).into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .with_graceful_shutdown(async {
+        let _ = tokio::signal::ctrl_c().await;
+    })
+    .await?;
     Ok(())
 }

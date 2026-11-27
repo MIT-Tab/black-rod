@@ -1,7 +1,7 @@
 {% extends "site_admin/base_site.html" %}
 {% block extrahead %}
     {{ super() }}
-    {% for style in css %}<link href="/static/{{ style }}" media="all" rel="stylesheet">{% endfor %}
+    {% for medium,style in css %}<link href="/static/{{ style }}" media="{{ medium }}" rel="stylesheet">{% endfor %}
     {% for asset in js %}<script src="/static/{{ asset }}"></script>{% endfor %}
     <script src="/static/admin/js/cancel.js" async></script>
 {% endblock %}

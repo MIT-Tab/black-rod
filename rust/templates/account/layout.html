@@ -4,9 +4,15 @@
     <meta charset="utf-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ title }}</title>
+    <title>{{ head_title|default(title) }}</title>
+    {% for pass in [1,2] %}
+        {% include "base/_theme_head.html" %}
+        {% for bundle in bundles %}<script src="{{ bundle }}"></script>{% endfor %}
+    {% endfor %}
 </head>
 <body>
+<main class="container-fluid account-content py-3">
+<main class="container-fluid account-content py-3">
     {% if messages %}
         <div><strong>Messages:</strong><ul>{% for message in messages %}<li>{{ message }}</li>{% endfor %}</ul></div>
     {% endif %}
@@ -25,5 +31,10 @@
         </ul>
     </div>
     {% block content %}{% endblock %}
+    <div class="mt-3">{% include "base/_theme_picker.html" %}</div>
+</main>
+<div class="mt-3">{% include "base/_theme_picker.html" %}</div>
+</main>
+{% block extra_body %}{% endblock %}
 </body>
 </html>

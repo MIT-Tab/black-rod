@@ -1,0 +1,16 @@
+{% extends "account/layout.html" %}
+{% block content %}
+<h1>Confirm Access</h1>
+<p>Please reauthenticate to safeguard your account.</p>
+<p>Enter your password:</p>
+<form method="post" action="/accounts/reauthenticate/">
+    <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf }}">
+    {% if error %}<ul class="errorlist" id="id_password_error"><li>{{ error }}</li></ul>{% endif %}
+    <p><label for="id_password">Password:</label>
+      <input type="password" name="password" placeholder="Password" autocomplete="current-password" required aria-describedby="id_password_helptext{% if error %} id_password_error{% endif %}" id="id_password"{% if error %} aria-invalid="true"{% endif %}>
+      <span class="helptext" id="id_password_helptext"><a href="/accounts/password/reset/">Forgot your password?</a></span>
+    </p>
+    {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
+    <button type="submit">Confirm</button>
+</form>
+{% endblock %}

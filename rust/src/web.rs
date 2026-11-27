@@ -43,6 +43,10 @@ const VIEWS: &[(&str, &str)] = &[
         include_str!("../templates/site_admin/change_form.html"),
     ),
     (
+        "site_admin/exchange.html",
+        include_str!("../templates/site_admin/exchange.html"),
+    ),
+    (
         "site_admin/fieldset.html",
         include_str!("../templates/site_admin/fieldset.html"),
     ),
@@ -119,6 +123,26 @@ const VIEWS: &[(&str, &str)] = &[
         include_str!("../templates/account/reset.html"),
     ),
     (
+        "socialaccount/login.html",
+        include_str!("../../core/templates/socialaccount/login.html"),
+    ),
+    (
+        "account/reauthenticate.html",
+        include_str!("../templates/account/reauthenticate.html"),
+    ),
+    (
+        "account/connections.html",
+        include_str!("../templates/account/connections.html"),
+    ),
+    (
+        "account/email.html",
+        include_str!("../templates/account/email.html"),
+    ),
+    (
+        "account/entrance.html",
+        include_str!("../templates/account/entrance.html"),
+    ),
+    (
         "account/layout.html",
         include_str!("../templates/account/layout.html"),
     ),
@@ -137,6 +161,10 @@ const VIEWS: &[(&str, &str)] = &[
     (
         "admin/merge_suggestions.html",
         include_str!("../../core/templates/admin/merge_suggestions.html"),
+    ),
+    (
+        "admin/synthetic_resolution_suggestions.html",
+        include_str!("../../core/templates/admin/synthetic_resolution_suggestions.html"),
     ),
     (
         "admin/mittab_dashboard.html",
@@ -784,6 +812,19 @@ fn adapt_scheduler(template: &str) -> String {
 fn adapt_template(name: &str, template: &str) -> String {
     let adapted;
     let template = match name {
+        "socialaccount/login.html" => {
+            adapted = [
+                "Sign In via APDAOnline",
+                "You are about to sign in using your APDAOnline account.",
+                "Continue",
+                "Back to Login",
+            ]
+            .into_iter()
+            .fold(template.replace("{% load i18n %}", ""), |html, text| {
+                html.replace(&format!("{{% trans \"{text}\" %}}"), text)
+            });
+            &adapted
+        }
         "school_admin/merge_debater_request_form.html" | "admin/merge_debater_requests.html" => {
             let mut html = template
                 .replace("{{ message }}","{{ message.text }}")
@@ -819,7 +860,7 @@ fn adapt_template(name: &str, template: &str) -> String {
                 .replace("{{ message }}", "{{ message.text }}");
             &adapted
         }
-        "admin/merge_suggestions.html" => {
+        "admin/merge_suggestions.html" | "admin/synthetic_resolution_suggestions.html" => {
             adapted = template
                 .replace(r#"|default:"?""#, r#"|default("?", true)"#)
                 .replace(
@@ -1377,6 +1418,8 @@ fn adapt_template(name: &str, template: &str) -> String {
                     "core:scheduling_dashboard" => "/core/admin/scheduling/",
                     "core:tournament_pipeline_audit" => "/core/admin/tournament-pipeline-audit/",
                     "core:school_short_name_audit" => "/core/admin/school-short-names/",
+                    "core:debater_autocomplete" => "/core/debaters/autocomplete",
+                    "core:school_autocomplete" => "/core/schools/autocomplete",
                     "core:synthetic_resolution_suggestions" => {
                         "/core/admin/synthetic-resolution-suggestions/"
                     }

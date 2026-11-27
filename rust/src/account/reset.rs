@@ -1,4 +1,4 @@
-use std::{collections::BTreeSet, sync::LazyLock, time::Duration};
+use std::collections::BTreeSet;
 
 use axum::{
     extract::{Request, State},
@@ -7,13 +7,12 @@ use axum::{
 };
 use chrono::Utc;
 use minijinja::context;
-use moka::future::Cache;
 use ring::hmac;
 use serde_json::json;
 use sqlx::Row;
 use subtle::ConstantTimeEq;
 
-use super::{Errors, mail, passwords, redirect, render, visit};
+use super::{Errors, limits, mail, passwords, redirect, render, visit};
 use crate::{ApiError, AppState, flash, login, session};
 
 const DONE: &str = "/accounts/password/reset/done/";
@@ -132,22 +131,6 @@ pub(super) fn email_syntax(value: &str) -> bool {
         && value.parse::<lettre::Address>().is_ok()
 }
 
-static RESET_LIMIT: LazyLock<Cache<String, ArcCount>> = LazyLock::new(|| {
-    Cache::builder()
-        .time_to_live(Duration::from_secs(60))
-        .max_capacity(8192)
-        .build()
-});
-type ArcCount = std::sync::Arc<std::sync::atomic::AtomicU32>;
-
-async fn limited(email: &str) -> bool {
-    let key = crate::cache::Memcached::key("password-reset", "", email);
-    let count = RESET_LIMIT
-        .get_with(key, async { ArcCount::default() })
-        .await;
-    count.fetch_add(1, std::sync::atomic::Ordering::Relaxed) >= 5
-}
-
 async fn send_reset(
     state: &AppState,
     origin: &str,
@@ -202,6 +185,7 @@ pub(crate) async fn page(State(state): State<AppState>, request: Request) -> Res
 }
 
 async fn response(state: &AppState, request: Request) -> Result<Response, ApiError> {
+    let ip = limits::ip(&request);
     let path = request.uri().path().to_owned();
     let user = session::user(&state.pool, request.headers(), state.secret.as_deref()).await?;
     let visit = match visit(state, request).await {
@@ -223,6 +207,13 @@ async fn response(state: &AppState, request: Request) -> Result<Response, ApiErr
         .strip_prefix(KEY_PREFIX)
         .and_then(|value| value.strip_suffix('/'))
     {
+        if visit.fields.is_some()
+            && limits::consume(state, "reset_password_from_key", &ip, 20, 60)
+                .await
+                .is_none()
+        {
+            return Ok(limits::denied());
+        }
         return from_key(state, &user, &visit, key, &path).await;
     }
     let mut errors = Errors::new();
@@ -230,6 +221,12 @@ async fn response(state: &AppState, request: Request) -> Result<Response, ApiErr
     if path != DONE
         && let Some(fields) = &visit.fields
     {
+        if limits::consume(state, "reset_password", &ip, 20, 60)
+            .await
+            .is_none()
+        {
+            return Ok(limits::denied());
+        }
         email = fields.get("email").map_or("", String::as_str).trim();
         if email.is_empty() {
             errors.insert("email", vec!["This field is required.".to_owned()]);
@@ -237,8 +234,11 @@ async fn response(state: &AppState, request: Request) -> Result<Response, ApiErr
             errors.insert("email", vec!["Enter a valid email address.".to_owned()]);
         } else {
             let sent = email.to_lowercase();
-            if limited(&sent).await {
-                return Ok(StatusCode::TOO_MANY_REQUESTS.into_response());
+            if limits::consume(state, "reset_password", &limits::digest(&sent), 5, 60)
+                .await
+                .is_none()
+            {
+                return Ok(limits::denied());
             }
             let secret = state.secret.as_deref().ok_or(ApiError::Serialization)?;
             send_reset(state, &visit.origin, &sent, secret).await?;

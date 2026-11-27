@@ -1372,6 +1372,88 @@ def smtp_sink():
             thread.join()
 
 
+def assert_account_entry_and_email(driver, django, rust, smtp):
+    from selenium.webdriver.support.expected_conditions import staleness_of
+    import re
+
+    signup = "/accounts/signup/"
+    login = "/accounts/login/"
+    logout = "/accounts/logout/"
+    email = "/accounts/email/"
+    username = "rust_account_workflow"
+    starting = "y8#Fg2m!Dv79"
+    roots = {server.port: f"http://{HOST}:{server.port}" for server in (django,rust)}
+
+    def open_page(server, path):
+        driver.get(roots[server.port] + path)
+
+    def fill(name, value):
+        field = driver.find_element("name", name)
+        field.clear()
+        field.send_keys(value)
+
+    def submit(selector='form button[type="submit"]'):
+        old = driver.find_element("tag name","html")
+        driver.find_element("css selector",selector).click()
+        WebDriverWait(driver,10).until(staleness_of(old))
+
+    driver.delete_all_cookies()
+    open_page(rust, signup + "?next=/games/")
+    fill("username",username)
+    fill("email","workflow-initial@example.test")
+    fill("password1",starting)
+    fill("password2",starting)
+    submit()
+    assert urlsplit(driver.current_url).path == "/games/"
+    open_page(django,email)
+    assert "workflow-initial@example.test" in driver.find_element("tag name","body").text
+
+    for sender,receiver,address in (
+        (rust,django,"rust-confirmed@example.test"),
+        (django,rust,"django-confirmed@example.test"),
+    ):
+        open_page(sender,email)
+        driver.find_element("id","id_email").send_keys(address)
+        submit('button[name="action_add"]')
+        message = smtp.get(timeout=10)
+        assert message["To"].addresses[0].addr_spec == address
+        assert "Please Confirm Your Email Address" in message["Subject"]
+        contents = message.get_body(preferencelist=("plain",)).get_content()
+        link = re.search(r"/accounts/confirm-email/[-:\w]+/", contents)
+        assert link, contents
+        open_page(receiver,link.group())
+        assert "Confirm Email Address" in driver.find_element("tag name","h1").text
+        assert address in driver.find_element("tag name","body").text
+        submit()
+        open_page(django,email)
+        radio = driver.find_element("css selector",f'input[value="{address}"]')
+        label = driver.find_element("css selector",f'label[for="{radio.get_attribute("id")}"]')
+        assert "Verified" in label.text and "Unverified" not in label.text
+
+    open_page(rust,email)
+    driver.find_element("css selector",'input[value="rust-confirmed@example.test"]').click()
+    submit('button[name="action_primary"]')
+    assert "Primary email address set." in driver.find_element("tag name","body").text
+    open_page(rust,logout + "?next=/games/")
+    submit()
+    assert urlsplit(driver.current_url).path == "/games/"
+    assert not driver.get_cookie("sessionid")
+    open_page(rust,login + "?next=/games/")
+    fill("login",username.upper())
+    fill("password",starting)
+    submit()
+    assert urlsplit(driver.current_url).path == "/games/"
+    open_page(django,email)
+    assert "rust-confirmed@example.test" in driver.find_element("tag name","body").text
+    db = Path(os.environ["BR_STATE"]) / "dev.sqlite3"
+    with sqlite3.connect(f"{db.as_uri()}?mode=ro",uri=True) as connection:
+        user = connection.execute("SELECT id,email FROM core_user WHERE username=?",(username,)).fetchone()
+        assert user[1] == "rust-confirmed@example.test"
+        addresses = connection.execute('SELECT email,verified,"primary" FROM account_emailaddress WHERE user_id=? ORDER BY email',(user[0],)).fetchall()
+        assert addresses == [("django-confirmed@example.test",1,0),("rust-confirmed@example.test",1,1),("workflow-initial@example.test",0,0)]
+    driver.delete_all_cookies()
+
+
 def assert_password_accounts(driver, django, rust, smtp):
     from selenium.webdriver.support.expected_conditions import staleness_of
 
@@ -1646,7 +1728,7 @@ def assert_native_site_admin(driver, django, rust):
     assert actions[0] == actions[1] == ["Added.", "Changed Short name."], actions
     driver.get(root + edit)
     submit("a.deletelink")
-    assert "Are you sure?" in driver.title
+    assert driver.title.startswith("Delete |") and "Are you sure" in driver.find_element("tag name","body").text
     submit('input[value="Yes, I’m sure"]')
     assert urlsplit(driver.current_url).path == school_admin
     assert "was deleted successfully" in driver.page_source
@@ -1677,6 +1759,108 @@ def assert_native_site_admin(driver, django, rust):
             endpoint,authorization=f"Bearer {token}",
         ))
         assert status in (401,403)
+    driver.delete_all_cookies()
+
+
+def assert_admin_formats(driver, django, rust):
+    import base64
+    from selenium.webdriver.support.expected_conditions import staleness_of
+
+    code = """
+from django import setup
+setup()
+from core.models import School
+school = School.objects.create(name="Disposable Échange School",short_name="Échange, school")
+print(school.id)
+"""
+    result = subprocess.check_output([str(ROOT / "venv/bin/python"), "-c", code],
+        env={**os.environ,"SECRET_KEY":"disposable-local-parity-key"},text=True)
+    existing = int(result.splitlines()[-1])
+    credential = django_session()
+    root = f"http://{HOST}:{rust.port}"
+    query = "?" + urlencode({"q":"Échange"})
+    route = "/admin/core/school/"
+    formats = ("csv","xls","xlsx","tsv","ods","json","yaml","html")
+    exports = {}
+
+    def open_page(server, page):
+        origin = f"http://{HOST}:{server.port}"
+        driver.get(origin + "/robots.txt")
+        driver.delete_all_cookies()
+        driver.add_cookie({"name":"sessionid","value":credential})
+        driver.get(origin + route + page)
+
+    for server in (django,rust):
+        open_page(server,"export/" + query)
+        downloads = []
+        for index in range(len(formats)):
+            download = driver.execute_async_script("""
+                const format = arguments[0], done = arguments[1];
+                const csrfmiddlewaretoken = document.querySelector('#content input[name=csrfmiddlewaretoken]').value;
+                fetch(location.href,{method:'POST',body:new URLSearchParams({csrfmiddlewaretoken,file_format:format})})
+                .then(async response=>{
+                    const blob=await response.blob();
+                    const reader=new FileReader();
+                    reader.onload=()=>done({status:response.status,type:response.headers.get('Content-Type'),
+                        attachment:response.headers.get('Content-Disposition'),blob:reader.result.split(',')[1]});
+                    reader.readAsDataURL(blob);
+                }).catch(error=>done({status:0,error:String(error)}));
+            """,str(index))
+            assert download["status"] == 200 and download["attachment"].endswith(f'.{formats[index]}"'), download["attachment"]
+            downloads.append(download)
+        exports[server.port] = downloads
+    django_exports = exports[django.port]
+    rust_exports = exports[rust.port]
+    for expected,actual in zip(django_exports,rust_exports):
+        assert expected["type"] == actual["type"]
+        assert expected["attachment"] == actual["attachment"]
+    for index in (0,3,7):
+        assert base64.b64decode(django_exports[index]["blob"]) == base64.b64decode(rust_exports[index]["blob"])
+    for index in range(len(formats)):
+        open_page(rust,"import/")
+        incoming = django_exports[index]["blob"]
+        draft = driver.execute_async_script("""
+            const [encoded,format,ext,done] = arguments;
+            const body = new FormData();
+            body.set('csrfmiddlewaretoken',document.querySelector('#content input[name=csrfmiddlewaretoken]').value);
+            body.set('input_format',format);
+            body.set('import_file',new File([Uint8Array.from(atob(encoded), x=>x.charCodeAt(0))],'fixture.'+ext));
+            fetch(location.href,{method:'POST',body}).then(async response=>{
+                const html = new DOMParser().parseFromString(await response.text(),'text/html');
+                done({ok:response.ok, preview:!!html.querySelector('input[name=confirm]'),
+                      content:html.body.innerText,text:html.querySelector('.import-preview')?.textContent});
+            }).catch(error=>done({error:String(error)}));
+        """,incoming,str(index),formats[index])
+        assert draft.get("ok") and draft.get("preview") and "Échange, school" in draft.get("text",""), (formats[index],draft)
+
+    open_page(rust,"import/")
+    from tempfile import NamedTemporaryFile
+    with NamedTemporaryFile(mode="w",encoding="utf-8",suffix=".csv") as fixture:
+        fixture.write("id,name,short_name,included_in_oty,temporary,synthetic\n")
+        fixture.write(f"{existing},Disposable Échange School,Changed by import,1,0,0\n")
+        fixture.write(",Disposable Imported School,New import,1,0,0\n")
+        fixture.flush()
+        driver.find_element("name","import_file").send_keys(fixture.name)
+        driver.find_element("css selector",'select[name="input_format"] option[value="0"]').click()
+        html = driver.find_element("tag name","html")
+        driver.find_element("css selector",'#content input[value="Submit"]').click()
+        WebDriverWait(driver,10).until(staleness_of(html))
+    assert "Preview" in driver.find_element("id","content").text
+    db = Path(os.environ["BR_STATE"]) / "dev.sqlite3"
+    with sqlite3.connect(f"{db.as_uri()}?mode=ro",uri=True) as connection:
+        assert connection.execute("SELECT short_name FROM core_school WHERE id=?",(existing,)).fetchone() == ("Échange, school",)
+        assert connection.execute("SELECT id FROM core_school WHERE name='Disposable Imported School'").fetchone() is None
+    html = driver.find_element("tag name","html")
+    driver.find_element("name","confirm").click()
+    WebDriverWait(driver,10).until(staleness_of(html))
+    assert driver.current_url == root + route
+    assert "Import finished, with 1 new and 1 updated schools." in driver.find_element("tag name","body").text
+    open_page(django,f"{existing}/change/")
+    assert driver.find_element("name","short_name").get_attribute("value") == "Changed by import"
+    with sqlite3.connect(f"{db.as_uri()}?mode=ro",uri=True) as connection:
+        assert connection.execute("SELECT short_name FROM core_school WHERE name='Disposable Imported School'").fetchone() == ("New import",)
+        assert connection.execute("SELECT change_message FROM django_admin_log WHERE object_id=? ORDER BY id DESC LIMIT 1",
+                                  (str(existing),)).fetchone() == ("update through import_export",)
     driver.delete_all_cookies()
 
 
@@ -1844,6 +2028,87 @@ print(json.dumps({"one":one.id, "two":two.id, "three":three.id, "kept":second.id
         assert rows == [(records["kept"],)] * 3
         assert connection.execute("SELECT id FROM core_debateraliasgroup WHERE id=?",
                                   (records["removed"],)).fetchone() is None
+    driver.delete_all_cookies()
+
+
+def assert_synthetic_suggestions(driver, django, rust):
+    code = """
+from django import setup
+setup()
+from core.models import Debater, School
+import json
+canonical = School.objects.create(name="Disposable Lakenford University", short_name="DLU")
+source = School.all_objects.create(name="Disposable Lakenford College", short_name="DLU", synthetic=True, temporary=True)
+first = Debater.objects.create(first_name="Zaybra",last_name="Quinder",school=canonical)
+second = Debater.all_objects.create(first_name="Zaybra",last_name="Quindr",school=source,synthetic=True,temporary=True)
+print(json.dumps({"canonical":canonical.id,"source":source.id,"target_debater":first.id,"source_debater":second.id}))
+"""
+    output = subprocess.check_output([str(ROOT / "venv/bin/python"), "-c", code],
+        env={**os.environ, "SECRET_KEY": "disposable-local-parity-key"}, text=True)
+    data = json.loads(output.splitlines()[-1])
+    path = "/core/admin/synthetic-resolution-suggestions/"
+    query = "?" + urlencode({
+        "run": 1, "refresh": 1, "synthetic_debaters": data["source_debater"], "synthetic_schools": data["source"],
+    })
+    rust_base = f"http://{HOST}:{rust.port}"
+    session = django_session()
+
+    def open_page(server, route):
+        root = f"http://{HOST}:{server.port}"
+        driver.get(root + "/robots.txt")
+        driver.delete_all_cookies()
+        driver.add_cookie({"name":"sessionid","value":session})
+        driver.get(root + route)
+
+    def rows():
+        return driver.execute_script("""
+            return [...document.querySelectorAll('tr[data-synthetic-id]')].map(row=>[
+                +row.dataset.syntheticId,+row.dataset.targetId,row.innerText.replace(/\\s+/g," ").trim()
+            ]);
+        """)
+
+    open_page(rust, path)
+    assert rows() == []
+    for server in (django,rust):
+        open_page(server, path + query)
+        observed = rows()
+        expected = {
+            (data["source"],data["canonical"]),
+            (data["source_debater"],data["target_debater"]),
+        }
+        assert expected.issubset({(row[0],row[1]) for row in observed}), observed
+        if server == django:
+            reference = observed
+    assert reference == observed, (reference,observed)
+    driver.get(rust_base + path + query.replace("&refresh=1",""))
+    assert "Cached" in driver.find_element("tag name","body").text
+
+    def submit(action, entity, source, target):
+        return driver.execute_async_script("""
+            const [path, action, entity_type, synthetic_id, target_id, done] = arguments;
+            const csrfmiddlewaretoken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+            fetch(path, {method:'POST',body:new URLSearchParams({
+                action,entity_type,synthetic_id,target_id,csrfmiddlewaretoken
+            })}).then(response=>response.json()).then(done,error=>done({error:String(error)}));
+        """, path, action, entity, source, target)
+
+    for _ in range(2):
+        rejected = submit("reject","debater",data["source_debater"],data["target_debater"])
+        assert rejected["success"] and rejected["action"] == "reject", rejected
+    driver.get(rust_base + path + query.replace("&refresh=1",""))
+    assert (data["source_debater"],data["target_debater"]) not in {(row[0],row[1]) for row in rows()}
+    resolved = submit("resolve","school",data["source"],data["canonical"])
+    assert resolved["success"] and resolved["action"] == "resolve", resolved
+    db = Path(os.environ["BR_STATE"]) / "dev.sqlite3"
+    with sqlite3.connect(f"{db.as_uri()}?mode=ro", uri=True) as connection:
+        logs = connection.execute(
+            "SELECT action,entity_type,reason,source_context,synthetic_snapshot FROM core_syntheticresolutionlog where synthetic_id IN (?,?) ORDER BY id",
+            (data["source"],data["source_debater"])).fetchall()
+        assert [(entry[0],entry[1]) for entry in logs] == [("rejected","debater"),("resolved","school")], logs
+        assert json.loads(logs[0][3]) == {"source":"synthetic_resolution_suggestions"}
+        assert json.loads(logs[0][4])["school_id"] == data["source"]
+        assert connection.execute("SELECT school_id FROM core_debater WHERE id=?",
+            (data["source_debater"],)).fetchone() == (data["canonical"],)
     driver.delete_all_cookies()
 
 
@@ -2604,9 +2869,7 @@ class OAuthProvider(BaseHTTPRequestHandler):
                     {"name": "Fixture First", "school": {"apda_id": 7}}}],
             })
         elif location.path == "/oauth/me" and self.headers.get("Authorization") == "Bearer fixture-token":
-            self.reply({"ID": 1234567, "user_nicename": "rustparity",
-                        "user_email": "oauth-fixture@example.test", "display_name": "Example Tester",
-                        "user_roles": ["private_side_viewer"]})
+            self.reply(self.server.oauth_profile)
         else:
             self.send_error(404)
 
@@ -2622,6 +2885,9 @@ class OAuthProvider(BaseHTTPRequestHandler):
 def oauth_provider(fixture=None):
     with ThreadingHTTPServer((HOST, 0), OAuthProvider) as server:
         server.import_payload = import_payload(fixture) if fixture else None
+        server.oauth_profile = {"ID":1234567,"user_nicename":"rustparity",
+            "user_email":"oauth-fixture@example.test","display_name":"Example Tester",
+            "user_roles":["private_side_viewer"]}
         thread = Thread(target=server.serve_forever, daemon=True)
         origin = f"http://{HOST}:{server.server_port}"
         os.environ["BLACK_ROD_OAUTH_BASE"] = f"{origin}/"
@@ -2654,6 +2920,39 @@ def assert_oauth_roundtrip(driver, rust, django):
         driver.get(f"http://{HOST}:{django.port}/games/")
         assert "My Account" in driver.find_element("tag name", "nav").get_attribute("textContent")
         driver.delete_cookie("sessionid")
+
+
+def assert_oauth_connections(driver, django, rust, provider):
+    from selenium.webdriver.support.expected_conditions import staleness_of
+    session = django_session()
+    provider.oauth_profile = {
+        "ID":2345678,"user_nicename":"connectionparity","user_email":"connection-fixture@example.test",
+        "display_name":"Connected Fixture","user_roles":[],
+    }
+    route = "/accounts/3rdparty/"
+    rust_root, django_root = [f"http://{HOST}:{server.port}" for server in (rust,django)]
+    driver.get(rust_root + "/robots.txt")
+    driver.delete_all_cookies()
+    driver.add_cookie({"name":"sessionid","value":session})
+    driver.get(rust_root + route)
+    driver.find_element("link text","APDAOnline").click()
+    assert urlsplit(driver.current_url).path == "/accounts/apdaonline/login/"
+    assert "Sign In via APDAOnline" in driver.find_element("tag name","body").text
+    driver.find_element("css selector",'.card form button[type="submit"]').click()
+    WebDriverWait(driver,10).until(lambda browser: browser.current_url==rust_root+route)
+    assert "The third-party account has been connected." in driver.find_element("tag name","body").text
+    assert driver.get_cookie("sessionid")["value"] == session
+    driver.get(django_root + route)
+    assert "Connected Fixture" in driver.find_element("tag name","body").text
+    driver.get(rust_root + route)
+    driver.find_element("name","account").click()
+    old = driver.find_element("tag name","html")
+    driver.find_element("css selector",'main form button[type="submit"]').click()
+    WebDriverWait(driver,10).until(staleness_of(old))
+    assert "The third-party account has been disconnected." in driver.find_element("tag name","body").text
+    driver.get(django_root + route)
+    assert "Connected Fixture" not in driver.find_element("tag name","body").text
+    driver.delete_all_cookies()
 
 
 def assert_login_roundtrip(driver, rust, django):
@@ -2741,7 +3040,9 @@ def browser_checks(database, options, output):
         assert_session_nav(driver, (django, rust))
         assert_login_roundtrip(driver, rust, django)
         assert_password_accounts(driver, django, rust, mail)
+        assert_account_entry_and_email(driver, django, rust, mail)
         assert_oauth_roundtrip(driver, rust, django)
+        assert_oauth_connections(driver, django, rust, provider)
         assert_directories(driver, django, rust)
         assert_legacy_standings(driver, django, rust)
         assert_partnership_paths(driver, django, rust)
@@ -2765,12 +3066,14 @@ def browser_checks(database, options, output):
         assert_doty(driver, django, rust)
         assert_admin_tools(driver, django, rust)
         assert_native_site_admin(driver, django, rust)
+        assert_admin_formats(driver, django, rust)
         assert_debater_aliases(driver, django, rust)
         assert_native_round_inlines(driver, django, rust)
         assert_merge_suggestions(driver, django, rust)
         assert_speaks_statistics(driver, django, rust, fixture)
         assert_elo_dashboard(driver, django, rust, fixture)
         assert_synthetic_cleanup(driver, django, rust)
+        assert_synthetic_suggestions(driver, django, rust)
         assert_mittab_dashboard(driver, django, rust)
         assert_mittab_bundle_upload(driver, django, rust, fixture)
         assert_tournament_audit(driver, django, rust, fixture)

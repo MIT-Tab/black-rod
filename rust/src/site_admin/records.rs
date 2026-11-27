@@ -281,10 +281,11 @@ pub(super) async fn delete(
             *summary.entry(cap_first(&model.plural)).or_default() += 1;
         }
     }
-    let title = if lacking.is_empty() && protected.is_empty() {
-        "Are you sure?"
-    } else {
-        "Cannot delete"
+    let title = match (lacking.is_empty() && protected.is_empty(), bulk) {
+        (true, false) => "Delete".to_owned(),
+        (true, true) => "Are you sure?".to_owned(),
+        (false, false) => format!("Cannot delete {}", model.singular),
+        (false, true) => format!("Cannot delete {}", model.plural),
     };
     let base = common(model, first, &original);
     admin.view(

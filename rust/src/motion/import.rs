@@ -40,7 +40,7 @@ struct ImportRow {
     errors: Vec<String>,
 }
 
-fn worksheet_index(data: &[u8]) -> usize {
+pub(crate) fn worksheet_index(data: &[u8]) -> usize {
     static ACTIVE: LazyLock<Regex> =
         LazyLock::new(|| Regex::new(r#"\bactiveTab\s*=\s*["'](\d+)["']"#).unwrap());
     let Ok(mut workbook) = ZipArchive::new(Cursor::new(data)) else {

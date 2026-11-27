@@ -1,4 +1,5 @@
 mod cleanup;
+pub(crate) mod suggestions;
 
 pub(crate) use cleanup::page as cleanup_page;
 

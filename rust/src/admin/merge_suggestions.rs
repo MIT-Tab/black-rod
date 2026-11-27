@@ -106,7 +106,7 @@ async fn candidates(pool: &AnyPool) -> Result<Vec<Candidate>, ApiError> {
         .map_err(Into::into)
 }
 
-async fn totals(
+pub(super) async fn totals(
     conn: &mut AnyConnection,
     ids: &HashSet<i64>,
 ) -> Result<HashMap<i64, i64>, ApiError> {
@@ -233,17 +233,7 @@ async fn build(pool: &AnyPool) -> Result<Arc<Vec<Suggestion>>, ApiError> {
             let max = a.total_results.max(b.total_results);
             let min = a.total_results.min(b.total_results);
             let same = a.school_id == b.school_id;
-            let mut score = ratio * 100.0 + (a.id.max(b.id) as f64 / 200.0).min(50.0);
-            if same {
-                score += 30.0
-            }
-            if max > 0 {
-                score += if min <= 5 {
-                    (1.0 - min as f64 / (max + 1) as f64) * 40.0
-                } else {
-                    -20.0
-                };
-            }
+            let score = merge_score(ratio, a.id.max(b.id), same, min, max);
             (score > 0.0).then_some((one, two, ratio, same, min, max, score))
         })
         .collect::<Vec<_>>();
@@ -262,6 +252,27 @@ async fn build(pool: &AnyPool) -> Result<Arc<Vec<Suggestion>>, ApiError> {
             })
             .collect(),
     ))
+}
+
+pub(super) fn merge_score(
+    ratio: f64,
+    latest_id: i64,
+    same_school: bool,
+    min: i64,
+    max: i64,
+) -> f64 {
+    let mut score = ratio * 100.0 + (latest_id as f64 / 200.0).min(50.0);
+    if same_school {
+        score += 30.0;
+    }
+    if max > 0 {
+        score += if min <= 5 {
+            (1.0 - min as f64 / (max + 1) as f64) * 40.0
+        } else {
+            -20.0
+        };
+    }
+    score
 }
 
 async fn submit(state: &AppState, user: i64, request: Request) -> Result<Response, ApiError> {

@@ -157,6 +157,13 @@ async fn change_page(state: &AppState, request: Request) -> Result<Response, Api
         Err(response) => return Ok(*response),
     };
     let mut errors = Errors::new();
+    if visit.fields.is_some()
+        && super::limits::consume(state, "change_password", &super::limits::user(id), 5, 60)
+            .await
+            .is_none()
+    {
+        return Ok(super::limits::denied());
+    }
     if let Some(fields) = &visit.fields {
         errors = validation(
             fields,

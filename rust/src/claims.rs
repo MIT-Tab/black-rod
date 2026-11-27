@@ -6,7 +6,7 @@ use axum::{
     http::{HeaderMap, Method, StatusCode, Uri, header},
     response::{Html, IntoResponse, Response},
 };
-use chrono::{Duration, NaiveDateTime, Utc};
+use chrono::NaiveDateTime;
 use minijinja::context;
 use serde_json::{Value, json};
 use sqlx::{AnyPool, AssertSqlSafe, Row, any::AnyRow};
@@ -191,44 +191,40 @@ pub(crate) async fn profile(State(state): State<AppState>, request: Request) -> 
     )
 }
 
-async fn rate_limited<'a>(
-    executor: impl sqlx::Executor<'a, Database = sqlx::Any>,
-    user: i64,
-) -> Result<bool, sqlx::Error> {
-    let times = sqlx::query_scalar::<_, String>(
-        "SELECT CAST(created_at AS TEXT) FROM core_claimdebaterrequest
-        WHERE requested_by_id=$1 ORDER BY created_at DESC LIMIT 5",
-    )
-    .bind(user)
-    .fetch_all(executor)
-    .await?;
-    if times.len() < 5 {
-        return Ok(false);
+const LIMIT_TTL_SECONDS: u32 = 86_400;
+type LocalLimit = std::sync::Arc<tokio::sync::Mutex<u32>>;
+
+pub(crate) type Limits = moka::future::Cache<i64, LocalLimit>;
+
+async fn count(state: &AppState, user: i64) -> (String, LocalLimit) {
+    let key = format!(":1:claim_debater_rate_limit:{user}");
+    let cell = state
+        .claim_limits
+        .get_with(user, async {
+            std::sync::Arc::new(tokio::sync::Mutex::new(0))
+        })
+        .await;
+    (key, cell)
+}
+
+async fn rate_limited(state: &AppState, user: i64) -> bool {
+    let (key, local) = count(state, user).await;
+    if let Some(cache) = &state.memcached {
+        return cache.read_counter(&key).await.unwrap_or_default() >= 5;
     }
-    let mut newer = Utc::now().naive_utc();
-    for time in times {
-        let naive = time.split('+').next().unwrap_or(&time);
-        let Ok(older) = NaiveDateTime::parse_from_str(naive, "%Y-%m-%d %H:%M:%S%.f") else {
-            return Ok(false);
-        };
-        if newer - older >= Duration::days(1) {
-            return Ok(false);
-        }
-        newer = older;
-    }
-    Ok(true)
+    *local.lock().await >= 5
 }
 
 const INVALID: &str = "Select a valid choice. That choice is not one of the available choices.";
 const LIMITED: &str = "You have reached the daily limit for claim requests. Please try again tomorrow or contact an administrator.";
 
 async fn submit_claim(
-    pool: &AnyPool,
+    state: &AppState,
     user: i64,
     school: i64,
     debater: i64,
 ) -> Result<Option<&'static str>, sqlx::Error> {
-    let mut tx = pool.begin().await?;
+    let mut tx = state.pool.begin().await?;
     // Lock the requesting user and candidate profile in a stable order.
     sqlx::query("UPDATE core_user SET is_active=is_active WHERE id=$1")
         .bind(user)
@@ -267,11 +263,24 @@ async fn submit_claim(
             "A pending claim request already exists for this debater.",
         ));
     }
-    if rate_limited(&mut *tx, user).await? {
+    let (key, local) = count(state, user).await;
+    let mut counter = local.clone().lock_owned().await;
+    let current = if let Some(cache) = &state.memcached {
+        cache.read_counter(&key).await.unwrap_or_default()
+    } else {
+        *counter
+    };
+    if current >= 5 {
         return Ok(Some(LIMITED));
     }
     sqlx::query("INSERT INTO core_claimdebaterrequest (requested_by_id,debater_id,status,created_at,denial_reason)
         VALUES ($1,$2,'pending',CURRENT_TIMESTAMP,'')").bind(user).bind(debater).execute(&mut *tx).await?;
+    if let Some(cache) = &state.memcached {
+        let _ = cache.advance_counter(&key, LIMIT_TTL_SECONDS).await;
+    } else {
+        *counter += 1;
+        state.claim_limits.insert(user, local).await;
+    }
     tx.commit().await?;
     Ok(None)
 }
@@ -365,7 +374,7 @@ pub(crate) async fn create(State(state): State<AppState>, request: Request) -> R
             }
         }
         if let (Some((school, _)), Some((debater, _))) = (&school, &debater) {
-            match submit_claim(&state.pool, id, *school, *debater).await {
+            match submit_claim(&state, id, *school, *debater).await {
                 Ok(None) => {
                     return redirect(
                         &state,
@@ -393,7 +402,7 @@ pub(crate) async fn create(State(state): State<AppState>, request: Request) -> R
     let Ok((csrf, token)) = login::csrf_tokens(&parts.headers) else {
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     };
-    let limited = rate_limited(&state.pool, id).await.unwrap_or_default();
+    let limited = rate_limited(&state, id).await;
     render(
         &state,
         &user,

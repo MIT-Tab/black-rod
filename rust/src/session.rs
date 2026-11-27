@@ -353,12 +353,60 @@ pub(crate) async fn oauth_start(
     Ok(session_key)
 }
 
+pub(crate) async fn oauth_connect(
+    pool: &AnyPool,
+    headers: &HeaderMap,
+    secret: &[u8],
+    state_id: &str,
+    next: &str,
+) -> Result<Option<String>, sqlx::Error> {
+    let Some(mut session) = StoredSession::read(pool, headers, secret).await? else {
+        return Ok(None);
+    };
+    let mut states: serde_json::Map<String, Value> = session
+        .values
+        .get("socialaccount_states")
+        .and_then(|states| serde_json::from_str(states.get()).ok())
+        .unwrap_or_default();
+    let now = Utc::now().timestamp() as f64;
+    states.retain(|_, state| state[1].as_f64().is_some_and(|time| now - time <= 600.0));
+    if states.len() >= 10
+        && let Some(oldest) = states
+            .iter()
+            .min_by(|(_, a), (_, b)| {
+                a[1].as_f64()
+                    .unwrap_or_default()
+                    .total_cmp(&b[1].as_f64().unwrap_or_default())
+            })
+            .map(|(key, _)| key.clone())
+    {
+        states.remove(&oldest);
+    }
+    states.insert(
+        state_id.to_owned(),
+        json!([{"process":"connect","next":next,"data":{}},now]),
+    );
+    let state = serde_json::value::to_raw_value(&states)
+        .map_err(|error| sqlx::Error::Protocol(error.to_string()))?;
+    session
+        .values
+        .insert("socialaccount_states".to_owned(), state);
+    let key = session.id.clone();
+    Ok(session.save(pool, secret).await?.then_some(key))
+}
+
+pub(crate) struct OAuthContext {
+    pub(crate) next: String,
+    pub(crate) remember: bool,
+    pub(crate) connect: bool,
+}
+
 pub(crate) async fn consume_oauth(
     pool: &AnyPool,
     headers: &HeaderMap,
     secret: &[u8],
     state_id: &str,
-) -> Result<Option<(String, bool)>, sqlx::Error> {
+) -> Result<Option<OAuthContext>, sqlx::Error> {
     let Some(session_key) = session_id(headers) else {
         return Ok(None);
     };
@@ -381,12 +429,11 @@ pub(crate) async fn consume_oauth(
     if Utc::now().timestamp() as f64 - stashed_at > 600.0 {
         return Ok(None);
     }
-    if state[0]["process"]
-        .as_str()
-        .is_some_and(|process| process != "login")
-    {
-        return Ok(None);
-    }
+    let connect = match state[0]["process"].as_str() {
+        Some("connect") => true,
+        None | Some("login") => false,
+        _ => return Ok(None),
+    };
     let changed = sqlx::query(
         "UPDATE django_session SET session_data = $1 WHERE session_key = $2 AND session_data = $3",
     )
@@ -400,7 +447,11 @@ pub(crate) async fn consume_oauth(
     }
     let next = state[0]["next"].as_str().unwrap_or_default().to_owned();
     let remember = payload["apda_remember_login"].as_bool().unwrap_or(true);
-    Ok(Some((next, remember)))
+    Ok(Some(OAuthContext {
+        next,
+        remember,
+        connect,
+    }))
 }
 
 pub(crate) async fn create(

@@ -36,7 +36,7 @@ fn primitive(value: &Json) -> String {
     }
 }
 
-fn default(field: &Field) -> Json {
+pub(super) fn default(field: &Field) -> Json {
     if let Some(value) = &field.default {
         return value.clone();
     }
@@ -111,15 +111,25 @@ async fn choices(
     owner: &str,
 ) -> Result<Vec<(String, String)>, ApiError> {
     let Some(target) = related_model(field) else {
-        if field.related.as_deref() == Some("contenttypes.contenttype") {
-            return Ok(sqlx::query_as::<_, (String, String)>(
-                "SELECT CAST(id AS TEXT),app_label || ' | ' || model
-                FROM django_content_type ORDER BY app_label,model",
-            )
-            .fetch_all(&admin.state.pool)
-            .await?);
-        }
-        return Ok(Vec::new());
+        let label = |app: &str, model: &str| {
+            let key = format!("{app}.{model}");
+            schema()
+                .content_types
+                .get(&key)
+                .cloned()
+                .unwrap_or_else(|| format!("{app} | {model}"))
+        };
+        return match field.related.as_deref() {
+            Some("contenttypes.contenttype") => Ok(sqlx::query_as::<_, (String,String,String)>(
+                "SELECT CAST(id AS TEXT),app_label,model FROM django_content_type ORDER BY app_label,model")
+                .fetch_all(&admin.state.pool).await?.into_iter().map(|(id,app,model)|(id,label(&app,&model))).collect()),
+            Some("auth.permission") => Ok(sqlx::query_as::<_, (String,String,String,String)>(
+                "SELECT CAST(p.id AS TEXT),ct.app_label,ct.model,p.name FROM auth_permission p
+                 JOIN django_content_type ct ON ct.id=p.content_type_id ORDER BY ct.app_label,ct.model,p.codename")
+                .fetch_all(&admin.state.pool).await?.into_iter()
+                .map(|(id,app,model,name)|(id,format!("{} | {name}",label(&app,&model)))).collect()),
+            _ => Ok(Vec::new()),
+        };
     };
     let ids = selected
         .iter()
@@ -151,12 +161,7 @@ async fn choices(
     } else {
         format!(" WHERE {}", filters.join(" AND "))
     };
-    let order = match target.slug() {
-        "debater" => "t0.first_name,t0.last_name,t0.id",
-        "school" | "team" | "tournament" | "group" | "site" => "repr,t0.id",
-        "user" => "t0.username",
-        _ => "t0.id",
-    };
+    let order = super::listing::choice_ordering(&mut source, target);
     let sql = format!(
         "SELECT CAST(t0.id AS TEXT),{repr} AS repr FROM {}{where_} ORDER BY {order}",
         source.sql()
@@ -198,14 +203,27 @@ impl Bound<'_> {
         let read_only =
             widget.is_none() || self.id.is_some() && !admin.viewer.allows(model, "change");
         let checkbox = !read_only && choice_kind == "CheckboxInput";
-        let multiple = matches!(choice_kind, "SelectMultiple" | "AutocompleteSelectMultiple");
+        let multiple = matches!(
+            choice_kind,
+            "SelectMultiple"
+                | "AutocompleteSelectMultiple"
+                | "FilteredSelectMultiple"
+                | "ModelSelect2Multiple"
+        );
+        let raw_id = matches!(
+            choice_kind,
+            "ForeignKeyRawIdWidget" | "ManyToManyRawIdWidget"
+        );
+        let dal = matches!(choice_kind, "ModelSelect2" | "ModelSelect2Multiple");
         let radio = choice_kind == "RadioSelect";
         let multicheck = choice_kind == "CheckboxSelectMultiple";
         let autocomplete = choice_kind.starts_with("AutocompleteSelect");
         let select = matches!(
             choice_kind,
             "Select" | "NullBooleanSelect" | "SelectMultiple"
-        ) || autocomplete;
+        ) || autocomplete
+            || dal
+            || multiple;
         let textarea = matches!(
             choice_kind,
             "Textarea" | "AdminTextareaWidget" | "AdminJSONFieldWidget"
@@ -274,6 +292,23 @@ impl Bound<'_> {
         {
             attrs.insert("maxlength".into(), json!(size));
         }
+        let mut text_value = text.clone();
+        if choice_kind == "ManyToManyRawIdWidget" {
+            text_value = selected.join(",");
+        }
+        let raw_url = widget.and_then(|widget| widget.related_url.as_deref());
+        let raw_caption = if raw_id && choice_kind != "ManyToManyRawIdWidget" {
+            if let (Some(target), Ok(id)) = (field.and_then(related_model), text.parse::<i64>()) {
+                Some((
+                    format!("{}{id}/change/", target.url()),
+                    object_label(admin, target, id).await?,
+                ))
+            } else {
+                None
+            }
+        } else {
+            None
+        };
         let mut options = widget
             .map(|widget| widget.choices.clone())
             .unwrap_or_default();
@@ -288,7 +323,7 @@ impl Bound<'_> {
             } else {
                 primitive(&self.loaded["team_id"])
             };
-            options = choices(admin, model, field, &selected, autocomplete, &team).await?;
+            options = choices(admin, model, field, &selected, autocomplete || dal, &team).await?;
             if autocomplete && !required && !multiple {
                 options.insert(0, (String::new(), String::new()));
             } else if !autocomplete && !multiple && !multicheck && (!required || value.is_null()) {
@@ -322,6 +357,7 @@ impl Bound<'_> {
         let widget_required = required
             && (!select
                 || autocomplete
+                || dal
                 || options.first().is_some_and(|option| option.0.is_empty()));
         let items = options
             .into_iter()
@@ -336,6 +372,13 @@ impl Bound<'_> {
                 view=>!multiple&&admin.viewer.read(target),
             }
         });
+        let related = related.or_else(|| {
+            field
+                .filter(|field| field.related.as_deref() == Some("auth.permission"))
+                .filter(|_| choice_kind == "FilteredSelectMultiple")
+                .map(|_| context! {slug=>"permission"})
+        });
+        let forward = widget.and_then(|widget| widget.forward.as_deref());
         let mut hash = text.split('$');
         let algorithm = hash.next().unwrap_or_default();
         let iterations = hash.next().unwrap_or_default();
@@ -387,9 +430,10 @@ impl Bound<'_> {
             display(Some(&text), field, false)
         };
         Ok(context! {
-            name,label=>caption,help,required,widget_required,datetime,date,time=>time.split(['.','+','Z']).next().unwrap_or_default(),
+            name,label=>caption,help,required,widget_required,date_widget=>choice_kind == "AdminDateWidget",datetime,date,time=>time.split(['.','+','Z']).next().unwrap_or_default(),
             checkbox, checked, readonly=>read_only, read_value, preformatted, wrapped=>widget.is_some_and(|widget|widget.wrapped),
-            value=>&text,type=>kind, attrs=>attrs.iter().collect::<Vec<_>>(),related, select,multiple,radio,multicheck,
+            value=>text_value,type=>kind, attrs=>attrs.iter().collect::<Vec<_>>(),related, select,multiple,radio,multicheck,
+            raw_url,raw_caption,forward,hidden_initial=>widget.is_some_and(|widget|widget.hidden_initial),
             textarea,password_status,algorithm,iterations,salt,digest,usable=>!text.starts_with('!'),
             options=>items,error=>self.errors.get(name)
         })
@@ -531,7 +575,7 @@ pub(super) async fn object_label(
     loaded_label(&mut conn, model, id).await
 }
 
-async fn loaded_label(
+pub(super) async fn loaded_label(
     conn: &mut AnyConnection,
     model: &Model,
     id: i64,
@@ -687,7 +731,7 @@ pub(super) async fn log(
     Ok(())
 }
 
-async fn record_rules(
+pub(super) async fn record_rules(
     conn: &mut AnyConnection,
     model: &Model,
     fields: &mut Map<String, Json>,
@@ -730,6 +774,7 @@ async fn save_memberships(
         }
         let new = selected_fields(values, name)
             .into_iter()
+            .flat_map(|value| value.split(',').map(str::to_owned).collect::<Vec<_>>())
             .filter_map(|value| value.parse::<i64>().ok())
             .collect::<BTreeSet<_>>();
         let statement = format!("DELETE FROM {table} WHERE {current}=$1");

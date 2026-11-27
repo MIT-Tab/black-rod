@@ -1,5 +1,10 @@
+mod connections;
+mod emails;
+mod entrance;
+pub(crate) mod limits;
 mod mail;
 mod passwords;
+mod reauthentication;
 mod reset;
 
 use std::collections::HashMap;
@@ -14,7 +19,11 @@ use minijinja::{Value, context};
 
 use crate::{ApiError, AppState, flash, login, session::User, web};
 
+pub(crate) use connections::endpoint as connections;
+pub(crate) use emails::endpoint as emails;
+pub(crate) use entrance::endpoint as entrance;
 pub(crate) use passwords::change;
+pub(crate) use reauthentication::endpoint as reauthenticate;
 pub(crate) use reset::page as reset;
 
 type Fields = HashMap<String, String>;
@@ -85,7 +94,7 @@ fn render(
     let html = web::render(
         page,
         context! {
-            csrf=>token, user, next=>&visit.next, messages=>&notices, ..bindings
+            csrf=>token, user, next=>&visit.next, messages=>&notices, bundles=>state.bundles.as_ref(), ..bindings
         },
     )
     .map_err(|error| {

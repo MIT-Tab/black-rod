@@ -19,7 +19,7 @@ use crate::{
     ApiError, AppState, claims, flash, is_django_integer, login, outreach, schools, session, web,
 };
 
-pub(crate) type Limits = moka::future::Cache<(i64, chrono::NaiveDate), Arc<Mutex<i32>>>;
+pub(crate) type Limits = moka::future::Cache<(i64, chrono::NaiveDate), Arc<Mutex<u32>>>;
 
 const DASHBOARD: &str = "/core/school-admin/";
 const STATES: [(&str, &str); 3] = [("1", "Varsity"), ("0", "Novice"), ("2", "Dino")];
@@ -415,18 +415,28 @@ async fn view(state: &AppState, request: Request) -> Result<Response, ApiError> 
                 .get_with(key, async { Arc::new(Mutex::new(0)) })
                 .await;
             let guard = cell.lock_owned().await;
-            if *guard >= 5 {
+            let shared = format!(":1:debater_create_count_{}_{}", key.0, key.1);
+            let current = if let Some(cache) = &state.memcached {
+                cache.read_counter(&shared).await.unwrap_or_default()
+            } else {
+                *guard
+            };
+            if current >= 5 {
                 return Ok((StatusCode::FORBIDDEN,"You have reached the daily limit of 5 new debaters. Please contact a site administrator if you need to create more.").into_response());
             }
-            Some(guard)
+            Some((guard, shared))
         } else {
             None
         };
         (fields, errors) = Form::submitted(state, &bytes, fields.initial_dino).await?;
         if errors.is_empty() {
             if save(state, action, school_id, owner, &fields, &mut errors).await? {
-                if let Some(count) = count.as_mut() {
-                    **count += 1;
+                if let Some((count, key)) = count.as_mut() {
+                    if let Some(cache) = &state.memcached {
+                        let _ = cache.advance_counter(key, 86_400).await;
+                    } else {
+                        **count += 1;
+                    }
                 }
                 return Ok((StatusCode::FOUND, [(header::LOCATION, DASHBOARD)]).into_response());
             }

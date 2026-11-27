@@ -1,7 +1,7 @@
 use std::{collections::HashMap, time::Duration};
 
 use axum::{
-    extract::{OriginalUri, State},
+    extract::{OriginalUri, Request, State},
     http::{HeaderMap, StatusCode, header},
     response::{Html, IntoResponse, Response},
 };
@@ -12,9 +12,9 @@ use sqlx::{AnyPool, Row};
 use url::Url;
 
 use crate::{
-    AppState,
+    ApiError, AppState, flash,
     login::{self, SESSION_AGE},
-    session,
+    session, web,
 };
 
 const CALLBACK: &str = "/accounts/apdaonline/login/callback/";
@@ -57,6 +57,16 @@ impl OAuth {
 }
 
 pub(crate) async fn start(state: &AppState, origin: &str, next: &str, remember: bool) -> Response {
+    start_process(state, origin, next, remember, None).await
+}
+
+async fn start_process(
+    state: &AppState,
+    origin: &str,
+    next: &str,
+    remember: bool,
+    connecting: Option<&HeaderMap>,
+) -> Response {
     let (Some(config), Some(secret)) = (&state.oauth, state.secret.as_deref()) else {
         return StatusCode::SERVICE_UNAVAILABLE.into_response();
     };
@@ -67,9 +77,16 @@ pub(crate) async fn start(state: &AppState, origin: &str, next: &str, remember: 
     let Ok(state_id) = state_id else {
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     };
-    let pending = session::oauth_start(&state.pool, secret, &state_id, next, remember).await;
+    let pending = if let Some(headers) = connecting {
+        session::oauth_connect(&state.pool, headers, secret, &state_id, next).await
+    } else {
+        session::oauth_start(&state.pool, secret, &state_id, next, remember)
+            .await
+            .map(Some)
+    };
     let pending = match pending {
-        Ok(pending) => pending,
+        Ok(Some(pending)) => pending,
+        Ok(None) => return StatusCode::CONFLICT.into_response(),
         Err(error) => {
             let code = error
                 .as_database_error()
@@ -95,14 +112,16 @@ pub(crate) async fn start(state: &AppState, origin: &str, next: &str, remember: 
         ],
     )
         .into_response();
-    login::set_cookie(
-        &mut response,
-        "sessionid",
-        &pending,
-        Some(SESSION_AGE),
-        origin.starts_with("https://"),
-        true,
-    );
+    if connecting.is_none() {
+        login::set_cookie(
+            &mut response,
+            "sessionid",
+            &pending,
+            Some(SESSION_AGE),
+            origin.starts_with("https://"),
+            true,
+        );
+    }
     response
 }
 
@@ -183,6 +202,7 @@ async fn profile(config: &OAuth, origin: &str, code: &str) -> Option<(Token, Val
 enum AccountError {
     Invalid,
     ExistingEmail,
+    ConnectedOther,
     Database,
 }
 
@@ -208,6 +228,7 @@ async fn save(
     profile: &Profile,
     fields: &Value,
     token: &Token,
+    connecting: Option<i64>,
 ) -> Result<(i64, String), AccountError> {
     let uid = profile.uid().ok_or(AccountError::Invalid)?;
     let sqlite = pool.connect_options().database_url.scheme() == "sqlite";
@@ -229,6 +250,10 @@ async fn save(
         }
         let account = row.try_get::<i64, _>("account")?;
         let id = row.try_get::<i64, _>("id")?;
+        if connecting.is_some_and(|user| user != id) {
+            return Err(AccountError::ConnectedOther);
+        }
+
         let password = row.try_get::<String, _>("password")?;
         let update = if sqlite {
             "UPDATE socialaccount_socialaccount SET extra_data = $1, last_login = CURRENT_TIMESTAMP WHERE id = $2"
@@ -239,6 +264,28 @@ async fn save(
             .bind(fields.to_string())
             .bind(account)
             .execute(&mut *tx)
+            .await?;
+        (id, password, account)
+    } else if let Some(id) = connecting {
+        let password = sqlx::query_scalar::<_, String>(
+            "SELECT password FROM core_user WHERE id=$1 AND is_active",
+        )
+        .bind(id)
+        .fetch_optional(&mut *tx)
+        .await?
+        .ok_or(AccountError::Invalid)?;
+        let statement = if sqlite {
+            "INSERT INTO socialaccount_socialaccount (provider,uid,last_login,date_joined,user_id,extra_data)
+             VALUES ('apdaonline',$1,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,$2,$3) RETURNING CAST(id AS BIGINT)"
+        } else {
+            "INSERT INTO socialaccount_socialaccount (provider,uid,last_login,date_joined,user_id,extra_data)
+             VALUES ('apdaonline',$1,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,$2,CAST($3 AS JSONB)) RETURNING CAST(id AS BIGINT)"
+        };
+        let account = sqlx::query_scalar::<_, i64>(statement)
+            .bind(&uid)
+            .bind(id)
+            .bind(fields.to_string())
+            .fetch_one(&mut *tx)
             .await?;
         (id, password, account)
     } else {
@@ -362,6 +409,67 @@ fn failed(status: StatusCode) -> Response {
     (status, Html("<h1>Social Network Login Failure</h1><p>An error occurred while attempting to login via your social network account.</p>")).into_response()
 }
 
+pub(crate) async fn provider(State(state): State<AppState>, request: Request) -> Response {
+    let result = async {
+        let uri = request.uri().clone();
+        let user = session::user(&state.pool, request.headers(), state.secret.as_deref()).await?;
+        let query = login::form_values(uri.query().unwrap_or_default().as_bytes());
+        let connect = query.get("process").is_some_and(|value| value == "connect");
+        if connect && !user.is_authenticated {
+            return Ok(login::redirect_to_login(&uri));
+        }
+        let Some(origin) = state.origin(request.headers()) else {
+            return Ok(StatusCode::BAD_REQUEST.into_response());
+        };
+        let next = query
+            .get("next")
+            .map(|value| login::safe_next(value, &origin))
+            .unwrap_or_default();
+        let secure = origin.starts_with("https://");
+        let (parts, body) = request.into_parts();
+        if parts.method == axum::http::Method::POST {
+            let Ok(body) = axum::body::to_bytes(body, 128 * 1024).await else {
+                return Ok(StatusCode::PAYLOAD_TOO_LARGE.into_response());
+            };
+            let form = login::form_values(&body);
+            if !login::csrf_valid(
+                &parts.headers,
+                form.get("csrfmiddlewaretoken").map(String::as_str),
+                &origin,
+            ) {
+                return Ok(login::csrf_failure());
+            }
+            return Ok(start_process(
+                &state,
+                &origin,
+                &next,
+                true,
+                connect.then_some(&parts.headers),
+            )
+            .await);
+        }
+        let (csrf, token) =
+            login::csrf_tokens(&parts.headers).map_err(|_| ApiError::Serialization)?;
+        let base = web::base_context(&state, &user, &uri);
+        let html = web::render(
+            "socialaccount/login.html",
+            minijinja::context! {csrf=>token,..base},
+        )
+        .map_err(|error| {
+            eprintln!("OAuth confirmation template failed: {error}");
+            ApiError::Serialization
+        })?;
+        let mut response = ([(header::VARY, "Cookie")], Html(html)).into_response();
+        login::set_csrf_cookie(&mut response, &csrf, secure);
+        Ok::<_, ApiError>(response)
+    }
+    .await;
+    result.unwrap_or_else(|error| {
+        eprintln!("OAuth confirmation failed: {error:?}");
+        StatusCode::INTERNAL_SERVER_ERROR.into_response()
+    })
+}
+
 pub(crate) async fn callback(
     State(state): State<AppState>,
     OriginalUri(uri): OriginalUri,
@@ -379,7 +487,7 @@ pub(crate) async fn callback(
         return failed(StatusCode::BAD_REQUEST);
     };
     let response = session::consume_oauth(&state.pool, &headers, secret, state_id).await;
-    let (next, remember) = match response {
+    let context = match response {
         Ok(Some(context)) => context,
         Ok(None) => return failed(StatusCode::BAD_REQUEST),
         Err(_) => {
@@ -397,7 +505,15 @@ pub(crate) async fn callback(
         eprintln!("OAuth provider rejected the exchange or sent an invalid response");
         return failed(StatusCode::BAD_GATEWAY);
     };
-    let (id, password) = match save(&state.pool, &profile, &fields, &token).await {
+    let connecting = if context.connect {
+        match session::user(&state.pool, &headers, Some(secret)).await {
+            Ok(user) if user.is_authenticated => user.id,
+            _ => return failed(StatusCode::FORBIDDEN),
+        }
+    } else {
+        None
+    };
+    let (id, password) = match save(&state.pool, &profile, &fields, &token, connecting).await {
         Ok(credentials) => credentials,
         Err(AccountError::ExistingEmail) => {
             return (
@@ -406,16 +522,55 @@ pub(crate) async fn callback(
             )
                 .into_response();
         }
+        Err(AccountError::ConnectedOther) => {
+            let mut response = (
+                StatusCode::FOUND,
+                [(header::LOCATION, "/accounts/3rdparty/")],
+            )
+                .into_response();
+            flash::push(
+                &mut response,
+                &headers,
+                secret,
+                40,
+                "The third-party account is already connected to a different account.",
+                origin.starts_with("https://"),
+            );
+            return response;
+        }
         Err(AccountError::Invalid) => return failed(StatusCode::BAD_REQUEST),
         Err(AccountError::Database) => return failed(StatusCode::INTERNAL_SERVER_ERROR),
     };
-    let next = login::safe_next(&next, &origin);
+    let next = login::safe_next(&context.next, &origin);
+    if connecting.is_some() {
+        let mut response = (
+            StatusCode::FOUND,
+            [(
+                header::LOCATION,
+                if next.is_empty() {
+                    "/accounts/3rdparty/"
+                } else {
+                    &next
+                },
+            )],
+        )
+            .into_response();
+        flash::push(
+            &mut response,
+            &headers,
+            secret,
+            20,
+            "The third-party account has been connected.",
+            origin.starts_with("https://"),
+        );
+        return response;
+    }
     login::sign_in(
         &state,
         &headers,
         origin.starts_with("https://"),
         &next,
-        remember,
+        context.remember,
         (id, &password),
         "allauth.account.auth_backends.AuthenticationBackend",
     )

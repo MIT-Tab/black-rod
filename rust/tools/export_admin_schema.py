@@ -24,6 +24,7 @@ def field_config(field):
         "primary": field.primary_key,
         "unique": field.unique,
         "size": getattr(field, "max_length", None),
+        "scale": getattr(field, "decimal_places", None),
         "choices": [(key, str(label)) for key, label in field.flatchoices],
         "related": related._meta.label_lower if related else None,
     }
@@ -55,6 +56,7 @@ def field_config(field):
 def model_config(request, model, model_admin):
     from django.contrib.admin.utils import label_for_field
     from django.contrib.admin.views.main import ChangeList
+    from django.db.models import Model
 
     def column(name):
         label, attr = label_for_field(name, model, model_admin, return_attr=True)
@@ -79,12 +81,26 @@ def model_config(request, model, model_admin):
             widget = field.widget
             wrapped = type(widget).__name__ == "RelatedFieldWidgetWrapper"
             actual = widget.widget if wrapped else widget
+            kind = type(actual).__name__
+            attributes = actual.build_attrs(actual.attrs)
+            related_url = None
+            forward = None
+            if kind in ("ForeignKeyRawIdWidget", "ManyToManyRawIdWidget", "FilteredSelectMultiple"):
+                context = actual.get_context(name, None, {"id": f"id_{name}"})
+                attributes = context["widget"]["attrs"]
+                related_url = context.get("related_url")
+            if hasattr(actual, "_make_forward_dict") and actual.forward:
+                forward = json.dumps([actual._make_forward_dict(field) for field in actual.forward])
+            attributes = {key: value for key, value in attributes.items() if key not in ("id", "multiple")}
             widgets[name] = {
-                "kind": type(actual).__name__,
+                "kind": kind,
+                "related_url": related_url,
+                "forward": forward,
                 "label": str(field.label) if field.label else None,
                 "help": str(field.help_text),
                 "required": field.required,
-                "attributes": {k: str(v) if not isinstance(v, (bool, int)) else v for k, v in actual.attrs.items()},
+                "hidden_initial": field.show_hidden_initial,
+                "attributes": {k: str(v) if not isinstance(v, (bool, int)) else v for k, v in attributes.items()},
                 "label_suffix": field.label_suffix,
                 "wrapped": wrapped,
             }
@@ -138,11 +154,13 @@ def model_config(request, model, model_admin):
         "table": opts.db_table,
         "key": opts.label_lower,
         "object_name": opts.object_name,
+        "default_repr": model.__str__ is Model.__str__,
         "allowed": model_admin.get_model_perms(request),
         "restricted": opts.model_name in ("agentcredential", "agentchangeset"),
         "list_display": [column(name) for name in model_admin.get_list_display(request)],
         "list_links": model_admin.get_list_display_links(request, model_admin.get_list_display(request)),
         "ordering": model_admin.get_ordering(request) or opts.ordering or ["-pk"],
+        "choice_ordering": model_admin.get_ordering(request) or opts.ordering or ["pk"],
         "filter": [display_filter(value) for value in model_admin.get_list_filter(request)],
         "search": model_admin.get_search_fields(request),
         "per_page": model_admin.list_per_page,
@@ -160,6 +178,16 @@ def model_config(request, model, model_admin):
         "list_media": {"css": [(section, path) for section, paths in sorted(model_admin.media._css.items()) for path in paths],
                        "js": model_admin.media._js},
     }
+    if model_admin_options["import_export"]:
+        resource = model_admin.get_export_resource_class()()
+        import_media = model_admin.media + model_admin.get_import_form()(model_admin.get_import_formats()).media
+        model_admin_options["exchange"] = {
+            "headers": resource.get_export_headers(),
+            "import_media": import_media._js,
+            "fields": [field.column_name for field in resource.get_user_visible_fields()],
+            "import_formats": [format().get_title() for format in model_admin.get_import_formats()],
+            "export_formats": [format().get_title() for format in model_admin.get_export_formats()],
+        }
     assert model_admin.get_changelist(request) is not None
     model_admin_options["standard_list"] = model_admin.get_changelist(request) is ChangeList
     model_admin_options["fields"] = {field.name: field_config(field) for field in (*opts.fields, *opts.many_to_many)}
@@ -184,10 +212,17 @@ def main():
     request = RequestFactory().get("/admin/")
     request.user = get_user_model()(username="fixture-admin", is_active=True, is_staff=True, is_superuser=True)
     site = admin.site
+    from django.apps import apps
+    content_types = {
+        model._meta.label_lower: f"{config.verbose_name} | {model._meta.verbose_name}"
+        for config in apps.get_app_configs()
+        for model in config.get_models()
+    }
     schema = {
         "title": str(site.site_title),
         "header": str(site.site_header),
         "index": str(site.index_title),
+        "content_types": content_types,
         "apps": [
             {"label": app["app_label"], "name": str(app["name"]),
              "models": [model_config(request, entry["model"], site._registry[entry["model"]]) for entry in app["models"]]}

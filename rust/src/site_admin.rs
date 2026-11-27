@@ -1,5 +1,6 @@
 mod auth;
 mod autocomplete;
+mod exchange;
 mod form;
 mod listing;
 mod passwords;
@@ -292,10 +293,12 @@ async fn endpoint(state: &AppState, request: Request) -> Result<Response, ApiErr
     if !viewer.staff() {
         return Ok(admin_login(&parts.uri));
     }
+    let headers = parts.headers.clone();
+    let uri = parts.uri.clone();
     let admin = AdminRequest {
         state,
-        headers: &parts.headers,
-        uri: &parts.uri,
+        headers: &headers,
+        uri: &uri,
         viewer,
     };
     let path = parts.uri.path().strip_prefix(HOME).unwrap_or_default();
@@ -329,6 +332,24 @@ async fn endpoint(state: &AppState, request: Request) -> Result<Response, ApiErr
         )
             .into_response()),
         [app] if schema().app(app).is_some() => admin.index(schema().app(app)).await,
+        [app, model, "export"] => {
+            let Some(model) = schema().model(app, model) else {
+                return Ok(StatusCode::NOT_FOUND.into_response());
+            };
+            exchange::export_page(&admin, model, parts.method, body).await
+        }
+        [app, model, "import"] => {
+            let Some(model) = schema().model(app, model) else {
+                return Ok(StatusCode::NOT_FOUND.into_response());
+            };
+            exchange::preview(&admin, model, Request::from_parts(parts, body)).await
+        }
+        [app, model, "process_import"] => {
+            let Some(model) = schema().model(app, model) else {
+                return Ok(StatusCode::NOT_FOUND.into_response());
+            };
+            exchange::confirm(&admin, model, parts.method, body).await
+        }
         [app, model, "add"] => {
             let Some(model) = schema().model(app, model) else {
                 return Ok(StatusCode::NOT_FOUND.into_response());

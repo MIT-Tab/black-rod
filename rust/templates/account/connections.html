@@ -1,0 +1,21 @@
+{% extends "account/layout.html" %}
+{% block content %}
+<h1>Account Connections</h1>
+{% if accounts %}
+    <p>You can sign in to your account using any of the following third-party accounts:</p>
+    <form method="post" action="/accounts/3rdparty/">
+        <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf }}">
+        {% if error %}<ul class="errorlist nonfield"><li>{{ error }}</li></ul>{% endif %}
+        {% for account in accounts %}
+        <p><input type="radio" name="account" id="id_account_{{ account.id }}" value="{{ account.id }}">
+            <label for="id_account_{{ account.id }}">{{ account.label }} <strong>{{ account.provider }}</strong></label>
+        </p>
+        {% endfor %}
+        <button type="submit">Remove</button>
+    </form>
+{% else %}
+    <p>You currently have no third-party accounts connected to this account.</p>
+{% endif %}
+<h2>Add a Third-Party Account</h2>
+<ul><li><a title="APDAOnline" href="/accounts/apdaonline/login/?process=connect">APDAOnline</a></li></ul>
+{% endblock %}

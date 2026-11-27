@@ -15,7 +15,7 @@ use super::{
 };
 use crate::{ApiError, login};
 
-type Parameters = BTreeMap<String, String>;
+pub(super) type Parameters = BTreeMap<String, String>;
 
 fn link(params: &Parameters, name: &str, value: Option<&str>) -> String {
     let mut params = params.clone();
@@ -73,7 +73,7 @@ impl<'a> Source<'a> {
                 return None;
             }
             let field_column = field.column.as_ref()?;
-            let expr = format!("t{index}.{field_column}");
+            let expr = format!(r#"t{index}."{field_column}""#);
             if parts.peek().is_none() {
                 return Some((expr, field));
             }
@@ -198,6 +198,14 @@ pub(super) fn label(source: &mut Source, target: &Model, prefix: &str) -> String
         };
         source.resolve(&path).map(|(expr, _)| expr)
     };
+    if target.default_repr
+        && let Some(id) = expr("id")
+    {
+        return format!(
+            "'{} object (' || CAST({id} AS TEXT) || ')'",
+            target.object_name
+        );
+    }
     match target.slug() {
         "debater" => {
             if let (Some(first), Some(last), Some(temporary)) =
@@ -213,11 +221,130 @@ pub(super) fn label(source: &mut Source, target: &Model, prefix: &str) -> String
                 return format!("{name} || CASE WHEN {temporary} THEN ' (New)' ELSE '' END");
             }
         }
-        "round" | "roundstats" => {
-            if let Some(id) = expr("id") {
+        "claimdebaterrequest" => {
+            if let (Some(user), Some(first), Some(last), Some(status)) = (
+                expr("requested_by__username"),
+                expr("debater__first_name"),
+                expr("debater__last_name"),
+                expr("status"),
+            ) {
                 return format!(
-                    "'{} object (' || CAST({id} AS TEXT) || ')'",
-                    target.object_name
+                    "'Claim request by ' || {user} || ' for ' || TRIM({first} || ' ' || {last}) || ' (' || {status} || ')'"
+                );
+            }
+        }
+        "mergedebaterrequest" => {
+            if let (
+                Some(id),
+                Some(primary_name),
+                Some(secondary_name),
+                Some(primary),
+                Some(secondary),
+            ) = (
+                expr("id"),
+                expr("primary_name"),
+                expr("secondary_name"),
+                expr("primary_debater_id"),
+                expr("secondary_debater_id"),
+            ) {
+                return format!(
+                    "'Merge request ' || CAST({id} AS TEXT) || ' (' ||
+                    COALESCE(NULLIF({primary_name},''),CAST({primary} AS TEXT),'None') || ' <- ' ||
+                    COALESCE(NULLIF({secondary_name},''),CAST({secondary} AS TEXT),'None') || ')'"
+                );
+            }
+        }
+        "debateralias" => {
+            if let (Some(source), Some(first), Some(last)) = (
+                expr("source_name"),
+                expr("debater__first_name"),
+                expr("debater__last_name"),
+            ) {
+                return format!("{source} || ' -> ' || TRIM({first} || ' ' || {last})");
+            }
+        }
+        "debateraliasgroup" => {
+            if let (Some(name), Some(id)) = (expr("label"), expr("id")) {
+                return format!(
+                    "COALESCE(NULLIF({name},''),'Alias Group #' || CAST({id} AS TEXT))"
+                );
+            }
+        }
+        "schooladmin" => {
+            if let (Some(user), Some(school)) = (expr("user__username"), expr("school__name")) {
+                return format!("{user} || ' - ' || {school}");
+            }
+        }
+        "resource" => {
+            if let (Some(title), Some(kind)) = (expr("title"), expr("resource_type")) {
+                let code = display_choices(&kind, &target.fields["resource_type"]);
+                return format!("{title} || ' (' || {code} || ')'");
+            }
+        }
+        "sitesetting" => {
+            if let (Some(key), Some(value)) = (expr("key"), expr("value")) {
+                return format!("{key} || ': ' || CAST({value} AS TEXT)");
+            }
+        }
+        "qualbar" => {
+            if let (Some(season), Some(points)) = (expr("season"), expr("points")) {
+                return format!("{season} || ' - ' || CAST({points} AS TEXT) || ' points'");
+            }
+        }
+        "tournamentimport" => {
+            if let (Some(filename), Some(name), Some(kind)) = (
+                expr("original_file_name"),
+                expr("tournament__name"),
+                expr("import_type"),
+            ) {
+                return format!("COALESCE(NULLIF({filename},''),{name} || ' ' || {kind})");
+            }
+        }
+        "importbatch" | "schedulingrun" => {
+            if let Some(id) = expr("id") {
+                let name = if target.slug() == "importbatch" {
+                    "Import batch"
+                } else {
+                    "Scheduling run"
+                };
+                return format!("'{name} ' || CAST({id} AS TEXT)");
+            }
+        }
+        "motionuserstatus" => {
+            if let (Some(user), Some(motion), Some(status)) =
+                (expr("user__username"), expr("motion_id"), expr("status"))
+            {
+                return format!(
+                    "{user} || ': ' || CAST({motion} AS TEXT) || ' (' || {status} || ')'"
+                );
+            }
+        }
+        "generatedcode" => {
+            if let Some(code) = expr("code") {
+                return code;
+            }
+        }
+        "tournamentautoqual" => {
+            if let (Some(first), Some(last), Some(tournament)) = (
+                expr("debater__first_name"),
+                expr("debater__last_name"),
+                expr("tournament__name"),
+            ) {
+                return format!("TRIM({first} || ' ' || {last}) || ' — ' || {tournament}");
+            }
+        }
+        "syntheticresolutionlog" => {
+            if let (Some(action), Some(kind), Some(synthetic), Some(resolved)) = (
+                expr("action"),
+                expr("entity_type"),
+                expr("synthetic_id"),
+                expr("resolved_to_id"),
+            ) {
+                let action = display_choices(&action, &target.fields["action"]);
+                let kind = display_choices(&kind, &target.fields["entity_type"]);
+                return format!(
+                    "{action} || ' ' || {kind} || ' ' || CAST({synthetic} AS TEXT) || ' -> ' ||
+                    COALESCE(CAST({resolved} AS TEXT),'None')"
                 );
             }
         }
@@ -245,6 +372,26 @@ pub(super) fn label(source: &mut Source, target: &Model, prefix: &str) -> String
         }
     }
     expr("pk").map_or_else(|| "NULL".to_owned(), |expr| format!("CAST({expr} AS TEXT)"))
+}
+
+fn display_choices(expression: &str, field: &Field) -> String {
+    let choices = field
+        .choices
+        .iter()
+        .map(|(key, label)| {
+            let value = key
+                .as_str()
+                .map(str::to_owned)
+                .unwrap_or_else(|| key.to_string());
+            format!(
+                "WHEN '{}' THEN '{}'",
+                value.replace('\'', "''"),
+                label.replace('\'', "''")
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
+    format!("CASE CAST({expression} AS TEXT) {choices} ELSE CAST({expression} AS TEXT) END")
 }
 
 fn tracked_column<'a>(model: &'a Model, column: &str) -> Option<&'a Field> {
@@ -283,30 +430,57 @@ pub(super) fn display(value: Option<&str>, field: Option<&Field>, boolean: bool)
         if matches!(field.kind.as_str(), "DateField" | "DateTimeField") {
             return Value::from(date(value));
         }
+        if let Some(scale) = field.scale
+            && let Ok(value) = value.parse::<f64>()
+        {
+            return Value::from(format!("{value:.scale$}"));
+        }
     }
     Value::from(value)
 }
 
 pub(super) fn date(input: &str) -> String {
-    use chrono::{NaiveDate, NaiveDateTime, Timelike};
-    let value = input.split('+').next().unwrap_or(input);
-    if let Ok(date) = NaiveDate::parse_from_str(value, "%Y-%m-%d") {
-        return date
-            .format("%b. %-d, %Y")
-            .to_string()
-            .replace("May.", "May")
-            .replace("June.", "June")
-            .replace("July.", "July");
+    use chrono::{DateTime, Datelike, NaiveDate, NaiveDateTime, Timelike, Utc};
+
+    let render = |date: NaiveDate| {
+        let months = [
+            "Jan.", "Feb.", "March", "April", "May", "June", "July", "Aug.", "Sept.", "Oct.",
+            "Nov.", "Dec.",
+        ];
+        format!(
+            "{} {}, {}",
+            months[date.month0() as usize],
+            date.day(),
+            date.year()
+        )
+    };
+    if let Ok(date) = NaiveDate::parse_from_str(input, "%Y-%m-%d") {
+        return render(date);
     }
-    if let Ok(stamp) = NaiveDateTime::parse_from_str(value, "%Y-%m-%d %H:%M:%S%.f") {
-        let hour = stamp.hour() % 12;
-        let hour = if hour == 0 { 12 } else { hour };
-        let suffix = if stamp.hour() < 12 { "a.m." } else { "p.m." };
-        return format!(
-            "{}, {hour}:{:02} {suffix}",
-            date(&stamp.date().to_string()),
-            stamp.minute()
-        );
+    let stamp = DateTime::parse_from_rfc3339(input)
+        .ok()
+        .map(|stamp| stamp.with_timezone(&Utc).naive_utc())
+        .or_else(|| {
+            let clean = input.split_once('+').map_or(input, |(time, _)| time);
+            NaiveDateTime::parse_from_str(clean, "%Y-%m-%d %H:%M:%S%.f").ok()
+        });
+    if let Some(stamp) = stamp {
+        let minutes = stamp.minute();
+        let hour = stamp.hour();
+        let time = match (hour, minutes) {
+            (0, 0) => "midnight".to_owned(),
+            (12, 0) => "noon".to_owned(),
+            _ => {
+                let suffix = if hour < 12 { "a.m." } else { "p.m." };
+                let hour = if hour % 12 == 0 { 12 } else { hour % 12 };
+                if minutes == 0 {
+                    format!("{hour} {suffix}")
+                } else {
+                    format!("{hour}:{minutes:02} {suffix}")
+                }
+            }
+        };
+        return format!("{}, {time}", render(stamp.date()));
     }
     input.to_owned()
 }
@@ -324,13 +498,12 @@ pub(super) fn search_conditions(
             let name = name.trim_start_matches(['^', '=', '@']);
             if let Some((entry, _)) = source.resolve(name) {
                 let value = term
-                    .to_lowercase()
                     .replace('\\', "\\\\")
                     .replace('%', "\\%")
                     .replace('_', "\\_");
                 let marker = add_values(values, &format!("%{value}%"));
                 options.push(format!(
-                    "LOWER(CAST({entry} AS TEXT)) LIKE {marker} ESCAPE '\\'"
+                    "LOWER(CAST({entry} AS TEXT)) LIKE LOWER({marker}) ESCAPE '\\'"
                 ));
             }
         }
@@ -341,19 +514,32 @@ pub(super) fn search_conditions(
     where_parts
 }
 
-async fn get_list(
-    admin: &AdminRequest<'_>,
+pub(super) fn ordering_sql(source: &mut Source, ordering: &[String]) -> String {
+    let mut ordered = Vec::new();
+    for name in ordering {
+        if let Some((entry, _)) = source.resolve(name.trim_start_matches('-')) {
+            ordered.push(format!(
+                "{entry} {}",
+                if name.starts_with('-') { "DESC" } else { "ASC" }
+            ));
+        }
+    }
+    ordered.push("t0.id DESC".to_owned());
+    ordered.join(",")
+}
+
+pub(super) fn conditions(
+    source: &mut Source,
     model: &Model,
     params: &Parameters,
-) -> Result<Value, ApiError> {
-    let mut source = Source::new(model);
-    let mut values = Vec::new();
+    values: &mut Vec<String>,
+) -> String {
     let search = params.get("q").map_or("", String::as_str);
     let mut where_parts = Vec::new();
     if model.slug() == "school" {
         where_parts.push("NOT t0.temporary".to_owned());
     }
-    where_parts.extend(search_conditions(&mut source, model, search, &mut values));
+    where_parts.extend(search_conditions(source, model, search, values));
     for (parameter, value) in params {
         if matches!(
             parameter.as_str(),
@@ -387,7 +573,7 @@ async fn get_list(
                     "{negated}EXISTS (SELECT 1 FROM {table} member WHERE {condition})"
                 ));
             } else {
-                let parameter = add_values(&mut values, value);
+                let parameter = add_values(values, value);
                 where_parts.push(format!(
                     "EXISTS (SELECT 1 FROM {table} member WHERE {condition} AND CAST(member.{to} AS TEXT)={parameter})"
                 ));
@@ -409,7 +595,7 @@ async fn get_list(
                     .get(..10)
                     .filter(|value| chrono::NaiveDate::parse_from_str(value, "%Y-%m-%d").is_ok());
                 if let Some(date) = date {
-                    let placeholder = add_values(&mut values, date);
+                    let placeholder = add_values(values, date);
                     let comparison = if look_up == "gte" { ">=" } else { "<" };
                     where_parts.push(format!(
                         "SUBSTR(CAST({column} AS TEXT),1,10){comparison}{placeholder}"
@@ -425,16 +611,27 @@ async fn get_list(
                     }
                 ));
             } else {
-                let placeholder = add_values(&mut values, value);
+                let placeholder = add_values(values, value);
                 where_parts.push(format!("CAST({column} AS TEXT)={placeholder}"));
             }
         }
     }
-    let condition = if where_parts.is_empty() {
+    if where_parts.is_empty() {
         String::new()
     } else {
         format!(" WHERE {}", where_parts.join(" AND "))
-    };
+    }
+}
+
+async fn get_list(
+    admin: &AdminRequest<'_>,
+    model: &'static Model,
+    params: &Parameters,
+) -> Result<Value, ApiError> {
+    let mut source = Source::new(model);
+    let mut values = Vec::new();
+    let search = params.get("q").map_or("", String::as_str);
+    let condition = conditions(&mut source, model, params, &mut values);
     let actions = model
         .actions
         .iter()
@@ -496,16 +693,7 @@ async fn get_list(
         })
         .filter(|values| !values.is_empty())
         .unwrap_or_else(|| model.ordering.clone());
-    let mut ordered = Vec::new();
-    for name in &ordering {
-        if let Some((entry, _)) = source.resolve(name.trim_start_matches('-')) {
-            ordered.push(format!(
-                "{entry} {}",
-                if name.starts_with('-') { "DESC" } else { "ASC" }
-            ));
-        }
-    }
-    ordered.push("t0.id DESC".to_owned());
+    let ordered = ordering_sql(&mut source, &ordering);
     let columns=model.list_display.iter().enumerate().map(|(i,col)|{
         let idx=i+offset;
         let sort=requested.iter().position(|(index,_)|*index==idx);
@@ -574,7 +762,7 @@ async fn get_list(
     let sql = format!(
         "SELECT CAST(t0.id AS TEXT) AS id,{label} AS label,{} FROM {table}{condition} ORDER BY {}{range}",
         projection.join(","),
-        ordered.join(",")
+        ordered
     );
     let mut query = sqlx::query(AssertSqlSafe(sql));
     for value in &values {
@@ -621,7 +809,7 @@ async fn get_list(
         app_label=>model.app(),app_name=>&app.name,app_url=>app.url(),model_name=>model.slug(),model_url=>model.url(),
         searchable=>!model.search.is_empty(),query=>search,params=>params.iter().collect::<Vec<_>>(),
         css=>&model.list_media.css,js=>&model.list_media.js,import_export=>model.import_export, add_link,
-        export_link=>format!("{}export/{}",model.url(),admin.uri.query().map(|query|format!("?{query}")).unwrap_or_default()),
+        export_link=>format!("{}export/?{}",model.url(),admin.uri.query().unwrap_or_default()),
         sort_count=>requested.len(), columns, rows, actions, count, total, pages, filters,
         show_all=>(page_count>1&&!all&&count<=model.max_show_all).then(||link(params,"all",Some(""))),
         count_url=>context!{hidden=>params.contains_key("_facets"),url=>link(params,"_facets",(!params.contains_key("_facets")).then_some("True"))},
@@ -687,7 +875,7 @@ fn cells(row: &AnyRow, model: &Model, params: &Parameters) -> Result<Value, ApiE
 
 async fn filters(
     admin: &AdminRequest<'_>,
-    model: &Model,
+    model: &'static Model,
     params: &Parameters,
 ) -> Result<Vec<Value>, ApiError> {
     let mut filters = Vec::new();
@@ -765,6 +953,39 @@ async fn filters(
             }
         } else if matches!(field.kind.as_str(), "DateField" | "DateTimeField") {
             choices = date_filters(filter, field, params);
+        } else if matches!(field.kind.as_str(), "ForeignKey" | "OneToOneField") {
+            let null_key = format!("{filter}__isnull");
+            let empty = params.contains_key(&null_key);
+            cleared.remove(&null_key);
+            choices[0] = context! {label=>"All",url=>link(&cleared,&exact,None),selected=>active.is_none()&&!empty};
+            if let Some(target) = field
+                .related
+                .as_ref()
+                .and_then(|related| related.split_once('.'))
+                .and_then(|(app, slug)| schema().model(app, slug))
+            {
+                let mut source = Source::new(target);
+                let repr = label(&mut source, target, "");
+                let ordering = choice_ordering(&mut source, target);
+                let condition = match target.slug() {
+                    "school" => " WHERE NOT t0.temporary",
+                    "debater" => " WHERE NOT t0.temporary AND NOT t0.synthetic",
+                    _ => "",
+                };
+                let query = format!(
+                    "SELECT CAST(t0.id AS TEXT),{repr} FROM {}{condition} ORDER BY {ordering}",
+                    source.sql()
+                );
+                for (value, label) in sqlx::query_as::<_, (String, String)>(AssertSqlSafe(query))
+                    .fetch_all(&admin.state.pool)
+                    .await?
+                {
+                    choices.push(context!{label,url=>link(&cleared,&exact,Some(&value)),selected=>active==Some(&value)});
+                }
+            }
+            if field.null {
+                choices.push(context!{label=>"-",url=>link(&cleared,&null_key,Some("True")),selected=>empty});
+            }
         } else {
             let ordering = if matches!(
                 field.kind.as_str(),
@@ -774,15 +995,7 @@ async fn filters(
             } else {
                 "label"
             };
-            let root = filter.split_once("__").and_then(|(name, path)| {
-                let (app, related) = model
-                    .fields
-                    .get(name)?
-                    .related
-                    .as_deref()?
-                    .split_once('.')?;
-                Some((schema().model(app, related)?, path))
-            });
+            let root = filter_owner(model, filter);
             let mut parent;
             let (source, path, expression) = if let Some((related, path)) = root {
                 parent = Source::new(related);
@@ -820,6 +1033,44 @@ async fn filters(
         }
     }
     Ok(filters)
+}
+
+fn filter_owner<'a>(
+    mut model: &'static Model,
+    mut path: &'a str,
+) -> Option<(&'static Model, &'a str)> {
+    let mut found = false;
+    while let Some((name, tail)) = path.split_once("__") {
+        let (app, slug) = model
+            .fields
+            .get(name)?
+            .related
+            .as_deref()?
+            .split_once('.')?;
+        model = schema().model(app, slug)?;
+        path = tail;
+        found = true;
+    }
+    found.then_some((model, path))
+}
+
+pub(super) fn choice_ordering(source: &mut Source, model: &Model) -> String {
+    let mut order = model
+        .choice_ordering
+        .iter()
+        .filter_map(|name| {
+            source
+                .resolve(name.trim_start_matches('-'))
+                .map(|(column, _)| {
+                    format!(
+                        "{column} {}",
+                        if name.starts_with('-') { "DESC" } else { "ASC" }
+                    )
+                })
+        })
+        .collect::<Vec<_>>();
+    order.push("t0.id ASC".to_owned());
+    order.join(", ")
 }
 
 fn date_filters(path: &str, field: &Field, params: &Parameters) -> Vec<Value> {

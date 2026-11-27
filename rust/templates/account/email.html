@@ -1,0 +1,57 @@
+{% extends "account/layout.html" %}
+{% block content %}
+<h1>{{ title }}</h1>
+{% if confirming %}
+    {% if address %}
+        {% if can_confirm %}
+        <p>Please confirm that <a href="mailto:{{ address.email }}">{{ address.email }}</a> is an email address for user {{ address.username }}.</p>
+        <form method="post" action="{{ confirm_url }}">
+            <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf }}">
+            {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
+            <button type="submit">Confirm</button>
+        </form>
+        {% else %}<p>Unable to confirm {{ address.email }} because it is already confirmed by a different account.</p>{% endif %}
+    {% else %}
+        <p>This email confirmation link expired or is invalid. Please <a href="/accounts/email/">issue a new email confirmation request</a>.</p>
+    {% endif %}
+{% else %}
+    {% if addresses %}
+    <p>The following email addresses are associated with your account:</p>
+    <form method="post" action="/accounts/email/">
+        <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf }}">
+        {% for address in addresses %}
+        <p><input type="radio" name="email" id="email_radio_{{ loop.index0 }}" value="{{ address.email }}"{% if address.primary or addresses|length == 1 %} checked{% endif %}>
+            <label for="email_radio_{{ loop.index0 }}">{{ address.email }}
+                <strong>{% if address.verified %}Verified{% else %}Unverified{% endif %}</strong>
+                {% if address.primary %}<strong>Primary</strong>{% endif %}
+            </label>
+        </p>
+        {% endfor %}
+        <button name="action_primary" type="submit">Make Primary</button>
+        <button name="action_send" type="submit">Re-send Verification</button>
+        <button name="action_remove" type="submit">Remove</button>
+    </form>
+    {% else %}
+    <p><strong>Warning:</strong> You currently do not have any email address set up. You should really add an email address so you can receive notifications, reset your password, etc.</p>
+    {% endif %}
+    <h2>Add Email Address</h2>
+    <form method="post" action="/accounts/email/">
+        <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf }}">
+        {% if error %}<ul class="errorlist" id="id_email_error"><li>{{ error }}</li></ul>{% endif %}
+        <p><label for="id_email">Email:</label>
+            <input type="email" name="email" autocomplete="email" placeholder="Email address" maxlength="320" required id="id_email"{% if entered %} value="{{ entered }}"{% endif %}{% if error %} aria-invalid="true" aria-describedby="id_email_error"{% endif %}>
+        </p>
+        <button name="action_add" type="submit">Add Email</button>
+    </form>
+{% endif %}
+{% endblock %}
+{% block extra_body %}
+{% if not confirming %}
+    <script src="/static/account/js/account.js"></script>
+    <script src="/static/account/js/onload.js"></script>
+    <script data-allauth-onload="allauth.account.forms.manageEmailForm" type="application/json">{
+    "i18n": {"confirmDelete": "Do you really want to remove the selected email address?"}
+}
+    </script>
+{% endif %}
+{% endblock %}
