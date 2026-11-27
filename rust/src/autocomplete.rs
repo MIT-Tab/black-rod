@@ -154,17 +154,13 @@ async fn lookup(
             }
         }
         Kind::Debater => {
-            if !include_temporary {
-                restriction.push("NOT x.temporary".to_owned());
-            }
-            restriction.push(
-                if remote == Some(true) {
-                    "x.synthetic"
-                } else {
-                    "NOT x.synthetic"
-                }
-                .to_owned(),
-            );
+            let scope = match (include_temporary, remote == Some(true)) {
+                (false, false) => "NOT x.temporary AND NOT x.synthetic",
+                (false, true) => "1=0",
+                (true, false) => "NOT x.synthetic",
+                (true, true) => "x.synthetic",
+            };
+            restriction.push(scope.to_owned());
         }
         Kind::Team => {
             restriction.push(

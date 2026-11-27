@@ -129,6 +129,44 @@ def directory_state(driver, server, path):
     """)
 
 
+def assert_debater_autocomplete_permissions(driver, django, rust, fixture):
+    code = """
+from django import setup
+setup()
+from core.models import Debater
+import json
+
+visible = Debater.objects.create(first_name="Visible autocomplete fixture")
+temporary = Debater.all_objects.create(first_name="Temporary autocomplete fixture", temporary=True)
+synthetic = Debater.all_objects.create(first_name="Synthetic autocomplete fixture", synthetic=True)
+print(json.dumps([visible.id, temporary.id, synthetic.id]))
+"""
+    out = subprocess.check_output([str(ROOT / "venv/bin/python"), "-c", code], text=True)
+    visible, temporary, synthetic = json.loads(out.splitlines()[-1])
+    staff = django_session()
+    for server in (django, rust):
+        root = f"http://{HOST}:{server.port}"
+        driver.get(root + "/robots.txt")
+        for session, permitted in ((None, False), (fixture["sessions"]["account"], False), (staff, True)):
+            driver.delete_all_cookies()
+            if session:
+                driver.add_cookie({"name": "sessionid", "value": session})
+            for ident, synthetic_only, expected in (
+                (visible, False, True),
+                (temporary, False, permitted),
+                (synthetic, True, permitted),
+                (synthetic, False, False),
+            ):
+                path = "/core/debaters/autocomplete?" + urlencode({"q": ident, "synthetic": int(synthetic_only)})
+                ids = driver.execute_async_script("""
+                    const [path, done] = arguments;
+                    fetch(path).then(response => response.json())
+                        .then(body => done(body.results.map(item => item.id)));
+                """, path)
+                assert [str(value) for value in ids] == ([str(ident)] if expected else []), server.name
+    driver.delete_all_cookies()
+
+
 def assert_directories(driver, django, rust):
     paths = [
         "/core/schools/",
@@ -4336,6 +4374,7 @@ def browser_checks(database, options, output):
         assert_oauth_new_accounts(driver, django, rust, provider)
         assert_oauth_connections(driver, django, rust, provider)
         assert_oauth_pending_signup(driver, django, rust, provider)
+        assert_debater_autocomplete_permissions(driver, django, rust, fixture)
         assert_directories(driver, django, rust)
         assert_legacy_standings(driver, django, rust)
         assert_partnership_paths(driver, django, rust)
