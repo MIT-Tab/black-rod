@@ -2655,11 +2655,6 @@ def assert_manual_results(driver, django, rust, fixture):
         """)
     reference, candidate = form_state(django), form_state(rust)
     assert reference == candidate, (reference, candidate)
-    driver.find_element("id", "novice_speakers-tab").click()
-    driver.find_element("css selector", '.add-form-btn[data-tab="novice_speakers"]').click()
-    WebDriverWait(driver, 10).until(lambda browser: browser.find_element(
-        "css selector", "#id_novice_speakers-0-speaker.select2-hidden-accessible"))
-    assert driver.find_element("id", "id_novice_speakers-TOTAL_FORMS").get_attribute("value") == "1"
 
     def send(fields):
         return driver.execute_async_script("""
@@ -2673,8 +2668,6 @@ def assert_manual_results(driver, django, rust, fixture):
             }, () => done({status:0}));
         """, fields)
 
-    rejected = send({"varsity_speakers-0-speaker": 9_000_000})
-    assert "Varsity Speakers tab" in rejected["error"] and not rejected["redirected"], rejected
     database = Path(os.environ["BR_STATE"]) / "dev.sqlite3"
     with sqlite3.connect(f"{database.as_uri()}?mode=ro", uri=True) as db:
         prior_awards = db.execute("SELECT * FROM core_speakerresult WHERE tournament_id=?", (event,)).fetchall()
@@ -2683,10 +2676,17 @@ def assert_manual_results(driver, django, rust, fixture):
             malformed = send({"varsity_speakers-0-ORDER": "not-a-number"})
             assert not malformed["redirected"], (server.name, malformed)
             assert db.execute("SELECT * FROM core_speakerresult WHERE tournament_id=?", (event,)).fetchall() == prior_awards
+
+    driver.find_element("id", "novice_speakers-tab").click()
+    driver.find_element("css selector", '.add-form-btn[data-tab="novice_speakers"]').click()
+    WebDriverWait(driver, 10).until(lambda browser: browser.find_element(
+        "css selector", "#id_novice_speakers-0-speaker.select2-hidden-accessible"))
+    assert driver.find_element("id", "id_novice_speakers-TOTAL_FORMS").get_attribute("value") == "1"
+    rejected = send({"varsity_speakers-0-speaker": 9_000_000})
+    assert "Varsity Speakers tab" in rejected["error"] and not rejected["redirected"], rejected
     committed = send({"varsity_speakers-0-speaker": manual["people"][2]})
     assert committed["redirected"] and committed["path"] == f"/core/tournaments/{event}", committed
     assert form_state(django) == reference
-    database = Path(os.environ["BR_STATE"]) / "dev.sqlite3"
     with sqlite3.connect(f"{database.as_uri()}?mode=ro", uri=True) as db:
         assert db.execute("""SELECT h.debater_id FROM core_teamresult_hidden_from_debaters h
             JOIN core_teamresult r ON r.id=h.teamresult_id WHERE r.tournament_id=?""", (event,)).fetchall() == [(manual["people"][0],)]

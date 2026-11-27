@@ -150,10 +150,10 @@ def index(request):
     if default not in ["toty", "coty", "soty", "noty"]:
         default = "toty"
 
-    toty = TOTY.objects.filter(season=current_season).order_by("-points", "pk")
-    coty = COTY.objects.filter(season=current_season).order_by("-points", "pk")
-    soty = SOTY.objects.filter(season=current_season).order_by("-points", "pk")
-    noty = NOTY.objects.filter(season=current_season).order_by("-points", "pk")
+    toty = TOTY.objects.filter(season=current_season).order_by("-points")
+    coty = COTY.objects.filter(season=current_season).order_by("-points")
+    soty = SOTY.objects.filter(season=current_season).order_by("-points")
+    noty = NOTY.objects.filter(season=current_season).order_by("-points")
 
     using_online_quals = False
     online_quals = None
@@ -163,7 +163,7 @@ def index(request):
     if current_season in settings.ONLINE_SEASONS:
         using_online_quals = True
         online_quals = OnlineQUAL.objects.filter(season=current_season).order_by(
-            "-points", "pk"
+            "-points"
         )
         online_seasons = [
             (season[0], season[1])
@@ -268,11 +268,11 @@ def stats(request):
 
     schools_by_tournament_count = School.objects.annotate(
         tournament_count=Count('hosted_tournaments', distinct=True)
-    ).filter(tournament_count__gt=0).order_by('-tournament_count', 'pk')[:10]
+    ).filter(tournament_count__gt=0).order_by('-tournament_count')[:10]
 
     schools_by_coty_points = School.objects.annotate(
         total_coty_points=Sum('coty__points')
-    ).filter(total_coty_points__isnull=False).order_by('-total_coty_points', 'pk')[:10]
+    ).filter(total_coty_points__isnull=False).order_by('-total_coty_points')[:10]
 
     multi_season_debaters = Debater.objects.exclude(
         first_season=F('latest_season')
@@ -339,7 +339,7 @@ def stats(request):
         tournament_count=Count('team_results__tournament', distinct=True)
     ).filter(tournament_count__gt=0).prefetch_related(
         Prefetch('debaters', queryset=Debater.objects.select_related('school'))
-    ).order_by('-tournament_count', 'pk')[:10]
+    ).order_by('-tournament_count')[:10]
 
     # Debaters ranked by recorded rounds (number of videos they appear in)
     debaters_by_round_count = Debater.objects.annotate(
@@ -349,7 +349,7 @@ def stats(request):
             Count('mg_videos', distinct=True) +
             Count('mo_videos', distinct=True)
         )
-    ).filter(round_count__gt=0).select_related('school').order_by('-round_count', 'pk')[:10]
+    ).filter(round_count__gt=0).select_related('school').order_by('-round_count')[:10]
 
     context = {
         'total_tournaments': total_tournaments,

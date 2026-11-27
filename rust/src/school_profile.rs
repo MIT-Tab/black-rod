@@ -66,7 +66,6 @@ async fn members(
         SELECT {DEBATER_COLUMNS}, d.first_season
         FROM core_debater d WHERE d.school_id = $1 AND d.first_season <= $2
             AND d.latest_season >= $2 AND NOT d.synthetic AND NOT d.temporary
-        ORDER BY d.id
     "
     );
     let rows = sqlx::query(AssertSqlSafe(query))

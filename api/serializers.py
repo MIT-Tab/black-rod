@@ -55,15 +55,10 @@ def serialize_debater(debater, request=None):
     return data
 
 
-def ordered_team_members(team):
-    # Sort the prefetched collection when available.
-    return sorted(team.debaters.all(), key=lambda member: member.pk)
-
-
 def serialize_team(team, request=None, include_debaters=True):
     debaters_payload = []
     if include_debaters:
-        debaters_payload = [serialize_debater(debater, request) for debater in ordered_team_members(team)]
+        debaters_payload = [serialize_debater(debater, request) for debater in team.debaters.all()]
     data = {
         "id": team.id,
         "name": team.name,

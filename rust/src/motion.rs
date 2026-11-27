@@ -20,7 +20,7 @@ const DETAIL: &str = "
 ";
 pub(crate) const TOPICS: &str = "
     SELECT t.name FROM core_motiontopic t JOIN core_taggedmotion m ON m.tag_id = t.id
-    WHERE m.content_object_id = $1 ORDER BY t.id
+    WHERE m.content_object_id = $1
 ";
 
 pub(crate) async fn detail(
@@ -67,6 +67,7 @@ pub(crate) async fn detail(
         "background_slide": row.get::<&str, _>("background_slide"),
         "date_set": row.get::<Option<&str>, _>("date_set").map(web::django_date),
         "tournament": tournament,
+        "tags": tags.into_iter().map(|name| json!({"name": name})).collect::<Vec<_>>(),
     });
     let buttons = if session::has_permission(&state.pool, &user, "change_motion")
         .await
@@ -86,7 +87,7 @@ pub(crate) async fn detail(
     };
     let common = web::base_context(&state, &user, &uri);
     let values = context! {
-        object, buttons, topics => tags.into_iter().map(|name| json!({"name": name})).collect::<Vec<_>>(),
+        object, buttons,
         motion_status => row.get::<Option<&str>, _>("motion_status"),
         csrf => csrf.as_ref().map(|(_, token)| token.as_str()),
     };

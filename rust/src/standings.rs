@@ -143,30 +143,44 @@ pub(crate) fn lite_school(id: i64, name: &str, origin: &str) -> Value {
 
 async fn team_members(
     pool: &AnyPool,
-    season: &str,
+    standings: &[AnyRow],
     origin: &str,
 ) -> Result<HashMap<i64, Vec<Value>>, sqlx::Error> {
-    let query = format!(
-        "
-        SELECT CAST(td.team_id AS BIGINT) AS team_id, {LITE_DEBATER}
-        FROM core_team_debaters td
-        JOIN core_debater d ON td.debater_id = d.id
-        LEFT JOIN core_school s ON s.id = d.school_id
-        WHERE NOT d.temporary AND NOT d.synthetic
-          AND EXISTS (SELECT 1 FROM core_toty b WHERE b.team_id = td.team_id AND b.season = $1)
-        ORDER BY td.team_id, d.id
-    "
-    );
-    let rows = sqlx::query(AssertSqlSafe(query))
-        .bind(season)
-        .fetch_all(pool)
-        .await?;
+    let mut seen = BTreeSet::new();
+    let teams = standings
+        .iter()
+        .map(|row| row.try_get::<i64, _>("team_id"))
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
+        .filter(|id| seen.insert(*id))
+        .collect::<Vec<_>>();
     let mut result: HashMap<i64, Vec<Value>> = HashMap::new();
-    for row in rows {
-        result
-            .entry(row.try_get("team_id")?)
-            .or_default()
-            .push(lite_debater(&row, origin)?);
+    for teams in teams.chunks(900) {
+        let parameters = (1..=teams.len())
+            .map(|number| format!("${number}"))
+            .collect::<Vec<_>>()
+            .join(",");
+        // Match Django's related-member query. Its database order is observable
+        // in the serialized arrays and can differ from sorting debater IDs.
+        let statement = format!(
+            "
+            SELECT CAST(td.team_id AS BIGINT) AS team_id, {LITE_DEBATER}
+            FROM core_debater d
+            JOIN core_team_debaters td ON td.debater_id = d.id
+            LEFT JOIN core_school s ON s.id = d.school_id
+            WHERE NOT (d.temporary OR d.synthetic) AND td.team_id IN ({parameters})
+        "
+        );
+        let mut query = sqlx::query(AssertSqlSafe(statement));
+        for team in teams {
+            query = query.bind(team);
+        }
+        for row in query.fetch_all(pool).await? {
+            result
+                .entry(row.try_get("team_id")?)
+                .or_default()
+                .push(lite_debater(&row, origin)?);
+        }
     }
     Ok(result)
 }
@@ -311,11 +325,12 @@ impl Board {
         let markers = &MARKER_NAMES[..marker_count];
         // Django joins the sixth TOTY marker for the public list, although it
         // only serializes five. The extra join can affect the order of exact ties.
-        let selected_markers = if view == View::Api && matches!(self, Self::Teams) {
-            &MARKER_NAMES[..]
-        } else {
-            markers
-        };
+        let selected_markers =
+            if matches!(view, View::Api | View::Replay) && matches!(self, Self::Teams) {
+                &MARKER_NAMES[..]
+            } else {
+                markers
+            };
         let mut columns = String::new();
         let mut joins = String::new();
         for marker in selected_markers {
@@ -333,9 +348,8 @@ impl Board {
         let order = match view {
             // The list slices these results after sorting. A new tie-breaker
             // could change which entry appears at an existing client's limit.
-            View::Api => "b.points DESC, b.place",
-            View::Replay => "b.points DESC, b.place, b.id",
-            View::Home => "b.points DESC, b.id",
+            View::Api | View::Replay => "b.points DESC, b.place",
+            View::Home => "b.points DESC",
         };
         let query = format!("
             SELECT CAST(b.id AS BIGINT) AS standing_id,
@@ -354,7 +368,7 @@ impl Board {
             return Ok(Vec::new());
         }
         let team_members = if matches!(self, Self::Teams) {
-            team_members(pool, &season_string, origin).await?
+            team_members(pool, &rows, origin).await?
         } else {
             HashMap::new()
         };

@@ -7,6 +7,7 @@ from dataclasses import dataclass
 import hashlib
 from html.parser import HTMLParser
 from http.client import HTTPConnection
+from itertools import groupby
 import json
 import math
 import os
@@ -166,6 +167,17 @@ def differences(reference, candidate, position="$"):
         elif position.endswith(".tags") and all(isinstance(item, str) for item in reference + candidate):
             reference = sorted(reference)
             candidate = sorted(candidate)
+        elif position.endswith(".coty_breakdown") or (
+            ".standings.coty[" in position and position.endswith(".breakdown")
+        ):
+            # Django orders the full breakdown by points and leaves equal
+            # points unordered. Compare each group's exact membership and data.
+            def order_ties(rows):
+                return [row for _, tied in groupby(rows, key=lambda row: row["points"])
+                        for row in sorted(tied, key=lambda row: row["debater"]["id"])]
+
+            reference = order_ties(reference)
+            candidate = order_ties(candidate)
         if len(reference) != len(candidate):
             yield f"{position} length differs: {len(reference)} vs {len(candidate)}"
         for index, (left, right) in enumerate(zip(reference, candidate)):

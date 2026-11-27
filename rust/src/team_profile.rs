@@ -25,10 +25,9 @@ pub(crate) const SCHOOL_COLUMNS: &str = "CAST(s.id AS BIGINT) AS school_id, s.na
 const TEAM: &str = "SELECT name FROM core_team WHERE id = $1";
 const MEMBERS: &str = "
     SELECT {columns}, {school}, CAST(td.team_id AS BIGINT) AS member_team_id
-    FROM core_team_debaters td JOIN core_debater d ON d.id = td.debater_id
+    FROM core_debater d JOIN core_team_debaters td ON d.id = td.debater_id
     LEFT JOIN core_school s ON s.id = d.school_id
-    WHERE td.team_id IN ({teams}) AND NOT d.synthetic AND NOT d.temporary
-    ORDER BY td.team_id, d.id
+    WHERE td.team_id IN ({teams}) AND NOT (d.temporary OR d.synthetic)
 ";
 const ROUNDS: &str = "
     SELECT CAST(r.id AS BIGINT) AS id, CAST(r.round_number AS BIGINT) AS round_number,

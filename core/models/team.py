@@ -84,7 +84,7 @@ class Team(models.Model):
 
     @property
     def long_name(self):
-        debaters = sorted(self.debaters.all(), key=lambda debater: debater.pk)
+        debaters = list(self.debaters.all())
         if len(debaters) == 2:
             left_school = debaters[0].school.name if debaters[0].school else "Unaffiliated"
             right_school = debaters[1].school.name if debaters[1].school else "Unaffiliated"
