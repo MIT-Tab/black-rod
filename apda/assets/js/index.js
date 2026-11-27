@@ -20,6 +20,7 @@ import "./replay";
 import initPartnershipNetwork from "./partnership_network";
 import "./immaculate_grid";
 import initPartnershipStats from "./partnership_stats";
+import initTagFilters from "./rust_tag_filters";
 import initSchedulingBrowserRunner from "./scheduling_browser_runner";
 
 function getCookie(name) {
@@ -113,3 +114,5 @@ $(document).ready(() => {
   initPartnershipNetwork();
   initPartnershipStats();
 });
+
+$(initTagFilters);

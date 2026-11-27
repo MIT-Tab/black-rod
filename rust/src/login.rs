@@ -3,7 +3,7 @@ use std::{collections::HashMap, num::NonZeroU32};
 use axum::{
     body::to_bytes,
     extract::{Request, State},
-    http::{HeaderMap, HeaderValue, Method, StatusCode, header},
+    http::{HeaderMap, HeaderValue, Method, StatusCode, Uri, header},
     response::{Html, IntoResponse, Response},
 };
 use base64::{Engine, engine::general_purpose::STANDARD};
@@ -22,7 +22,7 @@ pub(crate) const SESSION_AGE: u32 = 2_592_000;
 const AUTH_ERROR: &str =
     "Please enter a correct username and password. Note that both fields may be case-sensitive.";
 
-fn form_values(raw: &[u8]) -> HashMap<String, String> {
+pub(crate) fn form_values(raw: &[u8]) -> HashMap<String, String> {
     url::form_urlencoded::parse(raw).into_owned().collect()
 }
 
@@ -49,6 +49,22 @@ pub(crate) fn safe_next(value: &str, origin: &str) -> String {
     } else {
         String::new()
     }
+}
+
+pub(crate) fn redirect_to_login(uri: &Uri) -> Response {
+    let original = uri
+        .path_and_query()
+        .map(|part| part.as_str())
+        .unwrap_or_default();
+    // Django's redirect field retains path slashes and encodes the query delimiter.
+    let encoded = url::form_urlencoded::byte_serialize(original.as_bytes())
+        .collect::<String>()
+        .replace("%2F", "/");
+    (
+        StatusCode::FOUND,
+        [(header::LOCATION, format!("/auth/login?next={encoded}"))],
+    )
+        .into_response()
 }
 
 fn alphabet_indices(token: &str) -> Option<Vec<usize>> {
@@ -91,7 +107,7 @@ fn mask(secret: &str) -> Result<String, ring::error::Unspecified> {
     Ok(mask)
 }
 
-fn csrf_valid(headers: &HeaderMap, token: Option<&str>, origin: &str) -> bool {
+pub(crate) fn csrf_valid(headers: &HeaderMap, token: Option<&str>, origin: &str) -> bool {
     if let Some(origin_header) = headers.get(header::ORIGIN) {
         if origin_header != origin {
             return false;
@@ -119,7 +135,7 @@ fn csrf_valid(headers: &HeaderMap, token: Option<&str>, origin: &str) -> bool {
     bool::from(secret.as_bytes().ct_eq(provided.as_bytes()))
 }
 
-fn csrf_failure() -> Response {
+pub(crate) fn csrf_failure() -> Response {
     (
         StatusCode::FORBIDDEN,
         Html("<h1>Forbidden (403)</h1><p>CSRF verification failed. Request aborted.</p>"),
@@ -159,15 +175,23 @@ struct LoginPage<'a> {
     remember: bool,
 }
 
+pub(crate) fn csrf_tokens(
+    headers: &HeaderMap,
+) -> Result<(String, String), ring::error::Unspecified> {
+    let secret = match session::cookie(headers, "csrftoken").and_then(unmask) {
+        Some(secret) => secret,
+        None => session::random_token(CSRF_ALPHABET, 32)?,
+    };
+    let token = mask(&secret)?;
+    Ok((secret, token))
+}
+
+pub(crate) fn set_csrf_cookie(response: &mut Response, secret: &str, secure: bool) {
+    set_cookie(response, "csrftoken", secret, Some(CSRF_AGE), secure, false);
+}
+
 async fn page(state: &AppState, headers: &HeaderMap, https: bool, page: LoginPage<'_>) -> Response {
-    let csrf = match session::cookie(headers, "csrftoken").and_then(unmask) {
-        Some(secret) => Ok(secret),
-        None => session::random_token(CSRF_ALPHABET, 32),
-    };
-    let Ok(csrf) = csrf else {
-        return StatusCode::INTERNAL_SERVER_ERROR.into_response();
-    };
-    let Ok(token) = mask(&csrf) else {
+    let Ok((csrf, token)) = csrf_tokens(headers) else {
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     };
     let Ok(user) = session::user(&state.pool, headers, state.secret.as_deref()).await else {
@@ -205,14 +229,7 @@ async fn page(state: &AppState, headers: &HeaderMap, https: bool, page: LoginPag
         Html(html),
     )
         .into_response();
-    set_cookie(
-        &mut response,
-        "csrftoken",
-        &csrf,
-        Some(CSRF_AGE),
-        https,
-        false,
-    );
+    set_csrf_cookie(&mut response, &csrf, https);
     response
 }
 

@@ -19,6 +19,119 @@ use crate::{
 
 const VIEWS: &[(&str, &str)] = &[
     (
+        "admin/scheduling_dashboard.html",
+        include_str!("../../core/templates/admin/scheduling_dashboard.html"),
+    ),
+    (
+        "debater/debater_profile_edit.html",
+        include_str!("../../core/templates/debater/debater_profile_edit.html"),
+    ),
+    (
+        "debater/profile_label.html",
+        include_str!("../templates/profile_label.html"),
+    ),
+    (
+        "debater/profile_field.html",
+        include_str!("../templates/profile_field.html"),
+    ),
+    (
+        "base/_font_awesome.html",
+        include_str!("../../core/templates/base/_font_awesome.html"),
+    ),
+    (
+        "debater/my_profile.html",
+        include_str!("../../core/templates/debater/my_profile.html"),
+    ),
+    (
+        "debater/claim_debater_request_form.html",
+        include_str!("../../core/templates/debater/claim_debater_request_form.html"),
+    ),
+    (
+        "debater/claim_selects.html",
+        include_str!("../templates/claim_selects.html"),
+    ),
+    (
+        "admin/claim_debater_requests.html",
+        include_str!("../../core/templates/admin/claim_debater_requests.html"),
+    ),
+    ("403.html", include_str!("../../core/templates/403.html")),
+    (
+        "search/search.html",
+        include_str!("../../core/templates/search/search.html"),
+    ),
+    (
+        "base/create.html",
+        include_str!("../../core/templates/base/create.html"),
+    ),
+    (
+        "motions/form.html",
+        include_str!("../../core/templates/motions/form.html"),
+    ),
+    (
+        "motions/fields.html",
+        include_str!("../templates/motion_fields.html"),
+    ),
+    (
+        "immaculate_grid/square_content.html",
+        include_str!("../../core/templates/immaculate_grid/square_content.html"),
+    ),
+    (
+        "immaculate_grid/review_dialog.html",
+        include_str!("../../core/templates/immaculate_grid/review_dialog.html"),
+    ),
+    (
+        "immaculate_grid/player_board.html",
+        include_str!("../../core/templates/immaculate_grid/player_board.html"),
+    ),
+    (
+        "immaculate_grid/leaderboard.html",
+        include_str!("../../core/templates/immaculate_grid/leaderboard.html"),
+    ),
+    (
+        "immaculate_grid/grid.html",
+        include_str!("../../core/templates/immaculate_grid/grid.html"),
+    ),
+    (
+        "immaculate_grid/leaderboard_tables.html",
+        include_str!("../../core/templates/immaculate_grid/leaderboard_tables.html"),
+    ),
+    (
+        "immaculate_grid/board_cells.html",
+        include_str!("../../core/templates/immaculate_grid/board_cells.html"),
+    ),
+    (
+        "resources/detail.html",
+        include_str!("../../core/templates/resources/detail.html"),
+    ),
+    (
+        "debaters/detail.html",
+        include_str!("../../core/templates/debaters/detail.html"),
+    ),
+    (
+        "motions/detail.html",
+        include_str!("../../core/templates/motions/detail.html"),
+    ),
+    (
+        "tournaments/recent_results_widget.html",
+        include_str!("../../core/templates/tournaments/recent_results_widget.html"),
+    ),
+    (
+        "videos/detail.html",
+        include_str!("../../core/templates/videos/detail.html"),
+    ),
+    (
+        "tournaments/detail.html",
+        include_str!("../../core/templates/tournaments/detail.html"),
+    ),
+    (
+        "base/results/team.html",
+        include_str!("../../core/templates/base/results/team.html"),
+    ),
+    (
+        "base/results/speaker.html",
+        include_str!("../../core/templates/base/results/speaker.html"),
+    ),
+    (
         "core/stats.html",
         include_str!("../../core/templates/core/stats.html"),
     ),
@@ -119,6 +232,12 @@ static TEMPLATES: LazyLock<Result<Environment<'static>, minijinja::Error>> = Laz
             .map(|number| number.to_string())
             .unwrap_or_default()
     });
+    environment.add_filter("urlencode", |value: String| {
+        url::form_urlencoded::byte_serialize(value.as_bytes())
+            .collect::<String>()
+            .replace('+', "%20")
+            .replace("%2F", "/")
+    });
     environment.add_filter("ordinal", |number: i64| {
         let suffix = match (number % 100, number % 10) {
             (11..=13, _) => "th",
@@ -128,6 +247,33 @@ static TEMPLATES: LazyLock<Result<Environment<'static>, minijinja::Error>> = Laz
             _ => "th",
         };
         format!("{number}{suffix}")
+    });
+    environment.add_filter("calendar_date", |value: String, format: String| {
+        chrono::NaiveDate::parse_from_str(&value, "%Y-%m-%d")
+            .map_or(String::new(), |date| date.format(&format).to_string())
+    });
+    environment.add_filter("grid_score", |value: minijinja::Value| {
+        if value.is_none() {
+            "—".to_owned()
+        } else {
+            value.to_string()
+        }
+    });
+    environment.add_filter("grid_miss_names", |value: minijinja::Value| {
+        let data = serde_json::to_string(&value)
+            .unwrap_or_else(|_| "{}".to_owned())
+            .replace('<', r"\u003C")
+            .replace('>', r"\u003E")
+            .replace('&', r"\u0026");
+        minijinja::Value::from_safe_string(format!(
+            r#"<script id="immaculate-miss-names" type="application/json">{data}</script>"#
+        ))
+    });
+    environment.add_filter("long_date", |value: String| django_date(&value));
+    environment.add_function("tag_url", |name: String| {
+        let mut url = url::Url::parse("http://localhost/core/videos/tags/").unwrap();
+        url.path_segments_mut().unwrap().pop_if_empty().push(&name);
+        url.path().to_owned()
     });
     environment.add_filter("short_date", |value: String| {
         chrono::NaiveDate::parse_from_str(&value, "%Y-%m-%d")
@@ -146,7 +292,13 @@ static TEMPLATES: LazyLock<Result<Environment<'static>, minijinja::Error>> = Laz
                 .unwrap_or_default()
         },
     );
-    environment.add_filter("one_decimal", |value: f64| format!("{value:.1}"));
+    environment.add_filter("one_decimal", |value: f64| {
+        format!("{:.1}", (value * 10.0).round() / 10.0)
+    });
+    environment.add_filter(
+        "yesno",
+        |value: minijinja::Value| if value.is_true() { "Yes" } else { "No" },
+    );
     environment.add_filter("intcomma", |value: i64| {
         let raw = value.to_string();
         let mut result = String::new();
@@ -163,17 +315,102 @@ static TEMPLATES: LazyLock<Result<Environment<'static>, minijinja::Error>> = Laz
         result
     });
     for (name, text) in VIEWS {
-        environment.add_template_owned(*name, adapt_template(text))?;
+        environment.add_template_owned(*name, adapt_template(name, text))?;
     }
     Ok(environment)
 });
 
-fn adapt_template(template: &str) -> String {
+fn adapt_debater_profile(template: &str) -> String {
+    template
+        .replace("{% url 'core:school_detail' pk=object.school.id %}", r#""{{ object.school.url }}""#)
+        .replace("{% url 'api:debater_detail' object.id %}", "{{ object.api_url }}")
+        .replace("{% url 'admin:core_teamresult_changelist' %}", "/admin/core/teamresult/")
+        .replace("{% url 'admin:core_speakerresult_changelist' %}", "/admin/core/speakerresult/")
+        .replace("{% url 'core:debater_tab_cards_csv' pk=object.id %}", "/core/debaters/{{ object.id }}/tab-cards-csv")
+        .replace("{% url 'core:debater_profile_edit' object.pk %}", "/core/debater/{{ object.id }}/edit-profile/")
+        .replace("object.user == request.user or request.user.is_superuser", "can_edit_profile")
+        .replace(r#"{{ object.first_season }}-{{ object.first_season|add:"1"|stringformat:"s"|slice:"2:4" }}"#, "{{ object.first_season }}")
+        .replace(r#"{{ object.latest_season }}-{{ object.latest_season|add:"1"|stringformat:"s"|slice:"2:4" }}"#, "{{ object.latest_season }}")
+        .replace("object.show_region", "object.region_display")
+        .replace("object.get_region_display", "object.region_display")
+        .replace("{{ team|partner_name:object }}", r#"{% if team.partner %}<a href="{{ team.partner.url }}">{{ team.partner.name }}</a>{% else %}NO PARTNER{% endif %}"#)
+        .replace("{{ team }}", "{{ team.name }}")
+        .replace("round.round|opponent_url:tournament.team", "round.opponent.url")
+        .replace("round.round|opponent:tournament.team", "round.opponent.name")
+        .replace("round.round|opponent_side:tournament.team", "round.opponent_side")
+        .replace("round.round|wl:tournament.team", "round.result")
+        .replace("tournament.tournament.date|date:'M j'", "tournament.tournament.date|short_date")
+        .replace("{{ tournament.team|partner_display:object }}", r#"{% if tournament.partner %}<a href="{{ tournament.partner.url }}">{{ tournament.partner.name }}</a>{% if tournament.partner.school %} (<a href="{{ tournament.partner.school.url }}">{{ tournament.partner.school.name }}</a>){% endif %}{% else %}NO PARTNER{% endif %}"#)
+        .replace("award.get_type_of_place_display", "award.type")
+        .replace("award.place|place_as_round_filter:award.ghost_points", "award.place|award_place(award.ghost_points)")
+        .replace("{{ award.team }}", "{{ award.team.name }}")
+}
+
+fn adapt_profile_editor(template: &str) -> String {
+    static FORM: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"\{\{ form\.([a-z_]+)(\.label_tag)? \}\}").unwrap());
+    FORM.replace_all(template, |capture: &Captures<'_>| {
+        let partial = if capture.get(2).is_some() { "profile_label" } else { "profile_field" };
+        format!(r#"{{% with field = form.{} %}}{{% include "debater/{partial}.html" %}}{{% endwith %}}"#, &capture[1])
+    }).replace("{{ message }}", "{{ message.text }}")
+        .replace(r#"|default:"Unknown""#, r#"|default("Unknown", true)"#)
+        .replace(r#"|default:"—""#, r#"|default("—", true)"#)
+        .replace("object.get_status_display", "object.status")
+        .replace(r#"{{ form.instance.DINO|default:"2" }}"#, "2")
+        .replace(r#"<form method="post" novalidate>"#, r#"<form method="post" novalidate>
+            {% for error in form.non_field_errors %}<div class="alert alert-danger">{{ error }}</div>{% endfor %}"#)
+}
+
+fn adapt_scheduler(template: &str) -> String {
+    static SETTINGS_INPUT: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"\{\{ settings_form\.(\w+) \}\}").unwrap());
+    let template = template
+        .replace("{{ upload_form.workspace_version }}", r#"<input type="hidden" name="workspace_version" value="{{ version }}" id="id_workspace_version">"#)
+        .replace("{{ settings_form.workspace_version }}", r#"<input type="hidden" name="workspace_version" value="{{ version }}" id="id_workspace_version">"#)
+        .replace("{{ upload_form.schools_csv }}", r#"<input type="file" name="schools_csv" class="form-control-file" id="id_schools_csv">"#)
+        .replace("{{ upload_form.dates_csv }}", r#"<input type="file" name="dates_csv" class="form-control-file" id="id_dates_csv">"#)
+        .replace("upload_form.schools_csv.errors", "upload_errors.schools_csv")
+        .replace("upload_form.dates_csv.errors", "upload_errors.dates_csv")
+        .replace("upload_form.non_field_errors", "upload_errors.non_field_errors")
+        .replace("settings_form.non_field_errors", "upload_errors.workspace_version")
+        .replace("settings_form.errors", "settings_errors")
+        .replace("for field in settings_form", "for field in settings_errors")
+        .replace(r#"|join:", ""#, r#"|join(", ")"#)
+        .replace("|default:'Upload CSVs first'", r#"|default("Upload CSVs first", true)"#);
+    SETTINGS_INPUT
+        .replace_all(&template, |capture: &Captures<'_>| {
+            let field = &capture[1];
+            let bounds = if field == "max_workers" { r#" min="1" max="64""# } else { "" };
+            format!(r#"<input type="number" name="{field}" class="form-control"{bounds} required id="id_{field}" value="{{{{ settings.{field}.value }}}}">"#)
+        })
+        .replace("settings_form.", "settings.")
+        .replace("<h4 class=\"card-title mb-1\">Scheduling Workspace</h4>", r#"<h4 class="card-title mb-1">Scheduling Workspace</h4>
+        {% for message in notices %}<div class="alert alert-{{ message.tags }}" role="alert">{{ message.text }}</div>{% endfor %}
+        {% if inline_notice %}<div class="alert alert-danger" role="alert">{{ inline_notice }}</div>{% endif %}"#)
+}
+
+fn adapt_template(name: &str, template: &str) -> String {
+    let adapted;
+    let template = match name {
+        "admin/scheduling_dashboard.html" => {
+            adapted = adapt_scheduler(template);
+            &adapted
+        }
+        "debaters/detail.html" => {
+            adapted = adapt_debater_profile(template);
+            &adapted
+        }
+        "debater/debater_profile_edit.html" => {
+            adapted = adapt_profile_editor(template);
+            &adapted
+        }
+        _ => template,
+    };
     static DJANGO_TAGS: LazyLock<Regex> = LazyLock::new(|| {
         Regex::new(r"\{%\s*(load|get_menu|render_bundle|static|url|endblock|cache|endcache)(?:\s+([^%]*?))?\s*%\}").unwrap()
     });
     static INCLUDE: LazyLock<Regex> = LazyLock::new(|| {
-        Regex::new(r#"\{% include "((?:core/stats/)[^"]+)" with ([^%]+)%\}"#).unwrap()
+        Regex::new(r#"\{% include "((?:core/stats/[^"]+|base/results/(?:team|speaker)\.html))" with ([^%]+)%\}"#).unwrap()
     });
     static ASSIGN: LazyLock<Regex> =
         LazyLock::new(|| Regex::new(r#"[a-z0-9_]+=(?:"[^"]+"|[^ ]+)"#).unwrap());
@@ -188,6 +425,44 @@ fn adapt_template(template: &str) -> String {
             &captures[1]
         )
     });
+    let template = if matches!(
+        name,
+        "debater/my_profile.html"
+            | "debater/claim_debater_request_form.html"
+            | "admin/claim_debater_requests.html"
+    ) {
+        std::borrow::Cow::Owned(template
+            .replace("{% url 'core:school_detail' debater.school.pk %}", "{{ debater.school.url }}")
+            .replace("{% url 'core:debater_profile_edit' debater.pk %}", "/core/debater/{{ debater.id }}/edit-profile/")
+            .replace(r#"{{ request.created_at|date:"M d, Y" }}"#, "{{ request.created_at }}")
+            .replace(r#"{{ request.created_at|date:"M d, Y H:i" }}"#, "{{ request.created_at_full }}")
+            .replace(r#"{{ request.processed_at|date:"M d, Y H:i" }}"#, "{{ request.processed_at }}")
+            .replace(r#"|default:"Unknown""#, r#"|default("Unknown", true)"#)
+            .replace("debater.get_status_display", "debater.status")
+            .replace("request.requested_by.get_full_name|default:request.requested_by.username", "request.requested_by.name")
+            .replace("request.processed_by.get_full_name|default:request.processed_by.username", "request.processed_by.name")
+            .replace("{{ message }}", "{{ message.text }}")
+            .replace("{{ form.media }}", "")
+            .replace("{{ form.school.label_tag }}", "").replace("{{ form.debater.label_tag }}", "")
+            .replace("{{ form.school }}", r#"{% with field="school" %}{% include "debater/claim_selects.html" %}{% endwith %}"#)
+            .replace("{{ form.debater }}", r#"{% with field="debater" %}{% include "debater/claim_selects.html" %}{% endwith %}"#)
+            .replace("{{ form.school.help_text }}", "First, select the school you debated for")
+            .replace("{{ form.debater.help_text }}", "Then search for and select your debater profile")
+            .replace("form.school.errors", "errors.school")
+            .replace("form.debater.errors", "errors.debater")
+            .replace("form.non_field_errors", "errors.non_field_errors"))
+    } else {
+        template
+    };
+    let template = if name == "motions/form.html" || name == "base/create.html" {
+        std::borrow::Cow::Owned(
+            template
+                .replace("{{ form.media }}", "")
+                .replace("{{ form|crispy }}", "{% include \"motions/fields.html\" %}"),
+        )
+    } else {
+        template
+    };
     let rendered = DJANGO_TAGS.replace_all(&template, |capture: &Captures<'_>| {
         let tag = &capture[1];
         let arguments = capture.get(2).map_or("", |value| value.as_str().trim());
@@ -203,8 +478,30 @@ fn adapt_template(template: &str) -> String {
                 let route = arguments.split('\'').nth(1).unwrap_or_default();
                 let path = match route {
                     "core:index" => "/",
+                    "core:admin_tools" => "/core/admin-tools/",
+                    "core:scheduling_download_csv" if arguments.contains("'schools'") => {
+                        "/core/admin/scheduling/download/schools/"
+                    }
+                    "core:scheduling_download_csv" => "/core/admin/scheduling/download/dates/",
+                    "core:scheduling_run_output" if arguments.contains("latest_completed_run") => {
+                        "/core/admin/scheduling/runs/{{ latest_completed_run.id }}/output/"
+                    }
+                    "core:scheduling_run_output" => {
+                        "/core/admin/scheduling/runs/{{ run.id }}/output/"
+                    }
                     "api:season_standings" => "/api/standings/",
                     "api:school_detail" => "/api/schools/{{ object.id }}/detail/",
+                    "api:tournament_detail" => "/api/tournaments/{{ object.id }}/detail/",
+                    "core:tournament_mittab_bundle_upload" => {
+                        "/core/tournaments/mittab_bundle/upload"
+                    }
+                    "core:tournament_dataentry_setup" => "/core/tournaments/data_entry/setup",
+                    "core:resource_list" => "/core/resources/",
+                    "core:my_debater_profile" => "/core/my-profile/",
+                    "core:claim_debater_request_create" => "/core/claim-debater/request/",
+                    "core:motion_status" => "/core/motions/{{ object.id }}/status",
+                    "core:tag_detail" => "{{ tag_url(tag.name) }}",
+                    "core:team_detail" => "{{ result.team.url }}",
                     "api:team_detail" => "/api/teams/{{ object.id }}/detail/",
                     "core:tournament_detail" if arguments.contains("result.result") => {
                         "{{ result.result.tournament.url }}"
@@ -214,8 +511,20 @@ fn adapt_template(template: &str) -> String {
                     "core:openapi_schema" => "/.well-known/openapi.json",
                     "core:standings_replay" => "/standings/replay/",
                     "core:immaculate_grid" => "/immaculate-grid/",
+                    "core:immaculate_grid_guess" => "/immaculate-grid/guess/",
+                    "core:immaculate_grid_answers" => "/immaculate-grid/answers/",
+                    "core:immaculate_grid_search" => "/immaculate-grid/search/",
+                    "core:immaculate_grid_infinite" => "/immaculate-grid/infinite/",
+                    "core:immaculate_grid_infinite_guess" => "/immaculate-grid/infinite/guess/",
+                    "core:immaculate_grid_leaderboard" => "/immaculate-grid/leaderboard/",
+                    "core:immaculate_grid_player_board" => {
+                        "/immaculate-grid/leaderboard/{{ entry.id }}/"
+                    }
                     "core:import_sources" => "/core/tournaments/import/",
                     "core:live_standings" => "/live",
+                    "core:debater_detail" if arguments.contains("result.debater") => {
+                        "{{ result.debater.url }}"
+                    }
                     "core:debater_detail" => "{{ speaker.debater.url }}",
                     "core:school_detail" => "{{ speaker.school.url }}",
                     _ => panic!("Unmapped template route {route}"),
@@ -231,8 +540,29 @@ fn adapt_template(template: &str) -> String {
     });
     rendered
         .replace("{{ block.super }}", "{{ super() }}")
+        .replace("{% csrf_token %}", r#"<input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf }}">"#)
+        .replace("object.authors.all", "object.authors")
+        .replace("object.get_resource_type_display", "object.resource_type")
+        .replace("object.get_viewing_permission_display", "object.viewing_permission")
+        .replace("object.created_at|date:\"F d, Y\"", "object.created_at")
+        .replace("object.date_set|default:\"Unknown\"", "object.date_set or 'Unknown'")
+        .replace("{{ object.tournament }}", "{{ object.tournament.name }}")
+        .replace("object.tournament.get_absolute_url", "object.tournament.url")
         .replace("{% empty %}", "{% else %}")
         .replace("payload is not None", "payload is not none")
+        .replace("|date:'Y-m-d'", "")
+        .replace(r#"|date:"F j, Y""#, r#"|calendar_date("%B %-d, %Y")"#)
+        .replace("|date:'F j'", r#"|calendar_date("%B %-d")"#)
+        .replace(r#"|date:"M j, Y""#, r#"|calendar_date("%b %-d, %Y")"#)
+        .replace(r#"score_day|date:"M j""#, "score_day|short_date")
+        .replace(r#"|date:"D""#, r#"|calendar_date("%a")"#)
+        .replace(r#"|default_if_none:"—""#, "|grid_score")
+        .replace("latest_guess.score is None", "latest_guess.score is none")
+        .replace(r#"not infinite or request.method == "POST""#, "not infinite or practice_post_failed")
+        .replace("score is None", "score is none")
+        .replace("week_days|length|add:3", "(week_days|length) + 3")
+        .replace(r#"|json_script:"immaculate-miss-names""#, "|grid_miss_names")
+        .replace("forloop.parentloop.counter", "(cell.index // 3) + 1")
         .replace("forloop.counter", "loop.index")
         .replace("forloop.revcounter", "loop.revindex")
         .replace("forloop.first", "loop.first")
@@ -240,6 +570,28 @@ fn adapt_template(template: &str) -> String {
         .replace("loop.index|range_filter:3", "range(loop.index, 3)")
         .replace("{{ object }}", "{{ object.name }}")
         .replace("|floatformat:1", "|one_decimal")
+        .replace("message.tags|default:'info'", "message.tags|default('info')")
+        .replace("object.autoqual_recipients.exists", "recipients")
+        .replace("object.autoqual_recipients.all", "recipients")
+        .replace("object.videos.all", "videos")
+        .replace("{{ object.date }}", "{{ object.date|long_date }}")
+        .replace("|yesno:\"Yes,No\"", "|yesno")
+        .replace("round.round|opponent_url:team", "round.opponent.url")
+        .replace("round.round|opponent_side:team", "round.opponent_side")
+        .replace("round.round|opponent:team", "round.opponent.name")
+        .replace("round.round|wl:team", "round.result")
+        .replace("loop.index|place_as_round_filter:result.ghost_points", "loop.index|award_place(result.ghost_points)")
+        .replace("{{ result.team }}", "{{ result.team.name }}")
+        .replace("{{ result.team.debaters_display|safe }}", r#"{% for debater in result.team.debaters %}<a href="{{ debater.url }}">{{ debater.name }}</a>{% if not loop.last %} and {% endif %}{% endfor %}"#)
+        .replace("video.get_round_display", "video.round")
+        .replace("video.tags.all", "video.tags")
+        .replace("object.tags.all", "object.tags")
+        .replace("object.get_round_display", "object.round")
+        .replace("object.get_permissions_display", "object.permissions")
+        .replace("{{ video.pm }}", "{{ video.pm.name }}")
+        .replace("{{ video.mg }}", "{{ video.mg.name }}")
+        .replace("{{ video.lo }}", "{{ video.lo.name }}")
+        .replace("{{ video.mo }}", "{{ video.mo.name }}")
         .replace("item.debaters.all", "item.debater_list")
         .replace("{{ item.debaters_display }}", r#"{% for debater in item.debater_list %}<a href="{{ debater.url }}">{{ debater.name }}</a>{% if not loop.last %} and {% endif %}{% endfor %}"#)
         .replace("object.included_in_oty|yesno:\"Yes,No\"", "'Yes' if object.included_in_oty else 'No'")
@@ -510,6 +862,17 @@ pub(crate) fn base_context(
     }
 }
 
+pub(crate) fn permission_denied(state: &AppState, user: &User, uri: &axum::http::Uri) -> Response {
+    let content = render("403.html", base_context(state, user, uri))
+        .unwrap_or_else(|_| "<h1>Permission denied</h1>".to_owned());
+    (
+        StatusCode::FORBIDDEN,
+        [(header::VARY, "Cookie")],
+        Html(content),
+    )
+        .into_response()
+}
+
 pub(crate) fn seasons(current: i32) -> Vec<(String, String)> {
     (2004..=current)
         .rev()
@@ -529,6 +892,25 @@ pub(crate) fn render(name: &str, bindings: minijinja::Value) -> Result<String, S
         })
 }
 
+pub(crate) fn django_date(value: &str) -> String {
+    use chrono::Datelike;
+    const MONTHS: [&str; 12] = [
+        "Jan.", "Feb.", "March", "April", "May", "June", "July", "Aug.", "Sept.", "Oct.", "Nov.",
+        "Dec.",
+    ];
+    chrono::NaiveDate::parse_from_str(value, "%Y-%m-%d").map_or_else(
+        |_| value.to_owned(),
+        |date| {
+            format!(
+                "{} {}, {}",
+                MONTHS[date.month0() as usize],
+                date.day(),
+                date.year()
+            )
+        },
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -536,7 +918,7 @@ mod tests {
     #[test]
     fn shared_templates_compile() {
         for (name, template) in VIEWS {
-            let adapted = adapt_template(template);
+            let adapted = adapt_template(name, template);
             let environment = Environment::new();
             environment
                 .template_from_str(&adapted)

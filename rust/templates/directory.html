@@ -2,6 +2,7 @@
 {% block content %}
     <div class="row mt-lg-5 ml-lg-2 mr-lg-2 mb-lg-5 m-1">
         <div class="col-lg-3">
+            {% if warning %}<div class="alert {% if motion_warning %}alert-info{% else %}alert-warning{% endif %} m-2" role="alert">{{ warning }}</div>{% endif %}
             <div class="rounded-l5 shadow-lg card m-2 ">
                 <div class="card-body">
                     <h5 class="card-title">Search</h5>
@@ -10,10 +11,16 @@
                             <div id="div_id_{{ field.name }}" class="form-group">
                                 <label for="id_{{ field.name }}" class="">{{ field.label }}</label>
                                 <div>
-                                    {% if field.options %}
+                                    {% if field.autocomplete %}
+                                        <select name="{{ field.name }}" id="id_{{ field.name }}" class="selectmultiple form-control" data-rust-tag-url="{{ field.autocomplete }}" multiple>
+                                            {% for value, label in field.options %}<option value="{{ value }}" selected>{{ label }}</option>{% endfor %}
+                                        </select>
+                                    {% elif field.options %}
                                         <select name="{{ field.name }}" class="select form-control" id="id_{{ field.name }}">
                                             {% for value, label in field.options %}<option value="{{ value }}"{% if field.value == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
                                         </select>
+                                    {% elif field.date %}
+                                        <input type="date" name="{{ field.name }}" class="dateinput form-control" id="id_{{ field.name }}"{% if field.value %} value="{{ field.value }}"{% endif %}>
                                     {% elif field.numeric %}
                                         <input type="number" name="{{ field.name }}" step="any" class="numberinput form-control" id="id_{{ field.name }}"{% if field.value %} value="{{ field.value }}"{% endif %}>
                                     {% else %}
@@ -37,6 +44,8 @@
                         {% endif %}
                         <div class="d-flex align-items-center">
                             <input type="submit" class="btn btn-info" value="Search">
+                            {% if random_url %}<button type="submit" class="btn btn-secondary ml-2" formaction="{{ random_url }}">Random</button>{% endif %}
+                            {% if clear_url %}<a class="btn btn-outline-secondary ml-2" href="{{ clear_url }}">Clear</a>{% endif %}
                         </div>
                     </form>
                 </div>
@@ -48,12 +57,12 @@
                     <h5 class="card-title">{{ title }}{% include "base/_buttons.html" %}</h5>
                     <div class="table-container">
                         <div class="table-responsive">
-                            <table class="table table-hover">
+                            <table class="table {% if striped %}table-striped{% else %}table-hover{% endif %}">
                                 <thead>
                                     <tr>
                                         {% for field in columns %}
                                             <th class="{{ field.class }}">
-                                                <a href="{{ field.url }}">{{ field.label }}{% if field.desc %} <span aria-label="Sorted descending">▾</span>{% elif field.asc %} <span aria-label="Sorted ascending">▴</span>{% endif %}</a>
+                                                {% if field.url %}<a href="{{ field.url }}">{{ field.label }}{% if field.desc %} <span aria-label="Sorted descending">▾</span>{% elif field.asc %} <span aria-label="Sorted ascending">▴</span>{% endif %}</a>{% else %}{{ field.label }}{% endif %}
                                             </th>
                                         {% endfor %}
                                     </tr>
@@ -62,7 +71,7 @@
                                     {% for row in rows %}
                                         <tr class="{{ loop.cycle('even', 'odd') }}">
                                             {% for pieces in row %}
-                                                <td>{% for piece in pieces %}{% if piece.1 %}<a href="{{ piece.1 }}">{{ piece.0 }}</a>{% else %}{{ piece.0 }}{% endif %}{% if not loop.last %} and {% endif %}{% endfor %}</td>
+                                                <td{% if resource_rows and loop.index in [3, 5] %} style="white-space: nowrap;"{% endif %}>{% for piece in pieces %}{% if piece.1 %}<a href="{{ piece.1 }}">{{ piece.0 }}</a>{% else %}{{ piece.0 }}{% endif %}{% if not loop.last %}{% if comma_cells %}, {% else %} and {% endif %}{% endif %}{% endfor %}</td>
                                             {% endfor %}
                                         </tr>
                                     {% endfor %}

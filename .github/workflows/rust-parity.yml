@@ -47,6 +47,19 @@ jobs:
           "$scripts/br" venv/bin/python manage.py loaddata dev_fixtures
       - name: Compare HTTP responses on SQLite
         run: .agents/skills/black-rod-task/scripts/br venv/bin/python rust/tools/compare.py
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: npm
+      - name: Compare browser interactions and replay rendering in Chrome
+        run: |
+          npm ci
+          npm run build
+          venv/bin/python -m venv venv/screenshots
+          venv/screenshots/bin/python -m pip install -r .agents/skills/black-rod-task/requirements.txt Pillow==12.3.0
+          scripts=.agents/skills/black-rod-task/scripts
+          "$scripts/br" venv/bin/python manage.py shell -c "from django.contrib.auth import get_user_model; u, _ = get_user_model().objects.get_or_create(username='tab'); u.is_staff = True; u.is_superuser = True; u.set_password('password'); u.save()"
+          "$scripts/br" venv/screenshots/bin/python -u rust/tools/browser.py "${RUNNER_TEMP}/black-rod-replay"
       - name: Compare HTTP responses on PostgreSQL
         env:
           BLACK_ROD_PARITY_POSTGRES_URL: postgres://black_rod:fixture@127.0.0.1:5432/black_rod_parity

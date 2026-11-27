@@ -1,24 +1,38 @@
+mod autocomplete;
 mod cache;
+mod claims;
 mod debater_profile;
 mod directory;
 mod discovery;
+mod django_json;
+mod exports;
+mod flash;
+mod immaculate;
 mod live;
 mod login;
+mod motion;
 pub use live::Live;
 mod oauth;
+mod outreach;
+mod scheduling;
 pub use oauth::OAuth;
 mod points;
 mod private_api;
+mod recent_results;
 mod replay;
+mod resource;
 pub use private_api::PrivateTokens;
 mod schedule;
 mod school_profile;
 mod schools;
+mod search;
 mod session;
 mod standings;
 mod stats;
+mod tag_filter;
 mod team_profile;
 mod tournament_profile;
+mod video;
 mod web;
 
 use std::{net::SocketAddr, path::Path, sync::Arc, time::Duration};
@@ -57,6 +71,8 @@ pub struct AppState {
     live: Option<Arc<Live>>,
     bundles: Arc<Vec<String>>,
     current_season: i32,
+    debater_tab_cards: bool,
+    debater_partner_chart: bool,
     public_origin: Option<String>,
     guide_modified: Option<String>,
     public_json: Cache<(String, Endpoint), cache::CachedBody>,
@@ -66,6 +82,8 @@ pub struct AppState {
     replay: Cache<(String, i32), Arc<replay::Replay>>,
     home: Cache<i32, Arc<standings::Boards>>,
     stats: Cache<(), Arc<serde_json::Value>>,
+    recent_results: Cache<(), Arc<String>>,
+    search: Cache<(), Arc<search::SearchIndex>>,
     snapshots: Cache<(String, i32, String), Arc<standings::Boards>>,
 }
 
@@ -88,6 +106,8 @@ impl AppState {
             live: None,
             bundles: Arc::default(),
             current_season,
+            debater_tab_cards: false,
+            debater_partner_chart: false,
             public_origin: None,
             guide_modified,
             snapshots: Cache::builder()
@@ -99,6 +119,18 @@ impl AppState {
                     Duration::ZERO
                 } else {
                     Duration::from_secs(3600)
+                })
+                .max_capacity(1)
+                .build(),
+            search: Cache::builder()
+                .time_to_live(lifetime.min(Duration::from_secs(60)))
+                .max_capacity(1)
+                .build(),
+            recent_results: Cache::builder()
+                .time_to_live(if lifetime.is_zero() {
+                    Duration::ZERO
+                } else {
+                    Duration::from_secs(86_400)
                 })
                 .max_capacity(1)
                 .build(),
@@ -124,6 +156,12 @@ impl AppState {
             memcached: None,
             cache_lifetime: lifetime,
         }
+    }
+
+    pub fn with_debater_profile_features(mut self, tab_cards: bool, partner_chart: bool) -> Self {
+        self.debater_tab_cards = tab_cards;
+        self.debater_partner_chart = partner_chart;
+        self
     }
 
     pub fn with_memcached(mut self, address: SocketAddr) -> Self {
@@ -258,6 +296,21 @@ pub fn app(state: AppState) -> Router {
         .route("/api/oty-guide", get(append_slash))
         .route("/", get(web::show))
         .route("/live", get(live::page))
+        .route("/core/my-profile/", get(claims::profile))
+        .route(
+            "/core/debater/{debater}/edit-profile/",
+            get(claims::edit::endpoint).post(claims::edit::endpoint),
+        )
+        .route(
+            "/core/claim-debater/request/",
+            get(claims::create).post(claims::create),
+        )
+        .route(
+            "/core/claim-debater/review/",
+            get(claims::review).post(claims::review),
+        )
+        .route("/search/", get(search::page))
+        .route("/search", get(append_slash))
         .route("/stats/", get(stats::page))
         .route("/stats", get(append_slash))
         .route("/auth/login/", get(login::view).post(login::view))
@@ -268,13 +321,93 @@ pub fn app(state: AppState) -> Router {
         .route("/standings/replay/", get(web::show))
         .route("/standings/replay", get(append_slash))
         .route("/games/", get(web::show))
+        .route("/immaculate-grid/", get(immaculate::daily))
+        .route("/immaculate-grid", get(append_slash))
+        .route(
+            "/immaculate-grid/guess/",
+            axum::routing::post(immaculate::guess),
+        )
+        .route("/immaculate-grid/answers/", get(immaculate::answers))
+        .route(
+            "/immaculate-grid/infinite/",
+            get(immaculate::practice::page).post(immaculate::practice::page),
+        )
+        .route(
+            "/immaculate-grid/infinite/guess/",
+            axum::routing::post(immaculate::practice::guess),
+        )
+        .route("/immaculate-grid/search/", get(immaculate::search))
+        .route(
+            "/immaculate-grid/leaderboard/",
+            get(immaculate::leaderboard),
+        )
+        .route(
+            "/immaculate-grid/leaderboard/{player}/",
+            get(immaculate::player_board),
+        )
         .route("/core/schedules/", get(schedule::page))
         .route("/core/schedules", get(append_slash))
+        .route("/core/schools/autocomplete", get(autocomplete::endpoint))
+        .route(
+            "/core/schools/autocomplete/claim",
+            get(autocomplete::endpoint),
+        )
+        .route("/core/debaters/autocomplete", get(autocomplete::endpoint))
+        .route(
+            "/core/debater-alias-groups/autocomplete",
+            get(autocomplete::endpoint),
+        )
+        .route("/core/teams/autocomplete", get(autocomplete::endpoint))
+        .route(
+            "/core/tournaments/autocomplete",
+            get(autocomplete::endpoint),
+        )
+        .route(
+            "/core/tournaments/all_autocomplete",
+            get(autocomplete::endpoint),
+        )
         .route("/core/schools/{school}", get(school_profile::page))
         .route("/core/schools/", get(directory::page))
         .route("/core/debaters/", get(directory::page))
+        .route(
+            "/core/admin/scheduling/",
+            get(scheduling::dashboard).post(scheduling::dashboard),
+        )
+        .route(
+            "/core/admin/scheduling/workspace-data/",
+            get(scheduling::data),
+        )
+        .route(
+            "/core/admin/scheduling/save-browser-run/",
+            axum::routing::post(scheduling::save_run),
+        )
+        .route(
+            "/core/admin/scheduling/download/{kind}/",
+            get(scheduling::csv),
+        )
+        .route(
+            "/core/admin/scheduling/runs/{id}/output/",
+            get(scheduling::output),
+        )
+        .route("/core/dino-judges/", get(directory::page))
+        .route("/core/dino-judges", get(append_slash))
+        .route("/core/dino-tos/", get(directory::page))
+        .route("/core/dino-tos", get(append_slash))
+        .route("/core/debaters/{debater}", get(debater_profile::page))
+        .route(
+            "/core/debaters/{debater}/tab-cards-csv",
+            get(exports::career_tab_cards),
+        )
         .route("/core/teams/", get(directory::page))
+        .route("/core/tournaments/", get(directory::page))
+        .route("/core/tournaments", get(append_slash))
+        .route("/core/widgets/recent-results/", get(recent_results::page))
+        .route("/core/widgets/recent-results", get(append_slash))
         .route("/core/teams/{team}", get(team_profile::page))
+        .route(
+            "/core/tournaments/{tournament}",
+            get(tournament_profile::page),
+        )
         .route("/core/schools", get(append_slash))
         .route("/core/debaters", get(append_slash))
         .route("/core/teams", get(append_slash))
@@ -291,6 +424,53 @@ pub fn app(state: AppState) -> Router {
             "/api/private/debater-emails/",
             axum::routing::any(private_api::mittab),
         )
+        .route(
+            "/core/resources/tags_no_create",
+            get(autocomplete::endpoint),
+        )
+        .route(
+            "/core/resources/tags",
+            get(autocomplete::endpoint).post(autocomplete::create_tag),
+        )
+        .route("/core/videos/tags_no_create", get(autocomplete::endpoint))
+        .route(
+            "/core/videos/tags",
+            get(autocomplete::endpoint).post(autocomplete::create_tag),
+        )
+        .route(
+            "/core/motions/topics_no_create",
+            get(autocomplete::endpoint),
+        )
+        .route(
+            "/core/motions/topics",
+            get(autocomplete::endpoint).post(autocomplete::create_tag),
+        )
+        .route("/core/motions/", get(directory::page))
+        .route("/core/motions", get(append_slash))
+        .route("/core/motions/random", get(directory::page))
+        .route("/core/motions/{motion}", get(motion::detail))
+        .route(
+            "/core/motions/create",
+            get(motion::edit::endpoint).post(motion::edit::endpoint),
+        )
+        .route(
+            "/core/motions/{motion}/edit",
+            get(motion::edit::endpoint).post(motion::edit::endpoint),
+        )
+        .route(
+            "/core/motions/{motion}/status",
+            axum::routing::post(motion::status),
+        )
+        .route("/core/videos/", get(directory::page))
+        .route("/core/videos", get(append_slash))
+        .route("/core/videos/random", get(directory::page))
+        .route("/core/videos/{video}", get(video::detail))
+        .route("/core/resources/", get(directory::page))
+        .route("/core/resources", get(append_slash))
+        .route("/core/resources/my-resources", get(directory::page))
+        .route("/core/resources/tags/{slug}", get(resource::tag))
+        .route("/core/resources/{resource}", get(resource::detail))
+        .route("/core/videos/tags/{name}", get(video::tag))
         .route("/robots.txt", get(robots))
         .route("/llms.txt", get(discovery::documentation))
         .route("/llm/", get(discovery::proxy))
@@ -414,10 +594,12 @@ async fn api_protocol(request: Request, next: axum::middleware::Next) -> Respons
 }
 
 async fn security_headers(request: Request, next: axum::middleware::Next) -> Response {
+    let may_embed = request.uri().path() == "/core/widgets/recent-results/";
     let mut response = next.run(request).await;
     let redirect = response.status() == StatusCode::MOVED_PERMANENTLY;
+    let embeddable_response = may_embed && response.status().is_success();
     let headers = response.headers_mut();
-    if !redirect {
+    if !redirect && !embeddable_response {
         headers.insert(header::X_FRAME_OPTIONS, HeaderValue::from_static("DENY"));
     }
     headers.insert(

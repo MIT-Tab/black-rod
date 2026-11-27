@@ -13,6 +13,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .connect(&database)
         .await?;
     let season = env::var("BLACK_ROD_CURRENT_SEASON").unwrap_or_else(|_| "2026".into());
+    let enabled = |name| {
+        env::var(name)
+            .is_ok_and(|value| matches!(value.to_ascii_lowercase().as_str(), "1" | "true" | "yes"))
+    };
     let address: SocketAddr = env::var("BLACK_ROD_BIND")
         .unwrap_or_else(|_| "127.0.0.1:9090".into())
         .parse()?;
@@ -21,6 +25,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or(Ok(300))?;
     let mut state =
         AppState::with_cache_lifetime(pool, season.parse()?, Duration::from_secs(cache_lifetime));
+    state = state.with_debater_profile_features(
+        enabled("ENABLE_DEBATER_PROFILE_TAB_CARDS"),
+        enabled("ENABLE_DEBATER_PARTNER_PIE_CHART"),
+    );
     if let Ok(origin) = env::var("BLACK_ROD_PUBLIC_ORIGIN") {
         state = state.with_public_origin(&origin)?;
     }

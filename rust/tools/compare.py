@@ -279,6 +279,24 @@ def fixture_cases(django):
         Case("/api/standings/?season=2024&limit=-1"),
         Case("/api/standings/?season=2024&limit=4&limit=1"),
     ]
+    cases.extend(Case(path) for path in [
+        "/core/schools/autocomplete?q=har",
+        "/core/schools/autocomplete?q=7",
+        "/core/schools/autocomplete/claim?q=har",
+        "/core/schools/autocomplete?forward=%5Bbad",
+        "/core/teams/autocomplete?q=Harv&page=2",
+        "/core/debaters/autocomplete?q=Ann",
+        f"/core/debaters/autocomplete?forward=%7B%22school%22%3A{school}%7D",
+        "/core/debater-alias-groups/autocomplete?q=Harv",
+        "/core/tournaments/autocomplete?q=Harvard",
+        "/core/tournaments/all_autocomplete?q=Harvard",
+        "/core/videos/tags_no_create?q=Eco",
+        "/core/videos/tags?q=Eco",
+        "/core/motions/topics_no_create?q=deb",
+        "/core/resources/tags_no_create?q=nov",
+        "/core/resources/tags?q=zzznonexistent",
+        "/core/motions/topics?q=zzznonexistent",
+    ])
     cases.extend([
         Case("/api/private/debater-emails/", "POST", body='{"debater_ids":[1]}'),
         Case("/api/private/debater-emails/", "POST", body='{"debater_ids":[1,2,"1",999999]}',
@@ -414,17 +432,19 @@ def main():
             compare(django, rust, cases)
         if not args.benchmark:
             return
+        endpoint_cases = [
+            Case("/api/schools/"), Case("/api/schools/all/"),
+            Case(f"/api/debaters/{school}/"), Case("/api/schedule/?season=2025"),
+            Case("/api/standings/?season=2025"), Case("/api/standings/replay/?season=2025"),
+        ]
+        for name in ("teams", "tournaments", "debaters"):
+            endpoint_cases.append(next(case for case in cases
+                if case.path.startswith(f"/api/{name}/") and case.path.endswith("/detail/")
+                and "9223372036854775807" not in case.path))
         results = []
         for cold in (False, True):
-            with servers(database, cold=cold) as (django, rust):
-                for case in [
-                    Case("/api/schools/"),
-                    Case("/api/schools/all/"),
-                    Case(f"/api/debaters/{school}/"),
-                    Case("/api/schedule/?season=2025"),
-                    Case("/api/standings/?season=2025"),
-                    Case("/api/standings/replay/?season=2025"),
-                ]:
+            for case in endpoint_cases:
+                with servers(database, cold=cold) as (django, rust):
                     compare(django, rust, [case])
                     result = {"path": case.path, "cache": "disabled" if cold else "warm"}
                     for server in (django, rust):

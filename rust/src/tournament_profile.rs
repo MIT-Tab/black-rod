@@ -79,7 +79,7 @@ pub(crate) async fn debater_by_id(
     debater(&row, origin)
 }
 
-fn labels(round: i64, permissions: i64) -> (Value, Value) {
+pub(crate) fn labels(round: i64, permissions: i64) -> (Value, Value) {
     let round_label = match round {
         0 => json!("UNKNOWN"),
         1..=5 => json!(round.to_string()),
@@ -364,4 +364,116 @@ pub(crate) async fn detail_options(Path(id): Path<String>) -> Response {
         "Tournament Detail Api",
         "Provide tournament metadata, awards, speaker results, tab cards, and videos.",
     )
+}
+
+pub(crate) async fn page(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    OriginalUri(uri): OriginalUri,
+    headers: HeaderMap,
+) -> Response {
+    use axum::{http::header, response::Html};
+    let Some(id) = id.parse::<i64>().ok().filter(|_| is_django_integer(&id)) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let Ok(user) = session::user(&state.pool, &headers, state.secret.as_deref()).await else {
+        return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+    };
+    match html(&state, &user, id, &uri).await {
+        Ok(html) => ([(header::VARY, "Cookie")], Html(html)).into_response(),
+        Err(ApiError::NotFound(_)) => StatusCode::NOT_FOUND.into_response(),
+        Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+    }
+}
+
+async fn html(
+    state: &AppState,
+    user: &User,
+    id: i64,
+    uri: &axum::http::Uri,
+) -> Result<String, ApiError> {
+    let mut tx = read_transaction(&state.pool).await?;
+    let tournament = tournament(&mut tx, id, "").await?;
+    let (varsity_team_results, novice_team_results) = team_awards(&mut tx, &tournament, "").await?;
+    let (mut varsity_speaker_results, mut novice_speaker_results) =
+        speaker_awards(&mut tx, &tournament, "").await?;
+    for row in varsity_speaker_results
+        .iter_mut()
+        .chain(novice_speaker_results.iter_mut())
+    {
+        row["place"] = row["display_place"].clone();
+        row["tie"] = row["tie_display"].clone();
+    }
+    let recipients_rows = sqlx::query(
+        "
+        SELECT CAST(d.id AS BIGINT) AS id, d.first_name, d.last_name
+        FROM core_tournamentautoqual a JOIN core_debater d ON d.id = a.debater_id
+        WHERE a.tournament_id = $1 ORDER BY d.last_name, d.first_name, d.id
+    ",
+    )
+    .bind(id)
+    .fetch_all(&mut *tx)
+    .await?;
+    let mut recipients = Vec::new();
+    for row in recipients_rows {
+        let id: i64 = row.try_get("id")?;
+        let first: &str = row.try_get("first_name")?;
+        let last: &str = row.try_get("last_name")?;
+        recipients.push(json!({"debater": {"name":format!("{first} {last}").trim(), "url":format!("/core/debaters/{id}")}}));
+    }
+    // The historical tournament table lists titles and participants. Links to
+    // videos are resolved by the video view, which checks access separately.
+    let visible_metadata_user = User {
+        can_view_video: true,
+        ..User::default()
+    };
+    let mut metadata = videos(&mut tx, &tournament, "", &visible_metadata_user, None).await?;
+    for row in &mut metadata {
+        if let Some(map) = row.as_object_mut() {
+            map.remove("link");
+            map.remove("case");
+            map.remove("description");
+        }
+        for role in ["pm", "mg", "lo", "mo"] {
+            row[role] = row["participants"][role].clone();
+        }
+        row["tags"] = json!(
+            row["tags"]
+                .as_array()
+                .map(|tags| tags
+                    .iter()
+                    .map(|name| json!({"name":name}))
+                    .collect::<Vec<_>>())
+                .unwrap_or_default()
+        );
+    }
+    tx.commit().await?;
+    let mut buttons = Vec::new();
+    for (permission, name, suffix, class) in [
+        ("remove_tournament", "Delete", "delete", "btn-danger"),
+        ("change_tournament", "Edit", "edit", "btn-info"),
+    ] {
+        if session::has_permission(&state.pool, user, permission).await? {
+            buttons.push(json!({"name":name,"class":class,"href":format!("/core/tournaments/{id}/{suffix}")}));
+        }
+    }
+    let perms = if session::has_permission(&state.pool, user, "change_tournament").await? {
+        vec!["core.change_tournament"]
+    } else {
+        Vec::new()
+    };
+    let ctx = crate::web::base_context(state, user, uri);
+    let specific = minijinja::context! {
+        object => tournament, perms, buttons, recipients, varsity_team_results, novice_team_results,
+        varsity_speaker_results, novice_speaker_results, videos => metadata,
+        tab_cards_search_enabled => false, messages => Vec::<String>::new(),
+    };
+    crate::web::render(
+        "tournaments/detail.html",
+        minijinja::context! {..ctx, ..specific},
+    )
+    .map_err(|error| {
+        eprintln!("Tournament template failed: {error}");
+        ApiError::Serialization
+    })
 }

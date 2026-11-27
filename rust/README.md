@@ -14,9 +14,11 @@ cargo build --release --locked --manifest-path rust/Cargo.toml
 
 `BLACK_ROD_DATABASE_URL` accepts SQLite and PostgreSQL URLs. The default listener is `127.0.0.1:9090`. Set `BLACK_ROD_PUBLIC_ORIGIN` to the HTTPS origin when running behind a proxy. Browser pages use the existing webpack bundles and assets. Set the existing `SECRET_KEY` in both services to test valid Django database sessions.
 
-The current server covers standings, replay, live results from active sources, schedule, statistics, school and team pages, results directories, public profile APIs, the private forum and MIT-Tab lookups, and API discovery. It can read existing Django sessions and creates compatible sessions for password login and the primary APDAOnline OAuth flow. The statistics page keeps a one-hour data cache. Set `BLACK_ROD_MEMCACHED_ADDR` for shared directory and schedule caching across instances. Those entries use their own key namespace and retain the five-minute lifetime.
+The current server covers standings, replay, live results from active sources, the schedule, statistics, results directories, debater search, alumni outreach, public profile APIs, the private forum and MIT-Tab lookups, and API discovery. The browser port includes tournament, school, team, and debater profiles, career tab card exports, the recent-results widget, video and motion libraries, the resource directory, Immaculate Grid, profile claims and self-service editing, and the scheduling workspace. It reads Django sessions and creates compatible sessions for password login and APDAOnline OAuth.
 
-This branch is a partial port. Remaining work includes the live import snapshot fallback, profile and tournament browser pages, search, games, scheduling, import tools, administration, remaining account flows, management commands, and the browsable API. Django remains the application entry point while that work is in progress.
+The statistics cache lasts one hour. Set `BLACK_ROD_MEMCACHED_ADDR` for shared directory and schedule caching across instances. Those entries use a separate key namespace and retain the five-minute lifetime. The debater search index uses a bounded in-process cache and refreshes from the shared database, with immediate invalidation after a native profile edit.
+
+The Rust runtime is a partial port. Remaining work includes the live import snapshot fallback, unported authoring and bulk import flows, ELO administration, tournament data entry and imports, Django admin equivalents, remaining account flows, management commands, and the browsable API. Django is the application entry point.
 
 ## Parity tests
 
@@ -29,7 +31,7 @@ cargo test --manifest-path rust/Cargo.toml --locked
 
 The HTTP harness starts Django and Rust against the same fixture. It compares status, relevant headers, JSON fields, array order, and plain text. Equal-score COTY ties, equal-rank TOTY ties, school members with equal tenure, video lists, and tags are compared without requiring an order where the reference query has no final sort. The SQLite fixture is hashed before and after the run. Set `BLACK_ROD_PARITY_POSTGRES_URL` to a locally seeded PostgreSQL database for the PostgreSQL run. The Rust parity workflow loads the tracked fixture into both database engines.
 
-The Chrome harness uses Selenium from the repository screenshot environment and Pillow for pixel comparison.
+The Chrome harness compares the standings, directories, search, profiles, recent-results widget, live results, media permissions, motion progress and authoring, career CSV exports, profile claims, outreach, scheduling, and the daily and infinite Immaculate Grid flows. It also checks password and OAuth session compatibility, theme persistence, and desktop and mobile replay screenshots. The harness makes writes only against a temporary copy of the SQLite fixture.
 
 ```sh
 venv/screenshots/bin/python -m pip install Pillow==12.3.0

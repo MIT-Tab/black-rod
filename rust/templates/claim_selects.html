@@ -1,0 +1,13 @@
+{% if field == "school" %}
+    <label for="id_school">Select School:</label>
+    <select name="school" class="form-control" id="id_school" required data-rust-select-url="/core/schools/autocomplete/claim">
+        <option value=""></option>
+        {% if school %}<option value="{{ school.0 }}" selected>{{ school.1 }}</option>{% endif %}
+    </select>
+{% else %}
+    <label for="id_debater">Select Debater to Claim:</label>
+    <select name="debater" class="form-control" id="id_debater" required data-rust-select-url="/core/debaters/autocomplete" data-rust-select-forward="school">
+        <option value=""></option>
+        {% if debater %}<option value="{{ debater.0 }}" selected>{{ debater.1 }}</option>{% endif %}
+    </select>
+{% endif %}

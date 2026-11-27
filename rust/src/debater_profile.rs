@@ -663,3 +663,209 @@ pub(crate) async fn detail_options(Path(id): Path<String>) -> Response {
         "Return a debater's public profile, standings history, and tournament results.",
     )
 }
+
+fn partner(team: &Value, id: i64) -> Value {
+    team["debaters"]
+        .as_array()
+        .and_then(|people| {
+            people
+                .iter()
+                .find(|person| person["id"].as_i64() != Some(id))
+        })
+        .cloned()
+        .unwrap_or_default()
+}
+
+pub(crate) async fn page(
+    State(state): State<AppState>,
+    Path(raw_id): Path<String>,
+    OriginalUri(uri): OriginalUri,
+    headers: HeaderMap,
+) -> Response {
+    let Some(id) = raw_id
+        .parse::<i64>()
+        .ok()
+        .filter(|_| is_django_integer(&raw_id))
+    else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let Ok(user) = session::user(&state.pool, &headers, state.secret.as_deref()).await else {
+        return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+    };
+    let data = match load(&state, id, &user, "", None, uri.path()).await {
+        Ok(data) => data,
+        Err(ApiError::NotFound(_)) => return StatusCode::NOT_FOUND.into_response(),
+        Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+    };
+    let mut object = data["debater"].clone();
+    for field in ["first_season", "latest_season"] {
+        object[field] = json!(data[field].as_str().map(format_season).unwrap_or_default());
+    }
+    object["is_dino"] = data["is_dino"].clone();
+    let contacts = &data["contact_preferences"];
+    object["paradigm"] = contacts["paradigm_url"].clone();
+    object["dino_to_contact_opt_in"] = contacts["to_outreach"].clone();
+    object["dino_judge_contact_opt_in"] = contacts["judge_outreach"].clone();
+    let query: HashMap<_, _> =
+        url::form_urlencoded::parse(uri.query().unwrap_or_default().as_bytes()).collect();
+    let all = query.contains_key("all");
+    let requested_season = query
+        .get("season")
+        .map(|value| value.as_ref())
+        .filter(|value| !value.is_empty());
+    let mut season_choices = Vec::new();
+    let mut eligible = Vec::new();
+    for season in data["season_summaries"].as_array().into_iter().flatten() {
+        let year = season["season"].as_str().unwrap_or_default();
+        let tournaments: Vec<_> = season["tournaments"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|event| {
+                all || ["team_results", "speaker_results"].iter().any(|key| {
+                    event[*key]
+                        .as_array()
+                        .is_some_and(|awards| !awards.is_empty())
+                })
+            })
+            .collect();
+        if !tournaments.is_empty() {
+            eligible.push((year, tournaments));
+            if year
+                .parse::<i32>()
+                .is_ok_and(|year| (2004..=state.current_season).contains(&year))
+            {
+                season_choices.push((year, season["season_display"].as_str().unwrap_or_default()));
+            }
+        }
+    }
+    let default_season = state.current_season.to_string();
+    let current_season = eligible
+        .first()
+        .map(|(year, _)| requested_season.unwrap_or(year))
+        .unwrap_or(&default_season);
+    let mut results = Vec::new();
+    for (_, events) in eligible.iter().filter(|(year, _)| *year == current_season) {
+        for event in events {
+            let mut awards = Vec::new();
+            for (kind, field) in [("team", "team_results"), ("speaker", "speaker_results")] {
+                awards.extend(
+                    event[field]
+                        .as_array()
+                        .into_iter()
+                        .flatten()
+                        .map(|award| json!([kind, award])),
+                );
+            }
+            results.push(json!({
+                "id": event["tournament"]["id"],
+                "tournament": event["tournament"],
+                "team": event["team"],
+                "partner": partner(&event["team"], id),
+                "data": awards,
+                "tab_card": state.debater_tab_cards.then_some(&event["tab_card"]),
+            }));
+        }
+    }
+    let teams: Vec<_> = data["teams"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|team| {
+            let mut entry = team["team"].clone();
+            entry["partner"] = partner(&entry, id);
+            entry
+        })
+        .collect();
+    let mut videos = Vec::new();
+    let profile_videos = data["videos"].as_array();
+    for role in ["pm", "lo", "mg", "mo"] {
+        for video in profile_videos
+            .into_iter()
+            .flatten()
+            .filter(|video| video["participants"][role]["id"].as_i64() == Some(id))
+        {
+            let mut item = video.clone();
+            for participant in ["pm", "lo", "mg", "mo"] {
+                item[participant] = video["participants"][participant].clone();
+            }
+            item["tags"] = json!(
+                video["tags"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .map(|name| json!({"name": name}))
+                    .collect::<Vec<_>>()
+            );
+            videos.push(item);
+        }
+    }
+    let owner = if let Some(user_id) = user.id {
+        sqlx::query_scalar::<_, i64>(
+            "SELECT CAST(id AS BIGINT) FROM core_debater WHERE id = $1 AND user_id = $2",
+        )
+        .bind(id)
+        .bind(user_id)
+        .fetch_optional(&state.pool)
+        .await
+        .ok()
+        .flatten()
+        .is_some()
+    } else {
+        false
+    };
+    let mut buttons = Vec::new();
+    for (permission, name, suffix, class) in [
+        ("remove_debater", "Delete", "delete", "btn-danger"),
+        ("change_debater", "Edit", "edit", "btn-info"),
+    ] {
+        if session::has_permission(&state.pool, &user, permission)
+            .await
+            .unwrap_or(false)
+        {
+            buttons.push(
+                json!({"name":name, "class":class, "href":format!("/core/debaters/{id}/{suffix}")}),
+            );
+        }
+    }
+    let partner_breakdown = if state.debater_partner_chart {
+        crate::exports::partner_breakdown(&state.pool, id)
+            .await
+            .unwrap_or_default()
+    } else {
+        None
+    };
+    let manage_team = user.is_staff
+        && session::has_permission(&state.pool, &user, "change_teamresult")
+            .await
+            .unwrap_or(false);
+    let manage_speaker = user.is_staff
+        && session::has_permission(&state.pool, &user, "change_speakerresult")
+            .await
+            .unwrap_or(false);
+    let common = crate::web::base_context(&state, &user, &uri);
+    let values = minijinja::context! {
+        object, buttons, results, teams, videos, can_edit_profile => owner || user.is_superuser,
+        partner_breakdown, perms => json!({"core":{"change_teamresult":manage_team, "change_speakerresult":manage_speaker}}),
+        can_download_tab_cards_csv => crate::exports::can_download(&state.pool,&user,id).await.unwrap_or(false),
+        seasons => season_choices, current_season,
+        also_debated_under => data["also_debated_under"].clone(),
+        totys => data["standings"]["toty"].clone(),
+        sotys => data["standings"]["soty"].clone(),
+        notys => data["standings"]["noty"].clone(),
+    };
+    match crate::web::render(
+        "debaters/detail.html",
+        minijinja::context! { ..values, ..common },
+    ) {
+        Ok(html) => (
+            [(axum::http::header::VARY, "Cookie")],
+            axum::response::Html(html),
+        )
+            .into_response(),
+        Err(error) => {
+            eprintln!("Debater profile template failed: {error}");
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
+    }
+}

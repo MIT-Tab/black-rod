@@ -9,7 +9,7 @@ use ring::{
     rand::{SecureRandom, SystemRandom},
 };
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::{Value, json, value::RawValue};
 use sqlx::{AnyPool, Row};
 
 const SESSION_SALT: &[u8] = b"django.contrib.sessions.SessionStoresigner";
@@ -21,6 +21,7 @@ pub(crate) struct User {
     pub(crate) id: Option<i64>,
     pub(crate) is_authenticated: bool,
     pub(crate) is_superuser: bool,
+    pub(crate) is_staff: bool,
     pub(crate) is_school_admin: bool,
     pub(crate) has_exclusive_pre_access: bool,
     pub(crate) can_view_private_videos: bool,
@@ -42,12 +43,21 @@ fn key(salt: &[u8], secret: &[u8]) -> hmac::Key {
 }
 
 fn decode(data: &str, secret: &[u8]) -> Option<Value> {
+    decode_signed(data, secret, SESSION_SALT)
+}
+
+pub(crate) fn decode_signed(data: &str, secret: &[u8], salt: &[u8]) -> Option<Value> {
+    let bytes = decode_signed_bytes(data, secret, salt)?;
+    serde_json::from_slice(&bytes).ok()
+}
+
+fn decode_signed_bytes(data: &str, secret: &[u8], salt: &[u8]) -> Option<Vec<u8>> {
     if data.len() as u64 > MAX_SESSION_SIZE {
         return None;
     }
     let (signed, signature) = data.rsplit_once(':')?;
     let signature = URL_SAFE_NO_PAD.decode(signature).ok()?;
-    hmac::verify(&key(SESSION_SALT, secret), signed.as_bytes(), &signature).ok()?;
+    hmac::verify(&key(salt, secret), signed.as_bytes(), &signature).ok()?;
     let (payload, _) = signed.rsplit_once(':')?;
     let contents = if let Some(payload) = payload.strip_prefix('.') {
         let compressed = URL_SAFE_NO_PAD.decode(payload).ok()?;
@@ -63,7 +73,7 @@ fn decode(data: &str, secret: &[u8]) -> Option<Value> {
     } else {
         URL_SAFE_NO_PAD.decode(payload).ok()?
     };
-    serde_json::from_slice(&contents).ok()
+    Some(contents)
 }
 
 pub(crate) fn cookie<'a>(headers: &'a HeaderMap, key: &str) -> Option<&'a str> {
@@ -124,14 +134,65 @@ fn timestamp(mut time: u64) -> String {
 }
 
 fn encode(session: &Value, secret: &[u8]) -> String {
+    encode_signed(&session.to_string(), secret, SESSION_SALT)
+}
+
+pub(crate) fn encode_signed(payload: &str, secret: &[u8], salt: &[u8]) -> String {
     let signed = format!(
         "{}:{}",
-        URL_SAFE_NO_PAD.encode(session.to_string()),
+        URL_SAFE_NO_PAD.encode(payload),
         timestamp(Utc::now().timestamp() as u64)
     );
-    let signature =
-        URL_SAFE_NO_PAD.encode(hmac::sign(&key(SESSION_SALT, secret), signed.as_bytes()));
+    let signature = URL_SAFE_NO_PAD.encode(hmac::sign(&key(salt, secret), signed.as_bytes()));
     format!("{signed}:{signature}")
+}
+
+pub(crate) struct StoredSession {
+    pub(crate) values: std::collections::BTreeMap<String, Box<RawValue>>,
+    id: String,
+    original: String,
+}
+
+impl StoredSession {
+    pub(crate) async fn read(
+        pool: &AnyPool,
+        headers: &HeaderMap,
+        secret: &[u8],
+    ) -> Result<Option<Self>, sqlx::Error> {
+        let Some(id) = session_id(headers) else {
+            return Ok(None);
+        };
+        let original = sqlx::query_scalar::<_, String>(
+            "SELECT session_data FROM django_session WHERE session_key = $1 AND expire_date > CURRENT_TIMESTAMP"
+        ).bind(id).fetch_optional(pool).await?;
+        let Some(original) = original else {
+            return Ok(None);
+        };
+        let values = decode_signed_bytes(&original, secret, SESSION_SALT)
+            .and_then(|bytes| serde_json::from_slice(&bytes).ok());
+        Ok(values.map(|values| Self {
+            id: id.to_owned(),
+            values,
+            original,
+        }))
+    }
+
+    pub(crate) async fn save(self, pool: &AnyPool, secret: &[u8]) -> Result<bool, sqlx::Error> {
+        let document = serde_json::to_string(&self.values)
+            .map(|value| crate::django_json::ascii(&value))
+            .map_err(|error| sqlx::Error::Protocol(error.to_string()))?;
+        let updated = encode_signed(&document, secret, SESSION_SALT);
+        let result = sqlx::query(
+            "UPDATE django_session SET session_data = $1
+            WHERE session_key = $2 AND session_data = $3 AND expire_date > CURRENT_TIMESTAMP",
+        )
+        .bind(updated)
+        .bind(self.id)
+        .bind(self.original)
+        .execute(pool)
+        .await?;
+        Ok(result.rows_affected() == 1)
+    }
 }
 
 pub(crate) async fn oauth_start(
@@ -324,6 +385,7 @@ pub(crate) async fn user(
         "
         SELECT u.password,
                CAST(CASE WHEN u.is_superuser THEN 1 ELSE 0 END AS BIGINT) AS superuser,
+               CAST(CASE WHEN u.is_staff THEN 1 ELSE 0 END AS BIGINT) AS staff,
                CAST(CASE WHEN u.is_superuser OR EXISTS (
                    SELECT 1 FROM core_schooladmin a WHERE a.user_id = u.id
                ) THEN 1 ELSE 0 END AS BIGINT) AS school_admin,
@@ -375,6 +437,7 @@ pub(crate) async fn user(
         id: Some(user_id),
         is_authenticated: true,
         is_superuser: row.try_get::<i64, _>("superuser")? != 0,
+        is_staff: row.try_get::<i64, _>("staff")? != 0,
         is_school_admin: row.try_get::<i64, _>("school_admin")? != 0,
         has_exclusive_pre_access: row.try_get::<i64, _>("exclusive_pre_access")? != 0,
         can_view_private_videos: row.try_get::<i64, _>("private_videos")? != 0,
@@ -391,16 +454,17 @@ pub(crate) async fn has_permission(
         return Ok(true);
     }
     let Some(id) = user.id else { return Ok(false) };
+    let (app, code) = code.split_once('.').unwrap_or(("core", code));
     let result = sqlx::query_scalar::<_, i64>("
         SELECT CAST(CASE WHEN EXISTS (
             SELECT 1 FROM auth_permission p JOIN django_content_type ct ON ct.id = p.content_type_id
-            WHERE ct.app_label = 'core' AND p.codename = $2 AND (
+            WHERE ct.app_label = $3 AND p.codename = $2 AND (
                 EXISTS (SELECT 1 FROM core_user_user_permissions up WHERE up.user_id = $1 AND up.permission_id = p.id)
                 OR EXISTS (SELECT 1 FROM core_user_groups ug JOIN auth_group_permissions gp ON gp.group_id = ug.group_id
                            WHERE ug.user_id = $1 AND gp.permission_id = p.id)
             )
         ) THEN 1 ELSE 0 END AS BIGINT)
-    ").bind(id).bind(code).fetch_one(pool).await?;
+    ").bind(id).bind(code).bind(app).fetch_one(pool).await?;
     Ok(result != 0)
 }
 

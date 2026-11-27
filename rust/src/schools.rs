@@ -163,7 +163,7 @@ impl<'a> Debater<'a> {
     }
 }
 
-fn region_list(raw_json: &str) -> Vec<String> {
+pub(crate) fn region_list(raw_json: &str) -> Vec<String> {
     match serde_json::from_str(raw_json) {
         Ok(Value::String(encoded)) => serde_json::from_str(&encoded).unwrap_or_else(|_| {
             if encoded.is_empty() {

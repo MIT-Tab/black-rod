@@ -531,11 +531,15 @@ struct Contribution {
 }
 
 impl Coty {
-    fn get(&mut self, person: &Person) -> Option<&mut Contribution> {
+    fn get(&mut self, person: &Person, reviewed: bool) -> Option<&mut Contribution> {
         let school = person.school.as_ref().filter(|school| school.eligible)?;
-        self.schools
-            .entry(school.key.clone())
-            .or_insert_with(|| school.clone());
+        self.schools.entry(school.key.clone()).or_insert_with(|| {
+            let mut school = school.clone();
+            if !reviewed {
+                school.url.clear();
+            }
+            school
+        });
         Some(
             self.entries
                 .entry(person.key.clone())
@@ -605,6 +609,21 @@ fn awards_bonus(code: i64, season: i32) -> bool {
 
 async fn base_coty(pool: &AnyPool, season: i32) -> Result<Coty, ApiError> {
     let mut coty = Coty::default();
+    let schools = sqlx::query(
+        "
+        SELECT CAST(s.id AS BIGINT) AS school_id, s.name AS school_name,
+            CAST(CASE WHEN s.included_in_oty THEN 1 ELSE 0 END AS BIGINT) AS eligible
+        FROM core_coty c JOIN core_school s ON s.id = c.school_id WHERE c.season = $1
+    ",
+    )
+    .bind(season.to_string())
+    .fetch_all(pool)
+    .await?;
+    for row in schools {
+        if let Some(school) = School::from_row(&row)? {
+            coty.schools.insert(school.key.clone(), school);
+        }
+    }
     if matches!(season, 2020 | 2021) {
         return Ok(coty);
     }
@@ -624,7 +643,7 @@ async fn base_coty(pool: &AnyPool, season: i32) -> Result<Coty, ApiError> {
             .await?
         {
             let person = Person::from_row(&row)?;
-            let Some(entry) = coty.get(&person) else {
+            let Some(entry) = coty.get(&person, true) else {
                 continue;
             };
             if table == "core_qualpoints" {
@@ -803,7 +822,7 @@ async fn apply(
             if !flags.qual && flags.bar == 0 {
                 continue;
             }
-            let Some(entry) = coty.get(&person) else {
+            let Some(entry) = coty.get(&person, false) else {
                 continue;
             };
             if flags.qual && points > 0.0 {

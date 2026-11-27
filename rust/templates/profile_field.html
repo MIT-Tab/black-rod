@@ -1,0 +1,9 @@
+{% if field.kind == "checkbox" %}
+    <input type="checkbox" name="{{ field.name }}" id="{{ field.id_for_label }}" class="form-check-input"{% if field.name == "dino_judge_contact_opt_in" %} data-dino-only="true"{% endif %}{% if field.value %} checked{% endif %}>
+{% elif field.kind == "select" or field.kind == "regions" %}
+    <select name="{{ field.name }}" id="{{ field.id_for_label }}" class="form-control{% if field.kind == "regions" %} select2-multi select2-multi{% endif %}"{% if field.kind == "regions" %} multiple data-placeholder="Select regions"{% endif %}{% if field.name == "status" %} data-dino-value="2"{% endif %}{% if field.required %} required{% endif %}>
+        {% for key, label in field.options %}<option value="{{ key }}"{% if key == field.value or (field.kind == "regions" and key in field.selected) %} selected{% endif %}>{{ label }}</option>{% endfor %}
+    </select>
+{% else %}
+    <input type="{{ field.kind }}" name="{{ field.name }}" value="{{ field.value }}" maxlength="{{ field.max }}" id="{{ field.id_for_label }}" class="form-control"{% if field.kind == "url" %} placeholder="https://docs.google.com/document/d/..."{% endif %}{% if field.required %} required{% endif %}>
+{% endif %}
