@@ -60,7 +60,7 @@ venv/screenshots/bin/python -m pip install Pillow==12.3.0
 "$scripts/br" venv/screenshots/bin/python rust/tools/html_parity.py /tmp/black-rod-admin --group admin-models
 ```
 
-The HTML harness compares the normalized live DOM, including controls and client-side widgets, and checks screenshots at desktop and mobile widths. The workflow runs the public, staff, and full admin model groups. A fresh Chrome session checks any initial difference, and the harness retains the first artifacts. Screenshots use an RGB channel tolerance of 8. The desktop video-create page can rasterize the empty sticky sidebar's bottom border differently across runs with identical CSS bounds and styles. The harness verifies those bounds and styles and accepts only differences confined to that border's corners and bottom edge.
+The HTML harness compares the normalized live DOM, including controls and client-side widgets, and checks screenshots at desktop and mobile widths. The workflow runs the public, staff, and full admin model groups. A fresh Chrome session checks any initial difference, and the harness retains the first artifacts. Screenshots use an RGB channel tolerance of 8. For Create Video screenshots, the harness checks the original sidebar geometry and disables sticky painting only when every affected element keeps its original bounds. CI retains screenshots from failed comparisons.
 
 ## PostgreSQL benchmark
 
