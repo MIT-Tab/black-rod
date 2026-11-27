@@ -160,12 +160,41 @@ impl Memcached {
         seconds: u32,
         replace: bool,
     ) -> bool {
+        self.write_raw_checked(key, flags, body, seconds, replace)
+            .await
+            .unwrap_or(false)
+    }
+
+    // A definitive rejection is safe to roll back. Transport errors may arrive after a write.
+    pub(crate) async fn write_raw_checked(
+        &self,
+        key: &str,
+        flags: u32,
+        body: &[u8],
+        seconds: u32,
+        replace: bool,
+    ) -> io::Result<bool> {
         if !valid_key(key) || body.len() > MAX_VALUE {
-            return false;
+            return Ok(false);
         }
         let operation = if replace { "set" } else { "add" };
         let command = format!("{operation} {key} {flags} {seconds} {}\r\n", body.len());
-        self.send(&command, Some(body), b"STORED\r\n").await
+        let reply = self.reply(&command, Some(body)).await?;
+        match reply.as_slice() {
+            b"STORED\r\n" => Ok(true),
+            b"NOT_STORED\r\n" => Ok(false),
+            reply
+                if reply.ends_with(b"\r\n")
+                    && (reply.starts_with(b"SERVER_ERROR ")
+                        || reply.starts_with(b"CLIENT_ERROR ")) =>
+            {
+                Ok(false)
+            }
+            _ => Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "Invalid cache write response",
+            )),
+        }
     }
 
     pub(crate) async fn delete_raw(&self, key: &str) -> bool {
@@ -276,6 +305,48 @@ mod tests {
         for _ in 0..3 {
             assert!(cache.read_raw_checked("index").await.is_err());
         }
+        server.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn checked_writes_distinguish_rejection_from_lost_acknowledgement() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let cache = Memcached::new(listener.local_addr().unwrap());
+        let server = tokio::spawn(async move {
+            for reply in [
+                b"STORED\r\n".as_slice(),
+                b"SERVER_ERROR object too large for cache\r\n",
+                b"",
+            ] {
+                let (socket, _) = listener.accept().await.unwrap();
+                let mut stream = BufReader::new(socket);
+                let mut command = String::new();
+                stream.read_line(&mut command).await.unwrap();
+                assert_eq!(command, "set index 1 0 3\r\n");
+                let mut payload = [0; 5];
+                stream.read_exact(&mut payload).await.unwrap();
+                assert_eq!(&payload, b"abc\r\n");
+                stream.get_mut().write_all(reply).await.unwrap();
+            }
+        });
+        assert!(
+            cache
+                .write_raw_checked("index", 1, b"abc", 0, true)
+                .await
+                .unwrap()
+        );
+        assert!(
+            !cache
+                .write_raw_checked("index", 1, b"abc", 0, true)
+                .await
+                .unwrap()
+        );
+        assert!(
+            cache
+                .write_raw_checked("index", 1, b"abc", 0, true)
+                .await
+                .is_err()
+        );
         server.await.unwrap();
     }
 

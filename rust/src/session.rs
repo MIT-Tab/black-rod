@@ -415,6 +415,8 @@ pub(crate) async fn create(
         .filter(|session| keep_key || !session.values.contains_key("_auth_user_id"))
         .map(|session| std::mem::take(&mut session.values))
         .unwrap_or_default();
+    values.remove("apda_remember_login");
+    values.remove("socialaccount_sociallogin");
     let session_key = if let Some(previous) = old.as_ref().filter(|_| keep_key) {
         previous.id.clone()
     } else {
@@ -649,7 +651,7 @@ mod tests {
         let secret = b"disposable-oauth-test-key";
         let number = "340282366920938463463374607431768211455";
         let payload = format!(
-            r#"{{"grid_seed":{number},"title":"Caf\u00e9","apda_remember_login":false,"socialaccount_states":{{"used":[{{"process":"connect","next":"/caf\u00e9/"}},{}],"other":[{{"process":"login"}},{}]}}}}"#,
+            r#"{{"grid_seed":{number},"title":"Caf\u00e9","socialaccount_sociallogin":{{"disposable_signup":"pending"}},"apda_remember_login":false,"socialaccount_states":{{"used":[{{"process":"connect","next":"/caf\u00e9/"}},{}],"other":[{{"process":"login"}},{}]}}}}"#,
             Utc::now().timestamp(),
             Utc::now().timestamp(),
         );
@@ -733,6 +735,8 @@ mod tests {
             .unwrap();
         assert_eq!(preserved.values["grid_seed"].get(), number);
         assert_eq!(preserved.values["_session_expiry"].get(), "0");
+        assert!(!preserved.values.contains_key("apda_remember_login"));
+        assert!(!preserved.values.contains_key("socialaccount_sociallogin"));
         assert!(
             consume_oauth(&pool, &headers, secret, "two")
                 .await

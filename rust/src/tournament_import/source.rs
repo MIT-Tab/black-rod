@@ -217,15 +217,17 @@ async fn publish(state: &AppState, url: &str, data: Arc<Value>) -> Result<(), Er
     };
     let previous = before.insert(id.clone(), row);
     let published = match serde_pickle::to_vec(&before, Default::default()) {
-        Ok(bytes) if cache.write_raw(INDEX, 1, &bytes, 0, true).await => Some(true),
-        Ok(_) => {
-            // A lost acknowledgement can leave an index that already references these chunks.
-            snapshots::source_index(cache)
-                .await
-                .ok()
-                .filter(|index| index.get(&id).is_some_and(|source| source.chunks == stored))
-                .map(|_| true)
-        }
+        Ok(bytes) => match cache.write_raw_checked(INDEX, 1, &bytes, 0, true).await {
+            Ok(stored) => Some(stored),
+            Err(_) => {
+                // A lost acknowledgement can leave an index that references these chunks.
+                snapshots::source_index(cache)
+                    .await
+                    .ok()
+                    .filter(|index| index.get(&id).is_some_and(|source| source.chunks == stored))
+                    .map(|_| true)
+            }
+        },
         Err(_) => Some(false),
     };
     cache.delete_raw(&format!("{INDEX}:lock")).await;
