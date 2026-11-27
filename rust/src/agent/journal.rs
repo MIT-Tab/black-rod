@@ -66,7 +66,7 @@ pub(crate) fn storage_error(error: sqlx::Error) -> ApiError {
 }
 
 impl Table {
-    pub(super) async fn get(&self, conn: &mut AnyConnection, id: i64) -> Result<Value, ApiError> {
+    pub(crate) async fn get(&self, conn: &mut AnyConnection, id: i64) -> Result<Value, ApiError> {
         let fields = self
             .fields
             .values()

@@ -1,0 +1,26 @@
+{% from "tournaments/includes/result_widgets.html" import field, checkbox, hidden %}
+{% set prefix = panel.key ~ '-' ~ form_index ~ '-' %}
+{{ hidden(prefix, "ORDER", row.order) }}
+<input type="checkbox" name="{{ prefix }}DELETE" id="id_{{ prefix }}DELETE">
+{% if panel.kind == 'team' %}
+    {{ hidden(prefix, "debater_one_tournament_id", row.first_source) }}
+    {{ hidden(prefix, "debater_two_tournament_id", row.second_source) }}
+    <div class="row">
+        <div class="col-md-6">{{ field(prefix, "debater_one", "Debater One", row.first, "/core/debaters/autocomplete", people) }}</div>
+        <div class="col-md-6">{{ field(prefix, "debater_two", "Debater Two", row.second, "/core/debaters/autocomplete", people) }}</div>
+    </div>
+    <div class="form-row align-items-end">
+        {% if panel.ghost %}<div class="col-auto">{{ checkbox(prefix, "ghost_points", "Ghost Points", row.ghost) }}</div>{% endif %}
+        <div class="col-auto">{{ checkbox(prefix, "counts_for_points", "Counts for points", row.scoring) }}</div>
+    </div>
+{% else %}
+    {{ hidden(prefix, "tournament_id", row.first_source) }}
+    <div class="row"><div class="col-md-12">
+        {{ field(prefix, "speaker", "", row.first, "/core/debaters/autocomplete", people) }}
+    </div></div>
+    <div class="form-row align-items-end">
+        <div class="col-auto">{{ checkbox(prefix, "tie", "Tie", row.tie) }}</div>
+        <div class="col-auto">{{ checkbox(prefix, "counts_for_points", "Counts for points", row.scoring) }}</div>
+    </div>
+{% endif %}
+{% for error in row.errors %}<div class="text-danger">{{ error }}</div>{% endfor %}

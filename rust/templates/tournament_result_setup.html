@@ -1,0 +1,10 @@
+<div id="div_id_api_url" class="form-group">
+    <label for="id_api_url">Mit-Tab Tournament Import URL (Optional)</label>
+    <div>
+        <input type="url" name="api_url" id="id_api_url" class="urlinput form-control{% if error %} is-invalid{% endif %}"
+               placeholder="https://nu-tab.com/tournament/123" maxlength="2048" value="{{ api_url }}"
+               aria-describedby="{% if error %}error_1_id_api_url {% endif %}hint_id_api_url">
+        {% if error %}<span id="error_1_id_api_url" class="invalid-feedback"><strong>{{ error }}</strong></span>{% endif %}
+        <small id="hint_id_api_url" class="form-text text-muted">If provided, all results, counts, and rounds are imported from this Mit-Tab tournament.</small>
+    </div>
+</div>

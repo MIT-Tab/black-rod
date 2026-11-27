@@ -19,6 +19,50 @@ use crate::{
 
 const VIEWS: &[(&str, &str)] = &[
     (
+        "tournaments/data_entry.html",
+        include_str!("../../core/templates/tournaments/data_entry.html"),
+    ),
+    (
+        "tournaments/data_entry_setup.html",
+        include_str!("../../core/templates/tournaments/data_entry_setup.html"),
+    ),
+    (
+        "tournaments/includes/data_entry_tabs.html",
+        include_str!("../../core/templates/tournaments/includes/data_entry_tabs.html"),
+    ),
+    (
+        "tournaments/includes/data_entry_sidebar.html",
+        include_str!("../../core/templates/tournaments/includes/data_entry_sidebar.html"),
+    ),
+    (
+        "tournaments/includes/formset_tab_pane.html",
+        include_str!("../../core/templates/tournaments/includes/formset_tab_pane.html"),
+    ),
+    (
+        "tournaments/includes/result_row.html",
+        include_str!("../../core/templates/tournaments/includes/formset_row_new.html"),
+    ),
+    (
+        "tournaments/includes/result_row_ajax.html",
+        include_str!("../../core/templates/tournaments/includes/formset_row.html"),
+    ),
+    (
+        "tournaments/includes/result_fields.html",
+        include_str!("../templates/tournament_result_fields.html"),
+    ),
+    (
+        "tournaments/includes/result_widgets.html",
+        include_str!("../templates/tournament_result_widgets.html"),
+    ),
+    (
+        "tournaments/includes/result_setup.html",
+        include_str!("../templates/tournament_result_setup.html"),
+    ),
+    (
+        "tournaments/includes/result_autoqual.html",
+        include_str!("../templates/tournament_result_autoqual.html"),
+    ),
+    (
         "tournaments/mittab_bundle_upload.html",
         include_str!("../../core/templates/tournaments/mittab_bundle_upload.html"),
     ),
@@ -588,6 +632,84 @@ fn adapt_scheduler(template: &str) -> String {
 fn adapt_template(name: &str, template: &str) -> String {
     let adapted;
     let template = match name {
+        "tournaments/data_entry_setup.html" => {
+            adapted = template
+                .replace(
+                    "{{ form.api_url|as_crispy_field }}",
+                    r#"{% include "tournaments/includes/result_setup.html" %}"#,
+                )
+                .replace("form.non_field_errors", "[]")
+                .replace(
+                    "{% url 'core:tournament_detail' pk=tournament.id %}",
+                    "/core/tournaments/{{ tournament.id }}",
+                );
+            &adapted
+        }
+        "tournaments/data_entry.html" => {
+            let media =
+                Regex::new(r"(?s)\{% for formset in formsets.values %\}.*?\{% endfor %\}").unwrap();
+            let panes = Regex::new(r#"(?s)(id="dataEntryTabContent">).*?(</div>\s*<div class="mt-4 pt-3 border-top">)"#).unwrap();
+            adapted = panes
+                .replace(
+                    &media.replace(template, ""),
+                    r#"${1}
+                    {% for panel in panels %}{% include "tournaments/includes/formset_tab_pane.html" %}{% endfor %}
+                    ${2}"#,
+                )
+                .replace("{{ autoqual_form.media }}", "")
+                .replace(
+                    "{{ autoqual_form.autoqual_debaters|as_crispy_field }}",
+                    r#"{% include "tournaments/includes/result_autoqual.html" %}"#,
+                )
+                .replace(
+                    "{% url 'core:tournament_detail' pk=tournament.id %}",
+                    "/core/tournaments/{{ tournament.id }}",
+                )
+                .replace("{{ formsets.schools.management_form }}", "")
+                .replace("{{ formsets.debaters.management_form }}", "");
+            &adapted
+        }
+        "tournaments/includes/data_entry_sidebar.html" => {
+            adapted = template
+                .replace("{% url 'core:school_create' %}", "/core/schools/create")
+                .replace(
+                    "{{ debater_form.school|as_crispy_field }}",
+                    r#"{% from "tournaments/includes/result_widgets.html" import field %}
+                    {{ field("", "school", "School", none, "/core/schools/autocomplete", {}) }}"#,
+                );
+            &adapted
+        }
+        "tournaments/includes/formset_tab_pane.html" => {
+            adapted = template
+                .replace("{% if is_active %}", "{% if active_tab == panel.key %}")
+                .replace("{{ tab_id }}", "{{ panel.key }}")
+                .replace("{{ item_name }}", "{{ panel.item }}")
+                .replace("{{ form_type }}", "{{ panel.kind }}")
+                .replace("if has_ghost_points", "if panel.ghost")
+                .replace("formset.non_form_errors", "panel.errors")
+                .replace("{% url 'core:get_new_team_form' %}", "/core/tournaments/get_new_form")
+                .replace("{% for form in formset.forms %}", "{% for row in panel.rows %}")
+                .replace(
+                    r#"{% include "tournaments/includes/formset_row_new.html" with form=form form_index=forloop.counter0 place_number=forloop.counter form_type=form_type has_ghost_points=has_ghost_points item_name=item_name prefix=tab_id %}"#,
+                    r#"{% set form_index = loop.index0 %}{% set place_number = loop.index %}{% set item_name = panel.item %}
+                    {% include "tournaments/includes/result_row.html" %}"#,
+                )
+                .replace(
+                    "{{ formset.management_form }}",
+                    r#"<input type="hidden" name="{{ panel.key }}-TOTAL_FORMS" value="{{ panel.rows|length }}" id="id_{{ panel.key }}-TOTAL_FORMS">
+                    <input type="hidden" name="{{ panel.key }}-INITIAL_FORMS" value="{{ panel.initial_count }}" id="id_{{ panel.key }}-INITIAL_FORMS">
+                    <input type="hidden" name="{{ panel.key }}-MIN_NUM_FORMS" value="0" id="id_{{ panel.key }}-MIN_NUM_FORMS">
+                    <input type="hidden" name="{{ panel.key }}-MAX_NUM_FORMS" value="150" id="id_{{ panel.key }}-MAX_NUM_FORMS">"#,
+                );
+            &adapted
+        }
+        "tournaments/includes/result_row.html" | "tournaments/includes/result_row_ajax.html" => {
+            adapted = template.replace(
+                r#"{% include "tournaments/includes/form_fields.html" with form=form form_type=form_type has_ghost_points=has_ghost_points %}"#,
+                r#"{% include "tournaments/includes/result_fields.html" %}"#,
+            );
+            &adapted
+        }
         "tournaments/mittab_bundle_upload.html" => {
             adapted = template
                 .replace(

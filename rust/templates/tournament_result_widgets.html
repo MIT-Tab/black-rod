@@ -1,0 +1,29 @@
+{% macro field(prefix, name, label, value, url, choices, multiple=false) -%}
+<div id="div_id_{{ prefix }}{{ name }}" class="form-group">
+    {% if label %}<label for="id_{{ prefix }}{{ name }}">{{ label }}</label>{% endif %}
+    <div>
+        <select name="{{ prefix }}{{ name }}" id="id_{{ prefix }}{{ name }}"
+                class="{{ 'modelselect2multiple' if multiple else 'modelselect2' }} form-control"
+                data-rust-select-url="{{ url }}"{% if multiple %} multiple{% endif %}>
+            {% if not multiple %}<option value="">---------</option>{% endif %}
+            {% if multiple %}
+                {% for id in value %}<option value="{{ id }}" selected>{{ choices[id|string] }}</option>{% endfor %}
+            {% elif value %}
+                <option value="{{ value }}" selected>{{ choices[value|string] }}</option>
+            {% endif %}
+        </select>
+    </div>
+</div>
+{%- endmacro %}
+{% macro checkbox(prefix, name, label, checked) -%}
+<div class="form-group">
+    <div id="div_id_{{ prefix }}{{ name }}" class="custom-control custom-checkbox">
+        <input type="checkbox" name="{{ prefix }}{{ name }}" class="checkboxinput custom-control-input"
+               id="id_{{ prefix }}{{ name }}"{% if checked %} checked{% endif %}>
+        <label for="id_{{ prefix }}{{ name }}" class="custom-control-label">{{ label }}</label>
+    </div>
+</div>
+{%- endmacro %}
+{% macro hidden(prefix,name,value='') -%}
+<input type="hidden" name="{{ prefix }}{{ name }}" value="{{ value }}" id="id_{{ prefix }}{{ name }}">
+{%- endmacro %}

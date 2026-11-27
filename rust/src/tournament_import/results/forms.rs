@@ -1,0 +1,266 @@
+use std::collections::{BTreeMap, BTreeSet};
+
+use serde::Serialize;
+use sqlx::{AnyConnection, Row};
+
+use crate::ApiError;
+
+#[derive(Clone, Copy, Serialize)]
+pub(super) struct Tab {
+    pub(super) key: &'static str,
+    pub(super) kind: &'static str,
+    pub(super) division: i64,
+    pub(super) item: &'static str,
+    pub(super) label: &'static str,
+    pub(super) ghost: bool,
+}
+
+pub(super) const TABS: [Tab; 5] = [
+    Tab {
+        key: "varsity_teams",
+        kind: "team",
+        division: 1,
+        item: "Team",
+        label: "Varsity Teams",
+        ghost: true,
+    },
+    Tab {
+        key: "varsity_speakers",
+        kind: "speaker",
+        division: 1,
+        item: "Speaker",
+        label: "Varsity Speakers",
+        ghost: false,
+    },
+    Tab {
+        key: "novice_teams",
+        kind: "team",
+        division: 0,
+        item: "Team",
+        label: "Novice Teams",
+        ghost: false,
+    },
+    Tab {
+        key: "novice_speakers",
+        kind: "speaker",
+        division: 0,
+        item: "Speaker",
+        label: "Novice Speakers",
+        ghost: false,
+    },
+    Tab {
+        key: "unplaced_teams",
+        kind: "team",
+        division: 1,
+        item: "Unplaced Team",
+        label: "Non-placing Teams",
+        ghost: false,
+    },
+];
+
+#[derive(Default, Serialize)]
+pub(super) struct ResultRow {
+    pub(super) first: Option<i64>,
+    pub(super) second: Option<i64>,
+    pub(super) first_source: String,
+    pub(super) second_source: String,
+    pub(super) order: i64,
+    pub(super) scoring: bool,
+    pub(super) ghost: bool,
+    pub(super) tie: bool,
+    pub(super) deleted: bool,
+    pub(super) errors: Vec<String>,
+}
+
+#[derive(Serialize)]
+pub(super) struct Panel {
+    #[serde(flatten)]
+    pub(super) tab: Tab,
+    pub(super) rows: Vec<ResultRow>,
+    pub(super) initial_count: usize,
+    pub(super) errors: Vec<String>,
+}
+
+impl Panel {
+    pub(super) fn new(tab: Tab) -> Self {
+        Self {
+            tab,
+            rows: Vec::new(),
+            initial_count: 0,
+            errors: Vec::new(),
+        }
+    }
+    pub(super) fn valid(&self) -> bool {
+        self.errors.is_empty()
+            && self
+                .rows
+                .iter()
+                .all(|row| row.deleted || row.errors.is_empty())
+    }
+}
+
+pub(super) type FormValues = BTreeMap<String, String>;
+
+fn extract_person(value: Option<&String>, errors: &mut Vec<String>) -> Option<i64> {
+    let value = value.filter(|value| !value.trim().is_empty())?;
+    let id = value.parse::<i64>().ok().filter(|id| *id > 0);
+    if id.is_none() {
+        errors.push(
+            "Select a valid choice. That choice is not one of the available choices.".to_owned(),
+        );
+    }
+    id
+}
+
+pub(super) fn submitted(values: &FormValues) -> Vec<Panel> {
+    const FORM_TAMPERED: &str = "ManagementForm data is missing or has been tampered with.";
+    TABS.into_iter()
+        .map(|tab| {
+            let mut panel = Panel::new(tab);
+            let input = |field: &str| values.get(&format!("{}-{field}", tab.key));
+            let count = |field| {
+                input(field)
+                    .and_then(|value| value.parse::<i64>().ok())
+                    .map(|value| value.max(0) as usize)
+            };
+            let Some(total) = count("TOTAL_FORMS") else {
+                panel.errors.push(format!(
+                    "{FORM_TAMPERED} Missing fields: {}-TOTAL_FORMS.",
+                    tab.key
+                ));
+                return panel;
+            };
+            let Some(initial) = count("INITIAL_FORMS") else {
+                panel.errors.push(format!(
+                    "{FORM_TAMPERED} Missing fields: {}-INITIAL_FORMS.",
+                    tab.key
+                ));
+                return panel;
+            };
+            panel.initial_count = initial;
+            if total > 1150 {
+                panel
+                    .errors
+                    .push("Please submit at most 150 forms.".to_owned());
+            }
+            for index in 0..total.min(1150) {
+                let field = |name: &str| input(&format!("{index}-{name}"));
+                let check =
+                    |name| field(name).is_some_and(|value| !value.eq_ignore_ascii_case("false"));
+                let mut row = ResultRow {
+                    order: field("ORDER")
+                        .and_then(|value| value.trim().parse().ok())
+                        .unwrap_or(index as i64 + 1),
+                    scoring: check("counts_for_points"),
+                    ghost: tab.ghost && check("ghost_points"),
+                    tie: check("tie"),
+                    deleted: check("DELETE"),
+                    ..Default::default()
+                };
+                if tab.kind == "team" {
+                    row.first = extract_person(field("debater_one"), &mut row.errors);
+                    row.second = extract_person(field("debater_two"), &mut row.errors);
+                    row.first_source = field("debater_one_tournament_id")
+                        .cloned()
+                        .unwrap_or_default();
+                    row.second_source = field("debater_two_tournament_id")
+                        .cloned()
+                        .unwrap_or_default();
+                } else {
+                    row.first = extract_person(field("speaker"), &mut row.errors);
+                    row.first_source = field("tournament_id").cloned().unwrap_or_default();
+                }
+                panel.rows.push(row);
+            }
+            panel
+        })
+        .collect()
+}
+
+pub(super) async fn current(
+    conn: &mut AnyConnection,
+    tournament: i64,
+) -> Result<Vec<Panel>, ApiError> {
+    let mut panels = TABS.map(Panel::new);
+    let teams=sqlx::query("SELECT CAST(r.id AS BIGINT) AS id,CAST(r.team_id AS BIGINT) AS team_id,
+        CAST(r.type_of_place AS BIGINT) AS division,CAST(r.place AS BIGINT) AS place,
+        CAST(CASE WHEN r.ghost_points THEN 1 ELSE 0 END AS BIGINT) AS ghost,
+        CAST(CASE WHEN r.counts_for_points THEN 1 ELSE 0 END AS BIGINT) AS scoring,
+        CAST((SELECT d.id FROM core_team_debaters m JOIN core_debater d ON d.id=m.debater_id
+            WHERE m.team_id=r.team_id AND NOT d.temporary AND NOT d.synthetic ORDER BY d.id LIMIT 1) AS BIGINT) AS first,
+        CAST((SELECT d.id FROM core_team_debaters m JOIN core_debater d ON d.id=m.debater_id
+            WHERE m.team_id=r.team_id AND NOT d.temporary AND NOT d.synthetic ORDER BY d.id LIMIT 1 OFFSET 1) AS BIGINT) AS second
+        FROM core_teamresult r WHERE r.tournament_id=$1 AND (r.place>0 OR (r.place=-1 AND r.type_of_place=1))
+        ORDER BY r.place,r.id").bind(tournament).fetch_all(&mut *conn).await?;
+    for row in teams {
+        let panel = &mut panels[match (
+            row.try_get::<i64, _>("division")?,
+            row.try_get::<i64, _>("place")?,
+        ) {
+            (1, -1) => 4,
+            (1, _) => 0,
+            _ => 2,
+        }];
+        panel.rows.push(ResultRow {
+            first: row.try_get("first")?,
+            second: row.try_get("second")?,
+            order: panel.rows.len() as i64 + 1,
+            ghost: panel.tab.ghost && row.try_get::<i64, _>("ghost")? == 1,
+            scoring: row.try_get::<i64, _>("scoring")? == 1,
+            ..Default::default()
+        });
+    }
+    let speakers=sqlx::query("SELECT CAST(debater_id AS BIGINT) AS person,CAST(type_of_place AS BIGINT) AS division,
+        CAST(CASE WHEN tie THEN 1 ELSE 0 END AS BIGINT) AS tie,
+        CAST(CASE WHEN counts_for_points THEN 1 ELSE 0 END AS BIGINT) AS scoring FROM core_speakerresult
+        WHERE tournament_id=$1 AND place>0 ORDER BY place,id").bind(tournament).fetch_all(&mut *conn).await?;
+    for row in speakers {
+        let panel = &mut panels[if row.try_get::<i64, _>("division")? == 1 {
+            1
+        } else {
+            3
+        }];
+        panel.rows.push(ResultRow {
+            first: row.try_get("person")?,
+            order: panel.rows.len() as i64 + 1,
+            scoring: row.try_get::<i64, _>("scoring")? == 1,
+            tie: row.try_get::<i64, _>("tie")? == 1,
+            ..Default::default()
+        });
+    }
+    for panel in &mut panels {
+        panel.initial_count = panel.rows.len();
+    }
+    Ok(panels.into())
+}
+
+pub(super) async fn labels(
+    conn: &mut AnyConnection,
+    panels: &[Panel],
+    autoquals: &[i64],
+    temporary: bool,
+) -> Result<BTreeMap<String, String>, ApiError> {
+    let mut ids = autoquals.iter().copied().collect::<BTreeSet<_>>();
+    ids.extend(
+        panels
+            .iter()
+            .flat_map(|panel| panel.rows.iter())
+            .flat_map(|row| [row.first, row.second])
+            .flatten(),
+    );
+    let mut people = BTreeMap::new();
+    for id in ids {
+        let label = sqlx::query_scalar::<_, String>(
+            "SELECT TRIM(d.first_name || ' ' || d.last_name) FROM core_debater d
+            WHERE d.id=$1 AND ($2 OR NOT(d.synthetic OR d.temporary))",
+        )
+        .bind(id)
+        .bind(temporary)
+        .fetch_optional(&mut *conn)
+        .await?;
+        if let Some(label) = label {
+            people.insert(id.to_string(), label);
+        }
+    }
+    Ok(people)
+}

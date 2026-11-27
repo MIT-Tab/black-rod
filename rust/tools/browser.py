@@ -235,6 +235,7 @@ from core.models.immaculate_grid import ImmaculateGridBoard
 from core.models.motion import Motion
 from core.models.results.speaker import SpeakerResult
 from core.models.results.team import TeamResult
+from core.models.team import Team
 from core.models.resource import Resource
 from core.models.school import School
 from core.models.round import RoundStats
@@ -262,6 +263,18 @@ bundle_event = Tournament.objects.create(host=bundle_host, season="2026", date=d
 original_award = TeamResult.objects.filter(tournament=tournament).first()
 TeamResult.objects.create(tournament=bundle_event, team=original_award.team, type_of_place=1, place=1)
 result["bundle_event"] = bundle_event.pk
+result_school = School.objects.create(name="Disposable tournament scoring school", short_name="Result scoring")
+manual = Tournament.objects.create(host=result_school, season="2026", date=date(2026, 9, 16),
+    manual_name="Disposable results entry tournament", num_teams=24)
+manual_people = [Debater.objects.create(first_name=name, last_name="Result", school=result_school)
+    for name in ("First", "Second", "Third")]
+manual_team = Team.objects.create(name="Disposable results team")
+manual_team.debaters.add(*manual_people[:2])
+result_award = TeamResult.objects.create(tournament=manual, team=manual_team, place=1)
+result_award.hidden_from_debaters.add(manual_people[0])
+SpeakerResult.objects.create(tournament=manual, debater=manual_people[2], place=1, hidden_from_profile=True)
+result["manual_event"] = {"id":manual.pk,"people":[person.pk for person in manual_people],"team":manual_team.pk,
+                         "school":result_school.pk}
 for access, _ in Video.PERMISSIONS:
     video = Video.objects.create(
         tournament=tournament, round=Video.VF, permissions=access,
@@ -1331,6 +1344,69 @@ def assert_mittab_bundle_upload(driver, django, rust, fixture):
     driver.delete_all_cookies()
 
 
+def assert_manual_results(driver, django, rust, fixture):
+    manual = fixture["manual_event"]
+    event = manual["id"]
+    target = f"/core/tournaments/data_entry?tournament={event}"
+    setup = f"/core/tournaments/data_entry/setup?tournament={event}"
+    driver.delete_all_cookies()
+    driver.get(f"http://{HOST}:{rust.port}{setup}")
+    assert urlsplit(driver.current_url).path == "/auth/login/"
+    driver.add_cookie({"name": "sessionid", "value": django_session()})
+    root = f"http://{HOST}:{rust.port}"
+    driver.get(root + setup)
+    assert "Enter Results: " in driver.find_element("tag name", "h4").text
+    field = driver.find_element("id", "id_api_url")
+    assert field.get_attribute("placeholder") == "https://nu-tab.com/tournament/123"
+    field.submit()
+    WebDriverWait(driver, 10).until(lambda browser: browser.current_url == root + target)
+
+    def form_state(server):
+        driver.get(f"http://{HOST}:{server.port}{target}")
+        return driver.execute_script("""
+            return {
+                tabs: [...document.querySelectorAll('#dataEntryTabs a')].map(link => link.textContent.trim()),
+                team: [...document.querySelectorAll('#varsity_teams-table select')].map(select => select.value),
+                speaker: [...document.querySelectorAll('#varsity_speakers-table select')].map(select => select.value),
+                controls: [...document.querySelectorAll('.add-form-btn')].map(button => button.textContent.trim()),
+            };
+        """)
+    reference, candidate = form_state(django), form_state(rust)
+    assert reference == candidate, (reference, candidate)
+    driver.find_element("id", "novice_speakers-tab").click()
+    driver.find_element("css selector", '.add-form-btn[data-tab="novice_speakers"]').click()
+    WebDriverWait(driver, 10).until(lambda browser: browser.find_element(
+        "css selector", "#id_novice_speakers-0-speaker.select2-hidden-accessible"))
+    assert driver.find_element("id", "id_novice_speakers-TOTAL_FORMS").get_attribute("value") == "1"
+
+    def send(person):
+        return driver.execute_async_script("""
+            const [person, done] = arguments;
+            const body = new URLSearchParams(new FormData(document.querySelector('#data-entry-form')));
+            body.set('varsity_speakers-0-speaker', String(person));
+            fetch(location.pathname + location.search, {method:"POST", body}).then(async response => {
+                const page = new DOMParser().parseFromString(await response.text(), "text/html");
+                done({status:response.status, path:new URL(response.url).pathname, redirected:response.redirected,
+                    error:page.querySelector('[role=alert]')?.textContent.trim()});
+            }, () => done({status:0}));
+        """, person)
+
+    rejected = send(9_000_000)
+    assert "Varsity Speakers tab" in rejected["error"] and not rejected["redirected"], rejected
+    committed = send(manual["people"][2])
+    assert committed["redirected"] and committed["path"] == f"/core/tournaments/{event}", committed
+    assert form_state(django) == reference
+    database = Path(os.environ["BR_STATE"]) / "dev.sqlite3"
+    with sqlite3.connect(f"{database.as_uri()}?mode=ro", uri=True) as db:
+        assert db.execute("""SELECT h.debater_id FROM core_teamresult_hidden_from_debaters h
+            JOIN core_teamresult r ON r.id=h.teamresult_id WHERE r.tournament_id=?""", (event,)).fetchall() == [(manual["people"][0],)]
+        assert db.execute("SELECT hidden_from_profile FROM core_speakerresult WHERE tournament_id=?", (event,)).fetchone() == (1,)
+        assert db.execute("SELECT points FROM core_toty WHERE team_id=? AND season='2026'", (manual["team"],)).fetchone() == (13.0,)
+        assert db.execute("SELECT points FROM core_soty WHERE debater_id=? AND season='2026'", (manual["people"][2],)).fetchone() == (13.0,)
+        assert db.execute("SELECT points FROM core_coty WHERE school_id=? AND season='2026'", (manual["school"],)).fetchone() == (38.0,)
+    driver.delete_all_cookies()
+
+
 def assert_agent_reads(django, rust, fixture):
     base = "/api/agent/v1/"
     authorization = "Bearer " + fixture["agent"]
@@ -1681,6 +1757,7 @@ def browser_checks(database, options, output):
                 fraction = changed / (left.width * left.height)
                 print(f"{mode} replay changed pixels above tolerance {fraction:.3%}")
                 assert fraction <= 0.01, f"{mode} replay screenshot differs by {fraction:.2%}"
+        assert_manual_results(driver, django, rust, fixture)
 
 
 if __name__ == "__main__":

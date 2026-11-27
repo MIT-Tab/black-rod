@@ -527,6 +527,18 @@ pub fn app(state: AppState) -> Router {
         )
         .route("/core/tournaments/", get(directory::page))
         .route(
+            "/core/tournaments/data_entry/setup",
+            get(tournament_import::results::page).post(tournament_import::results::page),
+        )
+        .route(
+            "/core/tournaments/data_entry",
+            get(tournament_import::results::page).post(tournament_import::results::page),
+        )
+        .route(
+            "/core/tournaments/get_new_form",
+            axum::routing::any(tournament_import::results::new_form),
+        )
+        .route(
             "/core/tournaments/mittab_bundle/upload",
             get(tournament_import::upload)
                 .post(tournament_import::upload)

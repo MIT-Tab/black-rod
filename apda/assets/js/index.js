@@ -113,5 +113,5 @@ $(document).ready(() => {
   initPartnershipStats();
 });
 
-$(initTagFilters);
+$(() => initTagFilters());
 $(initRichTextEditors);

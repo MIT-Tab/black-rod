@@ -1,11 +1,14 @@
-async function initTagFilters() {
-  const fields = $("select[data-rust-tag-url], select[data-rust-select-url]");
+const selector = "select[data-rust-tag-url], select[data-rust-select-url]";
+
+async function initTagFilters(root = document) {
+  const fields = $(root).find(selector);
   if (!fields.length) return;
   await Promise.all([
     import("select2"),
     import("select2/dist/css/select2.css"),
   ]);
   fields.each((_, field) => {
+    if ($(field).hasClass("select2-hidden-accessible")) return;
     const tagMode = !!field.dataset.rustTagUrl;
     const url = field.dataset.rustTagUrl || field.dataset.rustSelectUrl;
     $(field).select2({
