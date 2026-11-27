@@ -1,3 +1,5 @@
+mod legacy;
+
 use std::collections::HashMap;
 
 use axum::{
@@ -22,8 +24,10 @@ enum Kind {
     Motions,
     Resources { owned: bool },
     Outreach { judge: bool },
+    Standing(legacy::Standing),
 }
 
+#[derive(Clone, Copy)]
 struct Field {
     name: &'static str,
     label: &'static str,
@@ -372,6 +376,7 @@ const OUTREACH_FIELDS: &[Field] = &[
 impl Kind {
     fn title(self) -> &'static str {
         match self {
+            Self::Standing(standing) => standing.title(),
             Self::Schools => "Schools",
             Self::Teams => "Teams",
             Self::Debaters => "Debaters",
@@ -387,6 +392,7 @@ impl Kind {
 
     fn columns(self) -> &'static [Field] {
         match self {
+            Self::Standing(standing) => standing.columns(),
             Self::Schools => SCHOOL_FIELDS,
             Self::Teams => TEAM_FIELDS,
             Self::Debaters => DEBATER_FIELDS,
@@ -400,6 +406,7 @@ impl Kind {
 
     fn count(self) -> &'static str {
         match self {
+            Self::Standing(standing) => standing.source(),
             Self::Schools => "FROM core_school x WHERE NOT x.temporary AND NOT x.synthetic",
             Self::Teams => "FROM core_team x WHERE NOT x.synthetic",
             Self::Tournaments => TOURNAMENT_SOURCE,
@@ -414,6 +421,7 @@ impl Kind {
 
     fn projection(self, order_by: &str) -> &'static str {
         match self {
+            Self::Standing(_) => unreachable!(),
             Self::Schools => "CAST(x.id AS BIGINT) AS id, x.name,
                    CAST(CASE WHEN x.included_in_oty THEN 1 ELSE 0 END AS BIGINT) AS included",
             Self::Teams if order_by.trim_start_matches('-') == "debaters_display" => "CAST(x.id AS BIGINT) AS id, x.name,
@@ -433,6 +441,7 @@ impl Kind {
 
     fn initial_order(self) -> &'static str {
         match self {
+            Self::Standing(_) => "x.id DESC",
             Self::Schools => "x.name",
             Self::Tournaments => "x.date",
             Self::Motions => "x.date_set DESC, x.id DESC",
@@ -488,6 +497,10 @@ fn filter(kind: Kind, query: &HashMap<&str, &str>, current: i32, user_id: Option
         params: Vec::new(),
         default_order: None,
     };
+    if let Kind::Standing(standing) = kind {
+        standing.filters(&mut result, query);
+        return result;
+    }
     if matches!(kind, Kind::Motions) {
         result.argument(FilterValue::Number(user_id.unwrap_or(0)));
     }
@@ -498,6 +511,7 @@ fn filter(kind: Kind, query: &HashMap<&str, &str>, current: i32, user_id: Option
         result.add("x.id = {}", FilterValue::Number(id));
     }
     let text_fields: &[(&str, &str)] = match kind {
+        Kind::Standing(_) => unreachable!(),
         Kind::Schools | Kind::Teams => &[("name__icontains", "x.name")],
         Kind::Tournaments => &[("name__icontains", "x.name")],
         Kind::Resources { .. } => &[("title__icontains", "x.title")],
@@ -819,9 +833,12 @@ async fn rows(
                 .unwrap_or(kind.initial_order())
                 .to_owned()
         });
+    let projection = match kind {
+        Kind::Standing(standing) => std::borrow::Cow::Owned(standing.projection()),
+        _ => std::borrow::Cow::Borrowed(kind.projection(order_by)),
+    };
     let query = format!(
-        "SELECT {} {} ORDER BY {order} LIMIT ${} OFFSET ${}",
-        kind.projection(order_by),
+        "SELECT {projection} {} ORDER BY {order} LIMIT ${} OFFSET ${}",
         filters.query,
         filters.params.len() + 1,
         filters.params.len() + 2
@@ -840,6 +857,9 @@ async fn rows(
         let empty = String::new;
         let mut cells = vec![vec![(id.to_string(), url.clone())]];
         match kind {
+            Kind::Standing(standing) => {
+                cells = standing.cells(&row, &mut connection).await?;
+            }
             Kind::Schools => {
                 cells.push(vec![(row.try_get("name")?, url)]);
                 let text = if row.try_get::<i64, _>("included")? != 0 {
@@ -1052,6 +1072,10 @@ pub(crate) async fn page(
 ) -> Response {
     let kind = match uri.path() {
         "/core/schools/" => Kind::Schools,
+        "/core/toty" => Kind::Standing(legacy::Standing::Team),
+        "/core/soty" => Kind::Standing(legacy::Standing::Speaker),
+        "/core/noty" => Kind::Standing(legacy::Standing::Novice),
+        "/core/coty" => Kind::Standing(legacy::Standing::Club),
         "/core/dino-judges/" => Kind::Outreach { judge: true },
         "/core/dino-tos/" => Kind::Outreach { judge: false },
         "/core/teams/" => Kind::Teams,
@@ -1070,6 +1094,16 @@ pub(crate) async fn page(
         .collect();
     let param = |key| query.get(key).copied().unwrap_or_default();
     let order_by = param("sort");
+    if matches!(kind, Kind::Standing(_)) && param("season").is_empty() {
+        return (
+            StatusCode::FOUND,
+            [(
+                header::LOCATION,
+                format!("{}?season={}", uri.path(), state.current_season),
+            )],
+        )
+            .into_response();
+    }
     let Ok(user) = session::user(&state.pool, &headers, state.secret.as_deref()).await else {
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     };
@@ -1191,7 +1225,7 @@ pub(crate) async fn page(
                 "btn-primary",
             ),
         ],
-        Kind::Teams | Kind::Outreach { .. } => &[],
+        Kind::Teams | Kind::Outreach { .. } | Kind::Standing(_) => &[],
         Kind::Resources { owned: false } => &[(
             "add_resource",
             "/core/resources/create",
@@ -1424,6 +1458,8 @@ pub(crate) async fn page(
                 )
             },
         ];
+    } else if let Kind::Standing(standing) = kind {
+        fields = standing.inputs(&query);
     } else if matches!(kind, Kind::Tournaments) {
         fields.push(input("name__icontains", "Name contains", false, Vec::new()));
         let mut types = vec![(String::new(), "---------".to_owned())];
@@ -1447,12 +1483,18 @@ pub(crate) async fn page(
     } else {
         fields.push(input("name__icontains", "Name contains", false, Vec::new()));
     }
+    let displayed_order = if order_by.is_empty() && matches!(kind, Kind::Outreach { .. }) {
+        "latest_year"
+    } else {
+        order_by
+    };
     let columns = kind
         .columns()
         .iter()
         .map(|field| {
-            let desc = order_by.starts_with('-') && order_by.trim_start_matches('-') == field.name;
-            let asc = order_by == field.name;
+            let desc = displayed_order.starts_with('-')
+                && displayed_order.trim_start_matches('-') == field.name;
+            let asc = displayed_order == field.name;
             let next_order = if asc {
                 format!("-{}", field.name)
             } else {
@@ -1483,8 +1525,17 @@ pub(crate) async fn page(
     let is_motion = matches!(kind, Kind::Motions);
     let is_media = matches!(kind, Kind::Motions | Kind::Videos);
     let empty_random = is_media && session::cookie(&headers, "br_media_random_empty") == Some("1");
+    let messages = if is_motion {
+        state
+            .secret
+            .as_deref()
+            .map(|secret| crate::flash::messages(&headers, secret))
+            .unwrap_or_default()
+    } else {
+        Vec::new()
+    };
     let page_values = context! {
-        fields, season_filters, title => kind.title(), buttons, rows, columns, pagination,
+        messages, fields, season_filters, title => kind.title(), buttons, rows, columns, pagination,
         random_url => is_media.then(|| format!("{}random", uri.path())),
         clear_url => is_motion.then_some("/core/motions/"),
         warning => empty_random.then_some(if is_motion { "No motions match those filters." }
@@ -1499,6 +1550,14 @@ pub(crate) async fn page(
     match web::render("core/directory.html", context! {..common, ..page_values}) {
         Ok(html) => {
             let mut response = ([(header::VARY, "Cookie")], Html(html)).into_response();
+            if !messages.is_empty() {
+                crate::flash::clear(
+                    &mut response,
+                    state
+                        .origin(&headers)
+                        .is_some_and(|url| url.starts_with("https://")),
+                );
+            }
             if empty_random {
                 crate::login::set_cookie(
                     &mut response,

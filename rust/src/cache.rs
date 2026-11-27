@@ -30,7 +30,10 @@ impl Memcached {
         format!("black-rod:rust:v1:{}", hex::encode(hash))
     }
 
-    pub(crate) async fn get(&self, key: &str) -> Option<CachedBody> {
+    pub(crate) async fn read_raw(&self, key: &str) -> Option<(u32, Vec<u8>)> {
+        if key.is_empty() || key.len() > 250 || !key.bytes().all(|byte| byte.is_ascii_graphic()) {
+            return None;
+        }
         let result = timeout(SERVICE_TIMEOUT, async {
             let stream = TcpStream::connect(self.0).await?;
             let mut reader = BufReader::new(stream);
@@ -39,9 +42,8 @@ impl Memcached {
                 .write_all(format!("get {key}\r\n").as_bytes())
                 .await?;
             let mut header = Vec::new();
-            // Bound the line independently from the value size advertised by the server.
             (&mut reader)
-                .take(256)
+                .take(300)
                 .read_until(b'\n', &mut header)
                 .await?;
             let line = std::str::from_utf8(&header)
@@ -51,41 +53,43 @@ impl Memcached {
                 return Ok(None);
             };
             let mut fields = line.split_ascii_whitespace();
-            if fields.next() != Some("VALUE")
-                || fields.next() != Some(key)
-                || fields.next() != Some("0")
-            {
+            if fields.next() != Some("VALUE") || fields.next() != Some(key) {
                 return Ok(None);
             }
+            let Some(flags) = fields.next().and_then(|flags| flags.parse::<u32>().ok()) else {
+                return Ok(None);
+            };
             let length = fields
                 .next()
                 .and_then(|length| length.parse::<usize>().ok());
-            let Some(length) =
-                length.filter(|value| (size_of::<u64>()..=MAX_VALUE).contains(value))
-            else {
+            let Some(length) = length.filter(|length| *length <= MAX_VALUE) else {
                 return Ok(None);
             };
-            let mut expiry = [0; 8];
-            reader.read_exact(&mut expiry).await?;
-            let lifetime =
-                Duration::from_secs(u64::from_be_bytes(expiry).saturating_sub(epoch_seconds()));
-            if lifetime.is_zero() {
-                return Ok(None);
-            }
-            let mut bytes = vec![0; length - size_of::<u64>()];
+            let mut bytes = vec![0; length];
             reader.read_exact(&mut bytes).await?;
             let mut terminator = [0; 7];
             reader.read_exact(&mut terminator).await?;
             if terminator != *b"\r\nEND\r\n" {
                 return Ok(None);
             }
-            Ok::<_, io::Error>(Some(CachedBody {
-                bytes: Bytes::from(bytes),
-                lifetime,
-            }))
+            Ok::<_, io::Error>(Some((flags, bytes)))
         })
         .await;
         result.ok()?.ok()?
+    }
+
+    pub(crate) async fn get(&self, key: &str) -> Option<CachedBody> {
+        let (flags, bytes) = self.read_raw(key).await?;
+        if flags != 0 {
+            return None;
+        }
+        let expiry = bytes.first_chunk::<8>()?;
+        let lifetime =
+            Duration::from_secs(u64::from_be_bytes(*expiry).saturating_sub(epoch_seconds()));
+        (!lifetime.is_zero()).then(|| CachedBody {
+            bytes: Bytes::from(bytes).slice(8..),
+            lifetime,
+        })
     }
 
     pub(crate) async fn set(&self, key: &str, body: &Bytes, ttl: Duration) {

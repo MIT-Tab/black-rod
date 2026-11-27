@@ -20,6 +20,7 @@ use url::Url;
 
 use crate::{
     ApiError, AppState,
+    cache::Memcached,
     points::{speaker_points_for_size, team_points_for_size},
     schedule::qualification_label,
     session,
@@ -32,6 +33,8 @@ const STALE: Duration = Duration::from_secs(86_400);
 const FETCH_BUDGET: Duration = Duration::from_secs(15);
 const SOURCE_TIMEOUT: Duration = Duration::from_secs(8);
 const MARKER_LIMITS: [usize; 3] = [5, 6, 5];
+
+mod snapshots;
 
 pub struct Live {
     directory: Option<String>,
@@ -63,15 +66,22 @@ impl Live {
             .map(|(_, payload)| payload.clone())
     }
 
-    async fn rebuild(&self, pool: &AnyPool, season: i32) -> Result<Arc<Payload>, ApiError> {
+    async fn rebuild(
+        &self,
+        pool: &AnyPool,
+        season: i32,
+        cache: Option<&Memcached>,
+    ) -> Result<Arc<Payload>, ApiError> {
         let mut boards = base_boards(pool, season).await?;
         let mut coty = base_coty(pool, season).await?;
         let mut names = BTreeSet::new();
         if !matches!(season, 2020 | 2021) {
-            let payloads = self.fetch().await;
+            let payloads = self.fetch(cache).await;
             let people = People::load(pool, &payloads).await?;
             for source in payloads {
-                if apply(pool, season, &source, &people, &mut boards, &mut coty).await? {
+                if apply(pool, season, &source, &people, &mut boards, &mut coty).await?
+                    && source["_cached_only"].as_bool() != Some(true)
+                {
                     names.insert(
                         text(&source["tournament"]["name"])
                             .unwrap_or("Tournament")
@@ -92,16 +102,22 @@ impl Live {
         Ok(payload)
     }
 
-    pub(crate) fn active_sources(self: &Arc<Self>, pool: &AnyPool, season: i32) -> Vec<String> {
+    pub(crate) fn active_sources(
+        self: &Arc<Self>,
+        pool: &AnyPool,
+        season: i32,
+        cache: Option<&Memcached>,
+    ) -> Vec<String> {
         if let Some(payload) = self.last(FRESH) {
             return payload.active_sources.clone();
         }
         if let Ok(guard) = self.refreshing.clone().try_lock_owned() {
             let live = self.clone();
             let pool = pool.clone();
+            let cache = cache.cloned();
             tokio::spawn(async move {
                 let _guard = guard;
-                let _ = live.rebuild(&pool, season).await;
+                let _ = live.rebuild(&pool, season, cache.as_ref()).await;
             });
         }
         self.last(STALE)
@@ -109,12 +125,17 @@ impl Live {
             .unwrap_or_default()
     }
 
-    async fn page_data(&self, pool: &AnyPool, season: i32) -> Result<Arc<Payload>, ApiError> {
+    async fn page_data(
+        &self,
+        pool: &AnyPool,
+        season: i32,
+        cache: Option<&Memcached>,
+    ) -> Result<Arc<Payload>, ApiError> {
         if let Some(payload) = self.last(FRESH) {
             return Ok(payload);
         }
         if let Ok(_guard) = self.refreshing.try_lock() {
-            return self.rebuild(pool, season).await;
+            return self.rebuild(pool, season, cache).await;
         }
         if let Some(payload) = self.last(STALE) {
             return Ok(payload);
@@ -122,11 +143,11 @@ impl Live {
         let _guard = self.refreshing.lock().await;
         match self.last(FRESH) {
             Some(payload) => Ok(payload),
-            None => self.rebuild(pool, season).await,
+            None => self.rebuild(pool, season, cache).await,
         }
     }
 
-    async fn fetch(&self) -> Vec<Value> {
+    async fn fetch(&self, cache: Option<&Memcached>) -> Vec<Value> {
         let mut sources = self.sources.clone();
         if let Some(directory) = &self.directory
             && let Some(payload) = read_json(&self.client, directory, Duration::from_secs(5)).await
@@ -171,6 +192,10 @@ impl Live {
             }
         })
         .await;
+        if let Some(cache) = cache {
+            let snapshots = snapshots::missing(cache, &loaded).await;
+            loaded.extend(snapshots);
+        }
         loaded.into_values().collect()
     }
 }
@@ -931,7 +956,10 @@ pub(crate) async fn page(
     let Some(live) = &state.live else {
         return StatusCode::SERVICE_UNAVAILABLE.into_response();
     };
-    let Ok(data) = live.page_data(&state.pool, state.current_season).await else {
+    let Ok(data) = live
+        .page_data(&state.pool, state.current_season, state.memcached.as_ref())
+        .await
+    else {
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     };
     let Ok(user) = session::user(&state.pool, &headers, state.secret.as_deref()).await else {

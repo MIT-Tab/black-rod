@@ -1,3 +1,5 @@
+pub(crate) mod edit;
+
 use axum::{
     extract::{OriginalUri, Path, State},
     http::{HeaderMap, StatusCode, header},

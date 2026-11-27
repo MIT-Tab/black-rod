@@ -1,0 +1,12 @@
+<div id="div_id_{{ select_name }}" class="form-group">
+    <label for="id_{{ select_name }}" class="requiredField">{{ select_label }}<span class="asteriskField">*</span></label>
+    <div>
+        <select name="{{ select_name }}" id="id_{{ select_name }}" class="modelselect2 form-control{% if fields[select_name].error %} is-invalid{% endif %}"
+                data-rust-select-url="/core/debaters/partnership-paths/autocomplete/" data-rust-select-placeholder="Search by name"
+                data-rust-select-minimum="1" required>
+            <option value=""></option>
+            {% if fields[select_name].value %}<option value="{{ fields[select_name].value }}" selected>{{ fields[select_name].label }}</option>{% endif %}
+        </select>
+        {% if fields[select_name].error %}<p id="error_1_id_{{ select_name }}" class="invalid-feedback d-block"><strong>{{ fields[select_name].error }}</strong></p>{% endif %}
+    </div>
+</div>

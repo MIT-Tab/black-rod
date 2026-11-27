@@ -2,6 +2,7 @@
 {% block content %}
     <div class="row mt-lg-5 ml-lg-2 mr-lg-2 mb-lg-5 m-1">
         <div class="col-lg-3">
+            {% for message in messages %}<div class="alert alert-info m-2">{{ message }}</div>{% endfor %}
             {% if warning %}<div class="alert {% if motion_warning %}alert-info{% else %}alert-warning{% endif %} m-2" role="alert">{{ warning }}</div>{% endif %}
             <div class="rounded-l5 shadow-lg card m-2 ">
                 <div class="card-body">

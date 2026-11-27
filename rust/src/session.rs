@@ -1,16 +1,16 @@
-use std::io::Read;
+use std::io::{Read, Write};
 
 use axum::http::{HeaderMap, header};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::{Duration, Utc};
-use flate2::read::ZlibDecoder;
+use flate2::{Compression, read::ZlibDecoder, write::ZlibEncoder};
 use ring::{
     digest, hmac,
     rand::{SecureRandom, SystemRandom},
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json, value::RawValue};
-use sqlx::{AnyPool, Row};
+use sqlx::{AnyConnection, AnyPool, Row};
 
 const SESSION_SALT: &[u8] = b"django.contrib.sessions.SessionStoresigner";
 const AUTH_SALT: &[u8] = b"django.contrib.auth.models.AbstractBaseUser.get_session_auth_hash";
@@ -138,13 +138,55 @@ fn encode(session: &Value, secret: &[u8]) -> String {
 }
 
 pub(crate) fn encode_signed(payload: &str, secret: &[u8], salt: &[u8]) -> String {
-    let signed = format!(
-        "{}:{}",
-        URL_SAFE_NO_PAD.encode(payload),
-        timestamp(Utc::now().timestamp() as u64)
-    );
+    sign_payload(&URL_SAFE_NO_PAD.encode(payload), secret, salt)
+}
+
+pub(crate) fn encode_compressed(
+    payload: &str,
+    secret: &[u8],
+    salt: &[u8],
+) -> std::io::Result<String> {
+    let mut compressor = ZlibEncoder::new(Vec::new(), Compression::default());
+    compressor.write_all(payload.as_bytes())?;
+    let compressed = compressor.finish()?;
+    Ok(if compressed.len() + 1 < payload.len() {
+        sign_payload(
+            &format!(".{}", URL_SAFE_NO_PAD.encode(compressed)),
+            secret,
+            salt,
+        )
+    } else {
+        encode_signed(payload, secret, salt)
+    })
+}
+
+fn sign_payload(payload: &str, secret: &[u8], salt: &[u8]) -> String {
+    let signed = format!("{payload}:{}", timestamp(Utc::now().timestamp() as u64));
     let signature = URL_SAFE_NO_PAD.encode(hmac::sign(&key(salt, secret), signed.as_bytes()));
     format!("{signed}:{signature}")
+}
+
+pub(crate) fn decode_timed<T: serde::de::DeserializeOwned>(
+    signed: &str,
+    secret: &[u8],
+    salt: &[u8],
+    max_age: i64,
+) -> Option<T> {
+    let bytes = decode_signed_bytes(signed, secret, salt)?;
+    let (_, timestamp) = signed.rsplit_once(':')?.0.rsplit_once(':')?;
+    let timestamp = timestamp.bytes().try_fold(0_i64, |acc, byte| {
+        let digit = match byte {
+            b'0'..=b'9' => byte - b'0',
+            b'A'..=b'Z' => byte - b'A' + 10,
+            b'a'..=b'z' => byte - b'a' + 36,
+            _ => return None,
+        };
+        acc.checked_mul(62)?.checked_add(i64::from(digit))
+    })?;
+    if Utc::now().timestamp().saturating_sub(timestamp) > max_age {
+        return None;
+    }
+    serde_json::from_slice(&bytes).ok()
 }
 
 pub(crate) struct StoredSession {
@@ -178,6 +220,14 @@ impl StoredSession {
     }
 
     pub(crate) async fn save(self, pool: &AnyPool, secret: &[u8]) -> Result<bool, sqlx::Error> {
+        self.save_on(&mut *pool.acquire().await?, secret).await
+    }
+
+    pub(crate) async fn save_on(
+        self,
+        conn: &mut AnyConnection,
+        secret: &[u8],
+    ) -> Result<bool, sqlx::Error> {
         let document = serde_json::to_string(&self.values)
             .map(|value| crate::django_json::ascii(&value))
             .map_err(|error| sqlx::Error::Protocol(error.to_string()))?;
@@ -189,7 +239,7 @@ impl StoredSession {
         .bind(updated)
         .bind(self.id)
         .bind(self.original)
-        .execute(pool)
+        .execute(conn)
         .await?;
         Ok(result.rows_affected() == 1)
     }

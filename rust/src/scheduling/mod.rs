@@ -15,11 +15,7 @@ use serde::Serialize;
 use serde_json::{Value, json};
 use sqlx::{AnyPool, AssertSqlSafe, Row, any::AnyRow};
 
-use crate::{
-    ApiError, AppState, flash, is_django_integer, login,
-    session::{self, User},
-    web,
-};
+use crate::{ApiError, AppState, admin, flash, is_django_integer, login, session::User, web};
 
 const DASHBOARD: &str = "/core/admin/scheduling/";
 const WORKSPACE:&str="
@@ -223,25 +219,12 @@ fn failed(error: ApiError) -> Response {
     StatusCode::INTERNAL_SERVER_ERROR.into_response()
 }
 
-async fn admin(state: &AppState, uri: &Uri, headers: &HeaderMap) -> Result<User, Box<Response>> {
-    let user = session::user(&state.pool, headers, state.secret.as_deref())
-        .await
-        .map_err(|_| Box::new(StatusCode::INTERNAL_SERVER_ERROR.into_response()))?;
-    if !user.is_authenticated {
-        return Err(Box::new(login::redirect_to_login(uri)));
-    }
-    if !user.is_superuser {
-        return Err(Box::new(web::permission_denied(state, &user, uri)));
-    }
-    Ok(user)
-}
-
 pub(crate) async fn data(
     State(state): State<AppState>,
     OriginalUri(uri): OriginalUri,
     headers: HeaderMap,
 ) -> Response {
-    if let Err(response) = admin(&state, &uri, &headers).await {
+    if let Err(response) = admin::require(&state, &uri, &headers).await {
         return *response;
     }
     let workspace = match workspace(&state.pool).await {
@@ -326,7 +309,7 @@ async fn register_run(
 }
 
 pub(crate) async fn save_run(State(state): State<AppState>, request: Request) -> Response {
-    let user = match admin(&state, request.uri(), request.headers()).await {
+    let user = match admin::require(&state, request.uri(), request.headers()).await {
         Ok(user) => user,
         Err(response) => return *response,
     };
@@ -402,7 +385,7 @@ pub(crate) async fn csv(
     OriginalUri(uri): OriginalUri,
     headers: HeaderMap,
 ) -> Response {
-    if let Err(response) = admin(&state, &uri, &headers).await {
+    if let Err(response) = admin::require(&state, &uri, &headers).await {
         return *response;
     }
     let workspace = match workspace(&state.pool).await {
@@ -432,7 +415,7 @@ pub(crate) async fn output(
     OriginalUri(uri): OriginalUri,
     headers: HeaderMap,
 ) -> Response {
-    if let Err(response) = admin(&state, &uri, &headers).await {
+    if let Err(response) = admin::require(&state, &uri, &headers).await {
         return *response;
     }
     let Some(id) = raw.parse::<i64>().ok().filter(|_| is_django_integer(&raw)) else {
@@ -735,7 +718,7 @@ async fn template(
 
 pub(crate) async fn dashboard(State(state): State<AppState>, request: Request) -> Response {
     let uri = request.uri().clone();
-    let user = match admin(&state, &uri, request.headers()).await {
+    let user = match admin::require(&state, &uri, request.headers()).await {
         Ok(user) => user,
         Err(response) => return *response,
     };

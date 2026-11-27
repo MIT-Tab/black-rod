@@ -19,6 +19,86 @@ use crate::{
 
 const VIEWS: &[(&str, &str)] = &[
     (
+        "debaters/personal_partnership_stats.html",
+        include_str!("../../core/templates/debaters/personal_partnership_stats.html"),
+    ),
+    (
+        "debaters/partnership_stats.html",
+        include_str!("../../core/templates/debaters/partnership_stats.html"),
+    ),
+    (
+        "debaters/_partnership_stats_results.html",
+        include_str!("../../core/templates/debaters/_partnership_stats_results.html"),
+    ),
+    (
+        "debaters/_partnership_rankings.html",
+        include_str!("../../core/templates/debaters/_partnership_rankings.html"),
+    ),
+    (
+        "debaters/partnership_paths.html",
+        include_str!("../../core/templates/debaters/partnership_paths.html"),
+    ),
+    (
+        "debaters/partnership_network.html",
+        include_str!("../../core/templates/debaters/partnership_network.html"),
+    ),
+    (
+        "debaters/_partnership_nav.html",
+        include_str!("../../core/templates/debaters/_partnership_nav.html"),
+    ),
+    (
+        "debaters/partnership_person.html",
+        include_str!("../templates/partnership_person.html"),
+    ),
+    (
+        "debaters/network_filter.html",
+        include_str!("../templates/network_filter.html"),
+    ),
+    (
+        "core/generated_codes.html",
+        include_str!("../../core/templates/core/generated_codes.html"),
+    ),
+    (
+        "motions/import.html",
+        include_str!("../../core/templates/motions/import.html"),
+    ),
+    (
+        "admin/school_short_name_audit.html",
+        include_str!("../../core/templates/admin/school_short_name_audit.html"),
+    ),
+    (
+        "admin/admin_tools.html",
+        include_str!("../../core/templates/admin/admin_tools.html"),
+    ),
+    (
+        "resources/create.html",
+        include_str!("../../core/templates/resources/create.html"),
+    ),
+    (
+        "resources/update.html",
+        include_str!("../../core/templates/resources/update.html"),
+    ),
+    (
+        "resources/delete.html",
+        include_str!("../../core/templates/resources/delete.html"),
+    ),
+    (
+        "resources/fields.html",
+        include_str!("../templates/resource_fields.html"),
+    ),
+    (
+        "base/delete.html",
+        include_str!("../../core/templates/base/delete.html"),
+    ),
+    (
+        "admin/doty.html",
+        include_str!("../../core/templates/admin/doty.html"),
+    ),
+    (
+        "admin/includes/doty_leaderboard.html",
+        include_str!("../../core/templates/admin/includes/doty_leaderboard.html"),
+    ),
+    (
         "admin/scheduling_dashboard.html",
         include_str!("../../core/templates/admin/scheduling_dashboard.html"),
     ),
@@ -292,6 +372,13 @@ static TEMPLATES: LazyLock<Result<Environment<'static>, minijinja::Error>> = Laz
                 .unwrap_or_default()
         },
     );
+    environment.add_filter("doty_points", |value: f64| {
+        if value.fract() == 0.0 {
+            format!("{value:.0}")
+        } else {
+            format!("{value:.2}")
+        }
+    });
     environment.add_filter("one_decimal", |value: f64| {
         format!("{:.1}", (value * 10.0).round() / 10.0)
     });
@@ -392,6 +479,126 @@ fn adapt_scheduler(template: &str) -> String {
 fn adapt_template(name: &str, template: &str) -> String {
     let adapted;
     let template = match name {
+        "debaters/personal_partnership_stats.html"
+        | "debaters/_partnership_stats_results.html"
+        | "debaters/_partnership_rankings.html" => {
+            adapted = template.replace("{{ form.media }}", "")
+                .replace("{{ form.debater|as_crispy_field }}", r#"{% with select_name="debater", select_label="Debater" %}{% include "debaters/partnership_person.html" %}{% endwith %}"#)
+                .replace(r#"{% include "debaters/_partnership_rankings.html" with rankings=reach_leaders only %}"#,
+                    r#"{% with rankings=reach_leaders %}{% include "debaters/_partnership_rankings.html" %}{% endwith %}"#)
+                .replace(r#"forloop.counter|add:"1""#, "loop.index + 1")
+                .replace("{{ distance|pluralize }}", "{% if distance != 1 %}s{% endif %}")
+                .replace("{{ diameter|pluralize }}", "{% if diameter != 1 %}s{% endif %}")
+                .replace("{{ forloop.counter|pluralize }}", "{% if loop.index != 1 %}s{% endif %}")
+                .replace(".pk }}", ".id }}")
+                .replace("{{ debater.get_absolute_url }}", "/core/debaters/{{ debater.id }}")
+                .replace("{{ first.get_absolute_url }}", "/core/debaters/{{ first.id }}")
+                .replace("{{ second.get_absolute_url }}", "/core/debaters/{{ second.id }}");
+            &adapted
+        }
+        "debaters/partnership_paths.html" => {
+            adapted = template.replace("{{ form.media }}", "")
+                .replace("{{ form.first_debater|as_crispy_field }}", r#"{% with select_name="first_debater", select_label="First debater" %}{% include "debaters/partnership_person.html" %}{% endwith %}"#)
+                .replace("{{ form.second_debater|as_crispy_field }}", r#"{% with select_name="second_debater", select_label="Second debater" %}{% include "debaters/partnership_person.html" %}{% endwith %}"#)
+                .replace(r#"path|length|add:"-1""#, "(path|length - 1)")
+                .replace("{{ hops|pluralize }}", "{% if hops != 1 %}s{% endif %}")
+                .replace("{{ debater.get_absolute_url }}", "/core/debaters/{{ debater.id }}")
+                .replace("{{ debater.display_name }}", "{{ debater.name }}");
+            &adapted
+        }
+        "debaters/partnership_network.html" => {
+            let mut updated = template.replace("{{ form.media }}", "");
+            for (field, label, axis) in [
+                ("schools", "Schools", ""),
+                ("from_season", "From season", ""),
+                ("to_season", "Through season", ""),
+                ("min_tournaments", "Minimum tournaments", ""),
+                ("qualified", "Nationals qualified", ""),
+                ("x_axis", "X axis", "x"),
+                ("y_axis", "Y axis", "y"),
+            ] {
+                updated = updated.replace(&format!("{{{{ form.{field}|as_crispy_field }}}}"),
+                    &format!(r#"{{% with field_name="{field}", label="{label}", axis="{axis}" %}}{{% include "debaters/network_filter.html" %}}{{% endwith %}}"#));
+            }
+            adapted = updated;
+            &adapted
+        }
+        "motions/import.html" => {
+            adapted = template
+                .replace(r#"|join:", ""#, r#"|join(", ")"#)
+                .replace(r#"|join:"; ""#, r#"|join("; ")"#)
+                .replace("{{ form|crispy }}", r#"<div id="div_id_spreadsheet" class="form-group"><label for="id_spreadsheet" class="requiredField">Spreadsheet<span class="asteriskField">*</span></label><div><input type="file" name="spreadsheet" class="clearablefileinput form-control-file{% if warning %} is-invalid{% endif %}" required id="id_spreadsheet" aria-describedby="hint_id_spreadsheet"><small id="hint_id_spreadsheet" class="form-text text-muted">CSV or XLSX. Required column: motion_text. Optional: background_slide, date_set, tournament, tags.</small>{% if warning %}<p id="error_1_id_spreadsheet" class="invalid-feedback"><strong>{{ warning }}</strong></p>{% endif %}</div></div>"#);
+            &adapted
+        }
+        "admin/school_short_name_audit.html" => {
+            adapted = template
+                .replace("{{ formset.management_form }}", r#"<input type="hidden" name="schools-TOTAL_FORMS" value="{{ total }}" id="id_schools-TOTAL_FORMS"><input type="hidden" name="schools-INITIAL_FORMS" value="{{ total }}" id="id_schools-INITIAL_FORMS"><input type="hidden" name="schools-MIN_NUM_FORMS" value="0" id="id_schools-MIN_NUM_FORMS"><input type="hidden" name="schools-MAX_NUM_FORMS" value="1000" id="id_schools-MAX_NUM_FORMS">"#)
+                .replace("{% for form in formset %}", "{% for school in formset %}")
+                .replace("{% with school=form.instance %}", "").replace("{% endwith %}", "")
+                .replace("{{ form.id }}", r#"<input type="hidden" name="schools-{{ school.index }}-id" value="{{ school.id }}" id="id_schools-{{ school.index }}-id">"#)
+                .replace("{{ form.short_name }}", r#"<input type="text" name="schools-{{ school.index }}-short_name" value="{{ school.short_name }}" class="form-control form-control-sm" placeholder="Short name" maxlength="64" id="id_schools-{{ school.index }}-short_name">"#)
+                .replace("{% if form.short_name.errors %}", "{% if school.error %}")
+                .replace("{% for error in form.short_name.errors %}", "")
+                .replace("{{ error }}</div>
+                                                    {% endfor %}", "{{ school.error }}</div>");
+            &adapted
+        }
+        "admin/admin_tools.html" => {
+            adapted = template
+                .replace("{{ user.username }}", "{{ username }}")
+                .replace("{{ round_amendment_form.amendment_file.id_for_label }}", "id_amendment_file")
+                .replace("{{ round_amendment_form.amendment_file.label }}", "Round amendment JSON")
+                .replace("{{ round_amendment_form.amendment_file }}", r#"<input type="file" name="amendment_file" accept=".json,application/json" required id="id_amendment_file">"#)
+                .replace("{% if round_amendment_form.amendment_file.help_text %}", "{% if true %}")
+                .replace("round_amendment_form.amendment_file.errors", "round_amendment_errors")
+                .replace("{{ round_amendment_form.amendment_file.help_text }}", "Upload a JSON file with synthetic resolutions, round edits, or tournament import moves/deletes.")
+                .replace(r#"{% url "core:debater_autocomplete" %}"#, "/core/debaters/autocomplete")
+                .replace(r#"{% url "core:school_autocomplete" %}"#, "/core/schools/autocomplete")
+                .replace(r#"{% url "core:team_autocomplete" %}"#, "/core/teams/autocomplete");
+            &adapted
+        }
+        "resources/create.html" | "resources/update.html" => {
+            adapted = template
+                .replace("{{ form.media }}", "")
+                .replace(
+                    "{% crispy form %}",
+                    r#"{% include "resources/fields.html" %}"#,
+                )
+                .replace(
+                    "{{ form|crispy }}",
+                    r#"{% include "resources/fields.html" %}"#,
+                );
+            &adapted
+        }
+        "base/delete.html" => {
+            adapted = template
+                .replace("{{ object }}", "{{ object.name }}")
+                .replace("{{ object.get_absolute_url }}", "{{ object.url }}");
+            &adapted
+        }
+        "admin/includes/doty_leaderboard.html" => {
+            adapted = template
+                .replace(
+                    "{{ leaderboard.standings|length|pluralize }}",
+                    "{% if leaderboard.standings|length != 1 %}s{% endif %}",
+                )
+                .replace("{% empty %}", "{% else %}")
+                .replace(
+                    "{{ row.debater.get_absolute_url }}",
+                    "/core/debaters/{{ row.debater.id }}",
+                )
+                .replace(
+                    "{{ row.debater.school.get_absolute_url }}",
+                    "/core/schools/{{ row.debater.school_id }}",
+                )
+                .replace("{{ row.debater.school.name }}", "{{ row.debater.school }}")
+                .replace(
+                    "{{ marker.tournament.get_absolute_url }}",
+                    "/core/tournaments/{{ marker.tournament_id }}",
+                )
+                .replace("|floatformat:-2", "|doty_points");
+            &adapted
+        }
         "admin/scheduling_dashboard.html" => {
             adapted = adapt_scheduler(template);
             &adapted
@@ -479,6 +686,34 @@ fn adapt_template(name: &str, template: &str) -> String {
                 let path = match route {
                     "core:index" => "/",
                     "core:admin_tools" => "/core/admin-tools/",
+                    "core:doty" => "/DOTY",
+                    "core:partnership_paths" => "/core/debaters/partnership-paths/",
+                    "core:partnership_stats" => "/core/debaters/partnership-paths/stats/",
+                    "core:partnership_stats_results" => {
+                        "/core/debaters/partnership-paths/stats/results/"
+                    }
+                    "core:clear_partnership_stats_cache" => {
+                        "/core/debaters/partnership-paths/stats/clear-cache/"
+                    }
+                    "core:debater_partnership_stats" => "/core/debaters/partnership-paths/person/",
+                    "core:partnership_network" => "/core/debaters/partnership-paths/network/",
+                    "core:partnership_network_paths" => {
+                        "/core/debaters/partnership-paths/network/paths/"
+                    }
+                    "core:speaks_statistics" => "/core/admin/speaks-stats/",
+                    "core:tournament_dataentry" => "/core/tournaments/data_entry",
+                    "core:mittab_dashboard" => "/core/mittab-dashboard/",
+                    "core:rankings_recompute" => "/core/rankings-recompute/",
+                    "core:scheduling_dashboard" => "/core/admin/scheduling/",
+                    "core:tournament_pipeline_audit" => "/core/admin/tournament-pipeline-audit/",
+                    "core:school_short_name_audit" => "/core/admin/school-short-names/",
+                    "core:synthetic_resolution_suggestions" => {
+                        "/core/admin/synthetic-resolution-suggestions/"
+                    }
+                    "core:synthetic_cleanup" => "/core/admin/synthetic-cleanup/",
+                    "core:invalidate_elo_cache" => "/core/admin/elo-cache/invalidate/",
+                    "core:synthetic_resolution" => "/core/admin/synthetic-resolve/",
+                    "core:round_amendments_upload" => "/core/admin/round-amendments/",
                     "core:scheduling_download_csv" if arguments.contains("'schools'") => {
                         "/core/admin/scheduling/download/schools/"
                     }
@@ -808,7 +1043,7 @@ pub(crate) async fn show(
         state
             .live
             .as_ref()
-            .map(|live| live.active_sources(&state.pool, season))
+            .map(|live| live.active_sources(&state.pool, season, state.memcached.as_ref()))
             .unwrap_or_default()
     } else {
         Vec::new()

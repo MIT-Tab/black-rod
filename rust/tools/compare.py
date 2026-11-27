@@ -295,6 +295,15 @@ def fixture_cases(django):
         "/core/motions/topics_no_create?q=deb",
         "/core/resources/tags_no_create?q=nov",
         "/core/resources/tags?q=zzznonexistent",
+        "/core/debaters/partnership-paths/autocomplete/",
+        "/core/debaters/partnership-paths/autocomplete/?q=Ann",
+        "/core/debaters/partnership-paths/autocomplete/?q=ann&page=2",
+        "/core/debaters/partnership-paths/network/data/",
+        "/core/debaters/partnership-paths/network/data/?from_season=2019&to_season=2025&qualified=on&min_tournaments=3",
+        f"/core/debaters/partnership-paths/network/data/?schools={school}&x_axis=school&y_axis=toty_points",
+        "/core/debaters/partnership-paths/network/data/?from_season=2025&to_season=2019&min_tournaments=-1",
+        "/core/debaters/partnership-paths/network/paths/?first_debater=5270&second_debater=6015",
+        "/core/debaters/partnership-paths/network/paths/?first_debater=5270&second_debater=5270",
         "/core/motions/topics?q=zzznonexistent",
     ])
     cases.extend([
@@ -413,10 +422,14 @@ def test_database_snapshot(database):
 def main():
     parser = ArgumentParser(description=__doc__)
     parser.add_argument("--benchmark", action="store_true")
+    parser.add_argument("--benchmark-path", action="append", metavar="PATH",
+                        help="measure the specified GET endpoint in place of the default benchmark set")
     parser.add_argument("--warm-requests", type=int, default=1200)
     parser.add_argument("--cold-requests", type=int, default=30)
     parser.add_argument("--concurrency", type=int, default=12)
     args = parser.parse_args()
+    if args.benchmark_path and not args.benchmark:
+        parser.error("--benchmark-path requires --benchmark")
     if not (0 < args.concurrency <= args.warm_requests and args.cold_requests > 0):
         parser.error("Request counts must be positive and cover the specified concurrency")
     database = (Path(os.environ["BR_STATE"]) / "dev.sqlite3").resolve(strict=True)
@@ -441,6 +454,8 @@ def main():
             endpoint_cases.append(next(case for case in cases
                 if case.path.startswith(f"/api/{name}/") and case.path.endswith("/detail/")
                 and "9223372036854775807" not in case.path))
+        if args.benchmark_path:
+            endpoint_cases = [Case(path) for path in args.benchmark_path]
         results = []
         for cold in (False, True):
             for case in endpoint_cases:

@@ -1,3 +1,4 @@
+mod admin;
 mod autocomplete;
 mod cache;
 mod claims;
@@ -7,13 +8,16 @@ mod discovery;
 mod django_json;
 mod exports;
 mod flash;
+mod generated_code;
 mod immaculate;
 mod live;
 mod login;
 mod motion;
 pub use live::Live;
+mod doty;
 mod oauth;
 mod outreach;
+mod partnership;
 mod scheduling;
 pub use oauth::OAuth;
 mod points;
@@ -84,6 +88,7 @@ pub struct AppState {
     stats: Cache<(), Arc<serde_json::Value>>,
     recent_results: Cache<(), Arc<String>>,
     search: Cache<(), Arc<search::SearchIndex>>,
+    partnership_stats: Arc<partnership::stats::Cache>,
     snapshots: Cache<(String, i32, String), Arc<standings::Boards>>,
 }
 
@@ -154,6 +159,7 @@ impl AppState {
                 .max_capacity(16 * 1024 * 1024)
                 .build(),
             memcached: None,
+            partnership_stats: Arc::default(),
             cache_lifetime: lifetime,
         }
     }
@@ -389,6 +395,50 @@ pub fn app(state: AppState) -> Router {
             "/core/admin/scheduling/runs/{id}/output/",
             get(scheduling::output),
         )
+        .route(
+            "/core/generated-codes/",
+            get(generated_code::endpoint).post(generated_code::endpoint),
+        )
+        .route("/core/generated-codes", get(append_slash))
+        .route("/core/debaters/partnership-paths/", get(partnership::paths))
+        .route(
+            "/core/debaters/partnership-paths/autocomplete/",
+            get(partnership::autocomplete),
+        )
+        .route(
+            "/core/debaters/partnership-paths/network/",
+            get(partnership::network::network),
+        )
+        .route(
+            "/core/debaters/partnership-paths/network/data/",
+            get(partnership::network::data),
+        )
+        .route(
+            "/core/debaters/partnership-paths/network/paths/",
+            get(partnership::network::data),
+        )
+        .route(
+            "/core/debaters/partnership-paths/person/",
+            get(partnership::stats::personal),
+        )
+        .route(
+            "/core/debaters/partnership-paths/stats/",
+            get(partnership::stats::stats),
+        )
+        .route(
+            "/core/debaters/partnership-paths/stats/results/",
+            get(partnership::stats::results),
+        )
+        .route(
+            "/core/debaters/partnership-paths/stats/clear-cache/",
+            axum::routing::post(partnership::stats::clear),
+        )
+        .route("/core/admin-tools/", get(admin::tools))
+        .route("/core/admin-tools", get(append_slash))
+        .route(
+            "/core/admin/school-short-names/",
+            get(admin::short_names::endpoint).post(admin::short_names::endpoint),
+        )
         .route("/core/dino-judges/", get(directory::page))
         .route("/core/dino-judges", get(append_slash))
         .route("/core/dino-tos/", get(directory::page))
@@ -448,6 +498,10 @@ pub fn app(state: AppState) -> Router {
         .route("/core/motions/", get(directory::page))
         .route("/core/motions", get(append_slash))
         .route("/core/motions/random", get(directory::page))
+        .route(
+            "/core/motions/import",
+            get(motion::import::endpoint).post(motion::import::endpoint),
+        )
         .route("/core/motions/{motion}", get(motion::detail))
         .route(
             "/core/motions/create",
@@ -470,7 +524,24 @@ pub fn app(state: AppState) -> Router {
         .route("/core/resources/my-resources", get(directory::page))
         .route("/core/resources/tags/{slug}", get(resource::tag))
         .route("/core/resources/{resource}", get(resource::detail))
+        .route(
+            "/core/resources/create",
+            get(resource::edit::endpoint).post(resource::edit::endpoint),
+        )
+        .route(
+            "/core/resources/{resource}/edit",
+            get(resource::edit::endpoint).post(resource::edit::endpoint),
+        )
+        .route(
+            "/core/resources/{resource}/delete",
+            get(resource::edit::endpoint).post(resource::edit::endpoint),
+        )
         .route("/core/videos/tags/{name}", get(video::tag))
+        .route("/DOTY", get(doty::page))
+        .route("/core/toty", get(directory::page))
+        .route("/core/soty", get(directory::page))
+        .route("/core/noty", get(directory::page))
+        .route("/core/coty", get(directory::page))
         .route("/robots.txt", get(robots))
         .route("/llms.txt", get(discovery::documentation))
         .route("/llm/", get(discovery::proxy))

@@ -10,6 +10,8 @@ axum = { version = "0.8", features = ["multipart"] }
 chrono = { version = "0.4", features = ["serde"] }
 deunicode = "1.6.2"
 csv = "1.4"
+calamine = { version = "0.38", features = ["chrono"] }
+zip = { version = "9.8", default-features = false, features = ["deflate"] }
 base64 = "0.22"
 flate2 = "1"
 hex = "0.4"
@@ -24,6 +26,7 @@ porter-stemmer = "0.1.2"
 moka = { version = "0.12", features = ["future"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["raw_value"] }
+serde-pickle = "1.2"
 subtle = "2"
 sqlx = { version = "0.9", default-features = false, features = [
     "any",

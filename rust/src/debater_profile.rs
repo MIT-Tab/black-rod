@@ -11,12 +11,14 @@ use sqlx::{AnyConnection, AssertSqlSafe, Row, any::AnyRow};
 
 use crate::{
     ApiError, AppState, api_response, is_django_integer, json_error, options,
-    schedule::{proxy_url, season_display},
+    schedule::{TOURNAMENT_COLUMNS, Tournament, proxy_url, season_display},
     school_profile::limit,
     schools::{DEBATER_COLUMNS, Debater},
     session::{self, User},
     standings::{lite_school, place_display},
-    team_profile::{Card, SCHOOL_COLUMNS, Team, cards, members, read_transaction, school},
+    team_profile::{
+        Card, SCHOOL_COLUMNS, Team, cards, members, members_for, read_transaction, school,
+    },
     tournament_profile::{tournament, videos},
 };
 
@@ -54,17 +56,21 @@ const SPEAKER_RESULTS: &str = "
     FROM core_speakerresult r WHERE r.debater_id = $1
 ";
 const ROUNDS: &str = "
+    WITH eligible AS (
+        SELECT t.id FROM core_team_debaters m JOIN core_team t ON t.id = m.team_id
+        WHERE m.debater_id = $1 AND NOT t.synthetic
+    ), round_ids AS (
+        SELECT r.id FROM eligible e JOIN core_round r ON r.gov_id = e.id
+        UNION
+        SELECT r.id FROM eligible e JOIN core_round r ON r.opp_id = e.id
+    )
     SELECT CAST(r.tournament_id AS BIGINT) AS tournament_id,
            CAST(r.gov_id AS BIGINT) AS gov_id, CAST(r.opp_id AS BIGINT) AS opp_id,
-           CAST(CASE WHEN gov_member.debater_id IS NOT NULL AND NOT g.synthetic THEN 1 ELSE 0 END AS BIGINT) AS is_gov,
-           CAST(CASE WHEN opp_member.debater_id IS NOT NULL AND NOT o.synthetic THEN 1 ELSE 0 END AS BIGINT) AS is_opp,
+           CAST(CASE WHEN r.gov_id IN (SELECT id FROM eligible) THEN 1 ELSE 0 END AS BIGINT) AS is_gov,
            g.name AS gov_name, o.name AS opp_name
-    FROM core_round r
+    FROM round_ids
+    JOIN core_round r ON r.id = round_ids.id
     JOIN core_team g ON g.id = r.gov_id JOIN core_team o ON o.id = r.opp_id
-    LEFT JOIN core_team_debaters gov_member ON gov_member.debater_id = $1 AND gov_member.team_id = r.gov_id
-    LEFT JOIN core_team_debaters opp_member ON opp_member.debater_id = $1 AND opp_member.team_id = r.opp_id
-    WHERE (gov_member.debater_id IS NOT NULL AND NOT g.synthetic)
-       OR (opp_member.debater_id IS NOT NULL AND NOT o.synthetic)
     ORDER BY r.round_number, r.id
 ";
 const TEAMS: &str = "
@@ -209,10 +215,10 @@ struct Teams {
 }
 
 impl Teams {
-    fn new() -> Self {
-        Self {
-            roster: HashMap::new(),
-        }
+    async fn new(conn: &mut AnyConnection, ids: &[i64], origin: &str) -> Result<Self, ApiError> {
+        Ok(Self {
+            roster: members_for(conn, ids, origin).await?,
+        })
     }
 
     async fn load(
@@ -262,6 +268,33 @@ fn format_season(value: &str) -> String {
         .map_or_else(|_| value.to_owned(), season_display)
 }
 
+async fn tournaments_for(
+    conn: &mut AnyConnection,
+    ids: &[i64],
+    origin: &str,
+) -> Result<HashMap<i64, (Tournament, i64)>, ApiError> {
+    let mut tournaments = HashMap::new();
+    for chunk in ids.chunks(200) {
+        let ids = (1..=chunk.len())
+            .map(|index| format!("${index}"))
+            .collect::<Vec<_>>()
+            .join(",");
+        let sql = format!(
+            "SELECT {TOURNAMENT_COLUMNS}, CAST(t.num_rounds AS BIGINT) AS num_rounds
+            FROM core_tournament t LEFT JOIN core_school s ON s.id=t.host_id WHERE t.id IN ({ids})"
+        );
+        let mut statement = sqlx::query(AssertSqlSafe(sql));
+        for id in chunk {
+            statement = statement.bind(id);
+        }
+        for row in statement.fetch_all(&mut *conn).await? {
+            let tournament = Tournament::from_row(&row, origin)?;
+            tournaments.insert(tournament.id, (tournament, row.try_get("num_rounds")?));
+        }
+    }
+    Ok(tournaments)
+}
+
 async fn summaries(
     conn: &mut AnyConnection,
     profile: &ProfileEvents,
@@ -270,8 +303,13 @@ async fn summaries(
     teams: &mut Teams,
 ) -> Result<Vec<Value>, ApiError> {
     let mut seasons = BTreeMap::<String, Vec<(String, Value)>>::new();
+    let tournament_ids = profile.events.keys().copied().collect::<Vec<_>>();
+    let tournaments = tournaments_for(conn, &tournament_ids, origin).await?;
+    let mut team_cards = HashMap::new();
     for (&id, event) in &profile.events {
-        let tournament = tournament(&mut *conn, id, origin).await?;
+        let (tournament, num_rounds) = tournaments
+            .get(&id)
+            .ok_or(ApiError::NotFound("Tournament not found"))?;
         let affiliation = event
             .team_candidates
             .first()
@@ -286,7 +324,12 @@ async fn summaries(
         let (team, card) = if let Some((team, name)) = affiliation {
             let people = teams.load(conn, team, origin).await?;
             let team_json = Teams::serialize(team, name, people, origin)?;
-            let mut cards = cards(&mut *conn, team, people, origin, Some(id)).await?;
+            let cards = match team_cards.entry(team) {
+                std::collections::hash_map::Entry::Occupied(entry) => entry.into_mut(),
+                std::collections::hash_map::Entry::Vacant(entry) => {
+                    entry.insert(cards(&mut *conn, team, people, origin, None).await?)
+                }
+            };
             (team_json, cards.remove(&id))
         } else {
             (Value::Null, None)
@@ -321,12 +364,6 @@ async fn summaries(
             })
             .collect::<Vec<_>>();
         let (record, tab_card) = if let Some(Card { wins, rounds }) = card {
-            let num_rounds = sqlx::query_scalar::<_, i64>(
-                "SELECT CAST(num_rounds AS BIGINT) FROM core_tournament WHERE id = $1",
-            )
-            .bind(id)
-            .fetch_one(&mut *conn)
-            .await?;
             (format!("{wins} - {}", num_rounds - wins), rounds)
         } else {
             (String::new(), Vec::new())
@@ -536,7 +573,12 @@ async fn load(
         Vec::new()
     };
     let events = events(&mut tx, id).await?;
-    let mut teams = Teams::new();
+    let participation = sqlx::query(TEAMS).bind(id).fetch_all(&mut *tx).await?;
+    let teams_ids = participation
+        .iter()
+        .map(|row| row.try_get("id"))
+        .collect::<Result<Vec<i64>, _>>()?;
+    let mut teams = Teams::new(&mut tx, &teams_ids, origin).await?;
     let mut season_summaries = summaries(&mut tx, &events, &debater, origin, &mut teams).await?;
     let redacted_teams = events
         .redacted_pairs
@@ -573,7 +615,6 @@ async fn load(
         &mut teams,
     )
     .await?;
-    let participation = sqlx::query(TEAMS).bind(id).fetch_all(&mut *tx).await?;
     let mut teams_payload = Vec::new();
     for row in participation {
         let team = row.try_get::<i64, _>("id")?;

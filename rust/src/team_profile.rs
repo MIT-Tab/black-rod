@@ -22,11 +22,11 @@ pub(crate) const SCHOOL_COLUMNS: &str = "CAST(s.id AS BIGINT) AS school_id, s.na
     CAST(CASE WHEN s.included_in_oty THEN 1 ELSE 0 END AS BIGINT) AS included";
 const TEAM: &str = "SELECT name FROM core_team WHERE id = $1";
 const MEMBERS: &str = "
-    SELECT {columns}, {school}
+    SELECT {columns}, {school}, CAST(td.team_id AS BIGINT) AS member_team_id
     FROM core_team_debaters td JOIN core_debater d ON d.id = td.debater_id
     LEFT JOIN core_school s ON s.id = d.school_id
-    WHERE td.team_id = $1 AND NOT d.synthetic AND NOT d.temporary
-    ORDER BY d.id
+    WHERE td.team_id IN ({teams}) AND NOT d.synthetic AND NOT d.temporary
+    ORDER BY td.team_id, d.id
 ";
 const ROUNDS: &str = "
     SELECT CAST(r.id AS BIGINT) AS id, CAST(r.round_number AS BIGINT) AS round_number,
@@ -114,21 +114,46 @@ pub(crate) async fn members(
     team: i64,
     origin: &str,
 ) -> Result<Vec<Value>, ApiError> {
-    let query = MEMBERS
-        .replace("{columns}", DEBATER_COLUMNS)
-        .replace("{school}", SCHOOL_COLUMNS);
-    let rows = sqlx::query(AssertSqlSafe(query))
-        .bind(team)
-        .fetch_all(conn)
-        .await?;
-    let mut members = Vec::with_capacity(rows.len());
-    for row in rows {
-        let school = school(&row, origin)?;
-        members.push(serde_json::to_value(Debater::from_row(
-            &row,
-            origin,
-            school.as_ref(),
-        )?)?);
+    Ok(members_for(conn, &[team], origin)
+        .await?
+        .remove(&team)
+        .unwrap_or_default())
+}
+
+pub(crate) async fn members_for(
+    conn: &mut AnyConnection,
+    teams: &[i64],
+    origin: &str,
+) -> Result<HashMap<i64, Vec<Value>>, ApiError> {
+    let mut members = teams
+        .iter()
+        .map(|id| (*id, Vec::new()))
+        .collect::<HashMap<_, _>>();
+    for group in teams.chunks(200) {
+        let placeholders = (1..=group.len())
+            .map(|position| format!("${position}"))
+            .collect::<Vec<_>>()
+            .join(",");
+        let query = MEMBERS
+            .replace("{columns}", DEBATER_COLUMNS)
+            .replace("{school}", SCHOOL_COLUMNS)
+            .replace("{teams}", &placeholders);
+        let mut statement = sqlx::query(AssertSqlSafe(query));
+        for id in group {
+            statement = statement.bind(id);
+        }
+        for row in statement.fetch_all(&mut *conn).await? {
+            let team: i64 = row.try_get("member_team_id")?;
+            let school = school(&row, origin)?;
+            members
+                .entry(team)
+                .or_default()
+                .push(serde_json::to_value(Debater::from_row(
+                    &row,
+                    origin,
+                    school.as_ref(),
+                )?)?);
+        }
     }
     Ok(members)
 }

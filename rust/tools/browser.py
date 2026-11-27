@@ -133,6 +133,78 @@ def assert_directories(driver, django, rust):
                 assert left == right, f"{path} {key}[{index}] differed: {left!r} vs {right!r}"
 
 
+def assert_legacy_standings(driver, django, rust):
+    for section, query in (
+        ("soty", "season=2025"),
+        ("toty", "season=2025"),
+        ("noty", "season=2025"),
+        ("coty", "season=2025"),
+        ("soty", "season=2025&debater__school__name__icontains=Harvard&sort=-points"),
+        ("toty", "season=2025&team__name__icontains=Harvard&sort=team"),
+        ("coty", "season=2025&school__name__icontains=Harvard"),
+        ("noty", "season=2024&page=2"),
+        ("soty", ""),
+    ):
+        path = f"/core/{section}?{query}" if query else f"/core/{section}"
+        expected = directory_state(driver, django, path)
+        actual = directory_state(driver, rust, path)
+        for key in expected:
+            for index, (left, right) in enumerate(zip_longest(expected[key], actual[key])):
+                assert left == right, (path, key, index, left, right)
+
+
+def assert_partnership_paths(driver, django, rust):
+    root = "/core/debaters/partnership-paths/"
+    for query in ("", "?first_debater=5270&second_debater=6015",
+                  "?first_debater=5270&second_debater=5270",
+                  "?first_debater=0&second_debater="):
+        values = []
+        for server in (django, rust):
+            driver.get(f"http://{HOST}:{server.port}{root}{query}")
+            values.append(driver.execute_script("""
+                const main = document.querySelector("main");
+                if (!main) return null;
+                const text = node => node.textContent.replace(/\s+/g, " ").trim();
+                return {
+                    title: main.querySelector("h1")?.textContent.trim(),
+                    links: Array.from(main.querySelectorAll("nav a, ol a")).map(link =>
+                        [link.getAttribute("href"), link.textContent.trim()]),
+                    rows: Array.from(main.querySelectorAll("ol li, .invalid-feedback")).map(text),
+                    selects: Array.from(main.querySelectorAll("select")).map(field => [field.name, field.value]),
+                };
+            """))
+        assert values[0] and values[0] == values[1], (query, values)
+    for server in (django, rust):
+        driver.get(f"http://{HOST}:{server.port}{root}network/?x_axis=first_year&from_season=2025")
+        assert driver.find_element("id", "id_x_axis").get_attribute("value") == "first_year"
+        assert driver.find_element("id", "partnership-network").get_attribute("data-url").endswith(
+            "/network/data/?x_axis=first_year&from_season=2025")
+        WebDriverWait(driver, 15).until(lambda session: session.find_elements("css selector", "#partnership-network canvas"))
+
+
+def assert_partnership_stats(driver, django, rust):
+    root = "/core/debaters/partnership-paths/"
+    for view in ("person/?debater=5270", "stats/results/"):
+        states = []
+        for server in (django, rust):
+            driver.get(f"http://{HOST}:{server.port}{root}{view}")
+            states.append(driver.execute_script("""
+                const text = node => node.textContent.replace(/\s+/g, " ").trim();
+                return {
+                    headings: Array.from(document.querySelectorAll("h1,h2,h3")).map(text),
+                    rows: Array.from(document.querySelectorAll("main li, section li")).map(text),
+                    links: Array.from(document.querySelectorAll("main li a, section li a"))
+                        .map(link => [link.getAttribute("href"), text(link)]),
+                };
+            """))
+        assert states[0]["headings"], view
+        for key, values in states[0].items():
+            other = states[1][key]
+            assert len(values) == len(other), (view, key, len(values), len(other))
+            for index, (left, right) in enumerate(zip(values, other)):
+                assert left == right, (view, key, index, left, right)
+
+
 def assert_search(driver, django, rust):
     paths = [
         "/search/",
@@ -176,7 +248,7 @@ motion = Motion.objects.create(
 )
 motion.tags.add("Fixture topic")
 award = SpeakerResult.objects.filter(tournament=tournament, type_of_place=1, place=1).order_by("pk").first()
-result = {"tournament": tournament.pk, "debater": award.debater_id, "motion": motion.pk, "videos": [], "sessions": {}}
+result = {"tournament": tournament.pk, "debater": award.debater_id, "motion": motion.pk, "videos": [], "sessions": {}, "authors": debaters}
 for access, _ in Video.PERMISSIONS:
     video = Video.objects.create(
         tournament=tournament, round=Video.VF, permissions=access,
@@ -400,6 +472,72 @@ def assert_motion_editor(driver, django, rust, fixture):
     driver.delete_all_cookies()
 
 
+def assert_motion_import(driver, django, rust, fixture):
+    roots = [f"http://{HOST}:{server.port}" for server in (django, rust)]
+    path = "/core/motions/import"
+    driver.get(f"{roots[1]}/games/")
+    driver.add_cookie({"name": "sessionid", "value": django_session()})
+
+    def preview(root, filename, content):
+        driver.get(f"{root}{path}")
+        return driver.execute_async_script("""
+            const [name, content, done] = arguments;
+            const data = new FormData(document.querySelector("form[enctype='multipart/form-data']"));
+            const bytes = Uint8Array.from(atob(content), char => char.charCodeAt(0));
+            data.set("spreadsheet", new File([bytes], name));
+            fetch(location.pathname, {method:"POST", body:data}).then(async response => {
+                const document = new DOMParser().parseFromString(await response.text(), "text/html");
+                done({status: response.status, token: document.querySelector("[name=rows]")?.value,
+                    rows: Array.from(document.querySelectorAll("tbody tr")).map(row =>
+                        Array.from(row.cells).map(cell => cell.textContent.trim()))});
+            }, () => done({status:0}));
+        """, filename, content)
+
+    def confirm(root, token):
+        driver.get(f"{root}{path}")
+        return driver.execute_async_script("""
+            const [token, done] = arguments;
+            const body = new URLSearchParams({confirm:"1", rows:token, csrfmiddlewaretoken:
+                document.querySelector("form[enctype='multipart/form-data'] [name=csrfmiddlewaretoken]").value});
+            fetch(location.pathname, {method:"POST", body}).then(async response => {
+                done({status:response.status, redirected:response.redirected, text:await response.text()});
+            }, () => done({status:0}));
+        """, token)
+
+    from base64 import b64encode
+    csv = ('Motion,Date,Tournament,Topics\n'
+           f'"This House would import the fixture CSV.",2/14/2026,{fixture["tournament"]},"Ethics; Finance"\n'
+           'This is invalid,not-a-date,999999,\n'
+           'This House would use a disposable browser fixture.,,,\n')
+    xlsx = subprocess.check_output([str(ROOT / "venv/bin/python"), "-c", """
+from base64 import b64encode
+from datetime import date
+from io import BytesIO
+from openpyxl import Workbook
+from sys import argv
+book=Workbook()
+book.active.append(["A non-selected worksheet"])
+sheet=book.create_sheet("Motion import")
+book.active=sheet
+sheet.append(["Motion", "Date", "Tournament", "Topics"])
+sheet.append(["This House would import the fixture XLSX.", date(2026, 2, 14), int(argv[1]), "Ethics; Finance"])
+out=BytesIO()
+book.save(out)
+print(b64encode(out.getvalue()).decode())
+""", str(fixture["tournament"])], text=True).strip()
+    for name, content, confirmer in (("motions.csv", b64encode(csv.encode()).decode(), 0),
+                                     ("motions.xlsx", xlsx, 1)):
+        expected = preview(roots[0], name, content)
+        actual = preview(roots[1], name, content)
+        assert expected["status"] == actual["status"] == 200 and expected["rows"] == actual["rows"], (expected, actual)
+        assert actual["rows"][0][2] == "2026-02-14"
+        rejected = confirm(roots[1], actual["token"] + "invalid")
+        assert rejected["status"] == 400 and not rejected["redirected"], rejected
+        saved = confirm(roots[confirmer], (actual if confirmer == 0 else expected)["token"])
+        assert saved["status"] == 200 and saved["redirected"] and "Imported 1 motions" in saved["text"], saved
+    driver.delete_all_cookies()
+
+
 def assert_resource_permissions(driver, django, rust, fixture):
     users = [
         (None, [200, 302, 302]),
@@ -432,6 +570,62 @@ def assert_resource_permissions(driver, django, rust, fixture):
     reference = directory_state(driver, django, public)
     candidate = directory_state(driver, rust, public)
     assert reference == candidate, f"Resource detail differed: {reference!r} vs {candidate!r}"
+
+
+def assert_resource_editor(driver, django, rust, fixture):
+    roots = [f"http://{HOST}:{server.port}" for server in (django, rust)]
+    create = "/core/resources/create"
+    driver.get(f"{roots[1]}/games/")
+    driver.add_cookie({"name": "sessionid", "value": django_session()})
+
+    def submit(root, path, pairs):
+        driver.get(f"{root}{path}")
+        return driver.execute_async_script("""
+            const [pairs, done] = arguments;
+            const form = new URLSearchParams(pairs);
+            form.set("csrfmiddlewaretoken", document.querySelector("[name=csrfmiddlewaretoken]").value);
+            fetch(location.pathname, {method: "POST", body: form}).then(async response => {
+                const html = new DOMParser().parseFromString(await response.text(), "text/html");
+                done({status: response.status, path: new URL(response.url).pathname, text: html.body.textContent});
+            }, () => done({status: 0}));
+        """, pairs)
+
+    for root in roots:
+        driver.get(f"{root}{create}")
+        assert driver.find_element("id", "id_resource_type").get_attribute("value") == "other"
+        assert driver.find_element("id", "id_viewing_permission").get_attribute("value") == "0"
+    fields = [
+        ["title", "Parity resource created in Rust"], ["resource_type", "writeup"],
+        ["authors", fixture["authors"][0]], ["authors", fixture["authors"][1]],
+        ["content_link", "https://resources.example.test/rust"], ["description", "A draft with two authors."],
+        ["usage_permissions", "Please credit the authors."], ["viewing_permission", "0"],
+        ["tags", "Fixture resource tag"], ["tags", "Second fixture resource tag"],
+    ]
+    invalid = submit(roots[1], create, [pair for pair in fields if pair[0] != "authors"])
+    assert invalid["path"] == create and "This field is required." in invalid["text"], invalid
+    created = submit(roots[1], create, fields)
+    assert created["status"] == 200 and created["path"].startswith("/core/resources/"), created
+    detail = created["path"]
+    assert detail.split("/")[-1].isdigit(), created
+    edit = f"{detail}/edit"
+    driver.get(f"{roots[0]}{edit}")
+    assert driver.find_element("id", "id_title").get_attribute("value") == fields[0][1]
+    assert driver.find_element("id", "id_resource_type").get_attribute("value") == "writeup"
+    fields[0][1] = "Parity resource edited in Rust"
+    fields = [pair for pair in fields if pair != ["tags", "Fixture resource tag"]]
+    updated = submit(roots[1], edit, fields)
+    assert updated["path"] == detail and updated["status"] == 200 and fields[0][1] in updated["text"], updated
+    driver.get(f"{roots[0]}{detail}")
+    assert "Second fixture resource tag" in driver.find_element("tag name", "body").text
+    deleted = submit(roots[1], f"{detail}/delete", [])
+    assert deleted["status"] == 200 and deleted["path"] == "/core/resources/", deleted
+    driver.get(f"{roots[0]}{create}")
+    missing = driver.execute_async_script("""
+        const [path, done] = arguments;
+        fetch(path).then(response => done(response.status), () => done(0));
+    """, detail)
+    assert missing == 404, missing
+    driver.delete_all_cookies()
 
 
 def assert_tag_creation(driver, django, rust, fixture):
@@ -691,7 +885,7 @@ def assert_claims(driver, django, rust, fixture):
         reviewer = rust_root if index == 0 else django_root
         driver.get(f"{reviewer}{review}")
         rows = driver.find_elements("css selector", f'tr:has(a[href="/core/debaters/{debater}"]) input[name=request_id]')
-        assert rows, (debater, driver.find_element("tag name", "main").text[:400])
+        assert rows, (debater, driver.find_element("tag name", "body").text[:400])
         identifier = rows[0].get_attribute("value")
         action = "approve" if index == 0 else "deny"
         result = post(reviewer, review, {"request_id": identifier, "action": action, "denial_reason": "Fixture denial"})
@@ -719,8 +913,8 @@ def assert_claims(driver, django, rust, fixture):
                          "/core/dino-tos/?first_name__icontains=Parity"):
                 left = directory_state(driver, django, path)
                 right = directory_state(driver, rust, path)
-                assert left["rows"] == right["rows"], (path, left, right)
-                assert any("Parity Profile" in row for row in left["rows"]), (path, left)
+                assert left == right, (path, left, right)
+                assert any(row[1:3] == ["Parity", "Profile"] for row in left["rows"]), (path, left)
     driver.delete_all_cookies()
 
 
@@ -736,7 +930,7 @@ def assert_scheduling(driver, django, rust, fixture):
     assert status == 403, status
     driver.add_cookie({"name": "sessionid", "value": django_session()})
     driver.get(f"{root[1]}{path}")
-    assert "Scheduling Workspace" in driver.find_element("tag name", "main").text
+    assert "Scheduling Workspace" in driver.find_element("tag name", "body").text, driver.page_source[:300]
 
     def call(server, endpoint, method=None, body=None):
         driver.get(f"{server}{path}")
@@ -786,6 +980,97 @@ def assert_scheduling(driver, django, rust, fixture):
     driver.delete_all_cookies()
 
 
+def assert_generated_codes(driver, django, rust, fixture):
+    roots = [f"http://{HOST}:{server.port}" for server in (django, rust)]
+    path = "/core/generated-codes/"
+    driver.get(f"{roots[1]}/games/")
+    driver.add_cookie({"name": "sessionid", "value": fixture["sessions"]["ordinary"]})
+    seen = set()
+    for sender, reader in ((1, 0), (0, 1)):
+        driver.get(f"{roots[sender]}{path}")
+        posted = driver.execute_async_script("""
+            const done = arguments[0];
+            const body = new URLSearchParams({
+                "csrfmiddlewaretoken":document.querySelector("[name=csrfmiddlewaretoken]").value});
+            fetch(location.pathname, {method:"POST", body, redirect:"manual"}).then(response =>
+                done(response.type), () => done("error"));
+        """)
+        assert posted == "opaqueredirect", posted
+        driver.get(f"{roots[reader]}{path}")
+        code = driver.find_element("css selector", "code.d-block").text
+        assert len(code) == 12 and code.isascii() and code.isalnum() and code == code.upper()
+        assert code not in seen
+        seen.add(code)
+        driver.refresh()
+        assert not driver.find_elements("css selector", "code.d-block")
+    driver.delete_all_cookies()
+
+
+def assert_admin_tools(driver, django, rust):
+    roots = [f"http://{HOST}:{server.port}" for server in (django, rust)]
+    driver.get(f"{roots[1]}/games/")
+    driver.add_cookie({"name": "sessionid", "value": django_session()})
+    states = []
+    for root in roots:
+        driver.get(f"{root}/core/admin-tools/")
+        states.append(driver.execute_script("""
+            const card = document.querySelector(".card-title").closest(".card-body");
+            return Array.from(card.querySelectorAll("a, form")).map(node =>
+                [node.textContent.trim(), node.getAttribute("href") || node.getAttribute("action")]);
+        """))
+    assert states[0] == states[1], (states[0], states[1])
+    path = "/core/admin/school-short-names/"
+    expected = directory_state(driver, django, path)
+    actual = directory_state(driver, rust, path)
+    assert expected == actual, (expected, actual)
+    result = driver.execute_async_script("""
+        const done = arguments[0];
+        const form = document.querySelector("#short-name-form");
+        const id = form.querySelector("#id_schools-0-id");
+        if (!id) return done(null);
+        const values = new URLSearchParams({
+            "csrfmiddlewaretoken": form.querySelector("[name=csrfmiddlewaretoken]").value,
+            "schools-TOTAL_FORMS": "1", "schools-INITIAL_FORMS": "1",
+            "schools-0-id": id.value, "schools-0-short_name": "Parity abbreviation"
+        });
+        fetch(location.pathname, {method:"POST", body:values}).then(response =>
+            done([id.value, response.status, response.redirected]), () => done(null));
+    """)
+    assert result and result[1:] == [200, True], result
+    for root in roots:
+        driver.get(f"{root}{path}")
+        assert not driver.find_elements("css selector", f'input[name$="-id"][value="{result[0]}"]')
+    driver.delete_all_cookies()
+
+
+def assert_doty(driver, django, rust):
+    driver.get(f"http://{HOST}:{rust.port}/games/")
+    driver.add_cookie({"name": "sessionid", "value": django_session()})
+    for season in ("2025", "2026", "invalid"):
+        responses = []
+        for server in (django, rust):
+            driver.get(f"http://{HOST}:{server.port}/DOTY?season={season}")
+            responses.append(driver.execute_script("""
+                const text = (node) => node.textContent.replace(/\s+/g, " ").trim();
+                return {
+                    season: document.querySelector("#doty-season")?.value,
+                    captions: Array.from(document.querySelectorAll("table caption")).map(text),
+                    rows: Array.from(document.querySelectorAll("table tr")).map(row => Array.from(row.children).map(text)),
+                    links: Array.from(document.querySelectorAll("table a")).map(link => link.getAttribute("href")),
+                };
+            """))
+        assert responses[0]["captions"], season
+        for key in responses[0]:
+            expected, actual = responses[0][key], responses[1][key]
+            if isinstance(expected, list) and isinstance(actual, list):
+                assert len(expected) == len(actual), (season, key, len(expected), len(actual))
+                for index, (left, right) in enumerate(zip(expected, actual)):
+                    assert left == right, (season, key, index, left, right)
+            else:
+                assert expected == actual, (season, key, expected, actual)
+    driver.delete_all_cookies()
+
+
 def django_session():
     code = """
 from django.contrib.auth import get_user_model
@@ -816,7 +1101,7 @@ def assert_session_nav(driver, servers):
             assert "My Account" in nav
             assert "Django Admin" in nav
             assert "Logout" in nav
-            assert "Sign in to play." not in driver.find_element("tag name", "main").text
+            assert "Sign in to play." not in driver.find_element("tag name", "body").text
             driver.delete_cookie("sessionid")
     finally:
         code = """
@@ -939,7 +1224,7 @@ def assert_login_roundtrip(driver, rust, django):
     """)
     assert result and driver.get_cookie("sessionid") is None
     driver.get(f"http://{HOST}:{django.port}/games/")
-    assert "Sign in to play." in driver.find_element("tag name", "main").text
+    assert "Sign in to play." in driver.find_element("tag name", "body").text
 
 
 def main():
@@ -978,19 +1263,27 @@ def browser_checks(database, options, output):
         assert_login_roundtrip(driver, rust, django)
         assert_oauth_roundtrip(driver, rust, django)
         assert_directories(driver, django, rust)
+        assert_legacy_standings(driver, django, rust)
+        assert_partnership_paths(driver, django, rust)
+        assert_partnership_stats(driver, django, rust)
         assert_search(driver, django, rust)
         assert_video_permissions(driver, django, rust, fixture)
         assert_random_video(driver, django, rust, fixture)
         assert_recent_results(driver, django, rust)
         assert_motion_progress(driver, django, rust, fixture)
         assert_motion_editor(driver, django, rust, fixture)
+        assert_motion_import(driver, django, rust, fixture)
         assert_tag_creation(driver, django, rust, fixture)
         assert_resource_permissions(driver, django, rust, fixture)
+        assert_resource_editor(driver, django, rust, fixture)
         assert_grid(driver, django, rust, fixture)
         assert_grid_generator(driver, django, rust, fixture)
         assert_infinite_grid(driver, django, rust, fixture)
         assert_career_export(django, rust, fixture)
         assert_scheduling(driver, django, rust, fixture)
+        assert_doty(driver, django, rust)
+        assert_admin_tools(driver, django, rust)
+        assert_generated_codes(driver, django, rust, fixture)
         assert_claims(driver, django, rust, fixture)
         live_django = directory_state(driver, django, "/live")
         live_rust = directory_state(driver, rust, "/live")

@@ -10,7 +10,8 @@ async function initTagFilters() {
     const url = field.dataset.rustTagUrl || field.dataset.rustSelectUrl;
     $(field).select2({
       width: "100%",
-      placeholder: "",
+      placeholder: field.dataset.rustSelectPlaceholder || "",
+      minimumInputLength: Number(field.dataset.rustSelectMinimum || 0),
       tags: tagMode,
       tokenSeparators: tagMode ? [","] : undefined,
       allowClear: !field.multiple && !field.required,
