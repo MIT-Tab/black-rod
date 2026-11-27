@@ -1200,6 +1200,54 @@ def assert_school_admin(driver, django, rust, fixture):
     driver.delete_all_cookies()
 
 
+def assert_speaks_statistics(driver, django, rust, fixture):
+    path = "/core/admin/speaks-stats/"
+    driver.delete_all_cookies()
+    driver.get(f"http://{HOST}:{rust.port}{path}")
+    assert urlsplit(driver.current_url).path == "/auth/login/"
+    driver.add_cookie({"name": "sessionid", "value": fixture["sessions"]["ordinary"]})
+    driver.get(f"http://{HOST}:{rust.port}{path}")
+    assert driver.find_element("tag name", "h1").text == "Permission denied"
+    driver.add_cookie({"name": "sessionid", "value": django_session()})
+
+    def snapshot(server):
+        driver.get(f"http://{HOST}:{server.port}{path}")
+        assert driver.find_element("tag name", "h1").text == "Speaks Statistics"
+        lookup = driver.find_element("css selector", ".speaks-score-lookup input")
+        driver.execute_script("""
+            arguments[0].value = '29.4';
+            arguments[0].dispatchEvent(new Event('input', {bubbles:true}));
+        """, lookup)
+        return driver.execute_script("""
+            return {
+                seasons: [...document.querySelectorAll('section[aria-labelledby^=season-]')].map(section => ({
+                    title: section.querySelector('h2').textContent,
+                    summary: section.querySelector('p').textContent.trim(),
+                    tables: [...section.querySelectorAll('table')].map(table =>
+                        [...table.rows].map(row => [...row.cells].map(cell => cell.textContent.replace(/\\s+/g, ' ').trim()))),
+                    chartPaths: [...section.querySelectorAll('svg path')].map(path => path.getAttribute('d')),
+                    thresholds: [...section.querySelectorAll('script[type="application/json"]')].map(script =>
+                        JSON.parse(script.textContent).map(row => ({...row, score:Number(row.score),
+                            percentile:Math.round(Number(row.percentile)*1e10)/1e10}))),
+                })),
+                lookup: document.querySelector('.speaks-score-lookup output').textContent,
+            };
+        """)
+
+    expected, observed = snapshot(django), snapshot(rust)
+    assert len(expected["seasons"]) >= 1
+    assert expected["lookup"] == observed["lookup"], (expected["lookup"], observed["lookup"])
+    for index, (left, right) in enumerate(zip_longest(expected["seasons"], observed["seasons"])):
+        assert left is not None and right is not None, index
+        for key in left:
+            if isinstance(left[key], list):
+                for subindex, (reference, candidate) in enumerate(zip_longest(left[key], right[key])):
+                    assert reference == candidate, (left["title"], key, subindex, str(reference)[:240], str(candidate)[:240])
+            else:
+                assert left[key] == right[key], (index, key, left[key], right[key])
+    driver.delete_all_cookies()
+
+
 def assert_agent_reads(django, rust, fixture):
     base = "/api/agent/v1/"
     authorization = "Bearer " + fixture["agent"]
@@ -1524,6 +1572,7 @@ def browser_checks(database, options, output):
         assert_scheduling(driver, django, rust, fixture)
         assert_doty(driver, django, rust)
         assert_admin_tools(driver, django, rust)
+        assert_speaks_statistics(driver, django, rust, fixture)
         assert_generated_codes(driver, django, rust, fixture)
         assert_entities(driver, django, rust, fixture)
         assert_school_admin(driver, django, rust, fixture)

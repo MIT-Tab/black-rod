@@ -1,4 +1,5 @@
 pub(crate) mod short_names;
+pub(crate) mod speaks;
 
 use axum::{
     extract::{OriginalUri, State},

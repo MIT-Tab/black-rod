@@ -19,6 +19,18 @@ use crate::{
 
 const VIEWS: &[(&str, &str)] = &[
     (
+        "admin/speaks_statistics.html",
+        include_str!("../../core/templates/admin/speaks_statistics.html"),
+    ),
+    (
+        "admin/includes/speaks_record_distribution.html",
+        include_str!("../../core/templates/admin/includes/speaks_record_distribution.html"),
+    ),
+    (
+        "admin/includes/speaks_percentile_chart.html",
+        include_str!("../../core/templates/admin/includes/speaks_percentile_chart.html"),
+    ),
+    (
         "school_admin/debater_form.html",
         include_str!("../../core/templates/school_admin/debater_form.html"),
     ),
@@ -407,12 +419,18 @@ static TEMPLATES: LazyLock<Result<Environment<'static>, minijinja::Error>> = Laz
             value.to_string()
         }
     });
-    environment.add_filter("grid_miss_names", |value: minijinja::Value| {
-        let data = serde_json::to_string(&value)
+    let html_json = |value: &minijinja::Value| {
+        serde_json::to_string(value)
             .unwrap_or_else(|_| "{}".to_owned())
             .replace('<', r"\u003C")
             .replace('>', r"\u003E")
-            .replace('&', r"\u0026");
+            .replace('&', r"\u0026")
+    };
+    environment.add_filter("html_json", move |value: minijinja::Value| {
+        minijinja::Value::from_safe_string(html_json(&value))
+    });
+    environment.add_filter("grid_miss_names", move |value: minijinja::Value| {
+        let data = html_json(&value);
         minijinja::Value::from_safe_string(format!(
             r#"<script id="immaculate-miss-names" type="application/json">{data}</script>"#
         ))
@@ -468,6 +486,21 @@ static TEMPLATES: LazyLock<Result<Environment<'static>, minijinja::Error>> = Laz
             result.push(ch);
         }
         result
+    });
+    environment.add_filter("score_decimal", |value: Option<String>, places: usize| {
+        use rust_decimal::{Decimal, RoundingStrategy};
+        value
+            .and_then(|text| text.parse::<Decimal>().ok())
+            .map_or_else(
+                || "—".to_owned(),
+                |number| {
+                    let rounded = number.round_dp_with_strategy(
+                        places as u32,
+                        RoundingStrategy::MidpointAwayFromZero,
+                    );
+                    format!("{rounded:.places$}")
+                },
+            )
     });
     for (name, text) in VIEWS {
         environment.add_template_owned(*name, adapt_template(name, text))?;
@@ -547,6 +580,27 @@ fn adapt_scheduler(template: &str) -> String {
 fn adapt_template(name: &str, template: &str) -> String {
     let adapted;
     let template = match name {
+        "admin/speaks_statistics.html"
+        | "admin/includes/speaks_record_distribution.html"
+        | "admin/includes/speaks_percentile_chart.html" => {
+            adapted = template
+                .replace(r#"|floatformat:2|default:"—""#, "|score_decimal(2)")
+                .replace("|floatformat:2", "|score_decimal(2)")
+                .replace("|floatformat:1", "|score_decimal(1)")
+                .replace(
+                    "{{ season.round_speaks.tournament_count|pluralize }}",
+                    "{% if season.round_speaks.tournament_count != 1 %}s{% endif %}",
+                )
+                .replace(
+                    "{{ metric.tournament_count|pluralize }}",
+                    "{% if metric.tournament_count != 1 %}s{% endif %}",
+                )
+                .replace(
+                    "{{ season.round_speaks.correspondence|json_script:season.chart_id }}",
+                    r#"<script id="{{ season.chart_id }}" type="application/json">{{ season.round_speaks.correspondence|html_json }}</script>"#,
+                );
+            &adapted
+        }
         "school_admin/debater_form.html" => {
             adapted = template
                 .replace(

@@ -479,6 +479,8 @@ pub fn app(state: AppState) -> Router {
             get(school_admin::roles::autocomplete),
         )
         .route("/core/admin-tools/", get(admin::tools))
+        .route("/core/admin/speaks-stats/", get(admin::speaks::page))
+        .route("/core/admin/speaks-stats", get(append_slash))
         .route("/core/admin-tools", get(append_slash))
         .route(
             "/core/admin/school-short-names/",
