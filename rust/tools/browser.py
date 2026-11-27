@@ -21,7 +21,7 @@ from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
 
-from compare import HOST, ROOT, servers
+from compare import Case, HOST, ROOT, compare as compare_responses, servers
 
 CASE = "/standings/replay/?season=2025&default=coty"
 
@@ -229,16 +229,20 @@ setup()
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission
 from django.contrib.sessions.backends.db import SessionStore
+from core.models import AgentCredential
 from core.models.debater import Debater
 from core.models.immaculate_grid import ImmaculateGridBoard
 from core.models.motion import Motion
 from core.models.results.speaker import SpeakerResult
 from core.models.resource import Resource
+from core.models.school import School
 from core.models.round import RoundStats
 from core.models.tournament import Tournament
 from core.models.video import Video
 from core.utils.immaculate_grid.boards import game_date
 import json
+from datetime import timedelta
+from django.utils import timezone
 
 tournament = Tournament.objects.filter(team_results__isnull=False).distinct().order_by("-date", "pk").first()
 debaters = list(Debater.objects.filter(temporary=False, synthetic=False).order_by("pk").values_list("pk", flat=True)[:4])
@@ -248,7 +252,8 @@ motion = Motion.objects.create(
 )
 motion.tags.add("Fixture topic")
 award = SpeakerResult.objects.filter(tournament=tournament, type_of_place=1, place=1).order_by("pk").first()
-result = {"tournament": tournament.pk, "debater": award.debater_id, "motion": motion.pk, "videos": [], "sessions": {}, "authors": debaters}
+result = {"tournament": tournament.pk, "debater": award.debater_id, "motion": motion.pk, "videos": [], "sessions": {},
+    "authors": debaters, "users": {}, "role_school": School.objects.create(name="Disposable school role tests", short_name="Roles").pk}
 for access, _ in Video.PERMISSIONS:
     video = Video.objects.create(
         tournament=tournament, round=Video.VF, permissions=access,
@@ -271,6 +276,7 @@ for label in ["ordinary", "account", "staff"]:
     session["_auth_user_hash"] = user.get_session_auth_hash()
     session.save()
     result["sessions"][label] = session.session_key
+    result["users"][label] = user.pk
     if label == "ordinary":
         Debater.objects.filter(pk=debaters[0]).update(user=user)
 result["resources"] = []
@@ -293,6 +299,11 @@ grid = ImmaculateGridBoard.objects.create(date=grid_day, rows=grid_rows, columns
     answers=grid_scores, aliases=grid_aliases, clue_memberships={clue["key"]: list(grid_aliases.values())
         for clue in grid_rows + grid_columns})
 result["grid"] = {"id": grid.pk, "day": grid_day.isoformat(), "debaters": grid_ids}
+_, result["agent"] = AgentCredential.issue(
+    admin=get_user_model().objects.get(username="tab"),
+    name="Agent parity fixture",
+    expires_at=timezone.now() + timedelta(days=1),
+)
 result["csv_debaters"] = list(RoundStats.objects.order_by("debater_id").values_list("debater_id", flat=True).distinct()[:3])
 result["claim_candidates"] = list(Debater.objects.filter(
     user__isnull=True, school__isnull=False, school__temporary=False, school__synthetic=False
@@ -1128,6 +1139,87 @@ def assert_entities(driver, django, rust, fixture):
     driver.delete_all_cookies()
 
 
+def assert_school_admin(driver, django, rust, fixture):
+    rust_root = f"http://{HOST}:{rust.port}"
+    django_root = f"http://{HOST}:{django.port}"
+    manage = "/core/manage-school-admins/"
+    dashboard = "/core/school-admin/"
+    school = fixture["role_school"]
+
+    def login(token):
+        driver.get(f"{rust_root}/games/")
+        driver.add_cookie({"name": "sessionid", "value": token})
+
+    def post(page, endpoint, values):
+        driver.get(f"{rust_root}{page}")
+        return driver.execute_async_script("""
+            const [action, values, done] = arguments;
+            const token = document.querySelector("[name=csrfmiddlewaretoken]")?.value || window.csrfToken;
+            if (!token) return done({status:0, text:document.body.textContent.trim().slice(0, 200)});
+            const data = new URLSearchParams({...values, csrfmiddlewaretoken:token});
+            fetch(action, {method:"POST",body:data}).then(async response => {
+                const contentType = response.headers.get("Content-Type") || "";
+                const result = contentType.includes("application/json") ? await response.json() : await response.text();
+                done({status:response.status, redirected:response.redirected, result});
+            }, () => done({status:0}));
+        """, endpoint, values)
+
+    login(django_session())
+    values = {"school_id": school, "user_id": fixture["users"]["ordinary"]}
+    added = post(manage, f"{manage}add/", values)
+    assert added["status"] == 200 and added["result"]["created"] and added["result"]["admin"]["primary"], added
+    first = added["result"]["admin"]["id"]
+    again = post(manage, f"{manage}add/", values)
+    assert again["result"]["admin"]["id"] == first and not again["result"]["created"], again
+    login(fixture["sessions"]["ordinary"])
+    values["user_id"] = fixture["users"]["account"]
+    second = post(dashboard, f"{manage}add/", values)
+    assert second["status"] == 200 and not second["result"]["admin"]["primary"], second
+    account = second["result"]["admin"]["id"]
+    login(fixture["sessions"]["account"])
+    denied = post(dashboard, f"{manage}remove/", {"school_admin_id": first})
+    assert denied["status"] == 403 and denied["result"]["error"] == "You can only remove yourself.", denied
+    login(fixture["sessions"]["ordinary"])
+    transferred = post(dashboard, f"{manage}primary/", {"school_admin_id": account})
+    assert transferred["status"] == 200 and transferred["result"]["demoted_admin_id"] == first, transferred
+    login(fixture["sessions"]["account"])
+    path = f"{dashboard}{school}/debater/create/"
+    for index in range(6):
+        form = {"first_name":"Role", "last_name":f"Fixture{index}", "first_season":"2025",
+                "latest_season":"2026", "status":"1"}
+        result = post(path, path, form)
+        if index == 5:
+            assert result["status"] == 403 and "daily limit of 5 new debaters" in result["result"], result
+        else:
+            assert result["status"] == 200 and result["redirected"], (index, result["status"])
+    driver.get(f"{django_root}{dashboard}")
+    assert "Role Fixture4" in driver.find_element("tag name", "body").text
+    login(fixture["sessions"]["ordinary"])
+    removed = post(dashboard, f"{manage}remove/", {"school_admin_id": first})
+    assert removed["status"] == 200 and removed["result"]["success"], removed
+    driver.delete_all_cookies()
+
+
+def assert_agent_reads(django, rust, fixture):
+    base = "/api/agent/v1/"
+    authorization = "Bearer " + fixture["agent"]
+    cases = [
+        Case(base), Case(base, authorization="Bearer br_agent_disposable_invalid"),
+        Case(base, authorization=authorization), Case(base + "guide/", authorization=authorization),
+        Case(base + "batches/", authorization=authorization),
+        Case(base + "batches/", method="POST", body="{}", authorization=authorization),
+    ]
+    cases += [
+        Case(base + f"records/{path}", authorization=authorization) for path in (
+            "schools/?limit=3", f"schools/{fixture['role_school']}/", "schools/?synthetic=false&limit=3",
+            f"debaters/{fixture['debater']}/", f"tournaments/{fixture['tournament']}/",
+            "rounds/?limit=3", "round_stats/?limit=3", "round_metadata/?limit=3", "teams/?limit=3",
+            "schools/?id__in=1,2,3", "schools/?q=roles", "schools/?name__gt=a", "unknown/",
+        )
+    ]
+    compare_responses(django, rust, cases)
+
+
 def assert_generated_codes(driver, django, rust, fixture):
     roots = [f"http://{HOST}:{server.port}" for server in (django, rust)]
     path = "/core/generated-codes/"
@@ -1434,6 +1526,8 @@ def browser_checks(database, options, output):
         assert_admin_tools(driver, django, rust)
         assert_generated_codes(driver, django, rust, fixture)
         assert_entities(driver, django, rust, fixture)
+        assert_school_admin(driver, django, rust, fixture)
+        assert_agent_reads(django, rust, fixture)
         assert_claims(driver, django, rust, fixture)
         live_django = directory_state(driver, django, "/live")
         live_rust = directory_state(driver, rust, "/live")

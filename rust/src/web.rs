@@ -19,6 +19,22 @@ use crate::{
 
 const VIEWS: &[(&str, &str)] = &[
     (
+        "school_admin/debater_form.html",
+        include_str!("../../core/templates/school_admin/debater_form.html"),
+    ),
+    (
+        "school_admin/debater_fields.html",
+        include_str!("../templates/school_admin_debater_fields.html"),
+    ),
+    (
+        "school_admin/dashboard.html",
+        include_str!("../../core/templates/school_admin/dashboard.html"),
+    ),
+    (
+        "school_admin/superuser_management.html",
+        include_str!("../../core/templates/school_admin/superuser_management.html"),
+    ),
+    (
         "tournaments/create.html",
         include_str!("../templates/tournament_create.html"),
     ),
@@ -531,6 +547,50 @@ fn adapt_scheduler(template: &str) -> String {
 fn adapt_template(name: &str, template: &str) -> String {
     let adapted;
     let template = match name {
+        "school_admin/debater_form.html" => {
+            adapted = template
+                .replace(
+                    "{{ form|crispy }}",
+                    r#"{% include "school_admin/debater_fields.html" %}"#,
+                )
+                .replace("form.show_region_field", "show_region")
+                .replace("{{ message }}", "{{ message.text }}");
+            &adapted
+        }
+        "school_admin/dashboard.html" | "school_admin/superuser_management.html" => {
+            adapted = template
+                .replace("schools.count", "schools|length")
+                .replace("{{ csrf_token }}", "{{ csrf }}")
+                .replace("{% empty %}", "{% else %}")
+                .replace("school_admin_roles|dict_item:school.id", "school.role")
+                .replace(
+                    "current_school_admins|dict_item:school.id",
+                    "school.current",
+                )
+                .replace("school_admins|dict_item:school.id", "school.admins")
+                .replace("debaters_data|dict_item:school.id", "school.roster")
+                .replace(
+                    r#"{% url "core:user_autocomplete" %}"#,
+                    "/core/user-autocomplete/",
+                )
+                .replace(
+                    r#"{% url "core:school_admin_add" %}"#,
+                    "/core/manage-school-admins/add/",
+                )
+                .replace(
+                    r#"{% url "core:school_admin_remove" %}"#,
+                    "/core/manage-school-admins/remove/",
+                )
+                .replace(
+                    r#"{% url "core:school_admin_set_primary" %}"#,
+                    "/core/manage-school-admins/primary/",
+                )
+                .replace(
+                    "{% url 'core:debater_detail' debater.id %}",
+                    "/core/debaters/{{ debater.id }}",
+                );
+            &adapted
+        }
         "tournaments/update.html" => {
             adapted = template
                 .replace("{{ object }}", "{{ object.name }}")
@@ -774,6 +834,13 @@ fn adapt_template(name: &str, template: &str) -> String {
                     "core:index" => "/",
                     "core:school_create" => "/core/schools/create",
                     "core:admin_tools" => "/core/admin-tools/",
+                    "core:school_admin_debater_create" => {
+                        "/core/school-admin/{{ school.id }}/debater/create/"
+                    }
+                    "core:school_admin_debater_update" => {
+                        "/core/school-admin/debater/{{ debater.id }}/edit/"
+                    }
+                    "core:school_admin_dashboard" => "/core/school-admin/",
                     "core:doty" => "/DOTY",
                     "core:partnership_paths" => "/core/debaters/partnership-paths/",
                     "core:partnership_stats" => "/core/debaters/partnership-paths/stats/",

@@ -1,0 +1,3958 @@
+{
+  "alias_groups": {
+    "fields": {
+      "id": {
+        "column": "id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": true,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "BigAutoField",
+          "writable": false
+        }
+      },
+      "label": {
+        "column": "label",
+        "exposed": true,
+        "max_length": 64,
+        "scale": null,
+        "schema": {
+          "blank": true,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "CharField",
+          "writable": true
+        }
+      }
+    },
+    "label": "core.DebaterAliasGroup",
+    "memberships": {},
+    "table": "core_debateraliasgroup",
+    "writable": true
+  },
+  "aliases": {
+    "fields": {
+      "created_at": {
+        "column": "created_at",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": true,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "DateTimeField",
+          "writable": false
+        }
+      },
+      "debater_id": {
+        "column": "debater_id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": "core.Debater",
+          "required_on_create": true,
+          "type": "ForeignKey",
+          "writable": true
+        }
+      },
+      "id": {
+        "column": "id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": true,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "BigAutoField",
+          "writable": false
+        }
+      },
+      "normalized_name": {
+        "column": "normalized_name",
+        "exposed": true,
+        "max_length": 128,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": true,
+          "type": "CharField",
+          "writable": true
+        }
+      },
+      "source_name": {
+        "column": "source_name",
+        "exposed": true,
+        "max_length": 128,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": true,
+          "type": "CharField",
+          "writable": true
+        }
+      },
+      "updated_at": {
+        "column": "updated_at",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": true,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "DateTimeField",
+          "writable": false
+        }
+      }
+    },
+    "label": "core.DebaterAlias",
+    "memberships": {},
+    "table": "core_debateralias",
+    "writable": true
+  },
+  "coty": {
+    "fields": {
+      "id": {
+        "column": "id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": true,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "BigAutoField",
+          "writable": false
+        }
+      },
+      "place": {
+        "column": "place",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "IntegerField",
+          "writable": false
+        }
+      },
+      "points": {
+        "column": "points",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "FloatField",
+          "writable": false
+        }
+      },
+      "school_id": {
+        "column": "school_id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": "core.School",
+          "required_on_create": true,
+          "type": "ForeignKey",
+          "writable": false
+        }
+      },
+      "season": {
+        "column": "season",
+        "exposed": true,
+        "max_length": 16,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": true,
+          "type": "CharField",
+          "writable": false
+        }
+      },
+      "tied": {
+        "column": "tied",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "BooleanField",
+          "writable": false
+        }
+      }
+    },
+    "label": "core.COTY",
+    "memberships": {},
+    "table": "core_coty",
+    "writable": false
+  },
+  "debaters": {
+    "fields": {
+      "alias_group_id": {
+        "column": "alias_group_id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": true,
+          "choices": null,
+          "nullable": true,
+          "related_model": "core.DebaterAliasGroup",
+          "required_on_create": false,
+          "type": "ForeignKey",
+          "writable": true
+        }
+      },
+      "dino_judge_contact_opt_in": {
+        "column": "dino_judge_contact_opt_in",
+        "exposed": false,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "BooleanField",
+          "writable": false
+        }
+      },
+      "dino_to_contact_opt_in": {
+        "column": "dino_to_contact_opt_in",
+        "exposed": false,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "BooleanField",
+          "writable": false
+        }
+      },
+      "elo_manual_opt": {
+        "column": "elo_manual_opt",
+        "exposed": true,
+        "max_length": 8,
+        "scale": null,
+        "schema": {
+          "blank": true,
+          "choices": [
+            [
+              "",
+              "Unset"
+            ],
+            [
+              "opt_in",
+              "Opt-in"
+            ],
+            [
+              "opt_out",
+              "Opt-out"
+            ]
+          ],
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "CharField",
+          "writable": true
+        }
+      },
+      "email": {
+        "column": "email",
+        "exposed": false,
+        "max_length": 254,
+        "scale": null,
+        "schema": {
+          "blank": true,
+          "choices": null,
+          "nullable": true,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "CharField",
+          "writable": false
+        }
+      },
+      "first_name": {
+        "column": "first_name",
+        "exposed": true,
+        "max_length": 32,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": true,
+          "type": "CharField",
+          "writable": true
+        }
+      },
+      "first_season": {
+        "column": "first_season",
+        "exposed": true,
+        "max_length": 16,
+        "scale": null,
+        "schema": {
+          "blank": true,
+          "choices": null,
+          "nullable": true,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "CharField",
+          "writable": true
+        }
+      },
+      "id": {
+        "column": "id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": true,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "BigAutoField",
+          "writable": false
+        }
+      },
+      "last_name": {
+        "column": "last_name",
+        "exposed": true,
+        "max_length": 32,
+        "scale": null,
+        "schema": {
+          "blank": true,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "CharField",
+          "writable": true
+        }
+      },
+      "latest_season": {
+        "column": "latest_season",
+        "exposed": true,
+        "max_length": 16,
+        "scale": null,
+        "schema": {
+          "blank": true,
+          "choices": null,
+          "nullable": true,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "CharField",
+          "writable": true
+        }
+      },
+      "paradigm": {
+        "column": "paradigm",
+        "exposed": false,
+        "max_length": 500,
+        "scale": null,
+        "schema": {
+          "blank": true,
+          "choices": null,
+          "nullable": true,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "CharField",
+          "writable": false
+        }
+      },
+      "region": {
+        "column": "region",
+        "exposed": false,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": true,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "JSONField",
+          "writable": false
+        }
+      },
+      "school_id": {
+        "column": "school_id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": true,
+          "choices": null,
+          "nullable": true,
+          "related_model": "core.School",
+          "required_on_create": false,
+          "type": "ForeignKey",
+          "writable": true
+        }
+      },
+      "status": {
+        "column": "status",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": [
+            [
+              1,
+              "Varsity"
+            ],
+            [
+              0,
+              "Novice"
+            ],
+            [
+              2,
+              "Dino"
+            ]
+          ],
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "IntegerField",
+          "writable": true
+        }
+      },
+      "synthetic": {
+        "column": "synthetic",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "BooleanField",
+          "writable": true
+        }
+      },
+      "temporary": {
+        "column": "temporary",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "BooleanField",
+          "writable": true
+        }
+      },
+      "user_id": {
+        "column": "user_id",
+        "exposed": false,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": true,
+          "choices": null,
+          "nullable": true,
+          "related_model": "core.User",
+          "required_on_create": false,
+          "type": "ForeignKey",
+          "writable": false
+        }
+      }
+    },
+    "label": "core.Debater",
+    "memberships": {},
+    "table": "core_debater",
+    "writable": true
+  },
+  "import_batches": {
+    "fields": {
+      "created_at": {
+        "column": "created_at",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": true,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "DateTimeField",
+          "writable": false
+        }
+      },
+      "id": {
+        "column": "id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": true,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "BigAutoField",
+          "writable": false
+        }
+      }
+    },
+    "label": "core.ImportBatch",
+    "memberships": {},
+    "table": "core_importbatch",
+    "writable": true
+  },
+  "imports": {
+    "fields": {
+      "batch_id": {
+        "column": "batch_id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": true,
+          "choices": null,
+          "nullable": true,
+          "related_model": "core.ImportBatch",
+          "required_on_create": false,
+          "type": "ForeignKey",
+          "writable": true
+        }
+      },
+      "id": {
+        "column": "id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": true,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "BigAutoField",
+          "writable": false
+        }
+      },
+      "import_type": {
+        "column": "import_type",
+        "exposed": true,
+        "max_length": 16,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": [
+            [
+              "file_backup",
+              "File Backup"
+            ],
+            [
+              "forum_post",
+              "Forum Post"
+            ],
+            [
+              "mittab_bundle",
+              "Mit-Tab Bundle"
+            ],
+            [
+              "db_inference",
+              "Inferred From DB"
+            ],
+            [
+              "other",
+              "Other"
+            ]
+          ],
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": true,
+          "type": "CharField",
+          "writable": true
+        }
+      },
+      "imported_at": {
+        "column": "imported_at",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": true,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "DateTimeField",
+          "writable": false
+        }
+      },
+      "original_file_name": {
+        "column": "original_file_name",
+        "exposed": true,
+        "max_length": 255,
+        "scale": null,
+        "schema": {
+          "blank": true,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "CharField",
+          "writable": true
+        }
+      },
+      "source_hash": {
+        "column": "source_hash",
+        "exposed": true,
+        "max_length": 64,
+        "scale": null,
+        "schema": {
+          "blank": true,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "CharField",
+          "writable": true
+        }
+      },
+      "tournament_id": {
+        "column": "tournament_id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": "core.Tournament",
+          "required_on_create": true,
+          "type": "ForeignKey",
+          "writable": true
+        }
+      }
+    },
+    "label": "core.TournamentImport",
+    "memberships": {},
+    "table": "core_tournamentimport",
+    "writable": true
+  },
+  "noty": {
+    "fields": {
+      "debater_id": {
+        "column": "debater_id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": "core.Debater",
+          "required_on_create": true,
+          "type": "ForeignKey",
+          "writable": false
+        }
+      },
+      "id": {
+        "column": "id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": true,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "BigAutoField",
+          "writable": false
+        }
+      },
+      "marker_five": {
+        "column": "marker_five",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "FloatField",
+          "writable": false
+        }
+      },
+      "marker_four": {
+        "column": "marker_four",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "FloatField",
+          "writable": false
+        }
+      },
+      "marker_one": {
+        "column": "marker_one",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "FloatField",
+          "writable": false
+        }
+      },
+      "marker_six": {
+        "column": "marker_six",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "FloatField",
+          "writable": false
+        }
+      },
+      "marker_three": {
+        "column": "marker_three",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "FloatField",
+          "writable": false
+        }
+      },
+      "marker_two": {
+        "column": "marker_two",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "FloatField",
+          "writable": false
+        }
+      },
+      "place": {
+        "column": "place",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "IntegerField",
+          "writable": false
+        }
+      },
+      "points": {
+        "column": "points",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "FloatField",
+          "writable": false
+        }
+      },
+      "season": {
+        "column": "season",
+        "exposed": true,
+        "max_length": 16,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": true,
+          "type": "CharField",
+          "writable": false
+        }
+      },
+      "tied": {
+        "column": "tied",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "BooleanField",
+          "writable": false
+        }
+      },
+      "tournament_five_id": {
+        "column": "tournament_five_id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": true,
+          "related_model": "core.Tournament",
+          "required_on_create": false,
+          "type": "ForeignKey",
+          "writable": false
+        }
+      },
+      "tournament_four_id": {
+        "column": "tournament_four_id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": true,
+          "related_model": "core.Tournament",
+          "required_on_create": false,
+          "type": "ForeignKey",
+          "writable": false
+        }
+      },
+      "tournament_one_id": {
+        "column": "tournament_one_id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": true,
+          "related_model": "core.Tournament",
+          "required_on_create": false,
+          "type": "ForeignKey",
+          "writable": false
+        }
+      },
+      "tournament_six_id": {
+        "column": "tournament_six_id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": true,
+          "related_model": "core.Tournament",
+          "required_on_create": false,
+          "type": "ForeignKey",
+          "writable": false
+        }
+      },
+      "tournament_three_id": {
+        "column": "tournament_three_id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": true,
+          "related_model": "core.Tournament",
+          "required_on_create": false,
+          "type": "ForeignKey",
+          "writable": false
+        }
+      },
+      "tournament_two_id": {
+        "column": "tournament_two_id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": true,
+          "related_model": "core.Tournament",
+          "required_on_create": false,
+          "type": "ForeignKey",
+          "writable": false
+        }
+      }
+    },
+    "label": "core.NOTY",
+    "memberships": {},
+    "table": "core_noty",
+    "writable": false
+  },
+  "online_qual": {
+    "fields": {
+      "debater_id": {
+        "column": "debater_id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": "core.Debater",
+          "required_on_create": true,
+          "type": "ForeignKey",
+          "writable": false
+        }
+      },
+      "id": {
+        "column": "id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": true,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "BigAutoField",
+          "writable": false
+        }
+      },
+      "marker_five": {
+        "column": "marker_five",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "FloatField",
+          "writable": false
+        }
+      },
+      "marker_four": {
+        "column": "marker_four",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "FloatField",
+          "writable": false
+        }
+      },
+      "marker_one": {
+        "column": "marker_one",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "FloatField",
+          "writable": false
+        }
+      },
+      "marker_six": {
+        "column": "marker_six",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "FloatField",
+          "writable": false
+        }
+      },
+      "marker_three": {
+        "column": "marker_three",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "FloatField",
+          "writable": false
+        }
+      },
+      "marker_two": {
+        "column": "marker_two",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "FloatField",
+          "writable": false
+        }
+      },
+      "place": {
+        "column": "place",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "IntegerField",
+          "writable": false
+        }
+      },
+      "points": {
+        "column": "points",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "FloatField",
+          "writable": false
+        }
+      },
+      "season": {
+        "column": "season",
+        "exposed": true,
+        "max_length": 16,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": true,
+          "type": "CharField",
+          "writable": false
+        }
+      },
+      "tied": {
+        "column": "tied",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "BooleanField",
+          "writable": false
+        }
+      },
+      "tournament_five_id": {
+        "column": "tournament_five_id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": true,
+          "related_model": "core.Tournament",
+          "required_on_create": false,
+          "type": "ForeignKey",
+          "writable": false
+        }
+      },
+      "tournament_four_id": {
+        "column": "tournament_four_id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": true,
+          "related_model": "core.Tournament",
+          "required_on_create": false,
+          "type": "ForeignKey",
+          "writable": false
+        }
+      },
+      "tournament_one_id": {
+        "column": "tournament_one_id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": true,
+          "related_model": "core.Tournament",
+          "required_on_create": false,
+          "type": "ForeignKey",
+          "writable": false
+        }
+      },
+      "tournament_six_id": {
+        "column": "tournament_six_id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": true,
+          "related_model": "core.Tournament",
+          "required_on_create": false,
+          "type": "ForeignKey",
+          "writable": false
+        }
+      },
+      "tournament_three_id": {
+        "column": "tournament_three_id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": true,
+          "related_model": "core.Tournament",
+          "required_on_create": false,
+          "type": "ForeignKey",
+          "writable": false
+        }
+      },
+      "tournament_two_id": {
+        "column": "tournament_two_id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": true,
+          "related_model": "core.Tournament",
+          "required_on_create": false,
+          "type": "ForeignKey",
+          "writable": false
+        }
+      }
+    },
+    "label": "core.OnlineQUAL",
+    "memberships": {},
+    "table": "core_onlinequal",
+    "writable": false
+  },
+  "qual_points": {
+    "fields": {
+      "debater_id": {
+        "column": "debater_id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": "core.Debater",
+          "required_on_create": true,
+          "type": "ForeignKey",
+          "writable": false
+        }
+      },
+      "id": {
+        "column": "id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": true,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "BigAutoField",
+          "writable": false
+        }
+      },
+      "points": {
+        "column": "points",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "FloatField",
+          "writable": false
+        }
+      },
+      "season": {
+        "column": "season",
+        "exposed": true,
+        "max_length": 16,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": true,
+          "type": "CharField",
+          "writable": false
+        }
+      }
+    },
+    "label": "core.QualPoints",
+    "memberships": {},
+    "table": "core_qualpoints",
+    "writable": false
+  },
+  "qualifications": {
+    "fields": {
+      "debater_id": {
+        "column": "debater_id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": "core.Debater",
+          "required_on_create": true,
+          "type": "ForeignKey",
+          "writable": true
+        }
+      },
+      "id": {
+        "column": "id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": true,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "BigAutoField",
+          "writable": false
+        }
+      },
+      "place": {
+        "column": "place",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "IntegerField",
+          "writable": true
+        }
+      },
+      "points": {
+        "column": "points",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "FloatField",
+          "writable": true
+        }
+      },
+      "qual_type": {
+        "column": "qual_type",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": [
+            [
+              0,
+              "Points"
+            ],
+            [
+              1,
+              "Brandeis IV"
+            ],
+            [
+              2,
+              "Yale IV"
+            ],
+            [
+              3,
+              "NorthAms"
+            ],
+            [
+              4,
+              "Expansion"
+            ],
+            [
+              5,
+              "Worlds"
+            ],
+            [
+              6,
+              "NAUDC"
+            ],
+            [
+              16,
+              "USUDC"
+            ],
+            [
+              7,
+              "ProAms"
+            ],
+            [
+              8,
+              "Nationals"
+            ],
+            [
+              9,
+              "Novice"
+            ],
+            [
+              10,
+              "Gender Minority"
+            ],
+            [
+              15,
+              "BIPOC"
+            ]
+          ],
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "IntegerField",
+          "writable": true
+        }
+      },
+      "season": {
+        "column": "season",
+        "exposed": true,
+        "max_length": 16,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": true,
+          "type": "CharField",
+          "writable": true
+        }
+      },
+      "tied": {
+        "column": "tied",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "BooleanField",
+          "writable": true
+        }
+      },
+      "tournament_id": {
+        "column": "tournament_id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": true,
+          "choices": null,
+          "nullable": true,
+          "related_model": "core.Tournament",
+          "required_on_create": false,
+          "type": "ForeignKey",
+          "writable": true
+        }
+      }
+    },
+    "label": "core.QUAL",
+    "memberships": {},
+    "table": "core_qual",
+    "writable": true
+  },
+  "reaffiliations": {
+    "fields": {
+      "id": {
+        "column": "id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": true,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "BigAutoField",
+          "writable": false
+        }
+      },
+      "new_debater_id": {
+        "column": "new_debater_id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": "core.Debater",
+          "required_on_create": true,
+          "type": "ForeignKey",
+          "writable": true
+        }
+      },
+      "old_debater_id": {
+        "column": "old_debater_id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": "core.Debater",
+          "required_on_create": true,
+          "type": "ForeignKey",
+          "writable": true
+        }
+      },
+      "reaff_date": {
+        "column": "reaff_date",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": true,
+          "type": "DateField",
+          "writable": true
+        }
+      },
+      "season": {
+        "column": "season",
+        "exposed": true,
+        "max_length": 16,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": true,
+          "type": "CharField",
+          "writable": true
+        }
+      }
+    },
+    "label": "core.Reaff",
+    "memberships": {},
+    "table": "core_reaff",
+    "writable": true
+  },
+  "round_judges": {
+    "fields": {
+      "debater_alias_id": {
+        "column": "debater_alias_id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": true,
+          "choices": null,
+          "nullable": true,
+          "related_model": "core.DebaterAlias",
+          "required_on_create": false,
+          "type": "ForeignKey",
+          "writable": true
+        }
+      },
+      "id": {
+        "column": "id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": true,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "BigAutoField",
+          "writable": false
+        }
+      },
+      "is_chair": {
+        "column": "is_chair",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "BooleanField",
+          "writable": true
+        }
+      },
+      "original_name": {
+        "column": "original_name",
+        "exposed": true,
+        "max_length": 128,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": true,
+          "type": "CharField",
+          "writable": true
+        }
+      },
+      "round_metadata_id": {
+        "column": "round_metadata_id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": "core.ImportedRoundMetadata",
+          "required_on_create": true,
+          "type": "ForeignKey",
+          "writable": true
+        }
+      }
+    },
+    "label": "core.ImportedRoundJudge",
+    "memberships": {},
+    "table": "core_importedroundjudge",
+    "writable": true
+  },
+  "round_metadata": {
+    "fields": {
+      "gov_1_alias_id": {
+        "column": "gov_1_alias_id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": true,
+          "choices": null,
+          "nullable": true,
+          "related_model": "core.DebaterAlias",
+          "required_on_create": false,
+          "type": "ForeignKey",
+          "writable": true
+        }
+      },
+      "gov_2_alias_id": {
+        "column": "gov_2_alias_id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": true,
+          "choices": null,
+          "nullable": true,
+          "related_model": "core.DebaterAlias",
+          "required_on_create": false,
+          "type": "ForeignKey",
+          "writable": true
+        }
+      },
+      "id": {
+        "column": "id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": true,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "BigAutoField",
+          "writable": false
+        }
+      },
+      "opp_1_alias_id": {
+        "column": "opp_1_alias_id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": true,
+          "choices": null,
+          "nullable": true,
+          "related_model": "core.DebaterAlias",
+          "required_on_create": false,
+          "type": "ForeignKey",
+          "writable": true
+        }
+      },
+      "opp_2_alias_id": {
+        "column": "opp_2_alias_id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": true,
+          "choices": null,
+          "nullable": true,
+          "related_model": "core.DebaterAlias",
+          "required_on_create": false,
+          "type": "ForeignKey",
+          "writable": true
+        }
+      },
+      "raw_outcome_text": {
+        "column": "raw_outcome_text",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": true,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "TextField",
+          "writable": true
+        }
+      },
+      "raw_result_code": {
+        "column": "raw_result_code",
+        "exposed": true,
+        "max_length": 32,
+        "scale": null,
+        "schema": {
+          "blank": true,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "CharField",
+          "writable": true
+        }
+      },
+      "round_id": {
+        "column": "round_id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": "core.Round",
+          "required_on_create": true,
+          "type": "OneToOneField",
+          "writable": true
+        }
+      }
+    },
+    "label": "core.ImportedRoundMetadata",
+    "memberships": {
+      "sources": {
+        "exposed": true,
+        "label": "core.ImportedRoundMetadata_sources",
+        "source": "importedroundmetadata_id",
+        "table": "core_importedroundmetadata_sources",
+        "target": "tournamentimport_id"
+      }
+    },
+    "table": "core_importedroundmetadata",
+    "writable": true
+  },
+  "round_stats": {
+    "fields": {
+      "debater_id": {
+        "column": "debater_id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": "core.Debater",
+          "required_on_create": true,
+          "type": "ForeignKey",
+          "writable": true
+        }
+      },
+      "debater_role": {
+        "column": "debater_role",
+        "exposed": true,
+        "max_length": 4,
+        "scale": null,
+        "schema": {
+          "blank": true,
+          "choices": null,
+          "nullable": true,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "CharField",
+          "writable": true
+        }
+      },
+      "id": {
+        "column": "id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": true,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "BigAutoField",
+          "writable": false
+        }
+      },
+      "metadata": {
+        "column": "metadata",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": true,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "JSONField",
+          "writable": true
+        }
+      },
+      "ranks": {
+        "column": "ranks",
+        "exposed": true,
+        "max_length": null,
+        "scale": 4,
+        "schema": {
+          "blank": true,
+          "choices": null,
+          "nullable": true,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "DecimalField",
+          "writable": true
+        }
+      },
+      "round_id": {
+        "column": "round_id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": "core.Round",
+          "required_on_create": true,
+          "type": "ForeignKey",
+          "writable": true
+        }
+      },
+      "score_index": {
+        "column": "score_index",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "PositiveSmallIntegerField",
+          "writable": true
+        }
+      },
+      "source_status": {
+        "column": "source_status",
+        "exposed": true,
+        "max_length": 32,
+        "scale": null,
+        "schema": {
+          "blank": true,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "CharField",
+          "writable": true
+        }
+      },
+      "speaks": {
+        "column": "speaks",
+        "exposed": true,
+        "max_length": null,
+        "scale": 4,
+        "schema": {
+          "blank": true,
+          "choices": null,
+          "nullable": true,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "DecimalField",
+          "writable": true
+        }
+      },
+      "stage": {
+        "column": "stage",
+        "exposed": true,
+        "max_length": 16,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": [
+            [
+              "prelim",
+              "Prelim"
+            ],
+            [
+              "outround",
+              "Outround"
+            ]
+          ],
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "CharField",
+          "writable": true
+        }
+      }
+    },
+    "label": "core.RoundStats",
+    "memberships": {},
+    "table": "core_roundstats",
+    "writable": true
+  },
+  "rounds": {
+    "fields": {
+      "division": {
+        "column": "division",
+        "exposed": true,
+        "max_length": 16,
+        "scale": null,
+        "schema": {
+          "blank": true,
+          "choices": [
+            [
+              "varsity",
+              "Varsity"
+            ],
+            [
+              "novice",
+              "Novice"
+            ]
+          ],
+          "nullable": true,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "CharField",
+          "writable": true
+        }
+      },
+      "elim_size": {
+        "column": "elim_size",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": true,
+          "choices": null,
+          "nullable": true,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "PositiveSmallIntegerField",
+          "writable": true
+        }
+      },
+      "gov_id": {
+        "column": "gov_id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": "core.Team",
+          "required_on_create": true,
+          "type": "ForeignKey",
+          "writable": true
+        }
+      },
+      "id": {
+        "column": "id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": true,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "BigAutoField",
+          "writable": false
+        }
+      },
+      "import_key": {
+        "column": "import_key",
+        "exposed": true,
+        "max_length": 128,
+        "scale": null,
+        "schema": {
+          "blank": true,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "CharField",
+          "writable": true
+        }
+      },
+      "import_origin": {
+        "column": "import_origin",
+        "exposed": true,
+        "max_length": 32,
+        "scale": null,
+        "schema": {
+          "blank": true,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "CharField",
+          "writable": true
+        }
+      },
+      "metadata": {
+        "column": "metadata",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": true,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "JSONField",
+          "writable": true
+        }
+      },
+      "opp_id": {
+        "column": "opp_id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": "core.Team",
+          "required_on_create": true,
+          "type": "ForeignKey",
+          "writable": true
+        }
+      },
+      "round_label": {
+        "column": "round_label",
+        "exposed": true,
+        "max_length": 32,
+        "scale": null,
+        "schema": {
+          "blank": true,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "CharField",
+          "writable": true
+        }
+      },
+      "round_number": {
+        "column": "round_number",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "IntegerField",
+          "writable": true
+        }
+      },
+      "stage": {
+        "column": "stage",
+        "exposed": true,
+        "max_length": 16,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": [
+            [
+              "prelim",
+              "Prelim"
+            ],
+            [
+              "outround",
+              "Outround"
+            ]
+          ],
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "CharField",
+          "writable": true
+        }
+      },
+      "tournament_id": {
+        "column": "tournament_id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": "core.Tournament",
+          "required_on_create": true,
+          "type": "ForeignKey",
+          "writable": true
+        }
+      },
+      "victor": {
+        "column": "victor",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": [
+            [
+              0,
+              "UNKNOWN"
+            ],
+            [
+              1,
+              "GOV"
+            ],
+            [
+              2,
+              "OPP"
+            ],
+            [
+              3,
+              "GOV via Forfeit"
+            ],
+            [
+              4,
+              "OPP via Forfeit"
+            ],
+            [
+              5,
+              "ALL DROP"
+            ],
+            [
+              6,
+              "ALL WIN"
+            ],
+            [
+              7,
+              "BYE"
+            ]
+          ],
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "IntegerField",
+          "writable": true
+        }
+      }
+    },
+    "label": "core.Round",
+    "memberships": {},
+    "table": "core_round",
+    "writable": true
+  },
+  "school_lookups": {
+    "fields": {
+      "id": {
+        "column": "id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": true,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "BigAutoField",
+          "writable": false
+        }
+      },
+      "school_id": {
+        "column": "school_id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": "core.School",
+          "required_on_create": true,
+          "type": "ForeignKey",
+          "writable": true
+        }
+      },
+      "server_name": {
+        "column": "server_name",
+        "exposed": true,
+        "max_length": 64,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": true,
+          "type": "CharField",
+          "writable": true
+        }
+      }
+    },
+    "label": "core.SchoolLookup",
+    "memberships": {},
+    "table": "core_schoollookup",
+    "writable": true
+  },
+  "schools": {
+    "fields": {
+      "id": {
+        "column": "id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": true,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "BigAutoField",
+          "writable": false
+        }
+      },
+      "included_in_oty": {
+        "column": "included_in_oty",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "BooleanField",
+          "writable": true
+        }
+      },
+      "name": {
+        "column": "name",
+        "exposed": true,
+        "max_length": 64,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": true,
+          "type": "CharField",
+          "writable": true
+        }
+      },
+      "short_name": {
+        "column": "short_name",
+        "exposed": true,
+        "max_length": 64,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "CharField",
+          "writable": true
+        }
+      },
+      "synthetic": {
+        "column": "synthetic",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "BooleanField",
+          "writable": true
+        }
+      },
+      "temporary": {
+        "column": "temporary",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "BooleanField",
+          "writable": true
+        }
+      }
+    },
+    "label": "core.School",
+    "memberships": {},
+    "table": "core_school",
+    "writable": true
+  },
+  "soty": {
+    "fields": {
+      "debater_id": {
+        "column": "debater_id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": "core.Debater",
+          "required_on_create": true,
+          "type": "ForeignKey",
+          "writable": false
+        }
+      },
+      "id": {
+        "column": "id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": true,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "BigAutoField",
+          "writable": false
+        }
+      },
+      "marker_five": {
+        "column": "marker_five",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "FloatField",
+          "writable": false
+        }
+      },
+      "marker_four": {
+        "column": "marker_four",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "FloatField",
+          "writable": false
+        }
+      },
+      "marker_one": {
+        "column": "marker_one",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "FloatField",
+          "writable": false
+        }
+      },
+      "marker_six": {
+        "column": "marker_six",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "FloatField",
+          "writable": false
+        }
+      },
+      "marker_three": {
+        "column": "marker_three",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "FloatField",
+          "writable": false
+        }
+      },
+      "marker_two": {
+        "column": "marker_two",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "FloatField",
+          "writable": false
+        }
+      },
+      "place": {
+        "column": "place",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "IntegerField",
+          "writable": false
+        }
+      },
+      "points": {
+        "column": "points",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "FloatField",
+          "writable": false
+        }
+      },
+      "season": {
+        "column": "season",
+        "exposed": true,
+        "max_length": 16,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": true,
+          "type": "CharField",
+          "writable": false
+        }
+      },
+      "tied": {
+        "column": "tied",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "BooleanField",
+          "writable": false
+        }
+      },
+      "tournament_five_id": {
+        "column": "tournament_five_id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": true,
+          "related_model": "core.Tournament",
+          "required_on_create": false,
+          "type": "ForeignKey",
+          "writable": false
+        }
+      },
+      "tournament_four_id": {
+        "column": "tournament_four_id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": true,
+          "related_model": "core.Tournament",
+          "required_on_create": false,
+          "type": "ForeignKey",
+          "writable": false
+        }
+      },
+      "tournament_one_id": {
+        "column": "tournament_one_id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": true,
+          "related_model": "core.Tournament",
+          "required_on_create": false,
+          "type": "ForeignKey",
+          "writable": false
+        }
+      },
+      "tournament_six_id": {
+        "column": "tournament_six_id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": true,
+          "related_model": "core.Tournament",
+          "required_on_create": false,
+          "type": "ForeignKey",
+          "writable": false
+        }
+      },
+      "tournament_three_id": {
+        "column": "tournament_three_id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": true,
+          "related_model": "core.Tournament",
+          "required_on_create": false,
+          "type": "ForeignKey",
+          "writable": false
+        }
+      },
+      "tournament_two_id": {
+        "column": "tournament_two_id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": true,
+          "related_model": "core.Tournament",
+          "required_on_create": false,
+          "type": "ForeignKey",
+          "writable": false
+        }
+      }
+    },
+    "label": "core.SOTY",
+    "memberships": {},
+    "table": "core_soty",
+    "writable": false
+  },
+  "speaker_results": {
+    "fields": {
+      "counts_for_points": {
+        "column": "counts_for_points",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "BooleanField",
+          "writable": true
+        }
+      },
+      "debater_id": {
+        "column": "debater_id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": "core.Debater",
+          "required_on_create": true,
+          "type": "ForeignKey",
+          "writable": true
+        }
+      },
+      "hidden_from_profile": {
+        "column": "hidden_from_profile",
+        "exposed": false,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "BooleanField",
+          "writable": false
+        }
+      },
+      "id": {
+        "column": "id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": true,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "BigAutoField",
+          "writable": false
+        }
+      },
+      "place": {
+        "column": "place",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "IntegerField",
+          "writable": true
+        }
+      },
+      "tie": {
+        "column": "tie",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "BooleanField",
+          "writable": true
+        }
+      },
+      "tournament_id": {
+        "column": "tournament_id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": "core.Tournament",
+          "required_on_create": true,
+          "type": "ForeignKey",
+          "writable": true
+        }
+      },
+      "type_of_place": {
+        "column": "type_of_place",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": [
+            [
+              1,
+              "Varsity"
+            ],
+            [
+              0,
+              "Novice"
+            ]
+          ],
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "IntegerField",
+          "writable": true
+        }
+      }
+    },
+    "label": "core.SpeakerResult",
+    "memberships": {},
+    "table": "core_speakerresult",
+    "writable": true
+  },
+  "synthetic_logs": {
+    "fields": {
+      "action": {
+        "column": "action",
+        "exposed": true,
+        "max_length": 16,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": [
+            [
+              "resolved",
+              "Resolved"
+            ],
+            [
+              "rejected",
+              "Rejected"
+            ]
+          ],
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "CharField",
+          "writable": false
+        }
+      },
+      "actor_id": {
+        "column": "actor_id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": true,
+          "choices": null,
+          "nullable": true,
+          "related_model": "core.User",
+          "required_on_create": false,
+          "type": "ForeignKey",
+          "writable": false
+        }
+      },
+      "created_at": {
+        "column": "created_at",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": true,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "DateTimeField",
+          "writable": false
+        }
+      },
+      "entity_type": {
+        "column": "entity_type",
+        "exposed": true,
+        "max_length": 16,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": [
+            [
+              "debater",
+              "Debater"
+            ],
+            [
+              "school",
+              "School"
+            ],
+            [
+              "team",
+              "Team"
+            ]
+          ],
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": true,
+          "type": "CharField",
+          "writable": false
+        }
+      },
+      "id": {
+        "column": "id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": true,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "BigAutoField",
+          "writable": false
+        }
+      },
+      "reason": {
+        "column": "reason",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": true,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "TextField",
+          "writable": false
+        }
+      },
+      "resolved_to_id": {
+        "column": "resolved_to_id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": true,
+          "type": "PositiveIntegerField",
+          "writable": false
+        }
+      },
+      "resolved_to_name": {
+        "column": "resolved_to_name",
+        "exposed": true,
+        "max_length": 255,
+        "scale": null,
+        "schema": {
+          "blank": true,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "CharField",
+          "writable": false
+        }
+      },
+      "source_context": {
+        "column": "source_context",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": true,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "JSONField",
+          "writable": false
+        }
+      },
+      "synthetic_id": {
+        "column": "synthetic_id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": true,
+          "type": "PositiveIntegerField",
+          "writable": false
+        }
+      },
+      "synthetic_name": {
+        "column": "synthetic_name",
+        "exposed": true,
+        "max_length": 255,
+        "scale": null,
+        "schema": {
+          "blank": true,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "CharField",
+          "writable": false
+        }
+      },
+      "synthetic_snapshot": {
+        "column": "synthetic_snapshot",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": true,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "JSONField",
+          "writable": false
+        }
+      }
+    },
+    "label": "core.SyntheticResolutionLog",
+    "memberships": {},
+    "table": "core_syntheticresolutionlog",
+    "writable": false
+  },
+  "team_reaffiliations": {
+    "fields": {
+      "id": {
+        "column": "id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": true,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "BigAutoField",
+          "writable": false
+        }
+      },
+      "new_team_id": {
+        "column": "new_team_id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": "core.Team",
+          "required_on_create": true,
+          "type": "ForeignKey",
+          "writable": true
+        }
+      },
+      "old_team_id": {
+        "column": "old_team_id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": "core.Team",
+          "required_on_create": true,
+          "type": "ForeignKey",
+          "writable": true
+        }
+      },
+      "reaff_date": {
+        "column": "reaff_date",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": true,
+          "type": "DateField",
+          "writable": true
+        }
+      },
+      "season": {
+        "column": "season",
+        "exposed": true,
+        "max_length": 16,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": true,
+          "type": "CharField",
+          "writable": true
+        }
+      }
+    },
+    "label": "core.TOTYReaff",
+    "memberships": {},
+    "table": "core_totyreaff",
+    "writable": true
+  },
+  "team_results": {
+    "fields": {
+      "counts_for_points": {
+        "column": "counts_for_points",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "BooleanField",
+          "writable": true
+        }
+      },
+      "ghost_points": {
+        "column": "ghost_points",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "BooleanField",
+          "writable": true
+        }
+      },
+      "id": {
+        "column": "id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": true,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "BigAutoField",
+          "writable": false
+        }
+      },
+      "place": {
+        "column": "place",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "IntegerField",
+          "writable": true
+        }
+      },
+      "team_id": {
+        "column": "team_id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": "core.Team",
+          "required_on_create": true,
+          "type": "ForeignKey",
+          "writable": true
+        }
+      },
+      "tournament_id": {
+        "column": "tournament_id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": "core.Tournament",
+          "required_on_create": true,
+          "type": "ForeignKey",
+          "writable": true
+        }
+      },
+      "type_of_place": {
+        "column": "type_of_place",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": [
+            [
+              1,
+              "Varsity"
+            ],
+            [
+              0,
+              "Novice"
+            ]
+          ],
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "IntegerField",
+          "writable": true
+        }
+      }
+    },
+    "label": "core.TeamResult",
+    "memberships": {
+      "hidden_from_debaters": {
+        "exposed": false,
+        "label": "core.TeamResult_hidden_from_debaters",
+        "source": "teamresult_id",
+        "table": "core_teamresult_hidden_from_debaters",
+        "target": "debater_id"
+      }
+    },
+    "table": "core_teamresult",
+    "writable": true
+  },
+  "teams": {
+    "fields": {
+      "id": {
+        "column": "id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": true,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "BigAutoField",
+          "writable": false
+        }
+      },
+      "name": {
+        "column": "name",
+        "exposed": true,
+        "max_length": 128,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": true,
+          "type": "CharField",
+          "writable": true
+        }
+      },
+      "short_name": {
+        "column": "short_name",
+        "exposed": true,
+        "max_length": 128,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "CharField",
+          "writable": true
+        }
+      },
+      "synthetic": {
+        "column": "synthetic",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "BooleanField",
+          "writable": true
+        }
+      }
+    },
+    "label": "core.Team",
+    "memberships": {
+      "debaters": {
+        "exposed": true,
+        "label": "core.Team_debaters",
+        "source": "team_id",
+        "table": "core_team_debaters",
+        "target": "debater_id"
+      }
+    },
+    "table": "core_team",
+    "writable": true
+  },
+  "toty": {
+    "fields": {
+      "id": {
+        "column": "id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": true,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "BigAutoField",
+          "writable": false
+        }
+      },
+      "marker_five": {
+        "column": "marker_five",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "FloatField",
+          "writable": false
+        }
+      },
+      "marker_four": {
+        "column": "marker_four",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "FloatField",
+          "writable": false
+        }
+      },
+      "marker_one": {
+        "column": "marker_one",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "FloatField",
+          "writable": false
+        }
+      },
+      "marker_six": {
+        "column": "marker_six",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "FloatField",
+          "writable": false
+        }
+      },
+      "marker_three": {
+        "column": "marker_three",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "FloatField",
+          "writable": false
+        }
+      },
+      "marker_two": {
+        "column": "marker_two",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "FloatField",
+          "writable": false
+        }
+      },
+      "place": {
+        "column": "place",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "IntegerField",
+          "writable": false
+        }
+      },
+      "points": {
+        "column": "points",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "FloatField",
+          "writable": false
+        }
+      },
+      "season": {
+        "column": "season",
+        "exposed": true,
+        "max_length": 16,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": true,
+          "type": "CharField",
+          "writable": false
+        }
+      },
+      "team_id": {
+        "column": "team_id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": "core.Team",
+          "required_on_create": true,
+          "type": "ForeignKey",
+          "writable": false
+        }
+      },
+      "tied": {
+        "column": "tied",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "BooleanField",
+          "writable": false
+        }
+      },
+      "tournament_five_id": {
+        "column": "tournament_five_id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": true,
+          "related_model": "core.Tournament",
+          "required_on_create": false,
+          "type": "ForeignKey",
+          "writable": false
+        }
+      },
+      "tournament_four_id": {
+        "column": "tournament_four_id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": true,
+          "related_model": "core.Tournament",
+          "required_on_create": false,
+          "type": "ForeignKey",
+          "writable": false
+        }
+      },
+      "tournament_one_id": {
+        "column": "tournament_one_id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": true,
+          "related_model": "core.Tournament",
+          "required_on_create": false,
+          "type": "ForeignKey",
+          "writable": false
+        }
+      },
+      "tournament_six_id": {
+        "column": "tournament_six_id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": true,
+          "related_model": "core.Tournament",
+          "required_on_create": false,
+          "type": "ForeignKey",
+          "writable": false
+        }
+      },
+      "tournament_three_id": {
+        "column": "tournament_three_id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": true,
+          "related_model": "core.Tournament",
+          "required_on_create": false,
+          "type": "ForeignKey",
+          "writable": false
+        }
+      },
+      "tournament_two_id": {
+        "column": "tournament_two_id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": true,
+          "related_model": "core.Tournament",
+          "required_on_create": false,
+          "type": "ForeignKey",
+          "writable": false
+        }
+      }
+    },
+    "label": "core.TOTY",
+    "memberships": {},
+    "table": "core_toty",
+    "writable": false
+  },
+  "tournaments": {
+    "fields": {
+      "autoqual_bar": {
+        "column": "autoqual_bar",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "IntegerField",
+          "writable": true
+        }
+      },
+      "date": {
+        "column": "date",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": true,
+          "type": "DateField",
+          "writable": true
+        }
+      },
+      "host_id": {
+        "column": "host_id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": true,
+          "choices": null,
+          "nullable": true,
+          "related_model": "core.School",
+          "required_on_create": false,
+          "type": "ForeignKey",
+          "writable": true
+        }
+      },
+      "id": {
+        "column": "id",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": true,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "BigAutoField",
+          "writable": false
+        }
+      },
+      "manual_name": {
+        "column": "manual_name",
+        "exposed": true,
+        "max_length": 128,
+        "scale": null,
+        "schema": {
+          "blank": true,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "CharField",
+          "writable": true
+        }
+      },
+      "name": {
+        "column": "name",
+        "exposed": true,
+        "max_length": 128,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": true,
+          "type": "CharField",
+          "writable": true
+        }
+      },
+      "name_suffix": {
+        "column": "name_suffix",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": [
+            [
+              0,
+              ""
+            ],
+            [
+              1,
+              " (Elections)"
+            ],
+            [
+              2,
+              " (APDA Meeting)"
+            ]
+          ],
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "IntegerField",
+          "writable": true
+        }
+      },
+      "noty": {
+        "column": "noty",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "BooleanField",
+          "writable": true
+        }
+      },
+      "num_debaters": {
+        "column": "num_debaters",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "IntegerField",
+          "writable": true
+        }
+      },
+      "num_novice_debaters": {
+        "column": "num_novice_debaters",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "IntegerField",
+          "writable": true
+        }
+      },
+      "num_novice_teams": {
+        "column": "num_novice_teams",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "IntegerField",
+          "writable": true
+        }
+      },
+      "num_rounds": {
+        "column": "num_rounds",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "IntegerField",
+          "writable": true
+        }
+      },
+      "num_teams": {
+        "column": "num_teams",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "IntegerField",
+          "writable": true
+        }
+      },
+      "online_qual_points": {
+        "column": "online_qual_points",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "BooleanField",
+          "writable": true
+        }
+      },
+      "qual": {
+        "column": "qual",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "BooleanField",
+          "writable": true
+        }
+      },
+      "qual_type": {
+        "column": "qual_type",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": [
+            [
+              0,
+              "Regular (Points)"
+            ],
+            [
+              1,
+              "Brandeis IV"
+            ],
+            [
+              2,
+              "Yale IV"
+            ],
+            [
+              3,
+              "NorthAms"
+            ],
+            [
+              4,
+              "Expansion"
+            ],
+            [
+              5,
+              "Worlds"
+            ],
+            [
+              6,
+              "NAUDC"
+            ],
+            [
+              16,
+              "USUDC"
+            ],
+            [
+              7,
+              "ProAms"
+            ],
+            [
+              8,
+              "Nationals"
+            ],
+            [
+              9,
+              "Novice"
+            ],
+            [
+              10,
+              "Gender Minority"
+            ],
+            [
+              15,
+              "BIPOC"
+            ],
+            [
+              11,
+              "Online No Points"
+            ],
+            [
+              12,
+              "Online Points"
+            ],
+            [
+              13,
+              "Online Proams Points"
+            ],
+            [
+              14,
+              "Online Gender Minority Points"
+            ]
+          ],
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "IntegerField",
+          "writable": true
+        }
+      },
+      "season": {
+        "column": "season",
+        "exposed": true,
+        "max_length": 16,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": true,
+          "type": "CharField",
+          "writable": true
+        }
+      },
+      "short_name": {
+        "column": "short_name",
+        "exposed": true,
+        "max_length": 128,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "CharField",
+          "writable": true
+        }
+      },
+      "soty": {
+        "column": "soty",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "BooleanField",
+          "writable": true
+        }
+      },
+      "toty": {
+        "column": "toty",
+        "exposed": true,
+        "max_length": null,
+        "scale": null,
+        "schema": {
+          "blank": false,
+          "choices": null,
+          "nullable": false,
+          "related_model": null,
+          "required_on_create": false,
+          "type": "BooleanField",
+          "writable": true
+        }
+      }
+    },
+    "label": "core.Tournament",
+    "memberships": {},
+    "table": "core_tournament",
+    "writable": true
+  }
+}

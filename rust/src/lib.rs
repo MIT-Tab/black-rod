@@ -1,4 +1,5 @@
 mod admin;
+mod agent;
 mod autocomplete;
 mod cache;
 mod claims;
@@ -30,6 +31,7 @@ mod replay;
 mod resource;
 pub use private_api::PrivateTokens;
 mod schedule;
+mod school_admin;
 mod school_profile;
 mod schools;
 mod search;
@@ -93,6 +95,7 @@ pub struct AppState {
     recent_results: Cache<(), Arc<String>>,
     search: Cache<(), Arc<search::SearchIndex>>,
     partnership_stats: Arc<partnership::stats::Cache>,
+    school_admin_limits: school_admin::debater::Limits,
     snapshots: Cache<(String, i32, String), Arc<standings::Boards>>,
 }
 
@@ -164,6 +167,10 @@ impl AppState {
                 .build(),
             memcached: None,
             partnership_stats: Arc::default(),
+            school_admin_limits: Cache::builder()
+                .time_to_live(Duration::from_secs(86_400))
+                .max_capacity(4096)
+                .build(),
             cache_lifetime: lifetime,
         }
     }
@@ -445,6 +452,32 @@ pub fn app(state: AppState) -> Router {
             "/core/debaters/partnership-paths/stats/clear-cache/",
             axum::routing::post(partnership::stats::clear),
         )
+        .route("/core/school-admin/", get(school_admin::dashboard))
+        .route(
+            "/core/school-admin/{school}/debater/create/",
+            get(school_admin::debater::endpoint).post(school_admin::debater::endpoint),
+        )
+        .route(
+            "/core/school-admin/debater/{debater}/edit/",
+            get(school_admin::debater::endpoint).post(school_admin::debater::endpoint),
+        )
+        .route("/core/manage-school-admins/", get(school_admin::dashboard))
+        .route(
+            "/core/manage-school-admins/add/",
+            axum::routing::post(school_admin::roles::action),
+        )
+        .route(
+            "/core/manage-school-admins/remove/",
+            axum::routing::post(school_admin::roles::action),
+        )
+        .route(
+            "/core/manage-school-admins/primary/",
+            axum::routing::post(school_admin::roles::action),
+        )
+        .route(
+            "/core/user-autocomplete/",
+            get(school_admin::roles::autocomplete),
+        )
         .route("/core/admin-tools/", get(admin::tools))
         .route("/core/admin-tools", get(append_slash))
         .route(
@@ -609,6 +642,28 @@ pub fn app(state: AppState) -> Router {
         .route(
             "/django-summernote/{day}/{name}",
             get(summernote::attachment),
+        )
+        .route("/api/agent/v1/", axum::routing::any(agent::endpoint))
+        .route("/api/agent/v1/guide/", axum::routing::any(agent::endpoint))
+        .route(
+            "/api/agent/v1/records/{resource}/",
+            axum::routing::any(agent::endpoint),
+        )
+        .route(
+            "/api/agent/v1/records/{resource}/{id}/",
+            axum::routing::any(agent::endpoint),
+        )
+        .route(
+            "/api/agent/v1/batches/",
+            axum::routing::any(agent::endpoint),
+        )
+        .route(
+            "/api/agent/v1/batches/{id}/",
+            axum::routing::any(agent::endpoint),
+        )
+        .route(
+            "/api/agent/v1/batches/{id}/undo/",
+            axum::routing::any(agent::endpoint),
         )
         .route("/robots.txt", get(robots))
         .route("/llms.txt", get(discovery::documentation))
