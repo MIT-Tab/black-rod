@@ -808,6 +808,16 @@ print(b64encode(out.getvalue()).decode())
         assert rejected["status"] == 400 and not rejected["redirected"], rejected
         saved = confirm(roots[confirmer], (actual if confirmer == 0 else expected)["token"])
         assert saved["status"] == 200 and saved["redirected"] and "Imported 1 motions" in saved["text"], saved
+    large_csv = "Motion,Unused\n" + "".join(
+        f"This House would test large spreadsheet row {index},{'x' * 65_000}\n"
+        for index in range(34)
+    )
+    assert len(large_csv) > 2 * 1024 * 1024
+    large_file = b64encode(large_csv.encode()).decode()
+    expected = preview(roots[0], "large-motions.csv", large_file)
+    actual = preview(roots[1], "large-motions.csv", large_file)
+    assert expected["status"] == actual["status"] == 200
+    assert len(expected["rows"]) == 34 and expected["rows"] == actual["rows"]
     driver.delete_all_cookies()
 
 
@@ -1626,6 +1636,41 @@ def assert_account_entry_and_email(driver, django, rust, smtp):
     driver.delete_all_cookies()
 
 
+def assert_password_login_syncs_video_access(driver, django, rust):
+    code = """
+from django import setup
+setup()
+from allauth.socialaccount.models import SocialAccount
+from django.contrib.auth import get_user_model
+
+for granted in (False, True):
+    user = get_user_model().objects.create_user(username=f"video-role-login-{int(granted)}",
+        password="disposable-video-role", can_view_private_videos=not granted)
+    SocialAccount.objects.create(user=user, provider="apdaonline", uid=f"999990{int(granted)}",
+        extra_data={"user_roles": ["private_side_viewer"] if granted else []})
+"""
+    subprocess.run([str(ROOT / "venv/bin/python"), "-c", code], check=True)
+    db = Path(os.environ["BR_STATE"]) / "dev.sqlite3"
+    with sqlite3.connect(db) as connection:
+        for server in (django, rust):
+            for granted in (0, 1):
+                username = f"video-role-login-{granted}"
+                connection.execute("UPDATE core_user SET can_view_private_videos=? WHERE username=?",
+                                   (1 - granted, username))
+                connection.commit()
+                driver.delete_all_cookies()
+                driver.get(f"http://{HOST}:{server.port}/accounts/login/?next=/games/")
+                driver.find_element("name", "login").send_keys(username)
+                driver.find_element("name", "password").send_keys("disposable-video-role")
+                previous = driver.find_element("tag name", "html")
+                driver.find_element("css selector", 'form button[type="submit"]').click()
+                WebDriverWait(driver, 10).until(document_replaced(previous))
+                assert urlsplit(driver.current_url).path == "/games/", server.name
+                assert connection.execute("SELECT can_view_private_videos FROM core_user WHERE username=?",
+                                          (username,)).fetchone() == (granted,), server.name
+    driver.delete_all_cookies()
+
+
 def assert_password_accounts(driver, django, rust, smtp):
     script = """
 from django import setup
@@ -1999,6 +2044,13 @@ print(json.dumps(pairs))
         assert driver.find_element("id", "id_autoqual_bar").get_attribute("value") == "8"
         assert all(not driver.find_element("id", f"id_{field}").is_selected()
                    for field in ("toty", "soty", "noty", "qual"))
+
+        season = driver.find_element("id", "id_season")
+        season.clear()
+        season.send_keys("2025-26")
+        driver.find_element("css selector", '#id_qual_type option[value="10"]').click()
+        save_edit(root, route)
+        assert driver.find_element("id", "id_autoqual_bar").get_attribute("value") == "2"
 
         route = f"/admin/core/debater/{debater}/change/"
         driver.get(root + route)
@@ -3062,6 +3114,23 @@ def assert_reviewed_tournament_import(driver, django, rust, fixture, provider):
     driver.add_cookie({"name": "sessionid", "value": django_session()})
     db = Path(os.environ["BR_STATE"]) / "dev.sqlite3"
     remote = f"http://{HOST}:{provider.server_port}"
+    alias_name = "MIT-Tab mapping parity feed school"
+    code = """
+from django import setup
+setup()
+from core.models import School, SchoolLookup
+import sys
+
+School.objects.create(name=sys.argv[1])
+target = School.objects.create(name="MIT-Tab mapping parity destination")
+SchoolLookup.objects.create(server_name=sys.argv[1], school=target)
+print(target.pk)
+"""
+    seeded = subprocess.check_output([str(ROOT / "venv/bin/python"), "-c", code, alias_name], text=True)
+    mapped_school = int(seeded.splitlines()[-1])
+    provider.import_payload["new_schools"].append(alias_name)
+    provider.import_payload["new_debater_data"].append(
+        {"debater_id": 99991, "name": "School Lookup Fixture", "school_id": -1, "school_name": alias_name})
     for server in (django, rust):
         driver.get(f"http://{HOST}:{server.port}{sources}")
         assert driver.find_element("tag name", "h1").text == "Import tournament results"
@@ -3072,8 +3141,10 @@ def assert_reviewed_tournament_import(driver, django, rust, fixture, provider):
     event = int(query["tournament"][0])
     assert len(query["review"][0]) == 32 and query["api_url"] == [remote]
     assert event != fixture["manual_event"]["id"]
+    rust_review = driver.current_url
+    reference_review = None
     if os.environ.get("BLACK_ROD_PARITY_MEMCACHED_ADDR"):
-        rust_review = driver.current_url
+        reference_review = f"http://{HOST}:{django.port}{urlsplit(rust_review).path}?{urlsplit(rust_review).query}"
 
         def imported_rows(prefix, field):
             return driver.execute_script("""
@@ -3082,11 +3153,54 @@ def assert_reviewed_tournament_import(driver, django, rust, fixture, provider):
                     .map(input => input.value);
             """, prefix, field)
 
-        driver.get(f"http://{HOST}:{django.port}{urlsplit(rust_review).path}?{urlsplit(rust_review).query}")
+        driver.get(reference_review)
         reopened = (imported_rows("schools", "name"), imported_rows("debaters", "first_name"))
         assert "Incoming" in reopened[1], reopened
         driver.get(rust_review)
         assert reopened == (imported_rows("schools", "name"), imported_rows("debaters", "first_name"))
+
+    for review_url in filter(None, (reference_review, rust_review)):
+        driver.get(review_url)
+        school = driver.execute_script("""
+            const names = [...document.querySelectorAll('input[name^="debaters-"][name$="-first_name"]')];
+            const row = names.find(input => input.value === 'School');
+            return document.getElementById(row.id.replace(/first_name$/, 'school')).value;
+        """)
+        assert school == str(mapped_school), (review_url, school)
+    with sqlite3.connect(db) as database:
+        database.execute("""INSERT INTO core_teamresult
+            (tournament_id,team_id,type_of_place,place,ghost_points,counts_for_points)
+            SELECT ?,team_id,type_of_place,place,ghost_points,counts_for_points
+            FROM core_teamresult WHERE tournament_id=? ORDER BY id LIMIT 1""", (event, fixture["manual_event"]["id"]))
+        database.commit()
+        prior_awards = database.execute(
+            "SELECT * FROM core_teamresult WHERE tournament_id=? ORDER BY id", (event,)).fetchall()
+        assert prior_awards
+        for review_url in filter(None, (reference_review, rust_review)):
+            for field in ("first_name", "school"):
+                driver.get(review_url)
+                rejected = driver.execute_async_script("""
+                    const [field, done] = arguments;
+                    const form = document.querySelector('#data-entry-form');
+                    const incoming = [...form.querySelectorAll('input[name^="debaters-"][name$="-first_name"]')]
+                        .find(node => node.value === 'Incoming');
+                    const name = incoming.name.replace(/first_name$/, field);
+                    const data = new URLSearchParams(new FormData(form));
+                    data.set(name, '');
+                    fetch(location.pathname + location.search, {method:'POST', body:data})
+                      .then(async response => {
+                        const page = new DOMParser().parseFromString(await response.text(), 'text/html');
+                        done({status:response.status, redirected:response.redirected,
+                              error:page.querySelector('#error_1_id_' + name)?.textContent.trim(),
+                              alert:page.querySelector('[role="alert"]')?.textContent.trim()});
+                      }, () => done({status:0}));
+                """, field)
+                assert rejected["status"] == 200 and not rejected["redirected"], rejected
+                assert rejected["error"] == "This field is required.", rejected
+                assert "Debaters tab" in rejected["alert"], rejected
+                assert database.execute("SELECT * FROM core_teamresult WHERE tournament_id=? ORDER BY id",
+                                        (event,)).fetchall() == prior_awards
+    driver.get(rust_review)
 
     school_input = next(field for field in driver.find_elements("css selector", 'input[id^=id_schools-][id$=-name]')
                         if field.get_property("value") == "Fixture School From MIT-Tab")
@@ -3109,7 +3223,9 @@ def assert_reviewed_tournament_import(driver, django, rust, fixture, provider):
     try:
         result = driver.execute_async_script("""
             const done = arguments[0], form = document.querySelector('#data-entry-form');
-            fetch(location.pathname + location.search, {method:'POST', body:new URLSearchParams(new FormData(form))})
+            const body = new URLSearchParams(new FormData(form));
+            body.set('debaters-TOTAL_FORMS', Number(body.get('debaters-TOTAL_FORMS')) + 1);
+            fetch(location.pathname + location.search, {method:'POST', body})
                 .then(async response => done({status:response.status,path:new URL(response.url).pathname,
                     text:(await response.text()).slice(0,160)}), () => done({status:0}));
         """)
@@ -3764,6 +3880,7 @@ def browser_checks(database, options, output):
         assert_account_reauthentication(driver, django, rust)
         assert_password_accounts(driver, django, rust, mail)
         assert_account_entry_and_email(driver, django, rust, mail)
+        assert_password_login_syncs_video_access(driver, django, rust)
         assert_oauth_roundtrip(driver, rust, django)
         assert_oauth_connections(driver, django, rust, provider)
         assert_oauth_pending_signup(driver, django, rust, provider)

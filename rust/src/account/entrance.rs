@@ -239,6 +239,7 @@ async fn sign_in(
         }
         stored = hash;
     }
+    crate::oauth::sync_video_access(&state.pool, id).await?;
     let mut response = login::sign_in(
         state,
         &visit.headers,

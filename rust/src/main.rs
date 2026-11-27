@@ -98,8 +98,12 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     {
         state = state.with_allowed_hosts(&hosts);
     }
-    if let Ok(address) = env::var("BLACK_ROD_TRUSTED_PROXY_IP") {
-        state = state.with_trusted_proxy(address.parse()?);
+    if let Ok(proxy) = env::var("BLACK_ROD_TRUSTED_PROXY_IP") {
+        state = state.with_trusted_proxy(proxy.parse()?);
+    } else if production_web && address.ip().is_loopback() {
+        eprintln!(
+            "BLACK_ROD_TRUSTED_PROXY_IP is unset. If a local reverse proxy forwards requests, account rate limits will share the proxy's address."
+        );
     }
     if let Some(secret) = secret {
         state = state.with_session_secret(secret);

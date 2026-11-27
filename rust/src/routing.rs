@@ -534,7 +534,9 @@ pub fn app(state: AppState) -> Router {
         .route("/core/motions/random", get(directory::page))
         .route(
             "/core/motions/import",
-            get(motion::import::endpoint).post(motion::import::endpoint),
+            get(motion::import::endpoint)
+                .post(motion::import::endpoint)
+                .layer(axum::extract::DefaultBodyLimit::max(64 * 1024 * 1024)),
         )
         .route("/core/motions/{motion}", get(motion::detail))
         .route(

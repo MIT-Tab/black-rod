@@ -15,9 +15,9 @@
     {{ hidden(prefix, "tournament_id", row.first_source) }}
     {{ hidden(prefix, "school_name", row.school_name) }}
     <div class="row">
-        <div class="col-md-3">{{ input(prefix, "first_name", "First name", row.name) }}</div>
+        <div class="col-md-3">{{ input(prefix, "first_name", "First name", row.name, row.field_errors.first_name or "") }}</div>
         <div class="col-md-3">{{ input(prefix, "last_name", "Last name", row.last_name) }}</div>
-        <div class="col-md-3">{{ field(prefix, "school", "School", row.school, "/core/schools/autocomplete", schools) }}</div>
+        <div class="col-md-3">{{ field(prefix, "school", "School", row.school, "/core/schools/autocomplete", schools, error=row.field_errors.school or "") }}</div>
         <div class="col-md-3">{{ field(prefix, "existing_debater", "Link to existing debater", row.first, "/core/debaters/autocomplete", people) }}</div>
     </div>
 {% elif panel.kind == 'team' %}

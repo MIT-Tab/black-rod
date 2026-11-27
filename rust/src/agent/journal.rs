@@ -67,6 +67,23 @@ pub(crate) fn storage_error(error: sqlx::Error) -> ApiError {
 
 impl Table {
     pub(crate) async fn get(&self, conn: &mut AnyConnection, id: i64) -> Result<Value, ApiError> {
+        self.read_row(conn, id, false).await
+    }
+
+    pub(super) async fn get_precise(
+        &self,
+        conn: &mut AnyConnection,
+        id: i64,
+    ) -> Result<Value, ApiError> {
+        self.read_row(conn, id, true).await
+    }
+
+    async fn read_row(
+        &self,
+        conn: &mut AnyConnection,
+        id: i64,
+        precise: bool,
+    ) -> Result<Value, ApiError> {
         let fields = self
             .fields
             .values()
@@ -87,7 +104,13 @@ impl Table {
             .map(|(name, field)| {
                 let value = row
                     .try_get::<Option<&str>, _>(field.column.as_str())?
-                    .map_or(Value::Null, |value| field.convert(value));
+                    .map_or(Value::Null, |value| {
+                        if precise && field.kind() == "DateTimeField" {
+                            json!(super::catalog::datetime(value, false))
+                        } else {
+                            field.convert(value)
+                        }
+                    });
                 Ok((name.clone(), value))
             })
             .collect::<Result<Map<_, _>, sqlx::Error>>()?;

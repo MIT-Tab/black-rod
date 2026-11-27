@@ -80,6 +80,7 @@ fn matches_journal_row(table: &Table, current: &Value, expected: &Value) -> bool
 
 async fn restore(conn: &mut AnyConnection, changes: &[Value]) -> Result<Vec<Value>, Failure> {
     let mut reversed = Vec::with_capacity(changes.len());
+    let mut restoration = Vec::with_capacity(changes.len());
     for row in changes {
         let label = row["model"].as_str().ok_or(ApiError::Serialization)?;
         let table = TABLES.get(label).ok_or(ApiError::Serialization)?;
@@ -91,20 +92,40 @@ async fn restore(conn: &mut AnyConnection, changes: &[Value]) -> Result<Vec<Valu
             ));
         }
         let mut restored = row["before"].clone();
+        let mut stored = restored.clone();
         if let Some(fields) = restored.as_object_mut() {
-            for (name, value) in fields {
-                if table
-                    .fields
-                    .get(name)
-                    .is_some_and(|field| field.kind() == "DateTimeField")
-                    && let Some(timestamp) =
-                        value.as_str().and_then(|value| value.strip_suffix(".000Z"))
+            let timestamps = table
+                .fields
+                .iter()
+                .filter(|(_, field)| field.kind() == "DateTimeField")
+                .map(|(name, _)| name)
+                .collect::<Vec<_>>();
+            let preserved = timestamps.iter().any(|name| {
+                current.get(*name).is_some_and(Value::is_string)
+                    && current.get(*name) == fields.get(*name)
+            });
+            let precise = if preserved {
+                table.get_precise(conn, id).await?
+            } else {
+                Value::Null
+            };
+            for name in timestamps {
+                // Django's journal exposes milliseconds. Preserve the database
+                // value when the timestamp is outside this operation's changes.
+                if current.get(name) == fields.get(name)
+                    && let Some(value) = precise.get(name).filter(|value| value.is_string())
                 {
-                    // At journal precision .000Z is restored as a whole second in SQL.
-                    *value = json!(format!("{timestamp}Z"));
+                    stored[name] = value.clone();
+                } else if let Some(timestamp) = fields
+                    .get(name)
+                    .and_then(Value::as_str)
+                    .and_then(|value| value.strip_suffix(".000Z"))
+                {
+                    fields.insert(name.clone(), json!(format!("{timestamp}Z")));
                 }
             }
         }
+        restoration.push((table, stored));
         reversed.push(json!({"model":label,"id":id,"before":current,"after":restored}));
     }
     for row in changes {
@@ -113,9 +134,8 @@ async fn restore(conn: &mut AnyConnection, changes: &[Value]) -> Result<Vec<Valu
             .delete(conn, row["id"].as_i64().ok_or(ApiError::Serialization)?)
             .await?;
     }
-    for row in changes {
-        if let Some(before) = row["before"].as_object() {
-            let table = &TABLES[row["model"].as_str().ok_or(ApiError::Serialization)?];
+    for (table, stored) in restoration {
+        if let Some(before) = stored.as_object() {
             table.write(conn, before, None).await?;
         }
     }

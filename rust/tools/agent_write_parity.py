@@ -118,6 +118,21 @@ def exercise(django, rust, fixture):
         if expected_id is not None:
             assert expected_id in {row["id"] for row in reference["results"]}, path
 
+    # Preserve the exact stored creation timestamp during an unrelated edit and its undo.
+    alias_id = fixture["synthetic_alias"]
+    alias_path = f"records/aliases/{alias_id}/"
+    alias = run(django, alias_path)
+    precise = "records/aliases/?" + urlencode({"created_at": "2025-10-01T08:00:00.000001Z"})
+    correction = prepare([{"op": "update", "resource": "aliases", "id": alias_id,
+                           "revision": alias["revision"], "data": {"source_name": "Corrected alias"}}])
+    applied = run(rust, "batches/", payload=correction)
+    assert run(django, alias_path)["source_name"] == "Corrected alias"
+    assert alias_id in {row["id"] for row in run(django, precise)["results"]}
+    run(rust, f"batches/{applied['id']}/undo/", payload=prepare())
+    assert run(django, alias_path)["source_name"] == alias["source_name"]
+    for server in (django, rust):
+        assert alias_id in {row["id"] for row in run(server, precise)["results"]}
+
     resources = ("rounds", "round_stats", "round_metadata", "teams")
     before = {resource: get(django, resource) for resource in resources}
     assert before == {resource: get(rust, resource) for resource in resources}

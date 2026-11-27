@@ -179,9 +179,9 @@ pub(super) async fn seed(
         let school = match as_id(&row["school_id"]) {
             Some(-1) => {
                 let name = text(&row["school_name"]);
-                if let Some(&id) = review.mappings.schools.get(name.trim()) {
+                if let Some(id) = school_lookup(&mut tx, name.trim()).await? {
                     Some(id)
-                } else if let Some(id) = school_lookup(&mut tx, name.trim()).await? {
+                } else if let Some(&id) = review.mappings.schools.get(name.trim()) {
                     Some(id)
                 } else {
                     school_by_name(&mut tx, name.trim()).await?

@@ -534,7 +534,19 @@ pub(super) async fn apply(
         fields.insert(name.clone(), value);
     }
     hooks(conn, resource, &mut fields, create, season, id).await?;
-    let id = table.write(conn, &fields, id).await?;
+    let written = if id.is_some() {
+        fields
+            .iter()
+            .filter(|(name, value)| previous.get(*name) != Some(*value))
+            .map(|(name, value)| (name.clone(), value.clone()))
+            .collect()
+    } else {
+        fields.clone()
+    };
+    let id = match id {
+        Some(id) if written.is_empty() => id,
+        _ => table.write(conn, &written, id).await?,
+    };
     if create {
         journal.created(label, id);
     }

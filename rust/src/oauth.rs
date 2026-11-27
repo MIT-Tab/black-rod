@@ -112,6 +112,28 @@ impl From<sqlx::Error> for AccountError {
     }
 }
 
+pub(crate) async fn sync_video_access(pool: &AnyPool, id: i64) -> Result<(), ApiError> {
+    let account = sqlx::query_scalar::<_, String>(
+        "SELECT CAST(extra_data AS TEXT) FROM socialaccount_socialaccount
+         WHERE provider='apdaonline' AND user_id=$1 ORDER BY id LIMIT 1",
+    )
+    .bind(id)
+    .fetch_optional(pool)
+    .await?;
+    if let Some(account) = account {
+        let profile: Value = serde_json::from_str(&account)?;
+        let can_view = profile["user_roles"]
+            .as_array()
+            .is_some_and(|roles| roles.iter().any(|role| role == "private_side_viewer"));
+        sqlx::query("UPDATE core_user SET can_view_private_videos=$1 WHERE id=$2 AND can_view_private_videos<>$1")
+            .bind(can_view)
+            .bind(id)
+            .execute(pool)
+            .await?;
+    }
+    Ok(())
+}
+
 async fn save(
     pool: &AnyPool,
     profile: &Profile,

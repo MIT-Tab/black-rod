@@ -93,6 +93,7 @@ pub(super) struct ResultRow {
     pub(super) tie: bool,
     pub(super) deleted: bool,
     pub(super) errors: Vec<String>,
+    pub(super) field_errors: BTreeMap<&'static str, &'static str>,
 }
 
 #[derive(Serialize)]
@@ -118,7 +119,7 @@ impl Panel {
             && self
                 .rows
                 .iter()
-                .all(|row| row.deleted || row.errors.is_empty())
+                .all(|row| row.deleted || (row.errors.is_empty() && row.field_errors.is_empty()))
     }
 }
 
@@ -222,6 +223,29 @@ pub(super) fn submitted(values: &FormValues, reviewing: bool) -> Vec<Panel> {
                     .cloned()
                     .unwrap_or_default();
                     row.included = check("included_in_oty");
+                    if tab.kind == "debater" && !row.deleted {
+                        let nonempty =
+                            |name| field(name).is_some_and(|value| !value.trim().is_empty());
+                        let edited = index < initial
+                            || [
+                                "id",
+                                "first_name",
+                                "last_name",
+                                "school",
+                                "existing_debater",
+                                "school_name",
+                                "tournament_id",
+                            ]
+                            .into_iter()
+                            .any(nonempty);
+                        if edited {
+                            for name in ["first_name", "school"] {
+                                if !nonempty(name) {
+                                    row.field_errors.insert(name, "This field is required.");
+                                }
+                            }
+                        }
+                    }
                 } else if tab.kind == "team" {
                     row.first = extract_person(field("debater_one"), &mut row.errors);
                     row.second = extract_person(field("debater_two"), &mut row.errors);

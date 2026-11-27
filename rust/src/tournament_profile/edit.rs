@@ -312,11 +312,13 @@ pub(crate) fn scoring(code: i64, season: &str) -> Scoring {
         4 => Some(1),
         5 => Some(48),
         16 => Some(0),
-        10 | 15 => Some(if season.parse::<i32>().unwrap_or_default() < 2025 {
-            0
-        } else {
-            2
-        }),
+        10 | 15 => Some(
+            if season.trim().parse::<i64>().is_ok_and(|year| year < 2025) {
+                0
+            } else {
+                2
+            },
+        ),
         _ => None,
     };
     Scoring {
