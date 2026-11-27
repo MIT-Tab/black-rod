@@ -1,7 +1,7 @@
 """Gunicorn entry point for the local Django parity reference."""
 
 import os
-from urllib.parse import unquote, urlsplit
+from urllib.parse import unquote, urljoin, urlsplit
 
 from django.conf import settings
 from django.core.wsgi import get_wsgi_application
@@ -47,6 +47,18 @@ if postgres_url:
     }
 
 application = get_wsgi_application()
+
+oauth = os.environ.get("BLACK_ROD_OAUTH_BASE")
+if oauth:
+    parsed = urlsplit(oauth)
+    if parsed.scheme != "http" or parsed.hostname != "127.0.0.1":
+        raise ValueError("The parity reference only connects to its local OAuth fixture")
+    from apdaonline.views import APDAOnlineOAuth2Adapter
+
+    APDAOnlineOAuth2Adapter.authorize_url = urljoin(oauth, "oauth/authorize")
+    APDAOnlineOAuth2Adapter.access_token_url = urljoin(oauth, "oauth/token")
+    APDAOnlineOAuth2Adapter.profile_url = urljoin(oauth, "oauth/me")
+
 
 if os.environ.get("BLACK_ROD_PARITY_STATIC") == "1":
     from django.contrib.staticfiles.handlers import StaticFilesHandler

@@ -11,18 +11,8 @@ pub(super) fn online_season(season: &str) -> bool {
 }
 
 pub(super) fn qual_bar(season: &str) -> f64 {
-    match season.split('-').next().unwrap_or_default() {
-        "2025" => 11.5,
-        "2024" | "2022" => 10.5,
-        "2023" => 9.0,
-        "2019" => 16.75,
-        "2018" | "2016" => 18.5,
-        "2017" => 19.5,
-        "2015" => 14.25,
-        "2012" => 15.0,
-        "2007" | "2008" | "2009" | "2010" | "2011" | "2013" | "2014" => 14.0,
-        _ => 12.0,
-    }
+    points::historical_qualification_bar(season.split('-').next().unwrap_or_default())
+        .unwrap_or(12.0)
 }
 
 #[derive(Clone, Copy)]

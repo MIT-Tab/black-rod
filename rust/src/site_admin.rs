@@ -311,7 +311,7 @@ async fn endpoint(state: &AppState, request: Request) -> Result<Response, ApiErr
         )
             .into_response());
     }
-    match segments.as_slice() {
+    let result = match segments.as_slice() {
         [""] => admin.index(None).await,
         ["password_change"] => passwords::change(&admin, None, parts.method, body).await,
         ["password_change", "done"] => passwords::done(&admin),
@@ -394,5 +394,11 @@ async fn endpoint(state: &AppState, request: Request) -> Result<Response, ApiErr
             listing::page(&admin, model, parts.method, body).await
         }
         _ => Ok(StatusCode::NOT_FOUND.into_response()),
+    }?;
+    if result.status() == StatusCode::FORBIDDEN
+        && !result.headers().contains_key(header::CONTENT_TYPE)
+    {
+        return Ok(web::permission_denied(state, &admin.viewer.user, admin.uri));
     }
+    Ok(result)
 }

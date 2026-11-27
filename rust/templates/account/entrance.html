@@ -59,6 +59,8 @@
 {% elif kind == "verification" %}
     <p>We have sent an email to you for verification. Follow the link provided to finalize the signup process. If you do not see the verification email in your main inbox, check your spam folder. Please contact us if you do not receive the verification email within a few minutes.</p>
 {% elif kind == "social-error" %}
-    <p>An error occurred while attempting to login via your social network account.</p>
+    <p>An error occurred while attempting to login via your third-party account.</p>
+{% elif kind == "social-cancelled" %}
+    <p>You decided to cancel logging in to our site using one of your existing accounts. If this was a mistake, please proceed to <a href="/accounts/login/">sign in</a>.</p>
 {% endif %}
 {% endblock %}

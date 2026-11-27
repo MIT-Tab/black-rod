@@ -21,7 +21,7 @@ use crate::{ApiError, AppState, flash, login, session::User, web};
 
 pub(crate) use connections::endpoint as connections;
 pub(crate) use emails::endpoint as emails;
-pub(crate) use entrance::endpoint as entrance;
+pub(crate) use entrance::{email_valid, endpoint as entrance, normal_username};
 pub(crate) use passwords::change;
 pub(crate) use reauthentication::endpoint as reauthenticate;
 pub(crate) use reset::page as reset;
@@ -29,20 +29,20 @@ pub(crate) use reset::page as reset;
 type Fields = HashMap<String, String>;
 type Errors = HashMap<&'static str, Vec<String>>;
 
-struct Visit {
-    headers: HeaderMap,
-    origin: String,
-    fields: Option<Fields>,
-    next: String,
+pub(crate) struct Visit {
+    pub(crate) headers: HeaderMap,
+    pub(crate) origin: String,
+    pub(crate) fields: Option<Fields>,
+    pub(crate) next: String,
 }
 
 impl Visit {
-    fn secure(&self) -> bool {
+    pub(crate) fn secure(&self) -> bool {
         self.origin.starts_with("https://")
     }
 }
 
-async fn visit(state: &AppState, request: Request) -> Result<Visit, Box<Response>> {
+pub(crate) async fn visit(state: &AppState, request: Request) -> Result<Visit, Box<Response>> {
     let (parts, body) = request.into_parts();
     let origin = state
         .origin(&parts.headers)
@@ -77,7 +77,7 @@ async fn visit(state: &AppState, request: Request) -> Result<Visit, Box<Response
     })
 }
 
-fn render(
+pub(crate) fn render(
     state: &AppState,
     user: &User,
     page: &str,

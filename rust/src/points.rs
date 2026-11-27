@@ -64,6 +64,21 @@ pub(crate) fn online_points(place: i64) -> f64 {
     }
 }
 
+pub(crate) fn historical_qualification_bar(season: &str) -> Option<f64> {
+    Some(match season {
+        "2025" => 11.5,
+        "2024" | "2022" => 10.5,
+        "2023" => 9.0,
+        "2019" => 16.75,
+        "2018" | "2016" => 18.5,
+        "2017" => 19.5,
+        "2015" => 14.25,
+        "2012" => 15.0,
+        "2007" | "2008" | "2009" | "2010" | "2011" | "2013" | "2014" => 14.0,
+        _ => return None,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

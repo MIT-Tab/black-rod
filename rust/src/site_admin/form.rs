@@ -8,13 +8,8 @@ use axum::{
     http::{Method, StatusCode, header},
     response::{IntoResponse, Response},
 };
-use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, SecondsFormat, Utc};
 use minijinja::{Value, context};
-use ring::{
-    digest,
-    rand::{SecureRandom, SystemRandom},
-};
 use serde_json::{Map, Value as Json, json};
 use sqlx::{AnyConnection, AssertSqlSafe, Row};
 
@@ -122,7 +117,7 @@ async fn choices(
         };
         return match field.related.as_deref() {
             Some("contenttypes.contenttype") => Ok(sqlx::query_as::<_, (String,String,String)>(
-                "SELECT CAST(id AS TEXT),app_label,model FROM django_content_type ORDER BY app_label,model")
+                "SELECT CAST(id AS TEXT),app_label,model FROM django_content_type ORDER BY id")
                 .fetch_all(&admin.state.pool).await?.into_iter().map(|(id,app,model)|(id,label(&app,&model))).collect()),
             Some("auth.permission") => Ok(sqlx::query_as::<_, (String,String,String,String)>(
                 "SELECT CAST(p.id AS TEXT),ct.app_label,ct.model,p.name FROM auth_permission p
@@ -146,10 +141,15 @@ async fn choices(
         let values = ids.iter().map(i64::to_string).collect::<Vec<_>>().join(",");
         filters.push(format!("t0.id IN ({values})"));
     } else if model.slug() == "teamresult" && field.kind == "ManyToManyField" {
-        let owner = owner.parse::<i64>().unwrap_or(0);
-        filters.push(format!(
-            "t0.id IN (SELECT debater_id FROM core_team_debaters WHERE team_id={owner})"
-        ));
+        if let Ok(owner) = owner.parse::<i64>() {
+            filters.push(format!(
+                "t0.id IN (SELECT debater_id FROM core_team_debaters WHERE team_id={owner})"
+            ));
+        } else {
+            filters.push(
+                "NOT EXISTS (SELECT 1 FROM core_team_debaters WHERE debater_id=t0.id)".to_owned(),
+            );
+        }
     } else {
         match target.slug() {
             "school" => filters.push("NOT t0.temporary".to_owned()),
@@ -162,7 +162,11 @@ async fn choices(
     } else {
         format!(" WHERE {}", filters.join(" AND "))
     };
-    let order = super::listing::choice_ordering(&mut source, target);
+    let order = if model.slug() == "teamresult" && field.kind == "ManyToManyField" {
+        "t0.first_name,t0.last_name,t0.id".to_owned()
+    } else {
+        super::listing::choice_ordering(&mut source, target)
+    };
     let sql = format!(
         "SELECT CAST(t0.id AS TEXT),{repr} AS repr FROM {}{where_} ORDER BY {order}",
         source.sql()
@@ -301,6 +305,14 @@ impl Bound<'_> {
         if choice_kind == "ManyToManyRawIdWidget" {
             text_value = selected.join(",");
         }
+        let current_url = if choice_kind == "AdminURLFieldWidget" {
+            url::Url::parse(&text)
+                .ok()
+                .filter(|url| matches!(url.scheme(), "http" | "https" | "ftp" | "ftps"))
+                .map(|_| text.as_str())
+        } else {
+            None
+        };
         let raw_url = widget.and_then(|widget| widget.related_url.as_deref());
         let raw_caption = if raw_id && choice_kind != "ManyToManyRawIdWidget" {
             if let (Some(target), Ok(id)) = (field.and_then(related_model), text.parse::<i64>()) {
@@ -470,8 +482,8 @@ impl Bound<'_> {
         Ok(context! {
             name,label=>caption,help,required,widget_required,date_widget=>choice_kind == "AdminDateWidget",datetime,date,time=>time.split(['.','+','Z']).next().unwrap_or_default(),
             checkbox, checked, readonly=>read_only, read_value, read_link, preformatted, wrapped=>widget.is_some_and(|widget|widget.wrapped),
-            value=>text_value,type=>kind, attrs=>attrs.iter().collect::<Vec<_>>(),related, select,multiple,radio,multicheck,raw_id,
-            raw_url,raw_caption,forward,hidden_initial=>widget.is_some_and(|widget|widget.hidden_initial),
+            value=>text_value,type=>kind, attrs=>attrs.iter().collect::<Vec<_>>(),related, select,multiple,radio,multicheck,empty_input_value=>choice_kind=="ManyToManyRawIdWidget",
+            raw_url,raw_caption,forward,current_url,hidden_initial=>widget.is_some_and(|widget|widget.hidden_initial),
             textarea,password_status,algorithm,iterations,salt,digest,usable=>!text.starts_with('!'),
             options=>items,error=>self.errors.get(name)
         })
@@ -902,6 +914,32 @@ async fn save(
             columns.insert("password".to_owned(), json!(format!("!{random}")));
         }
     }
+    if model.slug() == "teamresult"
+        && let Some(team) = columns.get("team_id").and_then(Json::as_i64)
+    {
+        let allowed = sqlx::query_scalar::<_, i64>(
+            "SELECT CAST(debater_id AS BIGINT) FROM core_team_debaters WHERE team_id=$1",
+        )
+        .bind(team)
+        .fetch_all(&admin.state.pool)
+        .await?;
+        for selected in selected_fields(values, "hidden_from_debaters") {
+            if selected
+                .parse::<i64>()
+                .ok()
+                .is_none_or(|id| !allowed.contains(&id))
+            {
+                error(
+                    errors,
+                    "hidden_from_debaters",
+                    &format!(
+                        "Select a valid choice. {selected} is not one of the available choices."
+                    ),
+                );
+                break;
+            }
+        }
+    }
     let inline_changes = inlines::prepare(admin, form, id, values, errors).await?;
     if !errors.is_empty() {
         return Ok(None);
@@ -909,18 +947,8 @@ async fn save(
     let actor = admin.viewer.user.id.ok_or(ApiError::Serialization)?;
     let mut generated_token = None;
     if model.slug() == "agentcredential" && id.is_none() {
-        let mut bytes = [0; 32];
-        SystemRandom::new()
-            .fill(&mut bytes)
-            .map_err(|_| ApiError::Serialization)?;
-        let token = format!("br_agent_{}", URL_SAFE_NO_PAD.encode(bytes));
-        columns.insert(
-            "token_hash".to_owned(),
-            json!(hex::encode(digest::digest(
-                &digest::SHA256,
-                token.as_bytes()
-            ))),
-        );
+        let (token, hash) = crate::agent::new_credential()?;
+        columns.insert("token_hash".to_owned(), json!(hash));
         columns.insert("created_by_id".to_owned(), json!(actor));
         generated_token = Some(token);
     }

@@ -1,3 +1,5 @@
+mod dates;
+
 use std::collections::{BTreeMap, HashMap};
 
 use axum::{
@@ -116,6 +118,9 @@ pub(super) fn projection(source: &mut Source, name: &str) -> String {
     if name == "__str__" {
         return label(source, source.model, "");
     }
+    if name == "name" && source.model.slug() == "debateraliasgroup" {
+        return label(source, source.model, "");
+    }
     let expanded = match name {
         "debater_name" => "debater",
         "team_name" => "team",
@@ -142,6 +147,22 @@ pub(super) fn projection(source: &mut Source, name: &str) -> String {
             && let Some(model) = schema().model(app, model)
         {
             return label(source, model, expanded);
+        }
+        if field.related.as_deref() == Some("contenttypes.contenttype") {
+            let variants = schema()
+                .content_types
+                .iter()
+                .map(|(key, title)| {
+                    format!(
+                        "WHEN '{}' THEN '{}'",
+                        key.replace('\'', "''"),
+                        title.replace('\'', "''")
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join(" ");
+            return format!("(SELECT CASE ct.app_label || '.' || ct.model {variants}
+                ELSE ct.app_label || ' | ' || ct.model END FROM django_content_type ct WHERE ct.id={expr})");
         }
         if field.kind == "BooleanField" {
             return format!(
@@ -186,6 +207,20 @@ pub(super) fn projection(source: &mut Source, name: &str) -> String {
         "tournament_import_count" => {
             "CAST((SELECT COUNT(*) FROM core_tournamentimport im WHERE im.batch_id=t0.id) AS TEXT)"
                 .to_owned()
+        }
+        "topic_list" if source.model.slug()=="motion" => {
+            "(SELECT STRING_AGG(name, ', ') FROM (
+                SELECT topic.name FROM core_taggedmotion link
+                JOIN core_motiontopic topic ON topic.id=link.tag_id WHERE link.content_object_id=t0.id
+                ORDER BY link.id
+             ) names)".to_owned()
+        }
+        "hidden_members" if source.model.slug()=="teamresult" => {
+            "COALESCE((SELECT STRING_AGG(name, ', ') FROM (
+                SELECT TRIM(d.first_name || ' ' || d.last_name) AS name
+                FROM core_teamresult_hidden_from_debaters m JOIN core_debater d ON d.id=m.debater_id
+                WHERE m.teamresult_id=t0.id AND NOT d.temporary AND NOT d.synthetic ORDER BY d.id
+            ) names),'—')".to_owned()
         }
         "usage_count" if source.model.slug() == "motiontopic" => {
             "CAST((SELECT COUNT(*) FROM core_taggedmotion WHERE tag_id=t0.id) AS TEXT)".to_owned()
@@ -287,6 +322,32 @@ pub(super) fn label(source: &mut Source, target: &Model, prefix: &str) -> String
             if let (Some(title), Some(kind)) = (expr("title"), expr("resource_type")) {
                 let code = display_choices(&kind, &target.fields["resource_type"]);
                 return format!("{title} || ' (' || {code} || ')'");
+            }
+        }
+        "video" => {
+            if let (Some(name), Some(season), Some(round)) = (
+                expr("tournament__name"),
+                expr("tournament__season"),
+                expr("round"),
+            ) {
+                let description = display_choices(&round, &target.fields["round"]);
+                return format!(
+                    "{name} || ' / ' || {season} || '-' || SUBSTR(CAST(CAST({season} AS INTEGER)+1 AS TEXT),3,2) || ' / ' || {description}"
+                );
+            }
+        }
+        "taggedresource" => {
+            if let (Some(id), Some(tag)) = (expr("object_id"), expr("tag__name")) {
+                let kind = schema()
+                    .model("core", "resource")
+                    .expect("resource")
+                    .fields
+                    .get("resource_type")
+                    .expect("resource type");
+                let category = display_choices("r.resource_type", kind);
+                return format!(
+                    "COALESCE((SELECT r.title || ' (' || {category} || ')' FROM core_resource r WHERE r.id={id}),'None') || ' tagged with ' || {tag}"
+                );
             }
         }
         "sitesetting" => {
@@ -582,6 +643,11 @@ pub(super) fn conditions(
         where_parts.push("NOT t0.temporary".to_owned());
     }
     where_parts.extend(search_conditions(source, model, search, values));
+    if model.slug() == "motion"
+        && let Some(limit) = dates::limit(params, values)
+    {
+        where_parts.push(limit);
+    }
     for (parameter, value) in params {
         if matches!(
             parameter.as_str(),
@@ -714,9 +780,8 @@ async fn get_list(
             .iter()
             .filter_map(|order| {
                 let name = order.trim_start_matches('-');
-                let column_name = if name == "pk" { "id" } else { name };
                 let idx = sortable.iter().position(|field| {
-                    field.is_some_and(|field| field.trim_start_matches('-') == column_name)
+                    field.is_some_and(|field| field.trim_start_matches('-') == name)
                 })?;
                 Some((idx + offset, order.starts_with('-')))
             })
@@ -811,9 +876,12 @@ async fn get_list(
     for value in &values {
         query = query.bind(value);
     }
+    let edit_speakers = model.slug() == "speakerresult"
+        && admin.viewer.allows(model, "change")
+        && !params.contains_key("_popup");
     let mut rows = Vec::new();
     for row in query.fetch_all(&admin.state.pool).await? {
-        rows.push(cells(&row, model, params)?);
+        rows.push(cells(&row, model, params, edit_speakers)?);
     }
     let app = schema().app(model.app()).expect("admin app");
     let add_link = admin
@@ -834,6 +902,11 @@ async fn get_list(
         }
     }
     let filters = filters(admin, model, params).await?;
+    let date_navigation = if model.slug() == "motion" {
+        dates::navigation(admin, &table, &condition, &values, params).await?
+    } else {
+        Value::UNDEFINED
+    };
     let mut clear = params.clone();
     clear.retain(|name, _| {
         matches!(
@@ -853,7 +926,7 @@ async fn get_list(
         searchable=>!model.search.is_empty(),query=>search,params=>params.iter().collect::<Vec<_>>(),
         css=>&model.list_media.css,js=>&model.list_media.js,import_export=>model.import_export, add_link,
         export_link=>format!("{}export/?{}",model.url(),admin.uri.query().unwrap_or_default()),
-        sort_count=>requested.len(), columns, rows, actions, count, total, pages, filters,
+        sort_count=>requested.len(), columns, rows, actions, count, total, pages, filters, edit_speakers,date_navigation,
         show_all=>(page_count>1&&!all&&count<=model.max_show_all).then(||link(params,"all",Some(""))),
         count_url=>context!{hidden=>params.contains_key("_facets"),url=>link(params,"_facets",(!params.contains_key("_facets")).then_some("True"))},
         clear_filters=>clear_filters.then(||link(&clear,"p",None))
@@ -874,7 +947,12 @@ fn with_preserved_filters(url: String, params: &Parameters) -> String {
     }
 }
 
-fn cells(row: &AnyRow, model: &Model, params: &Parameters) -> Result<Value, ApiError> {
+fn cells(
+    row: &AnyRow,
+    model: &Model,
+    params: &Parameters,
+    edit_speakers: bool,
+) -> Result<Value, ApiError> {
     let id: &str = row.try_get("id")?;
     let display_label: Option<&str> = row.try_get("label")?;
     let mut link_added = false;
@@ -910,7 +988,8 @@ fn cells(row: &AnyRow, model: &Model, params: &Parameters) -> Result<Value, ApiE
                 }
             );
             let value = display(data, tracked_column(model, &column.name), column.boolean);
-            Ok::<_, sqlx::Error>(context! {element,classes,value,url=>destination})
+            let speaker_checkbox = edit_speakers && column.name=="hidden_from_profile";
+            Ok::<_, sqlx::Error>(context! {element,classes,value,url=>destination,speaker_checkbox,checked=>data==Some("True")})
         })
         .collect::<Result<Vec<_>, _>>()?;
     Ok(context! {id,repr=>display_label.unwrap_or(id),cells})
@@ -1176,6 +1255,94 @@ fn date_filters(path: &str, field: &Field, params: &Parameters) -> Vec<Value> {
     choices
 }
 
+async fn save_speaker_visibility(
+    admin: &AdminRequest<'_>,
+    model: &Model,
+    params: &Parameters,
+    fields: &HashMap<String, String>,
+) -> Result<Response, ApiError> {
+    if !admin.viewer.allows(model, "change") || params.contains_key("_popup") {
+        return Ok(StatusCode::FORBIDDEN.into_response());
+    }
+    let count = fields
+        .get("form-TOTAL_FORMS")
+        .and_then(|value| value.parse::<usize>().ok());
+    let Some(total) = count.filter(|count| *count <= 2000) else {
+        return Ok(StatusCode::BAD_REQUEST.into_response());
+    };
+    let mut tx = admin.state.pool.begin().await?;
+    let mut changed = 0;
+    let actor = admin.viewer.user.id.ok_or(ApiError::Serialization)?;
+    let mut source = Source::new(model);
+    let mut fields_to_bind = Vec::new();
+    let condition = conditions(&mut source, model, params, &mut fields_to_bind);
+    let query = format!(
+        "SELECT CAST(t0.id AS BIGINT) FROM {}{condition}",
+        source.sql()
+    );
+    let mut valid_query = sqlx::query_scalar::<_, i64>(AssertSqlSafe(query));
+    for value in &fields_to_bind {
+        valid_query = valid_query.bind(value);
+    }
+    let valid = valid_query
+        .fetch_all(&mut *tx)
+        .await?
+        .into_iter()
+        .collect::<std::collections::HashSet<_>>();
+    let mut posted = std::collections::HashSet::new();
+    for index in 0..total {
+        let Some(id) = fields
+            .get(&format!("form-{index}-id"))
+            .and_then(|value| value.parse::<i64>().ok())
+            .filter(|id| valid.contains(id) && posted.insert(*id))
+        else {
+            return Ok(StatusCode::BAD_REQUEST.into_response());
+        };
+        let hidden = fields
+            .get(&format!("form-{index}-hidden_from_profile"))
+            .is_some_and(|value| value != "false" && value != "False");
+        let outcome = sqlx::query("UPDATE core_speakerresult SET hidden_from_profile=$1 WHERE id=$2 AND hidden_from_profile<>$1")
+            .bind(hidden).bind(id).execute(&mut *tx).await?;
+        if outcome.rows_affected() > 0 {
+            super::form::log(
+                &mut tx,
+                model,
+                actor,
+                id,
+                &format!("SpeakerResult object ({id})"),
+                2,
+                serde_json::json!([{"changed":{"fields":["Hidden from profile"]}}]),
+            )
+            .await?;
+            changed += 1;
+        }
+    }
+    tx.commit().await?;
+    let target = admin
+        .uri
+        .path_and_query()
+        .map_or(admin.uri.path(), |path| path.as_str());
+    let mut response = redirect(target);
+    if changed > 0
+        && let Some(secret) = admin.state.secret.as_deref()
+    {
+        let message = if changed == 1 {
+            "1 speaker result was changed successfully.".to_owned()
+        } else {
+            format!("{changed} speaker results were changed successfully.")
+        };
+        flash::push(
+            &mut response,
+            admin.headers,
+            secret,
+            25,
+            &message,
+            admin.secure(),
+        );
+    }
+    Ok(response)
+}
+
 async fn merge_topics(
     admin: &AdminRequest<'_>,
     model: &'static Model,
@@ -1311,6 +1478,9 @@ pub(super) async fn page(
             &origin,
         ) {
             return Ok(login::csrf_failure());
+        }
+        if model.slug() == "speakerresult" && values.contains_key("_save") {
+            return save_speaker_visibility(admin, model, &params, &values).await;
         }
         if values
             .get("action")

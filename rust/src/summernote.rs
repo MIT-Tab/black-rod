@@ -4,16 +4,17 @@ use axum::{
     Json,
     body::Bytes,
     extract::{FromRequest, Multipart, Path, Request, State},
-    http::{HeaderValue, Method, StatusCode, header},
-    response::{IntoResponse, Response},
+    http::{HeaderMap, HeaderValue, Method, StatusCode, header},
+    response::{Html, IntoResponse, Response},
 };
 use chrono::{NaiveDate, Utc};
 use image::ImageReader;
+use minijinja::context;
 use serde_json::{Value, json};
 use tokio::io::AsyncWriteExt;
 use uuid::Uuid;
 
-use crate::{AppState, login};
+use crate::{AppState, login, web};
 
 const FOLDER: &str = "django-summernote";
 const FILE_LIMIT: usize = 1024 * 1024;
@@ -153,6 +154,51 @@ async fn write_files(
     }
     tx.commit().await?;
     Ok(results)
+}
+
+pub(crate) async fn editor(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+) -> Response {
+    let id_safe = id.replace('-', "_");
+    if !id_safe
+        .bytes()
+        .all(|ch| ch.is_ascii_alphanumeric() || ch == b'_')
+    {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+    let Ok((csrf, token)) = login::csrf_tokens(&headers) else {
+        return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+    };
+    let css = [
+        "/static/summernote/summernote-lite.css",
+        "/static/summernote/django_summernote.css",
+    ];
+    let js = [
+        "//code.jquery.com/jquery-3.6.0.min.js",
+        "/static/summernote/jquery.ui.widget.js",
+        "/static/summernote/jquery.iframe-transport.js",
+        "/static/summernote/jquery.fileupload.js",
+        "/static/summernote/summernote-lite.min.js",
+        "/static/summernote/ResizeSensor.js",
+    ];
+    let html = web::render(
+        "django_summernote/widget_iframe_editor.html",
+        context! {
+            id_safe, css, js, iframe=>true, csrf_token=>token,
+            config=>context!{jquery=>"$",disable_attachment=>false},
+        },
+    );
+    let Ok(html) = html else {
+        return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+    };
+    let mut response = same_origin(([(header::VARY, "Cookie")], Html(html)).into_response());
+    let secure = state
+        .origin(&headers)
+        .is_some_and(|origin| origin.starts_with("https://"));
+    login::set_csrf_cookie(&mut response, &csrf, secure);
+    response
 }
 
 pub(crate) async fn upload(State(state): State<AppState>, request: Request) -> Response {

@@ -34,7 +34,7 @@
     {% else %}
     <p>Deleting the {{ singular }} '{{ original }}' would require deleting the following protected related objects:</p>
     {% endif %}
-    <ul id="deleted-objects">{% for value in protected %}<li>{{ value }}</li>{% endfor %}</ul>
+    <ul id="deleted-objects">{% for value in protected %}{{ item(value) }}{% endfor %}</ul>
 {% else %}
     {% if bulk %}
     <p>Are you sure you want to delete the selected {{ plural|lower }}? All of the following objects and their related items will be deleted:</p>

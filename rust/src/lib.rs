@@ -3,6 +3,8 @@ mod admin;
 mod agent;
 mod autocomplete;
 mod cache;
+mod commands;
+pub use commands::HELP as COMMAND_HELP;
 mod claims;
 mod debater_profile;
 mod delete_relations;
@@ -423,7 +425,18 @@ pub fn app(state: AppState) -> Router {
             get(account::connections).post(account::connections),
         )
         .route("/accounts/social/connections/", get(account::connections))
-        .route("/accounts/social/login/error/", get(account::entrance))
+        .route("/accounts/social/login/error/", get(oauth::legacy))
+        .route("/accounts/social/login/cancelled/", get(oauth::legacy))
+        .route("/accounts/social/signup/", get(oauth::legacy))
+        .route("/accounts/3rdparty/login/error/", get(account::entrance))
+        .route(
+            "/accounts/3rdparty/login/cancelled/",
+            get(account::entrance),
+        )
+        .route(
+            "/accounts/3rdparty/signup/",
+            get(oauth::social_signup).post(oauth::social_signup),
+        )
         .route(
             "/accounts/apdaonline/login/",
             get(oauth::provider).post(oauth::provider),
@@ -858,6 +871,7 @@ pub fn app(state: AppState) -> Router {
         .route("/core/soty", get(directory::page))
         .route("/core/noty", get(directory::page))
         .route("/core/coty", get(directory::page))
+        .route("/summernote/editor/{id}/", get(summernote::editor))
         .route(
             "/summernote/upload_attachment/",
             get(summernote::upload).post(summernote::upload),
@@ -1055,12 +1069,19 @@ async fn api_protocol(
 }
 
 async fn security_headers(request: Request, next: axum::middleware::Next) -> Response {
-    let may_embed = request.uri().path() == "/core/widgets/recent-results/";
+    let path = request.uri().path();
+    let may_embed = path == "/core/widgets/recent-results/";
+    let summernote =
+        path.starts_with("/summernote/editor/") || path == "/summernote/upload_attachment/";
     let mut response = next.run(request).await;
     let redirect = response.status() == StatusCode::MOVED_PERMANENTLY;
     let embeddable_response = may_embed && response.status().is_success();
     let headers = response.headers_mut();
-    if !redirect && !embeddable_response {
+    let same_origin = summernote
+        && headers
+            .get(header::X_FRAME_OPTIONS)
+            .is_some_and(|value| value == "SAMEORIGIN");
+    if !redirect && !embeddable_response && !same_origin {
         headers.insert(header::X_FRAME_OPTIONS, HeaderValue::from_static("DENY"));
     }
     headers.insert(

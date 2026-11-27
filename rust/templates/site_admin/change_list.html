@@ -1,9 +1,9 @@
 {% extends "site_admin/base_site.html" %}
 {% block extrastyle %}
     {{ super() }}<link rel="stylesheet" href="/static/admin/css/changelists.css">
-    {% if actions %}<script src="/admin/jsi18n/"></script>{% endif %}
+    {% if edit_speakers %}<link rel="stylesheet" href="/static/admin/css/forms.css">{% endif %}
+    {% if actions or edit_speakers %}<script src="/admin/jsi18n/"></script>{% endif %}
     {% for medium,asset in css %}<link href="/static/{{ asset }}" media="{{ medium }}" rel="stylesheet">{% endfor %}
-    {% if not actions %}<style>#changelist table thead th:first-child {width: inherit}</style>{% endif %}
 {% endblock %}
 {% block extrahead %}
     {{ super() }}
@@ -38,8 +38,15 @@
                 </div>
             </form></div>
             {% endif %}
+            {% if date_navigation %}<nav class="toplinks">
+                {% if date_navigation.back %}<a href="{{ date_navigation.back.link }}" class="date-back">‹ {{ date_navigation.back.title }}</a>{% endif %}
+                {% for choice in date_navigation.choices %}{% if choice.link %}<a href="{{ choice.link }}">{{ choice.title }}</a>{% else %}{{ choice.title }}{% endif %}{% endfor %}
+            </nav>{% endif %}
             <form id="changelist-form" method="post" novalidate>
                 <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf }}">
+                {% if edit_speakers %}
+                <div>{% for field, value in [("TOTAL_FORMS",rows|length),("INITIAL_FORMS",rows|length),("MIN_NUM_FORMS",0),("MAX_NUM_FORMS",1000)] %}<input type="hidden" name="form-{{ field }}" value="{{ value }}" id="id_form-{{ field }}">{% endfor %}</div>
+                {% endif %}
                 {% if actions and rows %}
                 <div class="actions">
                     <label>Action: <select name="action" required>
@@ -57,6 +64,7 @@
                 </div>
                 {% endif %}
                 {% if rows %}
+                {% if edit_speakers %}<div class="hiddenfields">{% for row in rows %}<input type="hidden" name="form-{{ loop.index0 }}-id" value="{{ row.id }}" id="id_form-{{ loop.index0 }}-id">{% endfor %}</div>{% endif %}
                 <div class="results"><table id="result_list">
                     <thead><tr>
                     {% if actions %}<th scope="col" class="action-checkbox-column"><div class="text"><span><input type="checkbox" id="action-toggle" aria-label="Select all objects on this page for an action"></span></div><div class="clear"></div></th>{% endif %}
@@ -76,12 +84,13 @@
                     </tr></thead>
                     <tbody>
                     {% for row in rows %}
+                    {% set row_index = loop.index0 %}
                     <tr>
                         {% if actions %}
                             <td class="action-checkbox"><input type="checkbox" name="_selected_action" value="{{ row.id }}" class="action-select" aria-label="Select this object for an action - {{ row.repr }}"></td>
                         {% endif %}
                         {% for cell in row.cells %}
-                            <{{ cell.element }} class="{{ cell.classes }}">{% if cell.url %}<a href="{{ cell.url }}">{{ cell.value }}</a>{% else %}{{ cell.value }}{% endif %}</{{ cell.element }}>
+                            <{{ cell.element }} class="{{ cell.classes }}">{% if cell.url %}<a href="{{ cell.url }}">{{ cell.value }}</a>{% elif cell.speaker_checkbox %}<input type="checkbox" name="form-{{ row_index }}-hidden_from_profile" aria-describedby="id_form-{{ row_index }}-hidden_from_profile_helptext" id="id_form-{{ row_index }}-hidden_from_profile"{% if cell.checked %} checked{% endif %}>{% else %}{{ cell.value }}{% endif %}</{{ cell.element }}>
                         {% endfor %}
                     </tr>
                     {% endfor %}
@@ -94,6 +103,7 @@
                     {% endfor %}
                     {{ count }} {% if count == 1 %}{{ singular }}{% else %}{{ plural }}{% endif %}
                     {% if show_all %}<a href="{{ show_all }}" class="showall">Show all</a>{% endif %}
+                    {% if edit_speakers and rows %}<input type="submit" name="_save" class="default" value="Save">{% endif %}
                 </p>
             </form>
         </div>

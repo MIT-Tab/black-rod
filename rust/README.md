@@ -12,7 +12,7 @@ cargo build --release --locked --manifest-path rust/Cargo.toml
 '
 ```
 
-`BLACK_ROD_DATABASE_URL` accepts SQLite and PostgreSQL URLs. The default listener is `127.0.0.1:9090`. Set `BLACK_ROD_PUBLIC_ORIGIN` to the HTTPS origin when running behind a proxy. Browser pages use the existing webpack bundles and assets. Set the existing `SECRET_KEY` in both services to test valid Django database sessions. Set `BLACK_ROD_MEDIA_ROOT` to the existing file storage path when using Summernote attachments.
+`BLACK_ROD_DATABASE_URL` accepts SQLite and PostgreSQL URLs. The default listener is `127.0.0.1:9090`. Set `BLACK_ROD_BIND` to override it or set `PORT` to bind on all interfaces. The service reads `.env` from the repository root, with the same `DOT_ENV_FILE` override as Django. Shell variables take precedence. With `ENV=production` and no explicit database URL, it uses the existing Linode PostgreSQL database on `localhost:5433` with `DATABASE_USERNAME` and `DATABASE_PASSWORD` and the existing Memcached address on `127.0.0.1:11211`. Set `BLACK_ROD_PUBLIC_ORIGIN` to the HTTPS origin when running behind a proxy. Browser pages use the existing webpack bundles and assets. Set the existing `SECRET_KEY` in both services to test valid Django database sessions. Set `BLACK_ROD_MEDIA_ROOT` to the existing file storage path when using Summernote attachments.
 
 The current server covers standings, legacy standings directories, replay, live results and retained tournament snapshots, the schedule, statistics, results directories, debater search, alumni outreach, public profile APIs, the private forum and MIT-Tab lookups, and API discovery. The browser port includes tournament, school, team, and debater profiles, career tab card exports, the recent-results widget, video and motion libraries, resource authoring, motion spreadsheet imports, account code generation, Immaculate Grid, profile claims and self-service editing, the scheduling workspace, DOTY preview, partnership network and statistics, video authoring and image attachments, and school, debater, team, and tournament editing. It reads Django sessions and creates compatible sessions for password login and APDAOnline OAuth.
 
@@ -20,7 +20,9 @@ The statistics cache lasts one hour. Set `BLACK_ROD_MEMCACHED_ADDR` for shared d
 
 Rust also serves staff speaker-score statistics, manual tournament data entry, legacy bundle uploads, reviewed MIT-Tab imports, tournament audits and round amendments, and the ELO dashboard. Reviewed imports and ELO dashboard results are readable by both servers through shared Memcached, including after a server switch. ELO retains the six-hour result cache and two bounded ten-minute runtime caches.
 
-The opt-in Rust server also includes rankings recomputation, the browsable API renderer, signup and email maintenance, password reauthentication, OAuth connection management, and native Django-style model administration. Admin exchange supports CSV, TSV, JSON, YAML, HTML, XLS, XLSX, and ODS. The Rust correction API uses the same credential and change-set tables for authorized reads, atomic writes, previews, merges, and undo. Django remains the default application entry point while the remaining admin pages, account flows, and management commands are verified.
+The opt-in Rust server also includes rankings recomputation, the browsable API renderer, signup and email maintenance, password reauthentication, OAuth connection management and pending signup, the Summernote iframe editor, and native Django-style model administration. Admin exchange supports CSV, TSV, JSON, YAML, HTML, XLS, XLSX, and ODS. The Rust correction API uses the same credential and change-set tables for authorized reads, atomic writes, previews, merges, and undo. Django remains the default application entry point while the remaining admin pages, account flows, and management commands are verified.
+
+Run `black-rod --help` to list the native maintenance commands. `black-rod cache_mittab_results` uses the same retained snapshot data and can run on the existing 12-hour schedule. `black-rod export_generated_codes --output PATH` writes the existing CSV format.
 
 ## Parity tests
 
@@ -30,6 +32,7 @@ cargo clippy --manifest-path rust/Cargo.toml --locked --all-targets -- -D warnin
 cargo test --manifest-path rust/Cargo.toml --locked
 "$scripts/br" venv/bin/python rust/tools/compare.py
 "$scripts/br" venv/bin/python rust/tools/agent_write_parity.py
+"$scripts/br" venv/bin/python rust/tools/command_parity.py
 ```
 
 The HTTP harness starts Django and Rust against the same fixture. It compares status, relevant headers, JSON fields, array order, and plain text. Equal-score COTY ties, equal-rank TOTY ties, school members with equal tenure, video lists, and tags are compared without requiring an order where the reference query has no final sort. The SQLite fixture is hashed before and after the run. Set `BLACK_ROD_PARITY_POSTGRES_URL` to a locally seeded PostgreSQL database for the PostgreSQL run. The Rust parity workflow loads the tracked fixture into both database engines.

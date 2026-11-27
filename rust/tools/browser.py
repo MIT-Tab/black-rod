@@ -1840,6 +1840,32 @@ def assert_native_site_admin(driver, django, rust):
     driver.delete_all_cookies()
 
 
+def assert_admin_speaker_visibility(driver, django, rust):
+    from selenium.webdriver.support.expected_conditions import staleness_of
+
+    route = "/admin/core/speakerresult/?q=Third+Result"
+    origins = [f"http://{HOST}:{server.port}" for server in (django, rust)]
+    driver.get(origins[1] + "/robots.txt")
+    driver.delete_all_cookies()
+    driver.add_cookie({"name":"sessionid","value":django_session()})
+    for source, candidate in ((1, 0), (0, 1)):
+        driver.get(origins[source] + route)
+        fields = driver.find_elements("css selector", "#result_list input[name$='-hidden_from_profile']")
+        assert len(fields) == 1
+        expected = not fields[0].is_selected()
+        record = driver.find_element("id", "id_form-0-id").get_attribute("value")
+        fields[0].click()
+        previous = driver.find_element("tag name", "html")
+        driver.find_element("name", "_save").click()
+        WebDriverWait(driver, 10).until(staleness_of(previous))
+        assert "1 speaker result was changed successfully." in driver.find_element("tag name", "body").text
+        driver.get(origins[candidate] + route)
+        assert driver.find_element("id", "id_form-0-hidden_from_profile").is_selected() == expected
+        driver.get(origins[candidate] + f"/admin/core/speakerresult/{record}/history/")
+        assert "Changed Hidden from profile." in driver.find_element("tag name", "body").text
+    driver.delete_all_cookies()
+
+
 def assert_admin_topic_merges(driver, django, rust):
     from selenium.webdriver.support.expected_conditions import staleness_of
 
@@ -3025,7 +3051,7 @@ def oauth_provider(fixture=None):
 def assert_oauth_roundtrip(driver, rust, django):
     root = f"http://{HOST}:{rust.port}"
     driver.get(f"{root}/accounts/apdaonline/login/callback/?code=fixture-code&state=unrecognized")
-    assert "Social Network Login Failure" in driver.find_element("tag name", "h1").text
+    assert "Third-Party Login Failure" in driver.find_element("tag name", "h1").text
     for _ in range(2):
         driver.get(f"{root}/auth/login/?next=/games/")
         driver.delete_cookie("sessionid")
@@ -3041,6 +3067,56 @@ def assert_oauth_roundtrip(driver, rust, django):
         driver.get(f"http://{HOST}:{django.port}/games/")
         assert "My Account" in driver.find_element("tag name", "nav").get_attribute("textContent")
         driver.delete_cookie("sessionid")
+
+
+def assert_oauth_pending_signup(driver, django, rust, provider):
+    from selenium.webdriver.support.expected_conditions import staleness_of
+
+    code = """
+from django import setup
+setup()
+from allauth.account.models import EmailAddress
+from core.models import User
+user = User.objects.get(username="tab")
+EmailAddress.objects.get_or_create(user=user, email="taken-oauth-fixture@example.test",
+                                  defaults={"verified":True,"primary":False})
+"""
+    subprocess.run([str(ROOT / "venv/bin/python"), "-c", code], check=True, capture_output=True)
+
+    def open_signup(source, replacement, case):
+        provider.oauth_profile = {"ID":5678930 + case, "user_nicename":f"signupfixture{case}",
+            "user_email":"taken-oauth-fixture@example.test","display_name":"Pending Fixture",
+            "user_roles":[]}
+        source_root = f"http://{HOST}:{source.port}"
+        replacement_root = f"http://{HOST}:{replacement.port}"
+        driver.get(source_root + "/robots.txt")
+        driver.delete_all_cookies()
+        driver.get(source_root + "/accounts/apdaonline/login/?next=/games/")
+        driver.find_element("css selector", '.card form button[type="submit"]').click()
+        path = "/accounts/3rdparty/signup/"
+        try:
+            WebDriverWait(driver, 10).until(lambda browser: browser.current_url == source_root + path)
+        except TimeoutException as error:
+            raise AssertionError(f"{source.name} did not open pending signup: {urlsplit(driver.current_url).path}") from error
+        driver.get(replacement_root + path)
+        assert driver.find_element("id", "id_username").get_attribute("value") == f"signupfixture{case}"
+        assert driver.find_element("id", "id_email").get_attribute("value") == "taken-oauth-fixture@example.test"
+        old = driver.find_element("tag name", "html")
+        driver.find_element("id", "id_email").submit()
+        WebDriverWait(driver, 10).until(staleness_of(old))
+        assert "An account already exists with this email address." in driver.find_element("tag name", "body").text
+        email = driver.find_element("id", "id_email")
+        email.clear()
+        email.send_keys(f"signup-fixture-{case}@example.test")
+        email.submit()
+        WebDriverWait(driver, 10).until(lambda browser: browser.current_url == replacement_root + "/games/")
+        for root in (source_root, replacement_root):
+            driver.get(root + "/games/")
+            assert "My Account" in driver.find_element("tag name", "nav").get_attribute("textContent")
+        driver.delete_all_cookies()
+
+    open_signup(django, rust, 1)
+    open_signup(rust, django, 2)
 
 
 def assert_oauth_connections(driver, django, rust, provider):
@@ -3187,6 +3263,7 @@ def browser_checks(database, options, output):
         assert_account_entry_and_email(driver, django, rust, mail)
         assert_oauth_roundtrip(driver, rust, django)
         assert_oauth_connections(driver, django, rust, provider)
+        assert_oauth_pending_signup(driver, django, rust, provider)
         assert_directories(driver, django, rust)
         assert_legacy_standings(driver, django, rust)
         assert_partnership_paths(driver, django, rust)
@@ -3213,6 +3290,7 @@ def browser_checks(database, options, output):
         assert_admin_tools(driver, django, rust)
         assert_native_site_admin(driver, django, rust)
         assert_admin_topic_merges(driver, django, rust)
+        assert_admin_speaker_visibility(driver, django, rust)
         assert_admin_formats(driver, django, rust)
         assert_debater_aliases(driver, django, rust)
         assert_native_round_inlines(driver, django, rust)

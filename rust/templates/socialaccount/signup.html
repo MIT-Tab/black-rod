@@ -1,0 +1,18 @@
+{% extends "account/layout.html" %}
+{% block content %}
+<h1>Sign Up</h1>
+<p>You are about to use your APDAOnline account to login to {{ site_name }}. As a final step, please complete the following form:</p>
+<form method="post" action="/accounts/3rdparty/signup/">
+    <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf }}">
+    {% if username_error %}<ul class="errorlist" id="id_username_error"><li>{{ username_error }}</li></ul>{% endif %}
+    <p><label for="id_username">Username:</label>
+      <input type="text" name="username" placeholder="Username" autocomplete="username" minlength="1" maxlength="150" required id="id_username"{% if username %} value="{{ username }}"{% endif %}{% if username_error %} aria-invalid="true" aria-describedby="id_username_error"{% endif %}>
+    </p>
+    {% if email_error %}<ul class="errorlist" id="id_email_error"><li>{{ email_error }}</li></ul>{% endif %}
+    <p><label for="id_email">Email (optional):</label>
+      <input type="email" name="email" placeholder="Email address" autocomplete="email" maxlength="320" id="id_email"{% if email %} value="{{ email }}"{% endif %}{% if email_error %} aria-invalid="true" aria-describedby="id_email_error"{% endif %}>
+    </p>
+    {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
+    <button type="submit">Sign Up</button>
+</form>
+{% endblock %}

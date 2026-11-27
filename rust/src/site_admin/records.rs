@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::{collections::BTreeSet, sync::LazyLock};
 
 use axum::{
     body::{Body, to_bytes},
@@ -7,7 +7,7 @@ use axum::{
 };
 use minijinja::{Value, context};
 use serde_json::Value as Json;
-use sqlx::Row;
+use sqlx::{AnyConnection, Row};
 
 use super::{
     AdminRequest, cap_first, form, listing, redirect,
@@ -15,7 +15,7 @@ use super::{
 };
 use crate::{
     ApiError,
-    delete_relations::{self, DeleteError},
+    delete_relations::{self, DeleteDisplay, DeleteError, Record},
     flash, login,
 };
 
@@ -166,6 +166,81 @@ pub(super) async fn delete_entry(
     delete(admin, model, &[id], false, confirmed).await
 }
 
+fn labels(table: &str) -> &'static (String, String, String) {
+    static LABELS: LazyLock<std::collections::BTreeMap<String, (String, String, String)>> =
+        LazyLock::new(|| {
+            serde_json::from_str(include_str!("../../schema/delete_labels.json"))
+                .expect("model deletion display labels")
+        });
+    &LABELS[table]
+}
+
+fn registered(table: &str) -> Option<&'static Model> {
+    schema()
+        .apps
+        .iter()
+        .flat_map(|app| &app.models)
+        .find(|model| model.table == table)
+}
+
+async fn record_item(
+    conn: &mut AnyConnection,
+    (table, pk): Record,
+    children: Vec<Value>,
+) -> Result<Value, ApiError> {
+    let (class, singular, _) = labels(table);
+    let model = registered(table);
+    let (label, url) = if let Some(model) = model {
+        (
+            form::loaded_label(conn, model, pk).await?,
+            Some(format!("{}{pk}/change/", model.url())),
+        )
+    } else if table == "core_taggedmotion" {
+        let label = sqlx::query_scalar::<_, String>(
+            "SELECT m.text || ' tagged with ' || t.name FROM core_taggedmotion link
+             JOIN core_motion m ON m.id=link.content_object_id
+             JOIN core_motiontopic t ON t.id=link.tag_id WHERE link.id=$1",
+        )
+        .bind(pk)
+        .fetch_one(conn)
+        .await?;
+        (label, None)
+    } else if table == "taggit_taggeditem" {
+        let (object, app, model, tag): (i64, String, String, String) = sqlx::query_as(
+            "SELECT CAST(link.object_id AS BIGINT),ct.app_label,ct.model,t.name
+             FROM taggit_taggeditem link JOIN taggit_tag t ON t.id=link.tag_id
+             JOIN django_content_type ct ON ct.id=link.content_type_id WHERE link.id=$1",
+        )
+        .bind(pk)
+        .fetch_one(&mut *conn)
+        .await?;
+        let label = match schema().model(&app, &model) {
+            Some(target) => form::loaded_label(conn, target, object).await?,
+            None => "None".to_owned(),
+        };
+        (format!("{label} tagged with {tag}"), None)
+    } else {
+        (format!("{class} object ({pk})"), None)
+    };
+    Ok(context! {kind=>cap_first(singular),label,url,children})
+}
+
+async fn nested_items(
+    conn: &mut AnyConnection,
+    parent: Option<Record>,
+    display: &DeleteDisplay,
+    seen: &mut BTreeSet<Record>,
+) -> Result<Vec<Value>, ApiError> {
+    let mut values = Vec::new();
+    for &record in display.edges.get(&parent).into_iter().flatten() {
+        if seen.insert(record) {
+            let children = Box::pin(nested_items(conn, Some(record), display, seen)).await?;
+            values.push(record_item(conn, record, children).await?);
+        }
+    }
+    Ok(values)
+}
+
 pub(super) async fn delete(
     admin: &AdminRequest<'_>,
     model: &'static Model,
@@ -185,45 +260,61 @@ pub(super) async fn delete(
     let mut lacking = BTreeSet::new();
     let mut protected = Vec::new();
     let mut removed = BTreeSet::new();
+    let mut summary_order = Vec::new();
     let mut tree = Vec::new();
+    let mut seen = BTreeSet::new();
     for &id in ids {
-        let plan = if confirmed {
-            delete_relations::plan(&mut tx, &model.table, id).await
-        } else {
-            delete_relations::preview(&mut tx, &model.table, id).await
-        };
-        match plan {
+        let preview = match delete_relations::preview(&mut tx, &model.table, id).await {
+            Ok(plan) => plan,
             Err(DeleteError::Absent) => continue,
-            Err(DeleteError::Protected) => {
-                protected.push(model.singular.clone());
-                continue;
-            }
+            Err(DeleteError::Protected) => return Err(ApiError::Constraint),
             Err(DeleteError::Database(error)) => return Err(error.into()),
-            Ok(plan) => {
-                let mut children = Vec::new();
-                for (table, pk) in plan.removed() {
-                    removed.insert((table, pk));
-                    if table == model.table && pk == id {
-                        continue;
-                    }
-                    if let Some(child) = schema()
-                        .apps
-                        .iter()
-                        .flat_map(|app| &app.models)
-                        .find(|model| model.table == table)
-                    {
-                        if !admin.viewer.allows(child, "delete") {
-                            lacking.insert(child.singular.clone());
-                        }
-                        children.push(context!{kind=>cap_first(&child.singular),label=>form::object_label(admin,child,pk).await?,
-                            url=>format!("{}{pk}/change/",child.url())});
-                    }
-                }
-                let name = form::object_label(admin, model, id).await?;
-                tree.push(context!{kind=>cap_first(&model.singular),label=>&name,url=>format!("{}{id}/change/",model.url()),children});
-                plans.push((id, name, plan));
+        };
+        for (table, pk) in preview.removed() {
+            removed.insert((table, pk));
+            if let Some(child) = registered(table)
+                && !admin.viewer.allows(child, "delete")
+            {
+                lacking.insert(child.singular.clone());
             }
         }
+        for &table in &preview.display.tables {
+            if !summary_order.contains(&table) {
+                summary_order.push(table);
+            }
+        }
+        for &record in &preview.display.protected {
+            if seen.insert(record) {
+                protected.push(record_item(&mut tx, record, Vec::new()).await?);
+                if let Some(child) = registered(record.0)
+                    && !admin.viewer.allows(child, "delete")
+                {
+                    lacking.insert(child.singular.clone());
+                }
+            }
+        }
+        if confirmed && protected.is_empty() && lacking.is_empty() {
+            let plan = match delete_relations::plan(&mut tx, &model.table, id).await {
+                Ok(plan) => plan,
+                Err(DeleteError::Absent) => continue,
+                Err(DeleteError::Protected) => return Err(ApiError::Constraint),
+                Err(DeleteError::Database(error)) => return Err(error.into()),
+            };
+            for (table, _) in plan.removed() {
+                if let Some(child) = registered(table)
+                    && !admin.viewer.allows(child, "delete")
+                {
+                    lacking.insert(child.singular.clone());
+                }
+            }
+            let name = form::loaded_label(&mut tx, model, id).await?;
+            plans.push((id, name, plan));
+        } else {
+            tree.extend(nested_items(&mut tx, None, &preview.display, &mut seen).await?);
+        }
+    }
+    if removed.is_empty() {
+        return Ok(redirect(&model.url()));
     }
     if confirmed && !lacking.is_empty() {
         return Ok(StatusCode::FORBIDDEN.into_response());
@@ -270,17 +361,13 @@ pub(super) async fn delete(
         }
         return Ok(response);
     }
-    let mut summary = BTreeMap::<String, usize>::new();
-    for (table, _) in removed {
-        if let Some(model) = schema()
-            .apps
-            .iter()
-            .flat_map(|app| &app.models)
-            .find(|model| model.table == table)
-        {
-            *summary.entry(cap_first(&model.plural)).or_default() += 1;
-        }
-    }
+    let summary = summary_order
+        .into_iter()
+        .map(|table| {
+            let count = removed.iter().filter(|(model, _)| *model == table).count();
+            (cap_first(&labels(table).2), count)
+        })
+        .collect::<Vec<_>>();
     let title = match (lacking.is_empty() && protected.is_empty(), bulk) {
         (true, false) => "Delete".to_owned(),
         (true, true) => "Are you sure?".to_owned(),
@@ -292,7 +379,7 @@ pub(super) async fn delete(
         "site_admin/delete_confirmation.html",
         context! {
             title, bulk, ids,tree,protected,lacking=>lacking.into_iter().collect::<Vec<_>>(),
-            summary=>summary.into_iter().collect::<Vec<_>>(), ..base
+            summary, ..base
         },
     )
 }

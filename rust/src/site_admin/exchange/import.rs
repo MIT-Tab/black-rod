@@ -52,10 +52,25 @@ fn directory(path: &Path) -> std::io::Result<()> {
         use std::os::unix::fs::DirBuilderExt;
         builder.mode(0o700);
     }
-    match builder.create(path) {
-        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => Ok(()),
-        result => result,
+    if let Err(error) = builder.create(path)
+        && error.kind() != std::io::ErrorKind::AlreadyExists
+    {
+        return Err(error);
     }
+    let metadata = std::fs::symlink_metadata(path)?;
+    let private = metadata.is_dir();
+    #[cfg(unix)]
+    let private = {
+        use std::os::unix::fs::PermissionsExt;
+        private && metadata.permissions().mode() & 0o077 == 0
+    };
+    if !private {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "Admin import storage must be a private directory",
+        ));
+    }
+    Ok(())
 }
 
 fn write_file(pending: &Pending) -> Result<String, ApiError> {
@@ -80,7 +95,7 @@ fn write_file(pending: &Pending) -> Result<String, ApiError> {
                 && file
                     .path()
                     .extension()
-                    .is_some_and(|extension| extension == "json")
+                    .is_some_and(|extension| extension == "json" || extension == "processing")
             {
                 let _ = std::fs::remove_file(file.path());
             }
@@ -101,8 +116,12 @@ fn write_file(pending: &Pending) -> Result<String, ApiError> {
 
 fn load_file(id: &str) -> Option<Pending> {
     let path = location(id)?;
-    let meta = std::fs::metadata(&path).ok()?;
-    if meta.modified().ok()?.elapsed().ok()? > TTL || meta.len() > (LIMIT * 8) as u64 {
+    directory(path.parent()?).ok()?;
+    let meta = std::fs::symlink_metadata(&path).ok()?;
+    if !meta.is_file()
+        || meta.modified().ok()?.elapsed().ok()? > TTL
+        || meta.len() > (LIMIT * 8) as u64
+    {
         return None;
     }
     serde_json::from_slice(&std::fs::read(path).ok()?).ok()

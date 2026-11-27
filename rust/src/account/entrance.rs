@@ -23,11 +23,11 @@ pub(super) fn query_next(value: &str) -> String {
         .finish()
 }
 
-pub(super) fn email_valid(email: &str) -> bool {
+pub(crate) fn email_valid(email: &str) -> bool {
     email.chars().count() <= 320 && email.parse::<lettre::Address>().is_ok()
 }
 
-fn normal_username(value: &str) -> String {
+pub(crate) fn normal_username(value: &str) -> String {
     value.trim().nfkc().collect()
 }
 
@@ -277,7 +277,8 @@ async fn page(state: &AppState, request: Request) -> Result<Response, ApiError> 
         LOGOUT => ("logout", "Sign Out"),
         "/accounts/inactive/" => ("inactive", "Account Inactive"),
         "/accounts/confirm-email/" => ("verification", "Verify Your Email Address"),
-        _ => ("social-error", "Social Network Login Failure"),
+        "/accounts/3rdparty/login/cancelled/" => ("social-cancelled", "Login Cancelled"),
+        _ => ("social-error", "Third-Party Login Failure"),
     };
     let destination = if context.next.is_empty() {
         "/"
@@ -397,6 +398,9 @@ async fn page(state: &AppState, request: Request) -> Result<Response, ApiError> 
     )?;
     if kind == "social-error" {
         *response.status_mut() = StatusCode::UNAUTHORIZED;
+    }
+    if matches!(kind, "social-error" | "social-cancelled") {
+        return Ok(response);
     }
     response.headers_mut().insert(
         header::CACHE_CONTROL,

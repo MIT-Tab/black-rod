@@ -41,9 +41,12 @@ PUBLIC = [
     ("account-verify-email", "/accounts/confirm-email/", False),
     ("account-inactive", "/accounts/inactive/", False),
     ("account-connect", "/accounts/3rdparty/", True),
+    ("account-social-error", "/accounts/3rdparty/login/error/", False),
+    ("account-social-cancelled", "/accounts/3rdparty/login/cancelled/", False),
     ("account-reauth", "/accounts/reauthenticate/?next=/games/", True),
     ("account-provider", "/accounts/apdaonline/login/?next=/games/", False),
     ("login", "/auth/login/", False),
+    ("summernote-editor", "/summernote/editor/id-description/", False),
 ]
 ADMIN = [
     ("admin-login", "/admin/login/", False),
@@ -98,7 +101,7 @@ function node(element) {
         }
         const verbatim = element.parentElement?.matches('pre, textarea, script, style');
         const raw = verbatim && element.textContent.trim() ? element.textContent : element.textContent.replace(/\s+/g, ' ').trim();
-        return raw || null;
+        return raw.replace(/(var csrftoken = ')[A-Za-z0-9]{64}(';)/g, "$1<csrf>$2") || null;
     }
     if (element.nodeType !== Node.ELEMENT_NODE) return null;
     const name = element.tagName.toLowerCase();

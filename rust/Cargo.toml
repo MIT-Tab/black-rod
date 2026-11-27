@@ -9,6 +9,7 @@ publish = false
 axum = { version = "0.8", features = ["multipart"] }
 chrono = { version = "0.4", features = ["serde"] }
 deunicode = "1.6.2"
+dotenvy = "0.15"
 csv = "1.4"
 xls = { version = "0.1.0", default-features = false }
 yaml-rust2 = "0.13"

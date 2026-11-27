@@ -12,11 +12,25 @@ use axum::{
     http::{HeaderMap, HeaderValue, Method, StatusCode, Uri, header},
     response::{IntoResponse, Response},
 };
-use ring::digest;
+use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+use ring::{
+    digest,
+    rand::{SecureRandom, SystemRandom},
+};
 use serde_json::{Value, json};
 use sqlx::{Any, AnyConnection, AssertSqlSafe, Row, any::AnyArguments, query::Query};
 
 use crate::{ApiError, AppState, is_django_integer, team_profile::read_transaction};
+
+pub(crate) fn new_credential() -> Result<(String, String), ApiError> {
+    let mut secret = [0; 32];
+    SystemRandom::new()
+        .fill(&mut secret)
+        .map_err(|_| ApiError::Serialization)?;
+    let token = format!("br_agent_{}", URL_SAFE_NO_PAD.encode(secret));
+    let hash = hex::encode(digest::digest(&digest::SHA256, token.as_bytes()));
+    Ok((token, hash))
+}
 
 const PREFIX: &str = "/api/agent/v1/";
 const GUIDE: &str = include_str!("../../../docs/agent-corrections.md");

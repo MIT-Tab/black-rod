@@ -7,12 +7,12 @@ use axum::{
 };
 use reqwest::Client;
 use serde::Deserialize;
-use serde_json::Value;
+use serde_json::{Value, json};
 use sqlx::{AnyPool, Row};
 use url::Url;
 
 use crate::{
-    ApiError, AppState, flash,
+    ApiError, AppState, account, flash,
     login::{self, SESSION_AGE},
     session, web,
 };
@@ -202,6 +202,7 @@ async fn profile(config: &OAuth, origin: &str, code: &str) -> Option<(Token, Val
 enum AccountError {
     Invalid,
     ExistingEmail,
+    ExistingUsername,
     ConnectedOther,
     Database,
 }
@@ -229,6 +230,7 @@ async fn save(
     fields: &Value,
     token: &Token,
     connecting: Option<i64>,
+    chosen_username: Option<&str>,
 ) -> Result<(i64, String), AccountError> {
     let uid = profile.uid().ok_or(AccountError::Invalid)?;
     let sqlite = pool.connect_options().database_url.scheme() == "sqlite";
@@ -308,7 +310,7 @@ async fn save(
             .filter(|ch| ch.is_alphanumeric() || "_@.+-".contains(*ch))
             .take(130)
             .collect();
-        let base = if base.is_empty() { "user" } else { &base };
+        let base = chosen_username.unwrap_or(if base.is_empty() { "user" } else { &base });
         let (first, last) = profile
             .display_name
             .split_once(' ')
@@ -324,7 +326,7 @@ async fn save(
             .map_err(|_| AccountError::Invalid)?
         );
         let mut id = None;
-        for suffix in 0..100 {
+        for suffix in 0..if chosen_username.is_some() { 1 } else { 100 } {
             let username = if suffix == 0 {
                 base.to_owned()
             } else {
@@ -341,7 +343,11 @@ async fn save(
                 break;
             }
         }
-        let id = id.ok_or(AccountError::Invalid)?;
+        let id = id.ok_or(if chosen_username.is_some() {
+            AccountError::ExistingUsername
+        } else {
+            AccountError::Invalid
+        })?;
         if !email.is_empty() {
             sqlx::query("INSERT INTO account_emailaddress (user_id, email, verified, \"primary\") VALUES ($1, $2, FALSE, TRUE)")
                 .bind(id).bind(&email).execute(&mut *tx).await?;
@@ -405,8 +411,217 @@ async fn save(
     Ok((id, password))
 }
 
-fn failed(status: StatusCode) -> Response {
-    (status, Html("<h1>Social Network Login Failure</h1><p>An error occurred while attempting to login via your social network account.</p>")).into_response()
+fn redirect(target: &str) -> Response {
+    (StatusCode::FOUND, [(header::LOCATION, target)]).into_response()
+}
+
+pub(crate) async fn legacy(OriginalUri(uri): OriginalUri) -> Response {
+    let target = uri
+        .path()
+        .replace("/accounts/social/", "/accounts/3rdparty/");
+    (StatusCode::MOVED_PERMANENTLY, [(header::LOCATION, target)]).into_response()
+}
+
+const PENDING_SIGNUP: &str = "socialaccount_sociallogin";
+const SIGNUP_PAGE: &str = "/accounts/3rdparty/signup/";
+const BACKEND: &str = "allauth.account.auth_backends.AuthenticationBackend";
+
+async fn pending_signup(
+    state: &AppState,
+    headers: &HeaderMap,
+    provider: &OAuth,
+    profile: &Profile,
+    fields: &Value,
+    token: &Token,
+    context: &session::OAuthContext,
+) -> Result<Response, ApiError> {
+    let secret = state.secret.as_deref().ok_or(ApiError::Serialization)?;
+    let Some(mut session) = session::StoredSession::read(&state.pool, headers, secret).await?
+    else {
+        return Ok(redirect("/accounts/login/"));
+    };
+    let expires = token
+        .expires_in
+        .and_then(chrono::Duration::try_seconds)
+        .and_then(|duration| chrono::Utc::now().checked_add_signed(duration))
+        .map(|time| time.to_rfc3339());
+    let uid = profile.uid().ok_or(ApiError::Serialization)?;
+    let (first_name, last_name) = profile
+        .display_name
+        .split_once(' ')
+        .unwrap_or((&profile.display_name, ""));
+    let addresses = if profile.user_email.is_empty() {
+        Vec::new()
+    } else {
+        vec![json!({"email":profile.user_email,"primary":true,"verified":false})]
+    };
+    let value = json!({
+        "provider":{"id":"apdaonline","app.client_id":provider.client_id},
+        "account":{"provider":"apdaonline","uid":uid,"extra_data":fields},
+        "user":{"username":profile.user_nicename,"email":profile.user_email,
+            "first_name":first_name,"last_name":last_name,"can_view_private_videos":profile.can_view_video()},
+        "state":{"next":context.next,"process":"login","remember":context.remember},
+        "email_addresses":addresses,"phone":null,"phone_verified":false,
+        "token":{"token":token.access_token,"token_secret":token.refresh_token,"expires_at":expires},
+    });
+    session.values.insert(
+        PENDING_SIGNUP.to_owned(),
+        serde_json::value::to_raw_value(&value)?,
+    );
+    if !session.save(&state.pool, secret).await? {
+        return Ok(StatusCode::CONFLICT.into_response());
+    }
+    Ok(redirect(SIGNUP_PAGE))
+}
+
+async fn signup_page(state: &AppState, request: Request) -> Result<Response, ApiError> {
+    let Some(secret) = state.secret.as_deref() else {
+        return Ok(redirect("/accounts/login/"));
+    };
+    let Some(stored) = session::StoredSession::read(&state.pool, request.headers(), secret).await?
+    else {
+        return Ok(redirect("/accounts/login/"));
+    };
+    let Some(pending) = stored
+        .values
+        .get(PENDING_SIGNUP)
+        .and_then(|value| serde_json::from_str::<Value>(value.get()).ok())
+    else {
+        return Ok(redirect("/accounts/login/"));
+    };
+    let fields = &pending["account"]["extra_data"];
+    let Ok(mut profile) = serde_json::from_value::<Profile>(fields.clone()) else {
+        return Ok(redirect("/accounts/login/"));
+    };
+    let user = session::user(&state.pool, request.headers(), Some(secret)).await?;
+    if user.is_authenticated {
+        return Ok(redirect("/accounts/3rdparty/"));
+    }
+    let visit = match account::visit(state, request).await {
+        Ok(visit) => visit,
+        Err(response) => return Ok(*response),
+    };
+    let mut username = pending["user"]["username"]
+        .as_str()
+        .unwrap_or_default()
+        .to_owned();
+    let mut email = pending["user"]["email"]
+        .as_str()
+        .unwrap_or_default()
+        .to_owned();
+    let mut username_error = None;
+    let mut email_error = None;
+    if let Some(form) = &visit.fields {
+        username = account::normal_username(form.get("username").map_or("", String::as_str));
+        email = form
+            .get("email")
+            .map_or("", String::as_str)
+            .trim()
+            .to_lowercase();
+        if username.is_empty() {
+            username_error = Some("This field is required.");
+        } else if username.chars().count() > 150
+            || username
+                .chars()
+                .any(|ch| !ch.is_alphanumeric() && !"_@.+-".contains(ch))
+        {
+            username_error = Some(
+                "Enter a valid username. This value may contain only letters, numbers, and @/./+/-/_ characters.",
+            );
+        } else if sqlx::query_scalar::<_, i64>(
+            "SELECT CAST(id AS BIGINT) FROM core_user WHERE LOWER(username)=LOWER($1) LIMIT 1",
+        )
+        .bind(&username)
+        .fetch_optional(&state.pool)
+        .await?
+        .is_some()
+        {
+            username_error = Some("A user with that username already exists.");
+        }
+        if !email.is_empty() && (!account::email_valid(&email) || email.chars().count() > 254) {
+            email_error = Some("Enter a valid email address.");
+        }
+        if username_error.is_none() && email_error.is_none() {
+            profile.user_email.clone_from(&email);
+            let token = Token {
+                access_token: pending["token"]["token"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_owned(),
+                refresh_token: pending["token"]["token_secret"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_owned(),
+                expires_in: pending["token"]["expires_at"]
+                    .as_str()
+                    .and_then(|time| chrono::DateTime::parse_from_rfc3339(time).ok())
+                    .map(|time| time.signed_duration_since(chrono::Utc::now()).num_seconds()),
+            };
+            match save(&state.pool, &profile, fields, &token, None, Some(&username)).await {
+                Ok((id, password)) => {
+                    let next = login::safe_next(
+                        pending["state"]["next"].as_str().unwrap_or_default(),
+                        &visit.origin,
+                    );
+                    let remember = pending["state"]["remember"].as_bool().unwrap_or(true);
+                    let mut response = login::sign_in(
+                        state,
+                        &visit.headers,
+                        visit.secure(),
+                        &next,
+                        remember,
+                        (id, &password),
+                        BACKEND,
+                    )
+                    .await;
+                    flash::push(
+                        &mut response,
+                        &visit.headers,
+                        secret,
+                        25,
+                        &format!("Successfully signed in as {username}."),
+                        visit.secure(),
+                    );
+                    return Ok(response);
+                }
+                Err(AccountError::ExistingUsername) => {
+                    username_error = Some("A user with that username already exists.")
+                }
+                Err(AccountError::ExistingEmail) => {
+                    email_error = Some(
+                        "An account already exists with this email address. Please sign in to that account first, then connect your APDAOnline account.",
+                    )
+                }
+                Err(_) => return Err(ApiError::Serialization),
+            }
+        }
+    }
+    let site_name = sqlx::query_scalar::<_, String>("SELECT name FROM django_site WHERE id=1")
+        .fetch_optional(&state.pool)
+        .await?
+        .unwrap_or_default();
+    account::render(
+        state,
+        &user,
+        "socialaccount/signup.html",
+        &visit,
+        minijinja::context! {
+            title=>"Signup",site_name,username,email,username_error,email_error
+        },
+    )
+}
+
+pub(crate) async fn social_signup(State(state): State<AppState>, request: Request) -> Response {
+    signup_page(&state, request)
+        .await
+        .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
+}
+
+async fn failed(state: &AppState, uri: &axum::http::Uri, headers: &HeaderMap) -> Response {
+    let mut request = Request::new(axum::body::Body::empty());
+    *request.uri_mut() = uri.clone();
+    *request.headers_mut() = headers.clone();
+    crate::account::entrance(State(state.clone()), request).await
 }
 
 pub(crate) async fn provider(State(state): State<AppState>, request: Request) -> Response {
@@ -476,52 +691,63 @@ pub(crate) async fn callback(
     headers: HeaderMap,
 ) -> Response {
     let Some(origin) = state.origin(&headers) else {
-        return failed(StatusCode::BAD_REQUEST);
+        return failed(&state, &uri, &headers).await;
     };
     let (Some(config), Some(secret)) = (&state.oauth, state.secret.as_deref()) else {
-        return failed(StatusCode::SERVICE_UNAVAILABLE);
+        return failed(&state, &uri, &headers).await;
     };
     let params: HashMap<_, _> =
         url::form_urlencoded::parse(uri.query().unwrap_or_default().as_bytes()).collect();
     let Some(state_id) = params.get("state") else {
-        return failed(StatusCode::BAD_REQUEST);
+        return failed(&state, &uri, &headers).await;
     };
     let response = session::consume_oauth(&state.pool, &headers, secret, state_id).await;
     let context = match response {
         Ok(Some(context)) => context,
-        Ok(None) => return failed(StatusCode::BAD_REQUEST),
+        Ok(None) => return failed(&state, &uri, &headers).await,
         Err(_) => {
             eprintln!("OAuth session state could not be retrieved");
-            return failed(StatusCode::INTERNAL_SERVER_ERROR);
+            return failed(&state, &uri, &headers).await;
         }
     };
+    if params
+        .get("error")
+        .is_some_and(|error| error.as_ref() == "access_denied")
+    {
+        return redirect("/accounts/3rdparty/login/cancelled/");
+    }
     if params.contains_key("error") {
-        return failed(StatusCode::BAD_REQUEST);
+        return failed(&state, &uri, &headers).await;
     }
     let Some(code) = params.get("code").filter(|code| !code.is_empty()) else {
-        return failed(StatusCode::BAD_REQUEST);
+        return failed(&state, &uri, &headers).await;
     };
     let Some((token, fields, profile)) = profile(config, &origin, code).await else {
         eprintln!("OAuth provider rejected the exchange or sent an invalid response");
-        return failed(StatusCode::BAD_GATEWAY);
+        return failed(&state, &uri, &headers).await;
     };
     let connecting = if context.connect {
         match session::user(&state.pool, &headers, Some(secret)).await {
             Ok(user) if user.is_authenticated => user.id,
-            _ => return failed(StatusCode::FORBIDDEN),
+            _ => return failed(&state, &uri, &headers).await,
         }
     } else {
         None
     };
-    let (id, password) = match save(&state.pool, &profile, &fields, &token, connecting).await {
+    let (id, password) = match save(&state.pool, &profile, &fields, &token, connecting, None).await
+    {
         Ok(credentials) => credentials,
         Err(AccountError::ExistingEmail) => {
-            return (
-                StatusCode::FOUND,
-                [(header::LOCATION, "/accounts/social/signup/")],
+            return match pending_signup(
+                &state, &headers, config, &profile, &fields, &token, &context,
             )
-                .into_response();
+            .await
+            {
+                Ok(response) => response,
+                Err(_) => failed(&state, &uri, &headers).await,
+            };
         }
+        Err(AccountError::ExistingUsername) => return failed(&state, &uri, &headers).await,
         Err(AccountError::ConnectedOther) => {
             let mut response = (
                 StatusCode::FOUND,
@@ -538,8 +764,8 @@ pub(crate) async fn callback(
             );
             return response;
         }
-        Err(AccountError::Invalid) => return failed(StatusCode::BAD_REQUEST),
-        Err(AccountError::Database) => return failed(StatusCode::INTERNAL_SERVER_ERROR),
+        Err(AccountError::Invalid) => return failed(&state, &uri, &headers).await,
+        Err(AccountError::Database) => return failed(&state, &uri, &headers).await,
     };
     let next = login::safe_next(&context.next, &origin);
     if connecting.is_some() {
@@ -572,7 +798,7 @@ pub(crate) async fn callback(
         &next,
         context.remember,
         (id, &password),
-        "allauth.account.auth_backends.AuthenticationBackend",
+        BACKEND,
     )
     .await
 }

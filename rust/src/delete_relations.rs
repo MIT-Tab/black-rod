@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, BTreeSet, HashSet, VecDeque},
+    collections::{BTreeMap, BTreeSet, HashSet},
     sync::LazyLock,
 };
 
@@ -18,13 +18,15 @@ struct Relation {
     table: &'static str,
     foreign_key: &'static str,
     rule: Rule,
+    order: &'static str,
+    generic: Option<(&'static str, &'static str, &'static str)>,
 }
 
 static RELATIONS: LazyLock<BTreeMap<&str, Vec<Relation>>> = LazyLock::new(|| {
     let mut relations: BTreeMap<&str, Vec<Relation>> = BTreeMap::new();
     for line in SCHEMA.lines() {
         let fields = line.split('\t').collect::<Vec<_>>();
-        let [parent, table, foreign_key, action] = fields.as_slice() else {
+        let [parent, table, foreign_key, action, generic, order] = fields.as_slice() else {
             unreachable!("Invalid model deletion schema")
         };
         let rule = match *action {
@@ -37,6 +39,11 @@ static RELATIONS: LazyLock<BTreeMap<&str, Vec<Relation>>> = LazyLock::new(|| {
             table,
             foreign_key,
             rule,
+            order,
+            generic: generic.split_once(':').and_then(|(column, label)| {
+                let (app, model) = label.split_once('.')?;
+                Some((column, app, model))
+            }),
         });
     }
     relations
@@ -66,14 +73,27 @@ async fn children(
     conn: &mut AnyConnection,
     edge: &Relation,
     ids: &[i64],
-) -> Result<Vec<i64>, sqlx::Error> {
+) -> Result<Vec<(i64, i64)>, sqlx::Error> {
     let mut selected = Vec::new();
     for chunk in ids.chunks(200) {
         let table = edge.table;
         let field = edge.foreign_key;
         let marks = placeholders(chunk.len());
-        let sql = format!("SELECT CAST(id AS BIGINT) FROM {table} WHERE {field} IN ({marks})");
-        let mut query = sqlx::query_scalar::<_, i64>(AssertSqlSafe(sql));
+        let content = edge.generic.map_or_else(String::new, |(column, app, model)| format!(
+            " AND {column}=(SELECT id FROM django_content_type WHERE app_label='{app}' AND model='{model}')"
+        ));
+        let order = if edge.table == "taggit_taggeditem" && edge.generic.is_some() {
+            " ORDER BY object_id,tag_id".to_owned()
+        } else if edge.order == "-" {
+            String::new()
+        } else {
+            format!(" ORDER BY {}", edge.order)
+        };
+        let sql = format!(
+            "SELECT CAST({field} AS BIGINT),CAST(id AS BIGINT) FROM {table}
+            WHERE {field} IN ({marks}){content}{order}"
+        );
+        let mut query = sqlx::query_as::<_, (i64, i64)>(AssertSqlSafe(sql));
         for id in chunk {
             query = query.bind(id);
         }
@@ -98,35 +118,29 @@ fn delete_order(
     sorted.push(table);
 }
 
-async fn delete_tags(
-    conn: &mut AnyConnection,
-    table: &'static str,
-    ids: &[i64],
-) -> Result<(), sqlx::Error> {
-    let (tagging, model) = match table {
-        "core_video" => ("taggit_taggeditem", "video"),
-        "core_resource" => ("core_taggedresource", "resource"),
-        _ => return Ok(()),
-    };
-    for chunk in ids.chunks(200) {
-        let marks = placeholders(chunk.len());
-        let sql = format!(
-            "DELETE FROM {tagging} WHERE object_id IN ({marks}) AND content_type_id IN
-            (SELECT id FROM django_content_type WHERE app_label='core' AND model='{model}')"
-        );
-        let mut query = sqlx::query(AssertSqlSafe(sql));
-        for id in chunk {
-            query = query.bind(id);
+pub(crate) type Record = (&'static str, i64);
+
+#[derive(Default)]
+pub(crate) struct DeleteDisplay {
+    pub(crate) edges: BTreeMap<Option<Record>, Vec<Record>>,
+    pub(crate) tables: Vec<&'static str>,
+    pub(crate) protected: BTreeSet<Record>,
+}
+
+impl DeleteDisplay {
+    fn link(&mut self, source: Option<Record>, table: &'static str, target: i64) {
+        self.edges.entry(source).or_default().push((table, target));
+        if !self.tables.contains(&table) {
+            self.tables.push(table);
         }
-        query.execute(&mut *conn).await?;
     }
-    Ok(())
 }
 
 pub(crate) struct Deletion {
     root: &'static str,
     selected: BTreeMap<&'static str, BTreeSet<i64>>,
     nulls: BTreeMap<(&'static str, &'static str), BTreeSet<i64>>,
+    pub(crate) display: DeleteDisplay,
 }
 
 pub(crate) async fn plan(
@@ -142,7 +156,7 @@ pub(crate) async fn plan(
     if selected.rows_affected() == 0 {
         return Err(DeleteError::Absent);
     }
-    collect(conn, root, id).await
+    collect(conn, root, id, false).await
 }
 
 pub(crate) async fn preview(
@@ -158,48 +172,78 @@ pub(crate) async fn preview(
     if exists.is_none() {
         return Err(DeleteError::Absent);
     }
-    collect(conn, root, id).await
+    collect(conn, root, id, true).await
 }
 
 async fn collect(
     conn: &mut AnyConnection,
     root: &'static str,
     id: i64,
+    preview: bool,
 ) -> Result<Deletion, DeleteError> {
-    let mut selected: BTreeMap<&str, BTreeSet<i64>> =
-        BTreeMap::from([(root, BTreeSet::from([id]))]);
-    let mut todo = VecDeque::from([(root, vec![id])]);
-    let mut nulls: BTreeMap<(&str, &str), BTreeSet<i64>> = BTreeMap::new();
-    while let Some((table, parents)) = todo.pop_front() {
-        for edge in RELATIONS.get(table).into_iter().flatten() {
-            let rows = children(conn, edge, &parents).await?;
-            if rows.is_empty() {
-                continue;
+    let mut deletion = Deletion {
+        root,
+        selected: BTreeMap::from([(root, BTreeSet::from([id]))]),
+        nulls: BTreeMap::new(),
+        display: DeleteDisplay::default(),
+    };
+    if preview {
+        deletion.display.link(None, root, id);
+    }
+    collect_edges(conn, &mut deletion, root, &[id], preview).await?;
+    Ok(deletion)
+}
+
+async fn collect_edges(
+    conn: &mut AnyConnection,
+    deletion: &mut Deletion,
+    table: &'static str,
+    parents: &[i64],
+    preview: bool,
+) -> Result<(), DeleteError> {
+    let mut protected = false;
+    for edge in RELATIONS.get(table).into_iter().flatten() {
+        if protected && edge.generic.is_some() {
+            // Django stops before visiting generic relations on a protected model.
+            break;
+        }
+        let rows = children(conn, edge, parents).await?;
+        if rows.is_empty() {
+            continue;
+        }
+        match edge.rule {
+            Rule::Protect if preview => {
+                protected = true;
+                deletion
+                    .display
+                    .protected
+                    .extend(rows.into_iter().map(|(_, id)| (edge.table, id)));
             }
-            match edge.rule {
-                Rule::Protect => return Err(DeleteError::Protected),
-                Rule::SetNull => nulls
-                    .entry((edge.table, edge.foreign_key))
-                    .or_default()
-                    .extend(rows),
-                Rule::Cascade => {
-                    let unique = selected.entry(edge.table).or_default();
-                    let added = rows
-                        .into_iter()
-                        .filter(|&id| unique.insert(id))
-                        .collect::<Vec<_>>();
-                    if !added.is_empty() {
-                        todo.push_back((edge.table, added));
+            Rule::Protect => return Err(DeleteError::Protected),
+            Rule::SetNull => deletion
+                .nulls
+                .entry((edge.table, edge.foreign_key))
+                .or_default()
+                .extend(rows.into_iter().map(|(_, id)| id)),
+            Rule::Cascade => {
+                let unique = deletion.selected.entry(edge.table).or_default();
+                let mut added = Vec::new();
+                for (source, id) in rows {
+                    if preview {
+                        let parent = edge.generic.is_none().then_some((table, source));
+                        deletion.display.link(parent, edge.table, id);
                     }
+                    if unique.insert(id) {
+                        added.push(id);
+                    }
+                }
+                if !added.is_empty() {
+                    Box::pin(collect_edges(conn, deletion, edge.table, &added, preview)).await?;
                 }
             }
         }
     }
-    Ok(Deletion {
-        root,
-        selected,
-        nulls,
-    })
+    Ok(())
 }
 
 impl Deletion {
@@ -222,6 +266,7 @@ impl Deletion {
             root,
             mut selected,
             nulls,
+            display: _,
         } = self;
         for ((table, field), rows) in nulls {
             let ids = rows
@@ -249,7 +294,6 @@ impl Deletion {
                 continue;
             };
             let ids = ids.into_iter().collect::<Vec<_>>();
-            delete_tags(conn, table, &ids).await?;
             for chunk in ids.chunks(200) {
                 let marks = placeholders(chunk.len());
                 let sql = format!("DELETE FROM {table} WHERE id IN ({marks})");

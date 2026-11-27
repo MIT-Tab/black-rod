@@ -363,29 +363,21 @@ pub(crate) async fn team_names(conn: &mut AnyConnection, id: i64) -> Result<(), 
     Ok(())
 }
 
-pub(crate) async fn team_name(conn: &mut AnyConnection, team: i64) -> Result<(), sqlx::Error> {
+pub(crate) async fn native_team_labels(
+    conn: &mut AnyConnection,
+    team: i64,
+) -> Result<Option<(String, String)>, sqlx::Error> {
     let roster = sqlx::query(
-        "
-            SELECT d.first_name,d.last_name,COALESCE(s.name,'Unaffiliated') AS school
-            FROM core_team_debaters m JOIN core_debater d ON d.id=m.debater_id
-            LEFT JOIN core_school s ON s.id=d.school_id WHERE m.team_id=$1 ORDER BY m.id
-        ",
+        "SELECT d.first_name,d.last_name,COALESCE(s.name,'Unaffiliated') AS school,
+          COALESCE(NULLIF(s.short_name,''),s.name,'Unaffiliated') AS short_school
+         FROM core_team_debaters m JOIN core_debater d ON d.id=m.debater_id
+         LEFT JOIN core_school s ON s.id=d.school_id WHERE m.team_id=$1 ORDER BY m.id",
     )
     .bind(team)
-    .fetch_all(&mut *conn)
+    .fetch_all(conn)
     .await?;
-    let Some(first) = roster.first() else {
-        return Ok(());
-    };
-    let Some(last) = roster.last() else {
-        return Ok(());
-    };
-    let first: &str = first.try_get("school")?;
-    let last: &str = last.try_get("school")?;
-    let school = if first == last {
-        first.to_owned()
-    } else {
-        format!("{first} / {last}")
+    let (Some(first), Some(last)) = (roster.first(), roster.last()) else {
+        return Ok(None);
     };
     let mut initials = String::new();
     for person in &roster {
@@ -398,11 +390,27 @@ pub(crate) async fn team_name(conn: &mut AnyConnection, team: i64) -> Result<(),
                 .unwrap_or('?'),
         );
     }
-    sqlx::query("UPDATE core_team SET name=$2 WHERE id=$1")
-        .bind(team)
-        .bind(format!("{school} {initials}").trim())
-        .execute(&mut *conn)
-        .await?;
+    let label = |column| {
+        let left: &str = first.try_get(column)?;
+        let right: &str = last.try_get(column)?;
+        let text = if left == right {
+            format!("{left} {initials}")
+        } else {
+            format!("{left} / {right} {initials}")
+        };
+        Ok::<_, sqlx::Error>(text.trim().to_owned())
+    };
+    Ok(Some((label("school")?, label("short_school")?)))
+}
+
+pub(crate) async fn team_name(conn: &mut AnyConnection, team: i64) -> Result<(), sqlx::Error> {
+    if let Some((name, _)) = native_team_labels(conn, team).await? {
+        sqlx::query("UPDATE core_team SET name=$2 WHERE id=$1")
+            .bind(team)
+            .bind(name)
+            .execute(conn)
+            .await?;
+    }
     Ok(())
 }
 

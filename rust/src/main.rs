@@ -1,13 +1,33 @@
 use std::{env, net::SocketAddr, path::Path, time::Duration};
 
-use black_rod::{AppState, Live, OAuth, PrivateTokens, app};
+use black_rod::{AppState, COMMAND_HELP, Live, OAuth, PrivateTokens, app};
 use sqlx::any::{AnyPoolOptions, install_default_drivers};
 use tokio::net::TcpListener;
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let config = env::var_os("DOT_ENV_FILE").unwrap_or_else(|| ".env".into());
+    match dotenvy::from_path(config) {
+        Ok(()) => (),
+        Err(error) if error.not_found() => (),
+        Err(_) => return Err("Could not read the Black Rod environment file.".into()),
+    }
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?
+        .block_on(run())
+}
+
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
+    let mut args = env::args().skip(1);
+    let command = args.next().unwrap_or_else(|| "serve".into());
+    let args = args.collect::<Vec<_>>();
+    if matches!(command.as_str(), "--help" | "-h" | "help") {
+        print!("{COMMAND_HELP}");
+        return Ok(());
+    }
     install_default_drivers();
-    let database = env::var("BLACK_ROD_DATABASE_URL")?;
+    let production = env::var("ENV").is_ok_and(|mode| mode == "production");
+    let database = database_url(production)?;
     let pool = AnyPoolOptions::new()
         .max_connections(8)
         .connect(&database)
@@ -18,6 +38,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .is_ok_and(|value| matches!(value.to_ascii_lowercase().as_str(), "1" | "true" | "yes"))
     };
     let address: SocketAddr = env::var("BLACK_ROD_BIND")
+        .or_else(|_| env::var("PORT").map(|port| format!("0.0.0.0:{port}")))
         .unwrap_or_else(|_| "127.0.0.1:9090".into())
         .parse()?;
     let cache_lifetime = env::var("BLACK_ROD_CACHE_TTL_SECONDS")
@@ -43,7 +64,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         &env::var("FORUM_PROFILE_API_TOKEN").unwrap_or_default(),
         &env::var("MITTAB_PRIVATE_API_TOKENS").unwrap_or_default(),
     ));
-    if let Ok(address) = env::var("BLACK_ROD_MEMCACHED_ADDR") {
+    if let Some(address) = env::var("BLACK_ROD_MEMCACHED_ADDR")
+        .ok()
+        .or_else(|| production.then(|| "127.0.0.1:11211".to_owned()))
+    {
         state = state.with_memcached(address.parse()?);
     }
     let client = env::var("APDAONLINE_CLIENT_ID").unwrap_or_else(|_| "default_client_id".into());
@@ -66,12 +90,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         (!directory.is_empty()).then_some(directory),
         sources,
     )?);
-    if env::args().nth(1).as_deref() == Some("refresh_import_sources") {
-        println!(
-            "Refreshed {} tournament snapshots.",
-            state.refresh_tournament_sources().await
-        );
-        return Ok(());
+    if command != "serve" {
+        return state.run_command(&command, &args).await;
+    }
+    if !args.is_empty() {
+        return Err("Usage: black-rod serve".into());
     }
     let listener = TcpListener::bind(address).await?;
     eprintln!("Black Rod listening on {}", listener.local_addr()?);
@@ -79,9 +102,40 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         listener,
         app(state).into_make_service_with_connect_info::<SocketAddr>(),
     )
-    .with_graceful_shutdown(async {
-        let _ = tokio::signal::ctrl_c().await;
-    })
+    .with_graceful_shutdown(shutdown())
     .await?;
     Ok(())
+}
+
+async fn shutdown() {
+    #[cfg(unix)]
+    if let Ok(mut terminate) =
+        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+    {
+        tokio::select! {
+            _ = terminate.recv() => (),
+            _ = tokio::signal::ctrl_c() => (),
+        }
+        return;
+    }
+    let _ = tokio::signal::ctrl_c().await;
+}
+
+fn database_url(production: bool) -> Result<String, Box<dyn std::error::Error>> {
+    if let Ok(url) = env::var("BLACK_ROD_DATABASE_URL") {
+        return Ok(url);
+    }
+    if !production {
+        return Err("Set BLACK_ROD_DATABASE_URL to an existing Black Rod database.".into());
+    }
+    let mut url = url::Url::parse("postgres://localhost:5433/standings")?;
+    if let Ok(username) = env::var("DATABASE_USERNAME") {
+        url.set_username(&username)
+            .map_err(|_| "Invalid database username")?;
+    }
+    if let Ok(password) = env::var("DATABASE_PASSWORD") {
+        url.set_password(Some(&password))
+            .map_err(|_| "Invalid database password")?;
+    }
+    Ok(url.into())
 }

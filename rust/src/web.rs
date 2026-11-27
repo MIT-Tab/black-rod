@@ -43,6 +43,14 @@ const VIEWS: &[(&str, &str)] = &[
         include_str!("../templates/site_admin/change_form.html"),
     ),
     (
+        "django_summernote/widget_iframe_editor.html",
+        include_str!("../../core/templates/django_summernote/widget_iframe_editor.html"),
+    ),
+    (
+        "django_summernote/widget_common.html",
+        include_str!("../templates/django_summernote/widget_common.html"),
+    ),
+    (
         "rest_framework/browse.html",
         include_str!("../templates/rest_framework/browse.html"),
     ),
@@ -125,6 +133,10 @@ const VIEWS: &[(&str, &str)] = &[
     (
         "account/reset.html",
         include_str!("../templates/account/reset.html"),
+    ),
+    (
+        "socialaccount/signup.html",
+        include_str!("../templates/socialaccount/signup.html"),
     ),
     (
         "socialaccount/login.html",
@@ -1184,6 +1196,13 @@ fn adapt_template(name: &str, template: &str) -> String {
                 .replace("{{ form|crispy }}", r#"{% include "videos/fields.html" %}"#)
                 .replace("{{ object }}", "{{ object.name }}")
                 .replace("{{ debater_form.school|as_crispy_field }}", r#"<div class="form-group"><label for="id_school">School</label><select name="school" id="id_school" class="modelselect2 form-control" data-rust-select-url="/core/schools/autocomplete"><option value=""></option></select></div>"#);
+            &adapted
+        }
+        "django_summernote/widget_iframe_editor.html" => {
+            adapted = template.replace(
+                "{% include \"django_summernote/widget_common.html\" with iframe=True %}",
+                "{% include \"django_summernote/widget_common.html\" %}",
+            );
             &adapted
         }
         "debaters/personal_partnership_stats.html"

@@ -226,6 +226,7 @@ dependencies = [
  "chrono",
  "csv",
  "deunicode",
+ "dotenvy",
  "flate2",
  "hex",
  "http-body-util",
