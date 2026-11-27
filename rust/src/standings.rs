@@ -247,9 +247,16 @@ impl Board {
             ),
         };
         let markers = &MARKER_NAMES[..marker_count];
+        // Django joins the sixth TOTY marker for the public list, although it
+        // only serializes five. The extra join can affect the order of exact ties.
+        let selected_markers = if view == View::Api && matches!(self, Self::Teams) {
+            &MARKER_NAMES[..]
+        } else {
+            markers
+        };
         let mut columns = String::new();
         let mut joins = String::new();
-        for marker in markers {
+        for marker in selected_markers {
             columns.push_str(&format!(
                 ",
                 CAST(b.marker_{marker} AS DOUBLE PRECISION) AS points_{marker},
@@ -261,10 +268,12 @@ impl Board {
                 " LEFT JOIN core_tournament m_{marker} ON m_{marker}.id = b.tournament_{marker}_id"
             ));
         }
-        let order = if view == View::Home {
-            "b.points DESC"
-        } else {
-            "b.points DESC, b.place"
+        let order = match view {
+            // The list slices these results after sorting. A new tie-breaker
+            // could change which entry appears at an existing client's limit.
+            View::Api => "b.points DESC, b.place",
+            View::Replay => "b.points DESC, b.place, b.id",
+            View::Home => "b.points DESC, b.id",
         };
         let query = format!("
             SELECT CAST(b.id AS BIGINT) AS standing_id,

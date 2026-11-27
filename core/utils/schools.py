@@ -7,7 +7,7 @@ def get_debaters_for_season(school, season):
             school=school,
             first_season__lte=season,
             latest_season__gte=season
-        )
+        ).order_by("pk")
     )
 
     def years_on_team(debater):

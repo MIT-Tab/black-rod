@@ -46,7 +46,7 @@ def get_tab_card_data(team, tournament):
 
     to_return = []
 
-    for round in rounds.order_by("round_number").all():
+    for round in rounds.order_by("round_number", "pk"):
         to_add = {
             "round": round,
             "stats": [

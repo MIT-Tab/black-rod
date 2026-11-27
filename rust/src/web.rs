@@ -1028,13 +1028,12 @@ fn adapt_template(name: &str, template: &str) -> String {
                 .replace("{{ import_move_form_media }}", r#"{% include "autocomplete_media.html" %}"#)
                 .replace(
                     "{{ row.move_form.tournament_import_id }}",
-                    r#"<input type="hidden" name="import-{{ row.id }}-tournament_import_id" value="{{ row.id }}">"#,
+                    r#"<input type="hidden" name="import-{{ row.id }}-tournament_import_id" value="{{ row.id }}" id="id_import-{{ row.id }}-tournament_import_id">"#,
                 )
                 .replace(
                     "{{ row.move_form.target_tournament }}",
                     r#"<select name="import-{{ row.id }}-target_tournament" id="id_import-{{ row.id }}-target_tournament"
-                            data-autocomplete-light-language="en" data-autocomplete-light-url="/core/tournaments/all_autocomplete" data-autocomplete-light-function="select2" required
-                            data-placeholder="Select target tournament"><option value="">---------</option></select>"#,
+                            data-autocomplete-light-language="en" data-autocomplete-light-url="/core/tournaments/all_autocomplete" data-autocomplete-light-function="select2" required><option value="" selected>---------</option></select>"#,
                 );
             &adapted
         }

@@ -336,46 +336,25 @@ pub(crate) async fn page(
     else {
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     };
-    let data = sqlx::query(AssertSqlSafe(
-        QUERY.replace("{columns}", TOURNAMENT_COLUMNS),
-    ))
+    let rows = sqlx::query(
+        "SELECT CAST(id AS BIGINT) AS id, name, CAST(date AS TEXT) AS date,
+                CAST(qual_type AS BIGINT) AS qual_type
+         FROM core_tournament WHERE season = $1 ORDER BY date",
+    )
     .bind(&raw)
     .fetch_all(&state.pool)
     .await;
-    let rows = match data {
-        Ok(rows) => rows,
+    let tournaments = match rows {
+        Ok(rows) => page_months(&rows),
+        Err(error) => Err(error.into()),
+    };
+    let tournaments = match tournaments {
+        Ok(tournaments) => tournaments,
         Err(error) => {
-            let _ = ApiError::from(error);
+            eprintln!("Schedule page failed: {error:?}");
             return StatusCode::INTERNAL_SERVER_ERROR.into_response();
         }
     };
-    let mut months = BTreeMap::<(i32, u32), BTreeMap<NaiveDate, Vec<(i64, Tournament)>>>::new();
-    for row in rows {
-        let (Ok(tournament), Ok(qualification)) = (
-            Tournament::from_row(&row, ""),
-            row.try_get::<i64, _>("qual_type"),
-        ) else {
-            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
-        };
-        let Ok(date) = NaiveDate::parse_from_str(&tournament.date, "%Y-%m-%d") else {
-            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
-        };
-        months
-            .entry((date.year(), date.month()))
-            .or_default()
-            .entry(date)
-            .or_default()
-            .push((qualification, tournament));
-    }
-    let tournaments = months.into_values().map(|weeks| {
-        let display = weeks.keys().next().map(|date| date.format("%B").to_string()).unwrap_or_default();
-        let weeks = weeks.into_iter().map(|(date, mut tournaments)| {
-            tournaments.sort_by_key(|(qualification, _)| (matches!(qualification, 1 | 2), *qualification));
-            json!({"date": date.day(), "one_more": (date + Days::new(1)).day(),
-                "tournaments": tournaments.into_iter().map(|(_, tournament)| tournament).collect::<Vec<_>>()})
-        }).collect::<Vec<_>>();
-        json!({"display": display, "weeks": weeks})
-    }).collect::<Vec<_>>();
     let common = crate::web::base_context(&state, &user, &uri);
     match crate::web::render(
         "tournaments/schedule.html",
@@ -388,5 +367,83 @@ pub(crate) async fn page(
             eprintln!("Schedule template failed: {error}");
             StatusCode::INTERNAL_SERVER_ERROR.into_response()
         }
+    }
+}
+
+fn page_months(rows: &[AnyRow]) -> Result<Vec<Value>, ApiError> {
+    let mut months = BTreeMap::new();
+    for row in rows {
+        let id: i64 = row.try_get("id")?;
+        let name: &str = row.try_get("name")?;
+        let qualification: i64 = row.try_get("qual_type")?;
+        let date = NaiveDate::parse_from_str(row.try_get("date")?, "%Y-%m-%d")
+            .map_err(|_| ApiError::InvalidStoredDate)?;
+        // The HTML view groups by month number, then labels it with the first
+        // tournament's year. A stored season can contain dates from several years.
+        let (_, weeks) = months
+            .entry(date.month())
+            .or_insert_with(|| (date, BTreeMap::new()));
+        let (_, tournaments) = weeks
+            .entry(date.day())
+            .or_insert_with(|| (date, Vec::new()));
+        tournaments.push((
+            qualification,
+            json!({"name": name, "url": format!("/core/tournaments/{id}")}),
+        ));
+    }
+
+    let mut months = months.into_values().collect::<Vec<_>>();
+    months.sort_by_key(|(date, _)| (date.year(), date.month()));
+    Ok(months.into_iter().map(|(month, weeks)| {
+        let weeks = weeks.into_values().map(|(date, mut tournaments)| {
+            tournaments.sort_by_key(|(qualification, _)| (matches!(qualification, 1 | 2), *qualification));
+            json!({"date": date.day(), "one_more": (date + Days::new(1)).day(),
+                   "tournaments": tournaments.into_iter().map(|(_, tournament)| tournament).collect::<Vec<_>>()})
+        }).collect::<Vec<_>>();
+        json!({"display": month.format("%B").to_string(), "weeks": weeks})
+    }).collect())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn schedule_page_preserves_day_qualification_and_legacy_month_order() {
+        sqlx::any::install_default_drivers();
+        let pool = sqlx::AnyPool::connect("sqlite::memory:").await.unwrap();
+        let rows = sqlx::query(
+            "SELECT CAST(id AS BIGINT) AS id, name, date, CAST(qual_type AS BIGINT) AS qual_type
+             FROM (
+                 SELECT 1 AS id, 'First July' AS name, '2025-07-12' AS date, 0 AS qual_type
+                 UNION ALL SELECT 2, 'Earlier November', '2025-11-15', 0
+                 UNION ALL SELECT 3, 'Special', '2025-11-15', 2
+                 UNION ALL SELECT 4, 'Second November', '2025-11-15', 0
+                 UNION ALL SELECT 5, 'Second July', '2026-07-25', 0
+             ) ORDER BY date, id",
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+
+        let months = page_months(&rows).unwrap();
+        assert_eq!(months.len(), 2);
+        assert_eq!(months[0]["display"], "July");
+        assert_eq!(
+            months[0]["weeks"][0]["tournaments"][0]["name"],
+            "First July"
+        );
+        assert_eq!(
+            months[0]["weeks"][1]["tournaments"][0]["name"],
+            "Second July"
+        );
+        assert_eq!(
+            months[1]["weeks"][0]["tournaments"],
+            json!([
+                {"name": "Earlier November", "url": "/core/tournaments/2"},
+                {"name": "Second November", "url": "/core/tournaments/4"},
+                {"name": "Special", "url": "/core/tournaments/3"}
+            ])
+        );
     }
 }

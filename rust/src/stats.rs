@@ -77,7 +77,7 @@ const VIDEOS: &str = "
     )
     SELECT {people}
     FROM counts c JOIN core_debater d ON d.id = c.debater_id LEFT JOIN core_school s ON s.id = d.school_id
-    WHERE NOT d.synthetic AND NOT d.temporary ORDER BY c.count DESC LIMIT 10
+    WHERE NOT d.synthetic AND NOT d.temporary ORDER BY c.count DESC, d.id LIMIT 10
 ";
 
 fn script_json(rows: &[Value], columns: &[&str]) -> String {
@@ -115,11 +115,11 @@ async fn school_table(pool: &AnyPool, hosted: bool) -> Result<Vec<Value>, ApiErr
     let query = if hosted {
         "SELECT CAST(s.id AS BIGINT) AS id, s.name, CAST(COUNT(t.id) AS DOUBLE PRECISION) AS total
          FROM core_school s JOIN core_tournament t ON t.host_id = s.id
-         WHERE NOT s.temporary GROUP BY s.id, s.name ORDER BY COUNT(t.id) DESC LIMIT 10"
+         WHERE NOT s.temporary GROUP BY s.id, s.name ORDER BY COUNT(t.id) DESC, s.id LIMIT 10"
     } else {
         "SELECT CAST(s.id AS BIGINT) AS id, s.name, CAST(SUM(c.points) AS DOUBLE PRECISION) AS total
          FROM core_school s JOIN core_coty c ON c.school_id = s.id
-         WHERE NOT s.temporary GROUP BY s.id, s.name ORDER BY SUM(c.points) DESC LIMIT 10"
+         WHERE NOT s.temporary GROUP BY s.id, s.name ORDER BY SUM(c.points) DESC, s.id LIMIT 10"
     };
     let rows = sqlx::query(query).fetch_all(pool).await?;
     let mut values = Vec::new();
@@ -159,7 +159,7 @@ async fn team_table(pool: &AnyPool) -> Result<Vec<Value>, ApiError> {
     let rows = sqlx::query("
         SELECT CAST(t.id AS BIGINT) AS id, t.name, CAST(COUNT(DISTINCT r.tournament_id) AS BIGINT) AS count
         FROM core_team t JOIN core_teamresult r ON r.team_id = t.id
-        GROUP BY t.id, t.name ORDER BY COUNT(DISTINCT r.tournament_id) DESC LIMIT 10
+        GROUP BY t.id, t.name ORDER BY COUNT(DISTINCT r.tournament_id) DESC, t.id LIMIT 10
     ").fetch_all(pool).await?;
     let mut conn = pool.acquire().await?;
     let mut values = Vec::new();

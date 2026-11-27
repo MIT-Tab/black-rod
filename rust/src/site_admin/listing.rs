@@ -928,9 +928,7 @@ async fn get_list(
     let mut pages = Vec::new();
     if page_count > 1 && !all {
         let mut last = 0;
-        for number in (1..=page_count).filter(|number| {
-            *number <= 2 || *number > page_count.saturating_sub(2) || number.abs_diff(page) <= 3
-        }) {
+        for number in pagination_numbers(page, page_count) {
             if last > 0 && number > last + 1 {
                 pages.push(context! {gap=>true});
             }
@@ -1520,6 +1518,23 @@ async fn merge_topics(
     Ok(response)
 }
 
+// Django keeps short ranges intact and elides only beyond both end windows.
+fn pagination_numbers(page: usize, total: usize) -> impl Iterator<Item = usize> {
+    let left = if total <= 10 || page <= 7 {
+        1
+    } else {
+        page - 3
+    };
+    let right = if total <= 10 || page >= total.saturating_sub(6) {
+        total
+    } else {
+        page + 3
+    };
+    (1..=total).filter(move |&number| {
+        number <= 2 || number > total.saturating_sub(2) || (left..=right).contains(&number)
+    })
+}
+
 pub(super) async fn page(
     admin: &AdminRequest<'_>,
     model: &'static Model,
@@ -1606,4 +1621,25 @@ pub(super) async fn page(
     }
     let context = get_list(admin, model, &params).await?;
     admin.view("site_admin/change_list.html", context)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::pagination_numbers;
+
+    #[test]
+    fn admin_pagination_shows_short_ranges_and_keeps_links_beside_ellipses() {
+        assert_eq!(
+            pagination_numbers(1, 7).collect::<Vec<_>>(),
+            [1, 2, 3, 4, 5, 6, 7]
+        );
+        assert_eq!(
+            pagination_numbers(8, 20).collect::<Vec<_>>(),
+            [1, 2, 5, 6, 7, 8, 9, 10, 11, 19, 20]
+        );
+        assert_eq!(
+            pagination_numbers(14, 20).collect::<Vec<_>>(),
+            [1, 2, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
+        );
+    }
 }

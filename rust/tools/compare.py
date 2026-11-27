@@ -8,7 +8,6 @@ import hashlib
 from html.parser import HTMLParser
 from http.client import HTTPConnection
 import json
-from itertools import groupby
 import math
 import os
 from pathlib import Path
@@ -167,30 +166,6 @@ def differences(reference, candidate, position="$"):
         elif position.endswith(".tags") and all(isinstance(item, str) for item in reference + candidate):
             reference = sorted(reference)
             candidate = sorted(candidate)
-        elif position.endswith((".breakdown", ".coty_breakdown")):
-            # Django orders qualification rows by points alone. PostgreSQL's
-            # ordering inside equal-score runs varies with the query plan.
-            def ordered_equal_scores(rows):
-                return [item for _, group in groupby(rows, key=lambda row: row["points"])
-                        for item in sorted(group, key=lambda row: row["debater"]["id"])]
-            reference = ordered_equal_scores(reference)
-            candidate = ordered_equal_scores(candidate)
-        elif position == "$.season_summary.members":
-            # Members have descending tenure with no guaranteed order within a year.
-            def ordered_equal_years(rows):
-                return [item for _, group in groupby(rows, key=lambda row: row["years_on_team"])
-                        for item in sorted(group, key=lambda row: row["debater"]["id"])]
-            reference = ordered_equal_years(reference)
-            candidate = ordered_equal_years(candidate)
-        elif position == "$.standings.toty" and all("team" in row for row in reference + candidate):
-            # The Django ordering has no final tiebreaker for identical
-            # points and places. The list API only exposes place_display.
-            def ordered_equal_ranks(rows):
-                key = lambda row: (row["points"], row.get("place", row["place_display"]))
-                return [item for _, group in groupby(rows, key=key)
-                        for item in sorted(group, key=lambda row: row["team"]["id"])]
-            reference = ordered_equal_ranks(reference)
-            candidate = ordered_equal_ranks(candidate)
         if len(reference) != len(candidate):
             yield f"{position} length differs: {len(reference)} vs {len(candidate)}"
         for index, (left, right) in enumerate(zip(reference, candidate)):
@@ -286,6 +261,8 @@ def fixture_cases(django):
         Case("/api/standings/?board=not_a_board&limit=2"),
         Case("/api/standings/?season=2025&board=COTY,soty&board=toty&limit=5"),
         Case("/api/standings/?season=2021&board=online_quals&limit=9"),
+        Case("/api/standings/?season=2021&limit=10"),
+        Case("/api/standings/?season=2025&limit=10"),
         Case("/api/standings/?season=2020&board=noty,online_quals&limit=7"),
         Case("/api/standings/?season=2024&limit=99999999"),
         Case("/api/standings/?season=2024&limit=bad"),

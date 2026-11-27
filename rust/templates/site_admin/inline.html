@@ -57,7 +57,7 @@
         {% for item in group.rows %}
             <div class="inline-related{% if item.id %} has_original{% endif %}{% if item.empty %} empty-form last-related{% endif %}" id="{{ item.dom_id }}">
                 <h3><b>{{ group.singular }}:</b> <span class="inline_label">{% if item.id %}{{ original(group,item) }}{% else %}#{{ item.number }}{% endif %}</span>
-                    {% if group.can_delete and item.id %}<span class="delete">{{ deletion(item) }} <label class="vCheckboxLabel" for="id_{{ item.prefix }}-DELETE">Delete:</label></span>{% endif %}
+                    {% if group.can_delete and item.id %}<span class="delete">{{ deletion(item) }} <label class="vCheckboxLabel inline" for="id_{{ item.prefix }}-DELETE">Delete</label></span>{% endif %}
                 </h3>
                 {{ errors(item.errors) }}
                 <fieldset class="module aligned ">

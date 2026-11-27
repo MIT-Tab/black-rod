@@ -90,7 +90,8 @@ class MotionTable(CustomTable):
     user_status = Column(empty_values=(), orderable=False, verbose_name="My status")
 
     def render_topics(self, record):
-        return ", ".join(tag.name for tag in record.tags.all())
+        tags = sorted(record.tags.all(), key=lambda tag: tag.pk)
+        return ", ".join(tag.name for tag in tags)
 
     def render_user_status(self, record):
         return getattr(record, "user_status", "") or "—"
@@ -173,6 +174,7 @@ class MotionDetailView(CustomDetailView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
+        context["topics"] = self.object.tags.order_by("pk")
         if self.request.user.is_authenticated:
             context["motion_status"] = MotionUserStatus.objects.filter(user=self.request.user, motion=self.object).values_list("status", flat=True).first()
         return context

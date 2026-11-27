@@ -42,7 +42,7 @@ const ROUNDS: &str = "
     JOIN core_team o ON o.id = CASE WHEN r.gov_id = $1 THEN r.opp_id ELSE r.gov_id END
     WHERE (r.gov_id = $1 OR r.opp_id = $1)
         AND (CAST($2 AS BIGINT) IS NULL OR r.tournament_id = $2)
-    ORDER BY r.round_number
+    ORDER BY r.round_number, r.id
 ";
 const STATS: &str = "
     SELECT CAST(rs.round_id AS BIGINT) AS round_id, CAST(rs.debater_id AS BIGINT) AS debater_id,

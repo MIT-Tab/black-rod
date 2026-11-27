@@ -446,7 +446,9 @@ impl Kind {
             Self::Tournaments | Self::Videos => "x.id DESC",
             Self::Motions => "x.date_set DESC, x.id DESC",
             Self::Resources { .. } => "x.created_at DESC",
-            Self::Teams | Self::Outreach { .. } => "x.id",
+            // The Django team directory leaves the default queryset unordered.
+            Self::Teams => "",
+            Self::Outreach { .. } => "x.id",
         }
     }
 }
@@ -837,8 +839,13 @@ async fn rows(
         Kind::Standing(standing) => std::borrow::Cow::Owned(standing.projection()),
         _ => std::borrow::Cow::Borrowed(kind.projection(order_by)),
     };
+    let order_clause = if order.is_empty() {
+        String::new()
+    } else {
+        format!(" ORDER BY {order}")
+    };
     let query = format!(
-        "SELECT {projection} {} ORDER BY {order} LIMIT ${} OFFSET ${}",
+        "SELECT {projection} {}{order_clause} LIMIT ${} OFFSET ${}",
         filters.query,
         filters.params.len() + 1,
         filters.params.len() + 2
@@ -871,18 +878,26 @@ async fn rows(
             }
             Kind::Teams => {
                 cells.push(vec![(row.try_get("name")?, url)]);
-                let people = team_profile::members(&mut connection, id, "").await?;
-                cells.push(
-                    people
-                        .iter()
-                        .map(|person| {
-                            (
-                                person["name"].as_str().unwrap_or_default().into(),
-                                person["url"].as_str().unwrap_or_default().into(),
-                            )
-                        })
-                        .collect(),
-                );
+                let members = sqlx::query(
+                    "SELECT CAST(d.id AS BIGINT) AS id, d.first_name, d.last_name
+                     FROM core_debater d JOIN core_team_debaters m ON m.debater_id = d.id
+                     WHERE NOT d.synthetic AND NOT d.temporary AND m.team_id = $1",
+                )
+                .bind(id)
+                .fetch_all(&mut *connection)
+                .await?
+                .into_iter()
+                .map(|person| {
+                    let id: i64 = person.try_get("id")?;
+                    let first: &str = person.try_get("first_name")?;
+                    let last: &str = person.try_get("last_name")?;
+                    Ok((
+                        format!("{first} {last}").trim().to_owned(),
+                        format!("/core/debaters/{id}"),
+                    ))
+                })
+                .collect::<Result<Vec<_>, sqlx::Error>>()?;
+                cells.push(members);
             }
             Kind::Resources { .. } => {
                 cells.clear();

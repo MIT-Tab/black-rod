@@ -34,7 +34,7 @@
                     <input type="text" size="40" name="q" value="{{ query }}" id="searchbar">
                     <input type="submit" value="Search">
                     {% if count != total %}<span class="small quiet">{{ count }} result{% if count != 1 %}s{% endif %} (<a href="?">{{ total }} total</a>)</span>{% endif %}
-                    {% for name, value in params %}{% if name != "q" %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endif %}{% endfor %}
+                    {% for name, value in params %}{% if name not in ["q", "p"] %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endif %}{% endfor %}
                 </div>
             </form></div>
             {% endif %}

@@ -1178,7 +1178,22 @@ pub(super) async fn page(
             .get(&mut *admin.state.pool.acquire().await?, id)
             .await?;
         if entry.is_null() {
-            return Ok(redirect("/admin/"));
+            let mut response = redirect("/admin/");
+            if let Some(secret) = admin.state.secret.as_deref() {
+                let message = format!(
+                    "{} with ID “{id}” doesn’t exist. Perhaps it was deleted?",
+                    cap_first(&model.singular)
+                );
+                flash::push(
+                    &mut response,
+                    admin.headers,
+                    secret,
+                    30,
+                    &message,
+                    admin.secure(),
+                );
+            }
+            return Ok(response);
         }
         entry
     } else {

@@ -367,7 +367,7 @@ def get_db_initial(tab_key: str, tournament: Tournament) -> List[dict]:
                 tournament=tournament, type_of_place=type_of_place, **place_filter
             )
             .select_related("debater", "debater__school")
-            .order_by("place")
+            .order_by("place", "pk")
         )
         return [
             {
@@ -383,11 +383,11 @@ def get_db_initial(tab_key: str, tournament: Tournament) -> List[dict]:
         )
         .select_related("team")
         .prefetch_related("team__debaters__school")
-        .order_by("place")
+        .order_by("place", "pk")
     )
     initial = []
     for result in results:
-        debaters = list(result.team.debaters.all())
+        debaters = sorted(result.team.debaters.all(), key=lambda debater: debater.pk)
         team_data = {
             "debater_one": debaters[0] if debaters else None,
             "debater_two": debaters[1] if len(debaters) > 1 else None,

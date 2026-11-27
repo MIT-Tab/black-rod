@@ -29,7 +29,7 @@ def get_qualled_debaters(school, season):
     season = str(season)
     qual_points = list(
         QualPoints.objects.filter(debater__school=school, season=season).order_by(
-            "-points"
+            "-points", "debater_id", "pk"
         )
     )
 
@@ -48,10 +48,7 @@ def get_qualled_debaters(school, season):
             to_return += [qual_point]
             handled_debaters.add(qual_point.debater_id)
 
-    for debater_id in qualled_debater_ids:
-        if debater_id in handled_debaters:
-            continue
-
+    for debater_id in sorted(qualled_debater_ids - handled_debaters):
         # Display-only placeholder; do not persist from read paths.
         qual_point = QualPoints(debater_id=debater_id, points=0, season=season)
 

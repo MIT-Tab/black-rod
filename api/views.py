@@ -1201,7 +1201,7 @@ def _collect_replay_standings(season, request):
             team_results_prefetch,
             toty_reaff_prefetch,
         )
-        .order_by("-points", "place")
+        .order_by("-points", "place", "pk")
     )
 
     soty_qs = (
@@ -1216,7 +1216,7 @@ def _collect_replay_standings(season, request):
             "tournament_six",
         )
         .prefetch_related(speaker_results_prefetch, reaff_prefetch)
-        .order_by("-points", "place")
+        .order_by("-points", "place", "pk")
     )
 
     standings = {"toty": [], "soty": []}
