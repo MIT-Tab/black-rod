@@ -1669,7 +1669,7 @@ from django.contrib.auth import get_user_model
 
 for granted in (False, True):
     user = get_user_model().objects.create_user(username=f"video-role-login-{int(granted)}",
-        password="disposable-video-role", can_view_private_videos=not granted)
+        password="disposable-video-role", can_view_private_videos=not granted, is_staff=True)
     SocialAccount.objects.create(user=user, provider="apdaonline", uid=f"999990{int(granted)}",
         extra_data={"user_roles": ["private_side_viewer"] if granted else []})
 """
@@ -1677,21 +1677,28 @@ for granted in (False, True):
     db = Path(os.environ["BR_STATE"]) / "dev.sqlite3"
     with sqlite3.connect(db) as connection:
         for server in (django, rust):
-            for granted in (0, 1):
-                username = f"video-role-login-{granted}"
-                connection.execute("UPDATE core_user SET can_view_private_videos=? WHERE username=?",
-                                   (1 - granted, username))
-                connection.commit()
-                driver.delete_all_cookies()
-                driver.get(f"http://{HOST}:{server.port}/accounts/login/?next=/games/")
-                driver.find_element("name", "login").send_keys(username)
-                driver.find_element("name", "password").send_keys("disposable-video-role")
-                previous = driver.find_element("tag name", "html")
-                driver.find_element("css selector", 'form button[type="submit"]').click()
-                WebDriverWait(driver, 10).until(document_replaced(previous))
-                assert urlsplit(driver.current_url).path == "/games/", server.name
-                assert connection.execute("SELECT can_view_private_videos FROM core_user WHERE username=?",
-                                          (username,)).fetchone() == (granted,), server.name
+            for path, field, destination, sync in (
+                ("/accounts/login/", "login", "/games/", True),
+                ("/auth/login/", "username", "/games/", False),
+                ("/admin/login/", "username", "/admin/", False),
+            ):
+                for granted in (0, 1):
+                    username = f"video-role-login-{granted}"
+                    connection.execute("UPDATE core_user SET can_view_private_videos=? WHERE username=?",
+                                       (1 - granted, username))
+                    connection.commit()
+                    root = f"http://{HOST}:{server.port}"
+                    driver.get(root + "/robots.txt")
+                    driver.delete_all_cookies()
+                    driver.get(root + path + "?next=" + destination)
+                    driver.find_element("name", field).send_keys(username)
+                    password = driver.find_element("name", "password")
+                    password.send_keys("disposable-video-role")
+                    password.submit()
+                    WebDriverWait(driver, 10).until(lambda browser: browser.current_url == root + destination)
+                    current = connection.execute("SELECT can_view_private_videos FROM core_user WHERE username=?",
+                                                 (username,)).fetchone()
+                    assert current == (granted if sync else 1 - granted,), (server.name, path, current)
     driver.delete_all_cookies()
 
 
@@ -2321,6 +2328,94 @@ print(json.dumps([a, b, team.pk, resource.pk, one.pk, two.pk, synthetic.pk]))
                         f"SELECT debater_id FROM {table} WHERE {owner}=? ORDER BY debater_id", (pk,),
                     ).fetchall()
                 assert members == [(one,), (two,)]
+    driver.delete_all_cookies()
+
+
+def assert_admin_value_constraints(driver, django, rust):
+    code = """
+from django import setup
+setup()
+from django.conf import settings
+from core.models import Debater, QualPoints, Round, RoundStats
+import json
+
+allowed = Debater.objects.create(first_name="Eligible fixture", last_name="Debater")
+unavailable = Debater.all_objects.create(first_name="Unavailable fixture", last_name="Debater", temporary=True)
+record = QualPoints.objects.create(debater=allowed, points=2, season=str(settings.CURRENT_SEASON))
+prelim = Round.objects.filter(stage=Round.Stage.PRELIM).first()
+score = RoundStats.objects.create(round=prelim, debater=allowed, speaks="27.1")
+print(json.dumps([record.pk, allowed.pk, unavailable.pk, score.pk, str(settings.CURRENT_SEASON)]))
+"""
+    out = subprocess.check_output([str(ROOT / "venv/bin/python"), "-c", code], text=True)
+    record, eligible, unavailable, score, season = json.loads(out.splitlines()[-1])
+    session = django_session()
+    quals = f"/admin/core/qualpoints/{record}/change/"
+    scores = f"/admin/core/roundstats/{score}/change/"
+    credentials = "/admin/core/agentcredential/add/"
+    db = Path(os.environ["BR_STATE"]) / "dev.sqlite3"
+
+    def read(query, *params):
+        with sqlite3.connect(f"{db.as_uri()}?mode=ro", uri=True) as connection:
+            return connection.execute(query, params).fetchone()
+
+    def qualifier_state():
+        return read("SELECT debater_id, points, season FROM core_qualpoints WHERE id=?", record)
+
+    def submit(route, fields):
+        driver.get(root + route)
+        return driver.execute_async_script("""
+            const [fields, done] = arguments;
+            const body = new URLSearchParams(new FormData(document.querySelector('#content-main form')));
+            for (const [name, value] of Object.entries(fields)) body.set(name, value);
+            body.set('_continue', 'Save and continue editing');
+            fetch(location.href, {method:'POST', body}).then(async response => {
+                const page = new DOMParser().parseFromString(await response.text(), 'text/html');
+                done({status:response.status, redirect:response.redirected,
+                    errors:[...page.querySelectorAll('.errorlist')].map(error => error.textContent)});
+            }, () => done({status:0}));
+        """, fields)
+
+    def rejected(route, fields, message):
+        result = submit(route, fields)
+        assert result["status"] == 200 and not result["redirect"], (server.name, result)
+        assert any(message in text for text in result["errors"]), (server.name, result)
+
+    previous_points = 2
+    previous_score = 27.1
+    for value, server in enumerate((django, rust), 5):
+        root = f"http://{HOST}:{server.port}"
+        driver.get(root + "/robots.txt")
+        driver.delete_all_cookies()
+        driver.add_cookie({"name": "sessionid", "value": session})
+        for selection in (unavailable, 777777777, "not-a-number"):
+            rejected(quals, {"debater": selection, "points": value},
+                     "Select a valid choice. That choice is not one of the available choices.")
+            assert qualifier_state() == (eligible, previous_points, season)
+        rejected(quals, {"season": "9999", "points": value},
+                 "Select a valid choice. 9999 is not one of the available choices.")
+        assert qualifier_state() == (eligible, previous_points, season)
+        saved = submit(quals, {"debater": eligible, "points": value})
+        assert saved["status"] == 200 and saved["redirect"], (server.name, saved)
+        assert qualifier_state() == (eligible, value, season)
+        previous_points = value
+
+        for speaks, problem in (
+            ("27.12345", "6 digits in total."),
+            ("2.12345", "4 decimal places."),
+            ("127.12", "2 digits before the decimal point."),
+        ):
+            rejected(scores, {"speaks": speaks}, f"Ensure that there are no more than {problem}")
+            assert read("SELECT speaks FROM core_roundstats WHERE id=?", score) == (previous_score,)
+        precise = f"27.123{value}"
+        saved = submit(scores, {"speaks": precise})
+        assert saved["status"] == 200 and saved["redirect"], (server.name, saved)
+        previous_score = float(precise)
+        assert read("SELECT speaks FROM core_roundstats WHERE id=?", score) == (previous_score,)
+
+        expired_name = "Expired disposable credential fixture"
+        rejected(credentials, {"name": expired_name, "expires_at_0": "2000-01-01",
+                               "expires_at_1": "00:00:00"}, "Expiration must be in the future.")
+        assert read("SELECT id FROM core_agentcredential WHERE name=?", expired_name) is None
     driver.delete_all_cookies()
 
 
@@ -4273,6 +4368,7 @@ def browser_checks(database, options, output):
         assert_admin_preserves_linked_state(driver, django, rust)
         assert_admin_related_popups(driver, django, rust)
         assert_admin_search_and_memberships(driver, django, rust)
+        assert_admin_value_constraints(driver, django, rust)
         assert_admin_user_add_permissions(driver, django, rust)
         assert_admin_across_pages(driver, rust)
         assert_admin_topic_merges(driver, django, rust)

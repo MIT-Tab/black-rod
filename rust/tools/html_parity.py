@@ -349,6 +349,18 @@ def capture(driver, server, route, session, target, exclude):
             field.style.setProperty("caret-color", "transparent", "important");
         }
     """)
+    # macOS's overlay scrollbar in a native multiple select can still be fading
+    # after document animations finish. Capture the control in its resting state.
+    driver.execute_async_script("""
+        const done = arguments[0];
+        const scrollingSelect = [...document.querySelectorAll('select[multiple]')]
+            .some(select => select.clientHeight > 0 && select.scrollHeight > select.clientHeight);
+        if (navigator.platform.startsWith('Mac') && scrollingSelect) {
+            setTimeout(done, 1500);
+        } else {
+            done();
+        }
+    """)
     assert driver.save_screenshot(str(target.with_suffix(".png")))
     return navigation, html, sidebar
 

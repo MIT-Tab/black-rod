@@ -28,6 +28,8 @@ def field_config(field):
         "choices": [(key, str(label)) for key, label in field.flatchoices],
         "related": related._meta.label_lower if related else None,
     }
+    if hasattr(field, "max_digits"):
+        config["precision"] = field.max_digits
     if field.default is not NOT_PROVIDED:
         if callable(field.default):
             config["default_fn"] = field.default.__name__

@@ -1,5 +1,6 @@
 mod inlines;
 mod tags;
+mod validation;
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -9,7 +10,7 @@ use axum::{
     http::{Method, StatusCode, header},
     response::{IntoResponse, Response},
 };
-use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, SecondsFormat, Utc};
+use chrono::{DateTime, SecondsFormat, Utc};
 use minijinja::{Value, context};
 use serde_json::{Map, Value as Json, json};
 use sqlx::{Any, AnyConnection, AssertSqlSafe, Executor, Row};
@@ -21,9 +22,13 @@ use super::{
     schema::{Field, Model, Widget, schema},
 };
 use crate::{ApiError, account, agent::journal::storage_error, flash, login};
+use validation::{RelatedSelections, clean_memberships, cleaned};
 
 type Errors = BTreeMap<String, Vec<String>>;
 type Values = BTreeMap<String, Vec<String>>;
+
+const FORM_CONSTRAINT: &str =
+    "A record with these values already exists, or a referenced record could not be found.";
 
 fn primitive(value: &Json) -> String {
     match value {
@@ -751,125 +756,6 @@ pub(super) async fn loaded_label(
         .unwrap_or_else(|| id.to_string()))
 }
 
-fn datetime(values: &Values, name: &str) -> Option<Json> {
-    let date = raw(values, &format!("{name}_0"));
-    let time = raw(values, &format!("{name}_1"));
-    if !date.is_empty() || !time.is_empty() {
-        let date = NaiveDate::parse_from_str(date, "%Y-%m-%d").ok()?;
-        let time = NaiveTime::parse_from_str(time, "%H:%M:%S")
-            .or_else(|_| NaiveTime::parse_from_str(time, "%H:%M"))
-            .ok()?;
-        return Some(json!(
-            date.and_time(time)
-                .and_utc()
-                .to_rfc3339_opts(SecondsFormat::Secs, true)
-        ));
-    }
-    let value = raw(values, name);
-    if value.is_empty() {
-        return Some(Json::Null);
-    }
-    DateTime::parse_from_rfc3339(value)
-        .ok()
-        .map(|datetime| json!(datetime.to_rfc3339()))
-        .or_else(|| {
-            NaiveDateTime::parse_from_str(value, "%Y-%m-%d %H:%M:%S")
-                .ok()
-                .map(|datetime| json!(datetime.and_utc().to_rfc3339()))
-        })
-}
-
-fn cleaned(
-    field: &Field,
-    widget: &Widget,
-    name: &str,
-    values: &Values,
-    errors: &mut Errors,
-) -> Option<Json> {
-    let raw = raw(values, name);
-    let date_value = if field.kind == "DateTimeField" {
-        datetime(values, name)
-    } else {
-        None
-    };
-    if widget.required
-        && raw.trim().is_empty()
-        && date_value.as_ref().is_none_or(Json::is_null)
-        && field.kind != "BooleanField"
-    {
-        error(errors, name, "This field is required.");
-        return None;
-    }
-    if field.size.is_some_and(|max| raw.chars().count() > max) {
-        error(
-            errors,
-            name,
-            &format!(
-                "Ensure this value has at most {} characters (it has {}).",
-                field.size.unwrap_or_default(),
-                raw.chars().count()
-            ),
-        );
-    }
-    if !field.choices.is_empty()
-        && !raw.is_empty()
-        && !field.choices.iter().any(|(key, _)| primitive(key) == raw)
-    {
-        error(
-            errors,
-            name,
-            &format!("Select a valid choice. {raw} is not one of the available choices."),
-        );
-    }
-    let value = match field.kind.as_str() {
-        "BooleanField" => Some(json!(values.contains_key(name))),
-        "ForeignKey"
-        | "OneToOneField"
-        | "IntegerField"
-        | "SmallIntegerField"
-        | "BigIntegerField"
-        | "PositiveIntegerField"
-        | "PositiveSmallIntegerField"
-        | "PositiveBigIntegerField"
-            if !raw.is_empty() =>
-        {
-            raw.parse::<i64>()
-                .ok()
-                .filter(|value| !field.kind.starts_with("Positive") || *value >= 0)
-                .map(|value| json!(value))
-        }
-        "FloatField" | "DecimalField" if !raw.is_empty() => raw
-            .parse::<f64>()
-            .ok()
-            .filter(|value| value.is_finite())
-            .map(|_| json!(raw)),
-        "DateTimeField" => date_value,
-        "DateField" if !raw.is_empty() => NaiveDate::parse_from_str(raw, "%Y-%m-%d")
-            .ok()
-            .map(|date| json!(date.to_string())),
-        "JSONField" if !raw.is_empty() => serde_json::from_str(raw).ok(),
-        _ if raw.is_empty() && field.null => Some(Json::Null),
-        _ => Some(json!(if field.kind == "TextField" {
-            raw
-        } else {
-            raw.trim()
-        })),
-    };
-    if value.is_none() {
-        error(
-            errors,
-            name,
-            match field.kind.as_str() {
-                "DateTimeField" | "DateField" => "Enter a valid date.",
-                "JSONField" => "Enter a valid JSON.",
-                "FloatField" | "DecimalField" => "Enter a number.",
-                _ => "Enter a whole number.",
-            },
-        );
-    }
-    value
-}
-
 pub(super) async fn log(
     conn: &mut AnyConnection,
     model: &Model,
@@ -889,96 +775,6 @@ pub(super) async fn log(
         .bind(id.to_string()).bind(text).bind(action).bind(change).bind(user).bind(model.app()).bind(model.slug())
         .execute(conn).await?;
     Ok(())
-}
-
-type RelatedSelections = BTreeMap<String, BTreeSet<i64>>;
-
-async fn clean_memberships(
-    admin: &AdminRequest<'_>,
-    model: &Model,
-    widgets: &BTreeMap<String, Widget>,
-    values: &Values,
-    errors: &mut Errors,
-) -> Result<RelatedSelections, ApiError> {
-    let mut selections = RelatedSelections::new();
-    for (name, widget) in widgets {
-        let Some(field) = model.fields.get(name).filter(|field| {
-            field.through.is_some()
-                && field.kind != "Tags"
-                && !field.generic_through.unwrap_or_default()
-        }) else {
-            continue;
-        };
-        let selected = values.get(name).map_or(&[][..], Vec::as_slice);
-        let raw_selected;
-        let selected = if widget.kind == "ManyToManyRawIdWidget" {
-            raw_selected = raw(values, name)
-                .split(',')
-                .filter(|value| !value.is_empty())
-                .map(str::to_owned)
-                .collect::<Vec<_>>();
-            raw_selected.as_slice()
-        } else {
-            selected
-        };
-        if selected.is_empty() && widget.required {
-            error(errors, name, "This field is required.");
-            continue;
-        }
-        let mut ids = BTreeSet::new();
-        for input in selected {
-            match input.trim().parse::<i64>() {
-                Ok(id) if input == &id.to_string() => {
-                    ids.insert(id);
-                }
-                Ok(_) => error(
-                    errors,
-                    name,
-                    &format!("Select a valid choice. {input} is not one of the available choices."),
-                ),
-                Err(_) => error(errors, name, &format!("“{input}” is not a valid value.")),
-            }
-            if errors.contains_key(name) {
-                break;
-            }
-        }
-        if errors.contains_key(name) {
-            continue;
-        }
-        if !ids.is_empty() {
-            let target = related_model(field);
-            let table = match (target, field.related.as_deref()) {
-                (Some(target), _) => &target.table,
-                (_, Some("auth.permission")) => "auth_permission",
-                _ => return Err(ApiError::Serialization),
-            };
-            let filter = match (field.related.as_deref(), model.slug()) {
-                (Some("core.debater"), "teamresult") => "",
-                (Some("core.debater"), _) => " AND NOT (temporary OR synthetic)",
-                _ => "",
-            };
-            let list = ids.iter().map(i64::to_string).collect::<Vec<_>>().join(",");
-            let sql =
-                format!("SELECT CAST(id AS BIGINT) FROM {table} WHERE id IN ({list}){filter}");
-            let found = sqlx::query_scalar::<_, i64>(AssertSqlSafe(sql))
-                .fetch_all(&admin.state.pool)
-                .await?
-                .into_iter()
-                .collect::<BTreeSet<_>>();
-            if let Some(missing) = ids.difference(&found).next() {
-                error(
-                    errors,
-                    name,
-                    &format!(
-                        "Select a valid choice. {missing} is not one of the available choices."
-                    ),
-                );
-                continue;
-            }
-        }
-        selections.insert(name.clone(), ids);
-    }
-    Ok(selections)
 }
 
 async fn save_memberships(
@@ -1063,7 +859,7 @@ async fn save(
             .get(name)
             .filter(|widget| widget.kind != "ReadOnlyPasswordHashWidget")
         {
-            if let Some(value) = cleaned(field, widget, name, values, errors) {
+            if let Some(value) = cleaned(admin, model, field, widget, name, values, errors).await? {
                 if loaded[column] != value {
                     changed.push(cap_first(&field.label));
                 }
@@ -1126,6 +922,16 @@ async fn save(
             }
         }
     }
+    if model.slug() == "agentcredential"
+        && id.is_none()
+        && columns
+            .get("expires_at")
+            .and_then(Json::as_str)
+            .and_then(|value| DateTime::parse_from_rfc3339(value).ok())
+            .is_some_and(|expires| expires <= Utc::now())
+    {
+        error(errors, "expires_at", "Expiration must be in the future.");
+    }
     let selections = clean_memberships(admin, model, &form.widgets, values, errors).await?;
     let inline_changes = inlines::prepare(admin, form, id, values, errors).await?;
     if !errors.is_empty() {
@@ -1161,11 +967,7 @@ async fn save(
         match model.storage.write(&mut tx, &columns, id).await {
             Ok(record) => record,
             Err(ApiError::Constraint) => {
-                error(
-                    errors,
-                    "form",
-                    "A record with these values already exists, or a referenced record could not be found.",
-                );
+                error(errors, "form", FORM_CONSTRAINT);
                 return Ok(None);
             }
             Err(error) => return Err(error),
@@ -1247,7 +1049,15 @@ async fn save(
         Json::Array(message),
     )
     .await?;
-    tx.commit().await?;
+    if let Err(failure) = tx.commit().await {
+        match storage_error(failure) {
+            ApiError::Constraint => {
+                error(errors, "form", FORM_CONSTRAINT);
+                return Ok(None);
+            }
+            failure => return Err(failure),
+        }
+    }
     if model.key == "core.debater" {
         admin.state.search.invalidate_all();
     }

@@ -453,6 +453,11 @@ async fn apply_row(
     Ok(Ok(PreviewRow { kind, cells }))
 }
 
+fn has_explicit_id(row: &Map<String, Value>) -> bool {
+    row.get("id")
+        .is_some_and(|value| number(value, &formats::text(value)).is_some())
+}
+
 async fn process(
     admin: &AdminRequest<'_>,
     admin_model: &Model,
@@ -462,6 +467,17 @@ async fn process(
 ) -> Result<ResultRows, ApiError> {
     let model = exchange.resource(admin_model)?;
     let mut tx = admin.state.pool.begin().await?;
+    let sync_sequence =
+        confirming && tx.backend_name() == "PostgreSQL" && rows.iter().any(has_explicit_id);
+    if sync_sequence {
+        // Ordinary INSERTs take a conflicting table lock before allocating an ID.
+        let lock = format!(
+            r#"LOCK TABLE "{}" IN SHARE ROW EXCLUSIVE MODE"#,
+            model.table
+        );
+        sqlx::query(AssertSqlSafe(lock)).execute(&mut *tx).await?;
+    }
+    let mut imported_explicit_id = false;
     let mut result = ResultRows::default();
     let actor = confirming.then_some(admin.viewer.user.id).flatten();
     for (index, row) in rows.iter().enumerate() {
@@ -480,7 +496,8 @@ async fn process(
             Ok(record) => {
                 savepoint.commit().await?;
                 if record.kind == "new" {
-                    result.new += 1
+                    result.new += 1;
+                    imported_explicit_id |= sync_sequence && has_explicit_id(row);
                 } else {
                     result.updated += 1
                 }
@@ -503,9 +520,13 @@ async fn process(
         }
     }
     if confirming && result.errors.is_empty() {
-        if result.new > 0 && tx.backend_name() == "PostgreSQL" {
+        if imported_explicit_id {
             let sql = format!(
-                "SELECT setval(pg_get_serial_sequence($1,'id'),COALESCE(MAX(id),1),MAX(id) IS NOT NULL) FROM {}",
+                r#"WITH imported AS (SELECT CAST(MAX(id) AS BIGINT) AS last_id FROM "{}"),
+                       id_sequence AS (SELECT CAST(pg_get_serial_sequence($1,'id') AS REGCLASS) AS relation)
+                   SELECT setval(id_sequence.relation, imported.last_id)
+                   FROM imported CROSS JOIN id_sequence
+                   WHERE imported.last_id > COALESCE(pg_sequence_last_value(id_sequence.relation), 0)"#,
                 model.table
             );
             sqlx::query(AssertSqlSafe(sql))

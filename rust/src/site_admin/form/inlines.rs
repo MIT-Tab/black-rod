@@ -297,7 +297,10 @@ pub(super) async fn prepare<'a>(
                         continue;
                     };
                     if let Some(widget) = spec.widgets.get(name) {
-                        if let Some(value) = cleaned(field, widget, name, &values, &mut invalid) {
+                        if let Some(value) =
+                            cleaned(admin, model, field, widget, name, &values, &mut invalid)
+                                .await?
+                        {
                             if data[column] != value {
                                 changed.push(cap_first(&field.label));
                             }

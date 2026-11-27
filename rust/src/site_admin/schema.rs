@@ -40,6 +40,7 @@ pub(super) struct Field {
     pub(super) primary: bool,
     pub(super) size: Option<usize>,
     pub(super) scale: Option<usize>,
+    pub(super) precision: Option<usize>,
     pub(super) default: Option<serde_json::Value>,
     pub(super) default_fn: Option<String>,
     pub(super) through: Option<[String; 3]>,
