@@ -626,7 +626,7 @@ pub(crate) async fn page(State(state): State<AppState>, request: Request) -> Res
             let mut action=action(&mut tx,id,&round,&form,&values).await?;
             amendment::execute(&mut tx,std::slice::from_ref(&action),state.current_season,user.id,&json!({"source":"tournament_audit_round_edit"})).await?;
             tx.commit().await?;
-            amendment::invalidate(&state);
+            amendment::invalidate(&state).await;
             let mut response=(StatusCode::FOUND,[(header::LOCATION,detail_url(id))]).into_response();
             if let Some(secret)=state.secret.as_deref(){
                 flash::push(&mut response,&headers,secret,25,
@@ -790,7 +790,7 @@ pub(crate) async fn change(
         )
         .await?;
         tx.commit().await?;
-        amendment::invalidate(&state);
+        amendment::invalidate(&state).await;
         flash(&mut response, 25, &message);
         notice_record(&state, &headers, &mut response, &action, secure, status).await;
         Ok(response)

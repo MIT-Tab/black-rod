@@ -1269,6 +1269,169 @@ def assert_speaks_statistics(driver, django, rust, fixture):
     driver.delete_all_cookies()
 
 
+def seed_elo():
+    code = """
+from datetime import date
+from django import setup
+setup()
+from core.models import Debater, QUAL, Round, RoundStats, School, Team, Tournament
+school = School.objects.create(name="Disposable ELO school", short_name="ELO School")
+active = [Debater.objects.create(first_name=f"Elo Fixture {index:02}", last_name="Speaker",
+    school=school, first_season="2024", latest_season="2026", elo_manual_opt="opt_in")
+    for index in range(56)]
+partnerships = []
+for index in range(0, len(active), 2):
+    team = Team.objects.create(name=f"Elo Fixture {index:02}")
+    team.debaters.add(active[index], active[index + 1])
+    partnerships.append(team)
+unqualified = active[0]
+unqualified.elo_manual_opt = "opt_out"
+unqualified.save(update_fields=["elo_manual_opt"])
+pro_am = active[2]
+pro_am.first_season = "2026"
+pro_am.save(update_fields=["first_season"])
+for year in (2024, 2026):
+    event = Tournament.objects.create(host=school, date=date(year, 9, 10),
+        season=str(year), manual_name=f"ELO fixture {year}")
+    for index in range(0, len(partnerships), 2):
+        gov, opp = partnerships[index:index + 2]
+        round_number = index // 2 + 1
+        is_elim = year == 2026 and index % 4 == 0
+        stage = Round.Stage.OUTROUND if is_elim else Round.Stage.PRELIM
+        stage_tag = "E" if is_elim else "P"
+        if round_number == 2:
+            for _ in range(2):
+                Round.objects.create(tournament=event, gov=gov, opp=opp, victor=Round.GOV,
+                    round_number=round_number, stage=stage, round_label=f"{stage_tag}{round_number}",
+                    import_origin="forum")
+        else:
+            debate = Round.objects.create(tournament=event, gov=gov, opp=opp,
+                victor=Round.GOV if year == 2024 else Round.OPP, round_number=round_number,
+                stage=stage, round_label=f"{stage_tag}{round_number}")
+            if round_number == 3 and not is_elim:
+                RoundStats.objects.create(round=debate, debater=active[8], speaks=27.5, ranks=1)
+        Round.objects.create(tournament=event, gov=gov, opp=opp, victor=Round.GOV_VIA_FORFEIT,
+            round_number=round_number + 15)
+unrated = Tournament.objects.create(host=school, date=date(2026, 9, 11),
+    season="2026", manual_name="Disposable unresolved ELO round")
+Round.objects.create(tournament=unrated, gov=partnerships[0], opp=partnerships[1], victor=Round.UNKNOWN)
+QUAL.objects.get_or_create(debater=active[-1], season="2026")
+"""
+    subprocess.run([str(ROOT / "venv/bin/python"), "-c", code],
+                   env={**os.environ, "SECRET_KEY": "disposable-local-parity-key"},
+                   check=True, capture_output=True)
+
+
+def assert_elo_dashboard(driver, django, rust, fixture):
+    from selenium.webdriver.support.expected_conditions import staleness_of
+
+    path = "/core/elo/"
+    login_cookie = django_session()
+    driver.delete_all_cookies()
+    for server in (django, rust):
+        driver.get(f"http://{HOST}:{server.port}{path}")
+        assert urlsplit(driver.current_url).path == "/auth/login/"
+        driver.add_cookie({"name": "sessionid", "value": fixture["sessions"]["ordinary"]})
+        driver.get(f"http://{HOST}:{server.port}{path}")
+        assert driver.find_element("tag name", "h1").text.strip() == "Permission denied"
+        driver.delete_all_cookies()
+
+    def snapshot():
+        return driver.execute_script("""
+            return {
+                badges: [...document.querySelectorAll('.elo-dashboard .badge-info')].map(node => node.innerText),
+                rows: [...document.querySelectorAll('#elo-rankings-table tbody tr')].map(row =>
+                    [...row.cells].map(td => [td.innerText.trim(), [...td.querySelectorAll('a')].map(a => a.pathname)])),
+                currentPage: document.querySelector('.elo-dashboard h5 + .text-muted')?.innerText,
+                pagination: [...document.querySelectorAll('nav[aria-label="ELO rankings pagination"] a')].map(a => a.search),
+                controls: [...document.querySelectorAll('.elo-dashboard input:not([type=hidden])')].map(input =>
+                    [input.id,input.type,input.value,input.checked]),
+                shares: ['win', 'loss'].map(key => document.getElementById('higher-elo-' + key + '-share-output').innerText),
+                seasons: ['compute', 'active'].map(key => document.getElementById(key + '-season-range-output').innerText),
+                notices: [...document.querySelectorAll('.elo-dashboard .alert-danger')].map(node => node.innerText.trim()),
+            };
+        """)
+
+    def submit(settings=None, check=()):
+        for key, value in (settings or {}).items():
+            control = driver.find_element("id", f"id_elo-{key}")
+            driver.execute_script("""
+                arguments[0].value = String(arguments[1]);
+                arguments[0].dispatchEvent(new Event('input', {bubbles:true}));
+            """, control, value)
+        for name in check:
+            driver.find_element("id", f"id_elo-{name}").click()
+        form = driver.find_element("css selector", ".elo-dashboard form")
+        form.find_element("css selector", 'button[type="submit"]').click()
+        WebDriverWait(driver, 10).until(staleness_of(form))
+        return snapshot()
+
+    def visit(server):
+        driver.delete_all_cookies()
+        driver.get(f"http://{HOST}:{server.port}{path}")
+        driver.add_cookie({"name": "sessionid", "value": login_cookie})
+        driver.get(f"http://{HOST}:{server.port}{path}")
+        initial = snapshot()
+        default_run = submit()
+        assert len(default_run["rows"]) == 50, (default_run["badges"], default_run["notices"], len(default_run["rows"]), server.port)
+        assert len(default_run["badges"]) == 4
+        assert default_run["pagination"] == ["?page=2"]
+        driver.find_element("css selector", '[data-sort-key="rank"]').click()
+        descending = snapshot()["rows"]
+        assert [int(row[0][0]) for row in descending] == list(range(50, 0, -1))
+        driver.find_element("css selector", 'nav[aria-label="ELO rankings pagination"] a').click()
+        second = snapshot()
+        assert second["rows"][0][0][0] == "51"
+        assert second["pagination"][0] == "?page=1"
+        driver.get(f"http://{HOST}:{server.port}{path}")
+        custom = submit({"season_start": 2024, "active_season_start": 2024, "min_outrounds": 1,
+                         "higher_elo_win_share": 75, "higher_elo_loss_share": 25},
+                        check=("exclude_proam_partnerships", "exclude_dino_rounds"))
+        assert custom["shares"] == ["75%", "25%"]
+        assert all(int(row[5][0]) >= 1 for row in custom["rows"]), (custom["controls"], custom["rows"][:3], custom["notices"])
+        return initial, default_run, second, custom
+
+    def open_as_admin(server, path):
+        driver.get(f"http://{HOST}:{server.port}{path}")
+        driver.add_cookie({"name": "sessionid", "value": login_cookie})
+        driver.get(f"http://{HOST}:{server.port}{path}")
+
+    def invalidate(server):
+        open_as_admin(server, "/core/admin-tools/")
+        form = driver.find_element("css selector", 'form[action="/core/admin/elo-cache/invalidate/"]')
+        form.find_element("tag name", "button").click()
+        WebDriverWait(driver, 10).until(staleness_of(form))
+        assert urlsplit(driver.current_url).path == "/core/admin-tools/"
+
+    shared = bool(os.environ.get("BLACK_ROD_PARITY_MEMCACHED_ADDR"))
+    left = visit(django)
+    if shared:
+        open_as_admin(rust, path)
+        across = snapshot()
+        assert across["badges"] == left[-1]["badges"]
+        assert across["rows"] == left[-1]["rows"]
+        invalidate(rust)
+        open_as_admin(django, path)
+        assert not snapshot()["badges"]
+    right = visit(rust)
+    if shared:
+        open_as_admin(django, path)
+        across = snapshot()
+        assert across["badges"] == right[-1]["badges"]
+        assert across["rows"] == right[-1]["rows"]
+        invalidate(django)
+        open_as_admin(rust, path)
+        assert not snapshot()["badges"]
+    for step, (expected, observed) in enumerate(zip(left, right, strict=True)):
+        for key in expected:
+            if key == "rows":
+                for index, (a, b) in enumerate(zip_longest(expected[key], observed[key])):
+                    assert a == b, (step, key, index, a, b)
+            else:
+                assert expected[key] == observed[key], (step, key, expected[key], observed[key])
+    driver.delete_all_cookies()
+
+
 def assert_mittab_bundle_upload(driver, django, rust, fixture):
     event = fixture["bundle_event"]
     path = f"/core/tournaments/mittab_bundle/upload?tournament={event}"
@@ -1927,6 +2090,7 @@ def main():
 
 def browser_checks(database, options, output):
     fixture = seed_browser_cases()
+    seed_elo()
     subprocess.run([str(ROOT / "venv/bin/python"), "manage.py", "update_index", "--verbosity", "0"],
                    check=True, capture_output=True)
     with oauth_provider(fixture) as provider, servers(database) as (django, rust), webdriver.Chrome(options=options) as driver:
@@ -1961,6 +2125,7 @@ def browser_checks(database, options, output):
         assert_doty(driver, django, rust)
         assert_admin_tools(driver, django, rust)
         assert_speaks_statistics(driver, django, rust, fixture)
+        assert_elo_dashboard(driver, django, rust, fixture)
         assert_mittab_bundle_upload(driver, django, rust, fixture)
         assert_tournament_audit(driver, django, rust, fixture)
         assert_tournament_audit_writes(driver, django, rust, fixture)

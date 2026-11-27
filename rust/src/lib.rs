@@ -8,6 +8,7 @@ mod delete_relations;
 mod directory;
 mod discovery;
 mod django_json;
+mod elo;
 mod entity_delete;
 mod entity_forms;
 mod exports;
@@ -29,6 +30,7 @@ mod private_api;
 mod recent_results;
 mod replay;
 mod resource;
+mod round_contract;
 pub use private_api::PrivateTokens;
 mod schedule;
 mod school_admin;
@@ -88,6 +90,7 @@ pub struct AppState {
     guide_modified: Option<String>,
     public_json: Cache<(String, Endpoint), cache::CachedBody>,
     memcached: Option<cache::Memcached>,
+    elo: elo::Cache,
     cache_lifetime: Duration,
     import_cache: tournament_import::source::Cache,
     standings: Cache<(String, i32), Arc<standings::Boards>>,
@@ -168,6 +171,7 @@ impl AppState {
                 .max_capacity(16 * 1024 * 1024)
                 .build(),
             memcached: None,
+            elo: elo::Cache::new(!lifetime.is_zero()),
             partnership_stats: Arc::default(),
             school_admin_limits: Cache::builder()
                 .time_to_live(Duration::from_secs(86_400))
@@ -485,6 +489,13 @@ pub fn app(state: AppState) -> Router {
             "/core/user-autocomplete/",
             get(school_admin::roles::autocomplete),
         )
+        .route("/core/elo/", get(elo::page).post(elo::page))
+        .route("/core/elo", get(append_slash))
+        .route(
+            "/core/admin/elo-cache/invalidate/",
+            get(admin::tools).post(elo::invalidate_view),
+        )
+        .route("/core/admin/elo-cache/invalidate", get(append_slash))
         .route("/core/admin-tools/", get(admin::tools))
         .route(
             "/core/admin/round-amendments/",

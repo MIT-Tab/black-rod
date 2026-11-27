@@ -311,6 +311,7 @@ async fn complete(
     let response = super::batch(&mut tx, endpoint, id).await?;
     tx.commit().await.map_err(journal::storage_error)?;
     state.search.invalidate_all();
+    crate::elo::invalidate(state).await;
     Ok(response)
 }
 

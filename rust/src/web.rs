@@ -19,6 +19,10 @@ use crate::{
 
 const VIEWS: &[(&str, &str)] = &[
     (
+        "elo/dashboard.html",
+        include_str!("../../core/templates/elo/dashboard.html"),
+    ),
+    (
         "admin/tournament_round_ballot.html",
         include_str!("../../core/templates/admin/tournament_round_ballot.html"),
     ),
@@ -652,6 +656,39 @@ fn adapt_scheduler(template: &str) -> String {
 fn adapt_template(name: &str, template: &str) -> String {
     let adapted;
     let template = match name {
+        "elo/dashboard.html" => {
+            static FIELD: LazyLock<Regex> =
+                LazyLock::new(|| Regex::new(r"\{\{ form\.(\w+) \}\}").unwrap());
+            static LABEL: LazyLock<Regex> =
+                LazyLock::new(|| Regex::new(r"\{\{ form\.(\w+)\.label_tag \}\}").unwrap());
+            let source = template
+                .replace("{% block title %}", r#"{% macro control(field) %}
+                    <input type="{{ field.kind }}" name="{{ field.name }}"{% if field.value %} value="{{ field.value }}"{% endif %}
+                        {% if field.minimum is not none %} min="{{ field.minimum }}"{% endif %}
+                        {% if field.maximum is not none %} max="{{ field.maximum }}"{% endif %}
+                        {% if field.step %} step="{{ field.step }}"{% endif %}
+                        class="{{ field.classes }}"{% if field.role %} data-slider-role="{{ field.role }}"{% endif %}
+                        {% if field.output %} data-slider-output-id="{{ field.output }}" aria-describedby="{{ field.id }}_helptext"{% endif %}
+                        {% if field.kind == 'checkbox' %}{% if field.value %} checked{% endif %}{% else %} required{% endif %}
+                        {% if field.error %} aria-invalid="true"{% endif %} id="{{ field.id }}">
+                    {% endmacro %}
+                    {% block title %}"#)
+                .replace(".id_for_label", ".id")
+                .replace(".help_text", ".help")
+                .replace("{% url 'core:debater_detail' pk=row.debater_id %}", "/core/debaters/{{ row.debater_id }}")
+                .replace("{% url 'core:school_detail' pk=school.id %}", "/core/schools/{{ school.id }}")
+                .replace(r#"row.name|default:"-""#, "row.name or '-'")
+                .replace(r#"row.school_name|default:"-""#, "'-'")
+                .replace("row.elo|floatformat:2", "row.elo_display");
+            let source = FIELD.replace_all(&source, "{{ control(form.$1) }}");
+            adapted = LABEL
+                .replace_all(
+                    &source,
+                    r#"<label for="{{ form.$1.id }}">{{ form.$1.label }}:</label>"#,
+                )
+                .into_owned();
+            &adapted
+        }
         "admin/tournament_round_ballot.html" => {
             let mut html = template
                 .replace(

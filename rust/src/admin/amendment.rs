@@ -328,10 +328,11 @@ pub(super) async fn execute(
     Ok(summary)
 }
 
-pub(super) fn invalidate(state: &AppState) {
+pub(super) async fn invalidate(state: &AppState) {
     state.search.invalidate_all();
     state.standings.invalidate_all();
     state.replay.invalidate_all();
+    crate::elo::invalidate(state).await;
 }
 
 fn document(bytes: &[u8]) -> Result<Value, Error> {
@@ -418,7 +419,7 @@ pub(crate) async fn upload(State(state): State<AppState>, request: Request) -> R
     .await;
     match result {
         Ok(summary) => {
-            invalidate(&state);
+            invalidate(&state).await;
             let mut response = (
                 StatusCode::FOUND,
                 [(header::LOCATION, "/core/admin-tools/")],
