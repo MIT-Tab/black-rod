@@ -196,7 +196,7 @@ pub(crate) async fn page(State(state): State<AppState>, request: Request) -> Res
 }
 
 async fn response(state: &AppState, request: Request) -> Result<Response, ApiError> {
-    let ip = limits::ip(&request);
+    let ip = limits::ip(state, &request);
     let path = request.uri().path().to_owned();
     let user = session::user(&state.pool, request.headers(), state.secret.as_deref()).await?;
     let visit = match visit(state, request).await {

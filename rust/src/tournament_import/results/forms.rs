@@ -174,15 +174,28 @@ pub(super) fn submitted(values: &FormValues, reviewing: bool) -> Vec<Panel> {
                 let check =
                     |name| field(name).is_some_and(|value| !value.eq_ignore_ascii_case("false"));
                 let mut row = ResultRow {
-                    order: field("ORDER")
-                        .and_then(|value| value.trim().parse().ok())
-                        .unwrap_or(index as i64 + 1),
+                    order: index as i64 + 1,
                     scoring: check("counts_for_points"),
                     ghost: tab.ghost && check("ghost_points"),
                     tie: check("tie"),
                     deleted: check("DELETE"),
                     ..Default::default()
                 };
+                if matches!(tab.kind, "team" | "speaker")
+                    && let Some(value) = field("ORDER")
+                        .map(|value| value.trim())
+                        .filter(|value| !value.is_empty())
+                {
+                    // Django's IntegerField also accepts a decimal representation ending in zeroes.
+                    let integer = value
+                        .split_once('.')
+                        .filter(|(_, fraction)| fraction.bytes().all(|byte| byte == b'0'))
+                        .map_or(value, |(integer, _)| integer);
+                    match integer.parse::<i32>() {
+                        Ok(order) => row.order = i64::from(order),
+                        Err(_) => row.errors.push("Enter a whole number.".to_owned()),
+                    }
+                }
                 if matches!(tab.kind, "school" | "debater") {
                     row.record = extract_person(field("id"), &mut row.errors);
                     row.name = field(if tab.kind == "school" {

@@ -391,6 +391,11 @@ result_award.hidden_from_debaters.add(manual_people[0])
 SpeakerResult.objects.create(tournament=manual, debater=manual_people[2], place=1, hidden_from_profile=True)
 result["manual_event"] = {"id":manual.pk,"people":[person.pk for person in manual_people],"team":manual_team.pk,
                          "school":result_school.pk}
+result["historical_events"] = {}
+for season in (2020, 2021):
+    event = Tournament.objects.create(host=result_school, season=str(season), date=date(season, 9, 16),
+        manual_name=f"Disposable online results {season}", qual_type=Tournament.YALE)
+    result["historical_events"][str(season)] = event.pk
 for access, _ in Video.PERMISSIONS:
     video = Video.objects.create(
         tournament=tournament, round=Video.VF, permissions=access,
@@ -2656,21 +2661,29 @@ def assert_manual_results(driver, django, rust, fixture):
         "css selector", "#id_novice_speakers-0-speaker.select2-hidden-accessible"))
     assert driver.find_element("id", "id_novice_speakers-TOTAL_FORMS").get_attribute("value") == "1"
 
-    def send(person):
+    def send(fields):
         return driver.execute_async_script("""
-            const [person, done] = arguments;
+            const [fields, done] = arguments;
             const body = new URLSearchParams(new FormData(document.querySelector('#data-entry-form')));
-            body.set('varsity_speakers-0-speaker', String(person));
+            Object.entries(fields).forEach(([name, value]) => body.set(name, value));
             fetch(location.pathname + location.search, {method:"POST", body}).then(async response => {
                 const page = new DOMParser().parseFromString(await response.text(), "text/html");
                 done({status:response.status, path:new URL(response.url).pathname, redirected:response.redirected,
                     error:page.querySelector('[role=alert]')?.textContent.trim()});
             }, () => done({status:0}));
-        """, person)
+        """, fields)
 
-    rejected = send(9_000_000)
+    rejected = send({"varsity_speakers-0-speaker": 9_000_000})
     assert "Varsity Speakers tab" in rejected["error"] and not rejected["redirected"], rejected
-    committed = send(manual["people"][2])
+    database = Path(os.environ["BR_STATE"]) / "dev.sqlite3"
+    with sqlite3.connect(f"{database.as_uri()}?mode=ro", uri=True) as db:
+        prior_awards = db.execute("SELECT * FROM core_speakerresult WHERE tournament_id=?", (event,)).fetchall()
+        for server in (django, rust):
+            driver.get(f"http://{HOST}:{server.port}{target}")
+            malformed = send({"varsity_speakers-0-ORDER": "not-a-number"})
+            assert not malformed["redirected"], (server.name, malformed)
+            assert db.execute("SELECT * FROM core_speakerresult WHERE tournament_id=?", (event,)).fetchall() == prior_awards
+    committed = send({"varsity_speakers-0-speaker": manual["people"][2]})
     assert committed["redirected"] and committed["path"] == f"/core/tournaments/{event}", committed
     assert form_state(django) == reference
     database = Path(os.environ["BR_STATE"]) / "dev.sqlite3"
@@ -2681,6 +2694,19 @@ def assert_manual_results(driver, django, rust, fixture):
         assert db.execute("SELECT points FROM core_toty WHERE team_id=? AND season='2026'", (manual["team"],)).fetchone() == (13.0,)
         assert db.execute("SELECT points FROM core_soty WHERE debater_id=? AND season='2026'", (manual["people"][2],)).fetchone() == (13.0,)
         assert db.execute("SELECT points FROM core_coty WHERE school_id=? AND season='2026'", (manual["school"],)).fetchone() == (38.0,)
+    with sqlite3.connect(database) as db:
+        for season, historical in fixture["historical_events"].items():
+            for server in (django, rust):
+                db.execute("INSERT INTO core_coty (season,school_id,place,points,tied) VALUES (?,?,1,6,0)",
+                           (season, manual["school"]))
+                db.commit()
+                driver.get(f"http://{HOST}:{server.port}/core/tournaments/data_entry?tournament={historical}")
+                saved = send({"autoqual_debaters": manual["people"][2]})
+                assert saved["redirected"], (server.name, season, saved)
+                assert not db.execute("SELECT 1 FROM core_coty WHERE season=? AND school_id=?",
+                                      (season, manual["school"])).fetchall()
+                assert db.execute("SELECT debater_id FROM core_tournamentautoqual WHERE tournament_id=?",
+                                  (historical,)).fetchall() == [(manual["people"][2],)]
     driver.delete_all_cookies()
 
 

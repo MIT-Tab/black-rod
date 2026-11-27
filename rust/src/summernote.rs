@@ -186,7 +186,7 @@ pub(crate) async fn editor(
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     };
     let css = [
-        "/static/summernote/summernote-lite.css",
+        "/static/summernote/summernote-lite.min.css",
         "/static/summernote/django_summernote.css",
     ];
     let js = [

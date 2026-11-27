@@ -46,7 +46,9 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     install_default_drivers();
     let production = env::var("ENV").is_ok_and(|mode| mode == "production");
     let production_web = production && command == "serve";
-    let secret = env::var("SECRET_KEY").ok();
+    let secret = env::var("SECRET_KEY")
+        .ok()
+        .or_else(|| (env::var("ENV").as_deref() == Ok("development")).then(|| "abcd".to_owned()));
     if production_web && secret.as_deref().is_none_or(|key| key.trim().is_empty()) {
         return Err("Set SECRET_KEY before serving production requests.".into());
     }
@@ -95,6 +97,9 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         .or_else(|| production.then(|| "50.116.54.146,results.apda.online".to_owned()))
     {
         state = state.with_allowed_hosts(&hosts);
+    }
+    if let Ok(address) = env::var("BLACK_ROD_TRUSTED_PROXY_IP") {
+        state = state.with_trusted_proxy(address.parse()?);
     }
     if let Some(secret) = secret {
         state = state.with_session_secret(secret);

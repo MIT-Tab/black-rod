@@ -264,7 +264,7 @@ async fn sign_in(
 }
 
 async fn page(state: &AppState, request: Request) -> Result<Response, ApiError> {
-    let ip = limits::ip(&request);
+    let ip = limits::ip(state, &request);
     let uri = request.uri().clone();
     let user = session::user(&state.pool, request.headers(), state.secret.as_deref()).await?;
     let context = match visit(state, request).await {

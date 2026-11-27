@@ -3,6 +3,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+export ENV="${ENV:-development}"
 export BLACK_ROD_DATABASE_URL="${BLACK_ROD_DATABASE_URL:-sqlite://apda/db.sqlite3?mode=rw}"
 export BLACK_ROD_BIND="${BLACK_ROD_BIND:-0.0.0.0:8000}"
 

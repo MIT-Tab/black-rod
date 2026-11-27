@@ -102,6 +102,7 @@ pub struct AppState {
     tournament_tab_card_search: bool,
     debater_partner_chart: bool,
     public_origin: Option<String>,
+    trusted_proxy: Option<std::net::IpAddr>,
     allowed_hosts: Option<Arc<[String]>>,
     guide_modified: Option<String>,
     public_json: Cache<(String, Endpoint), cache::CachedBody>,
@@ -148,6 +149,7 @@ impl AppState {
             tournament_tab_card_search: false,
             debater_partner_chart: false,
             public_origin: None,
+            trusted_proxy: None,
             allowed_hosts: None,
             guide_modified,
             snapshots: Cache::builder()
@@ -295,6 +297,11 @@ impl AppState {
 
     pub async fn refresh_tournament_sources(&self) -> Result<usize, &'static str> {
         tournament_import::refresh_sources(self).await
+    }
+
+    pub fn with_trusted_proxy(mut self, address: std::net::IpAddr) -> Self {
+        self.trusted_proxy = Some(address);
+        self
     }
 
     pub fn with_public_origin(mut self, origin: &str) -> Result<Self, &'static str> {

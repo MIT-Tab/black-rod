@@ -22,12 +22,26 @@ pub(crate) fn cache() -> Limits {
         .build()
 }
 
-pub(super) fn ip(request: &Request) -> String {
-    let address = request
+pub(super) fn ip(state: &AppState, request: &Request) -> String {
+    let peer = request
         .extensions()
         .get::<ConnectInfo<SocketAddr>>()
-        .map(|source| source.0.ip())
-        .unwrap_or(IpAddr::V4(std::net::Ipv4Addr::LOCALHOST));
+        .map(|source| source.0.ip());
+    let address = if peer.is_some() && peer == state.trusted_proxy {
+        // The trusted immediate proxy appends the address of its client.
+        request
+            .headers()
+            .get_all("x-forwarded-for")
+            .iter()
+            .next_back()
+            .and_then(|header| header.to_str().ok())
+            .and_then(|header| header.rsplit(',').next())
+            .and_then(|address| address.trim().parse::<IpAddr>().ok())
+            .or(peer)
+    } else {
+        peer
+    }
+    .unwrap_or(IpAddr::V4(std::net::Ipv4Addr::LOCALHOST));
     let address = match address {
         IpAddr::V6(address) => IpAddr::V6(Ipv6Addr::from(u128::from(address) & (u128::MAX << 64))),
         address => address,
@@ -117,4 +131,36 @@ pub(super) fn denied() -> Response {
         ),
     )
         .into_response()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::body::Body;
+    use sqlx::any::{AnyPoolOptions, install_default_drivers};
+
+    #[tokio::test]
+    async fn client_address_requires_a_matching_immediate_proxy() {
+        install_default_drivers();
+        let pool = AnyPoolOptions::new()
+            .connect_lazy("sqlite::memory:")
+            .unwrap();
+        let state = AppState::new(pool, 2026).with_trusted_proxy("127.0.0.1".parse().unwrap());
+        let mut request = Request::builder()
+            .header("x-forwarded-for", "198.51.100.1, 203.0.113.27")
+            .body(Body::empty())
+            .unwrap();
+        request
+            .extensions_mut()
+            .insert(ConnectInfo("192.0.2.5:1234".parse::<SocketAddr>().unwrap()));
+        assert_eq!(ip(&state, &request), "ip:192.0.2.5");
+        request
+            .extensions_mut()
+            .insert(ConnectInfo("127.0.0.1:1234".parse::<SocketAddr>().unwrap()));
+        assert_eq!(ip(&state, &request), "ip:203.0.113.27");
+        request
+            .headers_mut()
+            .insert("x-forwarded-for", "198.51.100.1, invalid".parse().unwrap());
+        assert_eq!(ip(&state, &request), "ip:127.0.0.1");
+    }
 }
