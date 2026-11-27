@@ -1,11 +1,13 @@
 use std::sync::Arc;
 
-use serde_json::Value as Json;
 use serde_pickle::{HashableValue, Value as Pickle};
 use sqlx::AnyPool;
 
 use super::{FRESH, Live, Payload, STALE};
-use crate::{ApiError, cache::Memcached};
+use crate::{
+    ApiError,
+    cache::{Memcached, python_value},
+};
 
 const LOCK_SECONDS: u32 = 60;
 
@@ -20,32 +22,6 @@ async fn load(cache: &Memcached, key: &str) -> Option<Arc<Payload>> {
     serde_pickle::from_slice(&bytes, Default::default())
         .ok()
         .map(Arc::new)
-}
-
-// JSON numbers use a private Serde representation to preserve arbitrary precision.
-// Encode ordinary live standings values as Python primitives for Django's cache.
-fn python_value(value: &Json) -> Pickle {
-    match value {
-        Json::Null => Pickle::None,
-        Json::Bool(value) => Pickle::Bool(*value),
-        Json::String(value) => Pickle::String(value.clone()),
-        Json::Array(values) => Pickle::List(values.iter().map(python_value).collect()),
-        Json::Object(fields) => Pickle::Dict(
-            fields
-                .iter()
-                .map(|(key, value)| (HashableValue::String(key.clone()), python_value(value)))
-                .collect(),
-        ),
-        Json::Number(number) => {
-            if let Some(value) = number.as_i64() {
-                Pickle::I64(value)
-            } else if let Some(value) = number.as_u64() {
-                Pickle::Int(value.into())
-            } else {
-                Pickle::F64(number.as_f64().expect("live standings uses finite numbers"))
-            }
-        }
-    }
 }
 
 fn serialize(payload: &Payload) -> Result<Vec<u8>, serde_pickle::Error> {

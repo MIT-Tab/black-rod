@@ -244,7 +244,7 @@ pub(crate) async fn oauth_start(
         .map_err(|_| sqlx::Error::Protocol("Unable to generate an OAuth session key".into()))?;
     let now = Utc::now();
     let value = json!({
-        "socialaccount_states": {(state_id): [{"process": "login", "next": next, "data": {}}, now.timestamp()]},
+        "socialaccount_states": {(state_id): [{"process": "login", "next": next, "data": {"results_remember": remember}}, now.timestamp()]},
         "apda_remember_login": remember,
     });
     let data = encode(&value, secret);
@@ -316,9 +316,13 @@ async fn stash_oauth(
     {
         states.remove(&oldest);
     }
+    let data = remember.map_or_else(
+        || json!({}),
+        |remember| json!({"results_remember": remember}),
+    );
     states.insert(
         state_id.to_owned(),
-        json!([{"process":process,"next":next,"data":{}},now]),
+        json!([{"process":process,"next":next,"data":data},now]),
     );
     let state = serde_json::value::to_raw_value(&states)
         .map_err(|error| sqlx::Error::Protocol(error.to_string()))?;
@@ -373,10 +377,14 @@ pub(crate) async fn consume_oauth(
     session
         .values
         .insert("socialaccount_states".to_owned(), remaining);
-    let remember = session
-        .values
-        .get("apda_remember_login")
-        .and_then(|value| serde_json::from_str::<bool>(value.get()).ok())
+    let remember = state[0]["data"]["results_remember"]
+        .as_bool()
+        .or_else(|| {
+            session
+                .values
+                .get("apda_remember_login")
+                .and_then(|value| serde_json::from_str::<bool>(value.get()).ok())
+        })
         .unwrap_or(true);
     if !session.save(pool, secret).await? {
         return Ok(None);
@@ -737,12 +745,11 @@ mod tests {
         assert_eq!(preserved.values["_session_expiry"].get(), "0");
         assert!(!preserved.values.contains_key("apda_remember_login"));
         assert!(!preserved.values.contains_key("socialaccount_sociallogin"));
-        assert!(
-            consume_oauth(&pool, &headers, secret, "two")
-                .await
-                .unwrap()
-                .is_some()
-        );
+        let last_tab = consume_oauth(&pool, &headers, secret, "two")
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(!last_tab.remember);
         let replacement = create(&pool, &headers, secret, 2, "another-fixture", true, backend)
             .await
             .unwrap();

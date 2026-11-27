@@ -1,18 +1,18 @@
 use std::collections::BTreeMap;
 
-use serde::Serialize;
 use serde_json::{Value, json};
 use serde_pickle::{
-    DeOptions, HashableValue, Value as Pickle, to_writer, value::from_value, value_from_slice,
+    DeOptions, HashableValue, Value as Pickle, value::from_value, value_from_slice, value_to_writer,
 };
 
 use super::profiles::Dashboard;
+use crate::cache::python_value;
 
 const MODELS: &str = "core.utils.elo_runtime_engine.models";
 
-fn scalar(output: &mut Vec<u8>, value: &impl Serialize) -> Result<(), serde_pickle::Error> {
+fn scalar(output: &mut Vec<u8>, value: &Pickle) -> Result<(), serde_pickle::Error> {
     let begin = output.len();
-    to_writer(output, value, serde_pickle::SerOptions::new().proto_v2())?;
+    value_to_writer(output, value, serde_pickle::SerOptions::new().proto_v2())?;
     // Embed the value without its separate protocol header and stop opcode.
     output.drain(begin..begin + 2);
     output.pop();
@@ -32,7 +32,7 @@ fn fields(
         if key == "elo_display" {
             continue;
         }
-        scalar(output, key)?;
+        scalar(output, &Pickle::String(key.clone()))?;
         if key == "ranking_rows" {
             output.extend_from_slice(b"](");
             if let Some(rows) = value.as_array() {
@@ -42,7 +42,7 @@ fn fields(
             }
             output.push(b'e'); // APPENDS
         } else {
-            scalar(output, value)?;
+            scalar(output, &python_value(value))?;
         }
     }
     output.extend_from_slice(b"u\x86b"); // SETITEMS, TUPLE2, BUILD
@@ -64,13 +64,13 @@ pub(super) fn encode(result: &Dashboard, settings: Option<(&str, &str)>) -> Opti
     }
     let mut output = Vec::new();
     output.extend_from_slice(b"\x80\x02}(");
-    scalar(&mut output, &"result").ok()?;
+    scalar(&mut output, &Pickle::String("result".to_owned())).ok()?;
     fields(&mut output, "EloRunResult", document.as_object()?).ok()?;
     if let Some((compute, display)) = settings {
-        scalar(&mut output, &"compute_signature").ok()?;
-        scalar(&mut output, &compute).ok()?;
-        scalar(&mut output, &"display_signature").ok()?;
-        scalar(&mut output, &display).ok()?;
+        scalar(&mut output, &Pickle::String("compute_signature".to_owned())).ok()?;
+        scalar(&mut output, &Pickle::String(compute.to_owned())).ok()?;
+        scalar(&mut output, &Pickle::String("display_signature".to_owned())).ok()?;
+        scalar(&mut output, &Pickle::String(display.to_owned())).ok()?;
     }
     output.extend_from_slice(b"u.");
     Some(output)

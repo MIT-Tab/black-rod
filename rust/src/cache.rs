@@ -7,6 +7,8 @@ use std::{
 use axum::body::Bytes;
 use moka::Expiry;
 use ring::digest;
+use serde_json::Value as Json;
+use serde_pickle::{HashableValue, Value as Pickle};
 use tokio::{
     io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader},
     net::TcpStream,
@@ -274,6 +276,36 @@ impl<K> Expiry<K, CachedBody> for BodyExpiry {
         _instant: Instant,
     ) -> Option<Duration> {
         Some(body.lifetime)
+    }
+}
+
+// JSON numbers use a private Serde representation to preserve arbitrary precision.
+// Encode ordinary live standings values as Python primitives for Django’s shared caches.
+pub(crate) fn python_value(value: &Json) -> Pickle {
+    match value {
+        Json::Null => Pickle::None,
+        Json::Bool(value) => Pickle::Bool(*value),
+        Json::String(value) => Pickle::String(value.clone()),
+        Json::Array(values) => Pickle::List(values.iter().map(python_value).collect()),
+        Json::Object(fields) => Pickle::Dict(
+            fields
+                .iter()
+                .map(|(key, value)| (HashableValue::String(key.clone()), python_value(value)))
+                .collect(),
+        ),
+        Json::Number(number) => {
+            if let Some(value) = number.as_i64() {
+                Pickle::I64(value)
+            } else if let Some(value) = number.as_u64() {
+                Pickle::Int(value.into())
+            } else {
+                Pickle::F64(
+                    number
+                        .as_f64()
+                        .expect("shared cache records use finite numbers"),
+                )
+            }
+        }
     }
 }
 
