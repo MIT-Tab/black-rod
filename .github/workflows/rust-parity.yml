@@ -62,20 +62,22 @@ jobs:
         run: .agents/skills/black-rod-task/scripts/br venv/bin/python rust/tools/compare.py
       - name: Compare reversible Agent corrections on SQLite
         run: .agents/skills/black-rod-task/scripts/br venv/bin/python rust/tools/agent_write_parity.py
-      - name: Compare standings recomputation on disposable SQLite databases
-        run: .agents/skills/black-rod-task/scripts/br venv/bin/python rust/tools/rankings_parity.py
-      - name: Compare maintenance commands on disposable SQLite databases
-        run: .agents/skills/black-rod-task/scripts/br venv/bin/python rust/tools/command_parity.py
       - uses: actions/setup-node@v4
         with:
           node-version-file: '.nvmrc'
           cache: npm
+      - name: Build frontend assets for page comparisons
+        run: |
+          npm ci
+          npm run build
+      - name: Compare standings recomputation on disposable SQLite databases
+        run: .agents/skills/black-rod-task/scripts/br venv/bin/python rust/tools/rankings_parity.py
+      - name: Compare maintenance commands on disposable SQLite databases
+        run: .agents/skills/black-rod-task/scripts/br venv/bin/python rust/tools/command_parity.py
       - name: Compare browser interactions and replay rendering in Chrome
         env:
           BLACK_ROD_PARITY_MEMCACHED_ADDR: 127.0.0.1:11211
         run: |
-          npm ci
-          npm run build
           venv/bin/python -m venv venv/screenshots
           venv/screenshots/bin/python -m pip install -r .agents/skills/black-rod-task/requirements.txt Pillow==12.3.0
           scripts=.agents/skills/black-rod-task/scripts
