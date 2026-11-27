@@ -324,6 +324,14 @@ def capture(driver, server, route, session, target, exclude):
                 color:style.borderBottomColor, width:style.borderBottomWidth, background:style.backgroundColor,
                 density:window.devicePixelRatio};
     """) if route == "/core/videos/create" else None
+    # The editing caret blinks independently of layout and Chrome's screenshot timing.
+    # Leave focus and its styling intact, and save the original DOM above.
+    driver.execute_script("""
+        const field = document.activeElement;
+        if (field?.matches("input, textarea, [contenteditable]")) {
+            field.style.setProperty("caret-color", "transparent", "important");
+        }
+    """)
     assert driver.save_screenshot(str(target.with_suffix(".png")))
     return navigation, html, sticky_border
 
