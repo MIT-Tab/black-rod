@@ -17,7 +17,7 @@ use sqlx::{AnyConnection, AssertSqlSafe, Row};
 use super::{
     AdminRequest, cap_first,
     listing::{Source, display, label},
-    redirect,
+    model_rules, redirect,
     schema::{Field, Model, Widget, schema},
 };
 use crate::{ApiError, account, agent::journal::storage_error, flash, login};
@@ -861,29 +861,6 @@ pub(super) async fn log(
     Ok(())
 }
 
-pub(super) async fn record_rules(
-    conn: &mut AnyConnection,
-    model: &Model,
-    fields: &mut Map<String, Json>,
-) -> Result<(), ApiError> {
-    if model.slug() == "roundstats"
-        && let Some(round) = fields.get("round_id").and_then(Json::as_i64)
-        && let Some(stage) =
-            sqlx::query_scalar::<_, String>("SELECT stage FROM core_round WHERE id=$1")
-                .bind(round)
-                .fetch_optional(conn)
-                .await?
-    {
-        if stage == "outround" {
-            for field in ["speaks", "ranks", "debater_role"] {
-                fields.insert(field.to_owned(), Json::Null);
-            }
-        }
-        fields.insert("stage".to_owned(), json!(stage));
-    }
-    Ok(())
-}
-
 async fn save_memberships(
     conn: &mut AnyConnection,
     model: &Model,
@@ -1036,7 +1013,7 @@ async fn save(
         return Ok(Some(redirect(&model.url())));
     }
     let mut tx = admin.state.pool.begin().await?;
-    record_rules(&mut tx, model, &mut columns).await?;
+    model_rules::before_save(&mut tx, model, admin.state.current_season, id, &mut columns).await?;
     let record = if columns.is_empty() && id.is_some() {
         id.unwrap_or_default()
     } else {
@@ -1072,7 +1049,14 @@ async fn save(
         .execute(&mut *tx)
         .await?;
     }
-    let inline_changes = match inlines::apply(&mut tx, record, inline_changes).await {
+    let inline_changes = match inlines::apply(
+        &mut tx,
+        record,
+        admin.state.current_season,
+        inline_changes,
+    )
+    .await
+    {
         Ok(changes) => changes,
         Err(ApiError::Constraint) => {
             error(

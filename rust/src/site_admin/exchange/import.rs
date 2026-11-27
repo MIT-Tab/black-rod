@@ -16,7 +16,7 @@ use serde_json::{Map, Value, json};
 use sqlx::{Acquire, AnyConnection, AssertSqlSafe};
 
 use super::{
-    super::{form, redirect},
+    super::{form, model_rules, redirect},
     AdminRequest, ApiError, Exchange, Field, Model, common, formats, login,
 };
 use crate::flash;
@@ -317,104 +317,9 @@ async fn column_diff(
     Ok(result)
 }
 
-async fn apply_model_rules(
-    conn: &mut AnyConnection,
-    model: &Model,
-    season: i32,
-    id: Option<i64>,
-    columns: &mut Map<String, Value>,
-) -> Result<(), ApiError> {
-    use crate::tournament_profile::edit;
-    if model.slug() == "debater" {
-        let text = |key: &str| columns.get(key).and_then(Value::as_str).unwrap_or_default();
-        let first = crate::claims::edit::sanitize_name(text("first_name"), "Removed");
-        let last = crate::claims::edit::sanitize_name(text("last_name"), "");
-        columns.insert("first_name".to_owned(), json!(first));
-        columns.insert("last_name".to_owned(), json!(last));
-        if id.is_none() {
-            for name in ["first_season", "latest_season"] {
-                if columns
-                    .get(name)
-                    .and_then(Value::as_str)
-                    .is_none_or(str::is_empty)
-                {
-                    columns.insert(name.to_owned(), json!(season.to_string()));
-                }
-            }
-        }
-        let dino = columns.get("status").and_then(Value::as_i64) == Some(2);
-        if !dino {
-            columns.insert("dino_judge_contact_opt_in".to_owned(), json!(false));
-        }
-        if !["dino_judge_contact_opt_in", "dino_to_contact_opt_in"]
-            .iter()
-            .any(|key| columns.get(*key) == Some(&json!(true)))
-        {
-            columns.insert("region".to_owned(), json!([]));
-        }
-    } else if model.slug() == "tournament"
-        && let Some(host) = columns.get("host_id").and_then(Value::as_i64)
-    {
-        let text = |name: &str| {
-            columns
-                .get(name)
-                .and_then(Value::as_str)
-                .unwrap_or_default()
-        };
-        let date = text("date");
-        let season = text("season");
-        let code = columns
-            .get("qual_type")
-            .and_then(Value::as_i64)
-            .unwrap_or_default();
-        let suffix = columns
-            .get("name_suffix")
-            .and_then(Value::as_i64)
-            .unwrap_or_default()
-            .to_string();
-        let (name, short_name) = edit::names(
-            conn,
-            host,
-            code,
-            id,
-            edit::Naming {
-                season,
-                date,
-                name_suffix: &suffix,
-                manual_name: text("manual_name"),
-                short_name: text("short_name"),
-            },
-        )
-        .await?;
-        let scoring = edit::scoring(code, season);
-        let early = NaiveDate::parse_from_str(date, "%Y-%m-%d").is_ok_and(|day| {
-            use chrono::Datelike;
-            day.month() < 10 && day.year().to_string() == season
-        });
-        for (key, value) in [
-            ("name", json!(name)),
-            ("short_name", json!(short_name)),
-            ("toty", json!(scoring.toty)),
-            ("soty", json!(scoring.soty)),
-            ("qual", json!(scoring.qual)),
-        ] {
-            columns.insert(key.to_owned(), value);
-        }
-        if early {
-            columns.insert("noty".to_owned(), json!(false));
-        }
-        if let Some(online) = scoring.online {
-            columns.insert("online_qual_points".to_owned(), json!(online));
-        }
-        if let Some(bar) = scoring.bar {
-            columns.insert("autoqual_bar".to_owned(), json!(bar));
-        }
-    }
-    form::record_rules(conn, model, columns).await
-}
-
 async fn apply_row(
     conn: &mut AnyConnection,
+    admin_model: &Model,
     model: &Model,
     exchange: &Exchange,
     current_season: i32,
@@ -471,7 +376,7 @@ async fn apply_row(
     if let Some(id) = requested.filter(|_| existing.is_none()) {
         columns.insert("id".to_owned(), json!(id));
     }
-    apply_model_rules(conn, model, current_season, existing, &mut columns).await?;
+    model_rules::before_save(conn, model, current_season, existing, &mut columns).await?;
     let id = match model.storage.write(conn, &columns, existing).await {
         Ok(id) => id,
         Err(ApiError::Constraint) => return Ok(Err(
@@ -531,7 +436,7 @@ async fn apply_row(
         let name = form::loaded_label(conn, model, id).await?;
         form::log(
             conn,
-            model,
+            admin_model,
             actor,
             id,
             &name,
@@ -549,11 +454,12 @@ async fn apply_row(
 
 async fn process(
     admin: &AdminRequest<'_>,
-    model: &Model,
+    admin_model: &Model,
     exchange: &Exchange,
     rows: &[Map<String, Value>],
     confirming: bool,
 ) -> Result<ResultRows, ApiError> {
+    let model = exchange.resource(admin_model)?;
     let mut tx = admin.state.pool.begin().await?;
     let mut result = ResultRows::default();
     let actor = confirming.then_some(admin.viewer.user.id).flatten();
@@ -561,6 +467,7 @@ async fn process(
         let mut savepoint = tx.begin().await?;
         match apply_row(
             &mut savepoint,
+            admin_model,
             model,
             exchange,
             admin.state.current_season,

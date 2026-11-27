@@ -129,6 +129,7 @@ impl FieldLine {
 
 #[derive(Deserialize)]
 pub(super) struct Exchange {
+    resource_model: Option<String>,
     pub(super) headers: Vec<String>,
     pub(super) fields: Vec<String>,
     pub(super) import_formats: Vec<String>,
@@ -200,6 +201,16 @@ impl Form {
 }
 
 impl Exchange {
+    pub(super) fn resource<'a>(&self, model: &'a Model) -> Result<&'a Model, crate::ApiError> {
+        let Some(key) = &self.resource_model else {
+            return Ok(model);
+        };
+        let (app, slug) = key.split_once('.').ok_or(crate::ApiError::Serialization)?;
+        schema()
+            .model(app, slug)
+            .ok_or(crate::ApiError::Serialization)
+    }
+
     pub(super) fn import_media(&self) -> &[String] {
         if !crate::web::debug_assets()
             && let Some(media) = &self.production_import_media

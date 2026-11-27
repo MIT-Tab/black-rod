@@ -192,6 +192,8 @@ def model_config(request, model, model_admin):
             "import_formats": [format().get_title() for format in model_admin.get_import_formats()],
             "export_formats": [format().get_title() for format in model_admin.get_export_formats()],
         }
+        if resource._meta.model != model:
+            model_admin_options["exchange"]["resource_model"] = resource._meta.model._meta.label_lower
     assert model_admin.get_changelist(request) is not None
     model_admin_options["standard_list"] = model_admin.get_changelist(request) is ChangeList
     model_admin_options["fields"] = {field.name: field_config(field) for field in (*opts.fields, *opts.many_to_many)}

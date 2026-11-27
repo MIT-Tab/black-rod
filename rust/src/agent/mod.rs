@@ -1,5 +1,6 @@
 mod batch;
 mod catalog;
+mod filter_date;
 pub(crate) mod journal;
 pub(crate) mod merge;
 pub(crate) mod mutation;
@@ -183,7 +184,7 @@ impl Param {
     }
 }
 
-fn filter_value(field: &catalog::Field, raw: &str) -> Result<Param, String> {
+fn filter_value(field: &catalog::Field, raw: &str, sqlite: bool) -> Result<Param, String> {
     match field.kind() {
         "BooleanField" => match raw {
             "t" | "1" => Ok(Param::Bool(true)),
@@ -213,6 +214,8 @@ fn filter_value(field: &catalog::Field, raw: &str) -> Result<Param, String> {
             .filter(|value| value.is_finite())
             .map(Param::Float)
             .ok_or_else(|| format!("['“{raw}” value must be a number.']")),
+        "DateField" => filter_date::date(raw).map(Param::Text),
+        "DateTimeField" => filter_date::datetime(raw, sqlite).map(Param::Text),
         _ => Ok(Param::Text(raw.to_owned())),
     }
 }
@@ -319,7 +322,7 @@ async fn records(
             }
             let mut markers = Vec::new();
             for raw in values {
-                match filter_value(field, raw) {
+                match filter_value(field, raw, sqlite) {
                     Ok(value) => markers.push(placeholder(value, &mut args, cast)),
                     Err(error) => return Ok(endpoint.invalid(json!([error]))),
                 }
@@ -328,7 +331,7 @@ async fn records(
         } else if value == "null" {
             statement.push_str(&format!(" AND \"{column}\" IS NULL"));
         } else {
-            let parsed = match filter_value(field, value) {
+            let parsed = match filter_value(field, value, sqlite) {
                 Ok(value) => value,
                 Err(error) => return Ok(endpoint.invalid(json!([error]))),
             };

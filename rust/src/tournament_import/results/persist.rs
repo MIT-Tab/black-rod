@@ -111,11 +111,11 @@ async fn historical_coty(
              + 6 * (SELECT COUNT(DISTINCT q.debater_id) FROM core_qual q JOIN core_debater d ON d.id=q.debater_id
                 WHERE q.season=$1 AND d.school_id=s.id AND (NOT $3 OR q.qual_type NOT IN (1,2,3,5,6,16))),
             FALSE FROM core_school s JOIN core_debater d ON d.school_id=s.id
-            WHERE d.id=$2 AND s.included_in_oty AND NOT $4
+            WHERE d.id=$2 AND NOT s.temporary AND s.included_in_oty AND NOT $4
             ON CONFLICT (season,school_id) DO UPDATE SET points=excluded.points")
             .bind(season).bind(person).bind(no_bp).bind(online).execute(&mut *conn).await?;
         sqlx::query("DELETE FROM core_coty WHERE season=$1 AND school_id IN (SELECT s.id FROM core_school s
-            JOIN core_debater d ON s.id=d.school_id WHERE d.id=$2 AND (NOT s.included_in_oty OR $3))")
+            JOIN core_debater d ON s.id=d.school_id WHERE d.id=$2 AND NOT s.temporary AND (NOT s.included_in_oty OR $3))")
             .bind(season).bind(person).bind(online).execute(&mut *conn).await?;
     }
     standings::rank(conn, "core_coty", season).await?;

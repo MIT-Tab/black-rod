@@ -339,6 +339,7 @@ pub(super) async fn prepare<'a>(
 pub(super) async fn apply(
     conn: &mut AnyConnection,
     parent: i64,
+    season: i32,
     changes: Vec<Change<'_>>,
 ) -> Result<Vec<Json>, ApiError> {
     let mut messages = Vec::new();
@@ -363,7 +364,7 @@ pub(super) async fn apply(
             continue;
         }
         fields.insert(foreign_key(spec, model), json!(parent));
-        super::record_rules(conn, model, &mut fields).await?;
+        super::model_rules::before_save(conn, model, season, id, &mut fields).await?;
         let record = model.storage.write(conn, &fields, id).await?;
         super::save_memberships(conn, model, &spec.widgets, record, &values).await?;
         let name = super::loaded_label(conn, model, record).await?;

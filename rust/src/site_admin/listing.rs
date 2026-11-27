@@ -1409,26 +1409,19 @@ async fn save_speaker_visibility(
     Ok(response)
 }
 
-async fn merge_topics(
-    admin: &AdminRequest<'_>,
-    model: &'static Model,
+fn action_scope(
+    model: &Model,
     params: &Parameters,
     data: &[u8],
     across: bool,
-) -> Result<Response, ApiError> {
-    if !admin.viewer.allows(model, "change") {
-        return Ok(StatusCode::FORBIDDEN.into_response());
-    }
-    let motion = model.slug() == "motiontopic";
-    let mut ids = url::form_urlencoded::parse(data)
+) -> (String, Vec<String>) {
+    let ids = url::form_urlencoded::parse(data)
         .filter_map(|(name, id)| {
             (name == "_selected_action")
                 .then(|| id.parse::<i64>().ok())
                 .flatten()
         })
         .collect::<Vec<_>>();
-    ids.sort_unstable();
-    ids.dedup();
     let mut source = Source::new(model);
     let mut bind = Vec::new();
     let conditions = conditions(&mut source, model, params, &mut bind);
@@ -1446,10 +1439,22 @@ async fn merge_topics(
             }
         )
     };
-    let sql = format!(
-        "SELECT CAST(t0.id AS BIGINT),t0.name FROM {}{conditions} {restriction} ORDER BY t0.name",
-        source.sql()
-    );
+    (format!("{}{conditions} {restriction}", source.sql()), bind)
+}
+
+async fn merge_topics(
+    admin: &AdminRequest<'_>,
+    model: &'static Model,
+    params: &Parameters,
+    data: &[u8],
+    across: bool,
+) -> Result<Response, ApiError> {
+    if !admin.viewer.allows(model, "change") {
+        return Ok(StatusCode::FORBIDDEN.into_response());
+    }
+    let motion = model.slug() == "motiontopic";
+    let (scope, bind) = action_scope(model, params, data, across);
+    let sql = format!("SELECT CAST(t0.id AS BIGINT),t0.name FROM {scope} ORDER BY t0.name");
     let mut tx = admin.state.pool.begin().await?;
     let mut query = sqlx::query_as::<_, (i64, String)>(AssertSqlSafe(sql));
     for value in &bind {
@@ -1565,32 +1570,32 @@ pub(super) async fn page(
         if model.slug() == "speakerresult" && values.contains_key("_save") {
             return save_speaker_visibility(admin, model, &params, &values).await;
         }
+        let across = values
+            .get("select_across")
+            .is_some_and(|value| value == "1");
         if values
             .get("action")
             .is_some_and(|action| action == "delete_selected")
         {
-            let ids = url::form_urlencoded::parse(&data)
-                .filter(|(name, _)| name == "_selected_action")
-                .filter_map(|(_, id)| id.parse::<i64>().ok())
-                .collect::<Vec<_>>();
-            return super::records::delete(admin, model, &ids, true, values.contains_key("post"))
-                .await;
+            if !admin.viewer.allows(model, "delete") {
+                return Ok(StatusCode::FORBIDDEN.into_response());
+            }
+            let confirmed = values.contains_key("post");
+            let (scope, bind) = action_scope(model, &params, &data, across && !confirmed);
+            let sql = format!("SELECT DISTINCT CAST(t0.id AS BIGINT) FROM {scope} ORDER BY 1");
+            let mut query = sqlx::query_scalar::<_, i64>(AssertSqlSafe(sql));
+            for value in bind {
+                query = query.bind(value);
+            }
+            let ids = query.fetch_all(&admin.state.pool).await?;
+            return super::records::delete(admin, model, &ids, true, confirmed).await;
         }
         if (model.slug() == "motiontopic" || model.key == "taggit.tag")
             && values
                 .get("action")
                 .is_some_and(|action| action == "merge_topics")
         {
-            return merge_topics(
-                admin,
-                model,
-                &params,
-                &data,
-                values
-                    .get("select_across")
-                    .is_some_and(|value| value == "1"),
-            )
-            .await;
+            return merge_topics(admin, model, &params, &data, across).await;
         }
         if model.slug() == "agentcredential"
             && values
@@ -1600,16 +1605,16 @@ pub(super) async fn page(
             if !admin.viewer.allows(model, "change") {
                 return Ok(StatusCode::FORBIDDEN.into_response());
             }
-            let mut tx = admin.state.pool.begin().await?;
-            for (name, id) in url::form_urlencoded::parse(&data) {
-                if name == "_selected_action"
-                    && let Ok(id) = id.parse::<i64>()
-                {
-                    sqlx::query("UPDATE core_agentcredential SET revoked_at=CURRENT_TIMESTAMP WHERE id=$1 AND revoked_at IS NULL")
-                        .bind(id).execute(&mut *tx).await?;
-                }
+            let (scope, bind) = action_scope(model, &params, &data, across);
+            let statement = format!(
+                "UPDATE core_agentcredential SET revoked_at=CURRENT_TIMESTAMP
+                 WHERE revoked_at IS NULL AND id IN (SELECT t0.id FROM {scope})"
+            );
+            let mut query = sqlx::query(AssertSqlSafe(statement));
+            for value in bind {
+                query = query.bind(value);
             }
-            tx.commit().await?;
+            query.execute(&admin.state.pool).await?;
             return Ok(redirect(
                 admin
                     .uri

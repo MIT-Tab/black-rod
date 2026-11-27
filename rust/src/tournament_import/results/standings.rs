@@ -400,10 +400,11 @@ async fn write_awards(
                 continue;
             };
             let school = first.try_get::<Option<i64>, _>("school_id")?;
-            if roster
+            let schools = roster
                 .iter()
-                .any(|row| row.try_get::<Option<i64>, _>("school_id").ok().flatten() != school)
-            {
+                .map(|row| row.try_get::<Option<i64>, _>("school_id"))
+                .collect::<Result<BTreeSet<_>, _>>()?;
+            if schools.len() == 2 {
                 continue;
             }
             (first.try_get::<i64, _>("included")? != 0, school)

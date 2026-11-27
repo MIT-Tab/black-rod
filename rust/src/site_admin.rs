@@ -3,6 +3,7 @@ mod autocomplete;
 mod exchange;
 mod form;
 mod listing;
+mod model_rules;
 mod passwords;
 mod records;
 mod schema;

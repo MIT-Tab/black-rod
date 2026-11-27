@@ -8,7 +8,7 @@ from pathlib import Path
 import sqlite3
 import subprocess
 from tempfile import TemporaryDirectory
-from urllib.parse import unquote, urlsplit
+from urllib.parse import unquote, urlencode, urlsplit
 from uuid import uuid4
 
 import psycopg2
@@ -19,7 +19,7 @@ from compare import Case, ROOT, request, servers
 
 SEED = """
 from reference import application
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone as datetime_timezone
 import json
 from uuid import uuid4
 from django.utils import timezone
@@ -58,7 +58,7 @@ round = Round.objects.create(tournament=tournament, gov=gov, opp=opp, round_numb
 stat = RoundStats.objects.create(round=round, debater=real, speaks='27.5000', ranks='1.0000', debater_role='PM', metadata=details)
 synthetic_stat = RoundStats.objects.create(round=round, debater=synthetic, speaks='28.5000', ranks='1.0000', debater_role='LO')
 synthetic_alias = DebaterAlias.objects.create(debater=synthetic, source_name='Example', normalized_name='example')
-instant = timezone.now().replace(microsecond=1)
+instant = datetime(2025, 10, 1, 8, microsecond=1, tzinfo=datetime_timezone.utc)
 DebaterAlias.objects.filter(pk=synthetic_alias.pk).update(created_at=instant, updated_at=instant)
 alias = DebaterAlias.objects.create(debater=real, source_name='Example', normalized_name='example')
 metadata = ImportedRoundMetadata.objects.create(round=round, gov_1_alias=alias, raw_result_code='G')
@@ -69,7 +69,7 @@ metadata.sources.add(source)
 print(json.dumps({'token':token, 'rounds':round.pk, 'round_stats':stat.pk, 'round_metadata':metadata.pk,
     'teams':gov.pk, 'debaters':real.pk, 'school_ids':[synthetic_school.pk,school.pk],
     'team_ids':[synthetic_team.pk,gov.pk], 'synthetic':synthetic.pk, 'synthetic_stat':synthetic_stat.pk,
-    'synthetic_alias':synthetic_alias.pk}))
+    'synthetic_alias':synthetic_alias.pk, 'tournament':tournament.pk}))
 """
 
 
@@ -98,6 +98,25 @@ def exercise(django, rust, fixture):
         if operations is not None:
             payload["operations"] = operations
         return payload
+
+    for resource, filters, expected_id in (
+        ("tournaments", {"date": "2035-10-1"}, fixture["tournament"]),
+        ("tournaments", {"date__in": "2035-10-1,2034-10-01"}, fixture["tournament"]),
+        ("aliases", {"created_at": "2025-10-01T08:00:00.000001Z"}, fixture["synthetic_alias"]),
+        ("aliases", {"created_at__in": "2025-10-01 01:00:00.000001-07:00,2026-09-01"},
+         fixture["synthetic_alias"]),
+        ("tournaments", {"date": "bad-date"}, None),
+        ("tournaments", {"date__in": "2035-10-01,2035-02-30"}, None),
+        ("aliases", {"created_at": "bad-time"}, None),
+        ("aliases", {"created_at__in": "bad-time,2026-09-01"}, None),
+        ("aliases", {"created_at": "2025-10-01T27:00:00Z"}, None),
+    ):
+        path = f"records/{resource}/?{urlencode(filters)}"
+        status = 400 if expected_id is None else 200
+        reference = run(django, path, expected=status)
+        assert reference == run(rust, path, expected=status), path
+        if expected_id is not None:
+            assert expected_id in {row["id"] for row in reference["results"]}, path
 
     resources = ("rounds", "round_stats", "round_metadata", "teams")
     before = {resource: get(django, resource) for resource in resources}
@@ -229,7 +248,7 @@ def exercise(django, rust, fixture):
             run(rust, f"batches/{redo['id']}/undo/", payload=prepare())
             assert run(rust, stat_path) == synthetic_stat
             assert run(rust, alias_path) == restored_alias
-    print("Agent write parity passed: preview hashes, concurrent cross-runtime retries, stale revisions, "
+    print("Agent parity passed: date filters, preview hashes, concurrent cross-runtime retries, stale revisions, "
           "atomic rollback, references, teams, cascade restoration, conflicting later edits, and school, team, and debater merges")
 
 

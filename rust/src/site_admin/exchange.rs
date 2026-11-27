@@ -93,6 +93,12 @@ async fn export_rows(
     model: &Model,
     exchange: &Exchange,
 ) -> Result<Vec<Vec<Json>>, ApiError> {
+    let resource = exchange.resource(model)?;
+    let fields = exchange
+        .headers
+        .iter()
+        .map(|name| resource.fields.get(name).ok_or(ApiError::Serialization))
+        .collect::<Result<Vec<_>, _>>()?;
     let query: Parameters =
         url::form_urlencoded::parse(admin.uri.query().unwrap_or_default().as_bytes())
             .into_owned()
@@ -125,8 +131,10 @@ async fn export_rows(
     let mut conn = admin.state.pool.acquire().await?;
     let mut columns = Vec::new();
     for (index, name) in exchange.headers.iter().enumerate() {
-        let field = &model.fields[name];
-        let projection = if let Some([table, foreign, member]) = &field.through {
+        let field = model.fields.get(name);
+        let projection = if let Some([table, foreign, member]) =
+            field.and_then(|field| field.through.as_ref())
+        {
             let aggregate = if conn.backend_name() == "PostgreSQL" {
                 "STRING_AGG"
             } else {
@@ -135,7 +143,7 @@ async fn export_rows(
             format!("(SELECT {aggregate}(CAST(id AS TEXT),',') FROM (
                 SELECT link.{member} AS id FROM {table} link WHERE link.{foreign}=t0.id ORDER BY link.{member}
             ) members)")
-        } else if let Some(column) = &field.column {
+        } else if let Some(column) = field.and_then(|field| field.column.as_ref()) {
             format!(r#"CAST(t0."{column}" AS TEXT)"#)
         } else {
             "NULL".to_owned()
@@ -154,16 +162,15 @@ async fn export_rows(
     let rows = query.fetch_all(&mut *conn).await?;
     rows.iter()
         .map(|row| {
-            exchange
-                .headers
+            fields
                 .iter()
                 .enumerate()
-                .map(|(index, name)| {
+                .map(|(index, field)| {
                     let value = row.try_get::<Option<String>, _>(index)?;
-                    if model.fields[name].through.is_some() {
+                    if field.through.is_some() {
                         return Ok(json!(value.unwrap_or_default()));
                     }
-                    Ok(export_value(&model.fields[name], value))
+                    Ok(export_value(field, value))
                 })
                 .collect()
         })

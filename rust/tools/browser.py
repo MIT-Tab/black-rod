@@ -1909,6 +1909,115 @@ def assert_native_site_admin(driver, django, rust):
     driver.delete_all_cookies()
 
 
+def assert_admin_model_saves(driver, django, rust):
+    code = """
+from datetime import date
+from django import setup
+setup()
+from core.models import Debater, School, Tournament
+import json
+
+school = School.objects.create(name="Parity Model School", short_name="Parity")
+pairs = []
+for _ in range(2):
+    tournament = Tournament.objects.create(host=school, date=date(2025, 10, 15), season="2025")
+    debater = Debater.objects.create(first_name="Parity", last_name="Speaker", school=school)
+    pairs.append((tournament.pk, debater.pk))
+print(json.dumps(pairs))
+"""
+    result = subprocess.check_output([str(ROOT / "venv/bin/python"), "-c", code], text=True)
+    pairs = json.loads(result.splitlines()[-1])
+    driver.get(f"http://{HOST}:{django.port}/robots.txt")
+    driver.add_cookie({"name": "sessionid", "value": django_session()})
+
+    def save_edit(root, route):
+        previous = driver.find_element("tag name", "html")
+        driver.find_element("name", "_continue").click()
+        WebDriverWait(driver, 10).until(document_replaced(previous))
+        driver.get(root + route)
+
+    for server, (tournament, debater) in zip((django, rust), pairs):
+        root = f"http://{HOST}:{server.port}"
+        route = f"/admin/core/tournament/{tournament}/change/"
+        driver.get(root + route)
+        driver.find_element("css selector", '#id_qual_type option[value="2"]').click()
+        save_edit(root, route)
+        assert driver.find_element("id", "id_name").get_attribute("value") == "Parity Model School IV"
+        assert driver.find_element("id", "id_autoqual_bar").get_attribute("value") == "8"
+        assert all(not driver.find_element("id", f"id_{field}").is_selected()
+                   for field in ("toty", "soty", "noty", "qual"))
+
+        route = f"/admin/core/debater/{debater}/change/"
+        driver.get(root + route)
+        first = driver.find_element("id", "id_first_name")
+        first.clear()
+        first.send_keys("<b>Updated</b>")
+        driver.find_element("id", "id_dino_judge_contact_opt_in").click()
+        driver.find_element("id", "id_dino_to_contact_opt_in").click()
+        region = driver.find_element("id", "id_region")
+        region.clear()
+        region.send_keys('"west"')
+        save_edit(root, route)
+        assert driver.find_element("id", "id_first_name").get_attribute("value") == "Updated"
+        assert not driver.find_element("id", "id_dino_judge_contact_opt_in").is_selected()
+        assert driver.find_element("id", "id_dino_to_contact_opt_in").is_selected()
+        assert json.loads(driver.find_element("id", "id_region").get_attribute("value")) == ["west"]
+    driver.delete_all_cookies()
+
+
+def assert_admin_across_pages(driver, rust):
+    root = f"http://{HOST}:{rust.port}"
+    code = """
+from datetime import timedelta
+from django import setup
+setup()
+from django.contrib.auth import get_user_model
+from django.utils import timezone
+from core.models import AgentCredential, School
+
+user = get_user_model().objects.get(username="tab")
+for index in range(102):
+    AgentCredential.issue(admin=user, name=f"Pagination parity {index}",
+        expires_at=timezone.now() + timedelta(days=1), can_write=index != 101)
+    label = f"Pagination parity school {index}" if index != 101 else "Unselected control school"
+    School.objects.create(name=label, short_name=f"Bulk page {index}")
+"""
+    subprocess.run([str(ROOT / "venv/bin/python"), "-c", code], check=True)
+    driver.get(root + "/robots.txt")
+    driver.add_cookie({"name": "sessionid", "value": django_session()})
+
+    def select_all(route, action):
+        driver.get(root + route)
+        driver.find_element("id", "action-toggle").click()
+        driver.find_element("css selector", ".actions .question a").click()
+        driver.find_element("css selector", f'select[name="action"] option[value="{action}"]').click()
+        previous = driver.find_element("tag name", "html")
+        driver.find_element("css selector", ".actions button").click()
+        WebDriverWait(driver, 10).until(document_replaced(previous))
+
+    credentials = "/admin/core/agentcredential/?can_write__exact=1"
+    select_all(credentials, "revoke_credentials")
+    schools = "/admin/core/school/?q=Pagination+parity+school"
+    select_all(schools, "delete_selected")
+    assert len(driver.find_elements("css selector", 'input[name="_selected_action"]')) == 101
+    previous = driver.find_element("tag name", "html")
+    driver.find_element("css selector", 'input[name="post"] ~ input[type="submit"]').click()
+    WebDriverWait(driver, 10).until(document_replaced(previous))
+
+    subprocess.run([str(ROOT / "venv/bin/python"), "-c", """
+from django import setup
+setup()
+from core.models import AgentCredential, School
+
+credentials = AgentCredential.objects.filter(name__startswith="Pagination parity ")
+assert credentials.filter(can_write=True, revoked_at__isnull=False).count() == 101
+assert credentials.filter(can_write=False, revoked_at__isnull=True).count() == 1
+assert not School.objects.filter(name__startswith="Pagination parity school ").exists()
+assert School.objects.filter(name="Unselected control school").exists()
+"""], check=True)
+    driver.delete_all_cookies()
+
+
 def assert_admin_attachments(driver, django, rust):
     root = Path(os.environ["BR_STATE"])
     file = root / "fixture-attachment.txt"
@@ -2038,22 +2147,25 @@ print(school.id)
         driver.add_cookie({"name":"sessionid","value":credential})
         driver.get(origin + route + page)
 
+    def download_format(index):
+        return driver.execute_async_script("""
+            const format = arguments[0], done = arguments[1];
+            const csrfmiddlewaretoken = document.querySelector('#content input[name=csrfmiddlewaretoken]').value;
+            fetch(location.href,{method:'POST',body:new URLSearchParams({csrfmiddlewaretoken,file_format:format})})
+            .then(async response=>{
+                const blob=await response.blob();
+                const reader=new FileReader();
+                reader.onload=()=>done({status:response.status,type:response.headers.get('Content-Type'),
+                    attachment:response.headers.get('Content-Disposition'),blob:reader.result.split(',')[1]});
+                reader.readAsDataURL(blob);
+            }).catch(error=>done({status:0,error:String(error)}));
+        """,str(index))
+
     for server in (django,rust):
         open_page(server,"export/" + query)
         downloads = []
         for index in range(len(formats)):
-            download = driver.execute_async_script("""
-                const format = arguments[0], done = arguments[1];
-                const csrfmiddlewaretoken = document.querySelector('#content input[name=csrfmiddlewaretoken]').value;
-                fetch(location.href,{method:'POST',body:new URLSearchParams({csrfmiddlewaretoken,file_format:format})})
-                .then(async response=>{
-                    const blob=await response.blob();
-                    const reader=new FileReader();
-                    reader.onload=()=>done({status:response.status,type:response.headers.get('Content-Type'),
-                        attachment:response.headers.get('Content-Disposition'),blob:reader.result.split(',')[1]});
-                    reader.readAsDataURL(blob);
-                }).catch(error=>done({status:0,error:String(error)}));
-            """,str(index))
+            download = download_format(index)
             assert download["status"] == 200 and download["attachment"].endswith(f'.{formats[index]}"'), download["attachment"]
             downloads.append(download)
         exports[server.port] = downloads
@@ -2109,6 +2221,53 @@ print(school.id)
         assert connection.execute("SELECT short_name FROM core_school WHERE name='Disposable Imported School'").fetchone() == ("New import",)
         assert connection.execute("SELECT change_message FROM django_admin_log WHERE object_id=? ORDER BY id DESC LIMIT 1",
                                   (str(existing),)).fetchone() == ("update through import_export",)
+    code = """
+from datetime import date
+from django import setup
+setup()
+from core.models import Debater, SOTY, School, SpeakerResult, Tournament
+import json
+
+school = School.objects.create(name="Parity speaker import school")
+person = Debater.objects.create(first_name="Parity", last_name="SOTY", school=school)
+event = Tournament.objects.create(host=school, season="2039", date=date(2039, 10, 1))
+standing = SOTY.objects.create(season="2039", debater=person, place=1, points=8)
+result = SpeakerResult.objects.create(tournament=event, debater=person, place=1)
+print(json.dumps((standing.pk, result.pk, event.pk, person.pk)))
+"""
+    seeded = subprocess.check_output([str(ROOT / "venv/bin/python"), "-c", code], text=True)
+    standing, award, tournament, debater = json.loads(seeded.splitlines()[-1])
+    route = "/admin/core/soty/"
+    rendered = []
+    for server in (django, rust):
+        open_page(server, "export/?season__exact=2039")
+        export = download_format(0)
+        assert export["status"] == 200, export
+        rendered.append(base64.b64decode(export["blob"]))
+    assert rendered[0] == rendered[1]
+    assert str(standing).encode() in rendered[0]
+
+    # The SOTY admin's configured import resource writes tournament speaker results.
+    for server, place in ((django, 2), (rust, 3)):
+        open_page(server, "import/")
+        with NamedTemporaryFile(mode="w", encoding="utf-8", suffix=".csv") as fixture:
+            fixture.write("id,tournament,debater,type_of_place,place,tie,counts_for_points,hidden_from_profile\n")
+            fixture.write(f"{award},{tournament},{debater},1,{place},0,1,0\n")
+            fixture.flush()
+            driver.find_element("name", "import_file").send_keys(fixture.name)
+            driver.find_element("css selector", 'select[name="input_format"] option[value="0"]').click()
+            previous = driver.find_element("tag name", "html")
+            driver.find_element("css selector", '#content input[value="Submit"]').click()
+            WebDriverWait(driver, 10).until(document_replaced(previous))
+        assert "Preview" in driver.find_element("id", "content").text
+        with sqlite3.connect(f"{db.as_uri()}?mode=ro", uri=True) as connection:
+            assert connection.execute("SELECT place FROM core_speakerresult WHERE id=?", (award,)).fetchone() == (place - 1,)
+        previous = driver.find_element("tag name", "html")
+        driver.find_element("css selector", "#content input[type='submit']").click()
+        WebDriverWait(driver, 10).until(document_replaced(previous))
+        with sqlite3.connect(f"{db.as_uri()}?mode=ro", uri=True) as connection:
+            assert connection.execute("SELECT place FROM core_speakerresult WHERE id=?", (award,)).fetchone() == (place,)
+            assert connection.execute("SELECT place,points FROM core_soty WHERE id=?", (standing,)).fetchone() == (1, 8)
     driver.delete_all_cookies()
 
 
@@ -2707,6 +2866,46 @@ def assert_manual_results(driver, django, rust, fixture):
                                       (season, manual["school"])).fetchall()
                 assert db.execute("SELECT debater_id FROM core_tournamentautoqual WHERE tournament_id=?",
                                   (historical,)).fetchall() == [(manual["people"][2],)]
+
+    code = """
+from datetime import date
+from django import setup
+setup()
+from core.models import Debater, School, Team, TeamResult, Tournament
+import json
+
+schools = [School.objects.create(name=f"Historical parity school {index}") for index in range(3)]
+people = [Debater.objects.create(first_name="Parity", last_name=f"Roster {index}", school=school)
+          for index, school in enumerate(schools)]
+team = Team.objects.create(name="Historical parity trio")
+team.debaters.add(*people)
+temp_school = School.all_objects.create(name="Historical parity temporary school", temporary=True)
+temp_person = Debater.objects.create(first_name="Parity", last_name="Temporary", school=temp_school)
+event = Tournament.objects.create(host=schools[0], season="2026", date=date(2026, 10, 1),
+    manual_name="Roster parity event", num_teams=24)
+TeamResult.objects.create(tournament=event, team=team, place=1)
+historical = Tournament.objects.create(host=schools[0], season="2024", date=date(2024, 10, 1),
+    manual_name="Historical temporary school event", qual_type=Tournament.YALE)
+print(json.dumps((event.pk, team.pk, historical.pk, temp_person.pk, temp_school.pk)))
+"""
+    result = subprocess.check_output([str(ROOT / "venv/bin/python"), "-c", code], text=True)
+    roster_event, team, historical, person, school = json.loads(result.splitlines()[-1])
+    with sqlite3.connect(database) as db:
+        for server in (django, rust):
+            db.execute("DELETE FROM core_toty WHERE team_id=? AND season='2026'", (team,))
+            db.commit()
+            driver.get(f"http://{HOST}:{server.port}/core/tournaments/data_entry?tournament={roster_event}")
+            saved = send({})
+            assert saved["redirected"], (server.name, saved)
+            assert db.execute("SELECT points FROM core_toty WHERE team_id=? AND season='2026'",
+                              (team,)).fetchone() == (13.0,)
+            driver.get(f"http://{HOST}:{server.port}/core/tournaments/data_entry?tournament={historical}")
+            saved = send({"autoqual_debaters": person})
+            assert saved["redirected"], (server.name, saved)
+            assert db.execute("SELECT debater_id FROM core_tournamentautoqual WHERE tournament_id=?",
+                              (historical,)).fetchall() == [(person,)]
+            assert db.execute("SELECT 1 FROM core_coty WHERE school_id=? AND season='2024'",
+                              (school,)).fetchone() is None
     driver.delete_all_cookies()
 
 
@@ -3477,6 +3676,8 @@ def browser_checks(database, options, output):
         assert_doty(driver, django, rust)
         assert_admin_tools(driver, django, rust)
         assert_native_site_admin(driver, django, rust)
+        assert_admin_model_saves(driver, django, rust)
+        assert_admin_across_pages(driver, rust)
         assert_admin_topic_merges(driver, django, rust)
         assert_admin_speaker_visibility(driver, django, rust)
         assert_admin_attachments(driver, django, rust)
