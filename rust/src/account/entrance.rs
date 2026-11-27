@@ -82,12 +82,24 @@ async fn sign_up(
         );
     }
     if !email.is_empty() {
-        if !email_valid(email) || email.chars().count()>254 {
-            error(errors,"email","Enter a valid email address.");
-        } else if sqlx::query_scalar::<_,i64>("SELECT CAST(id AS BIGINT) FROM account_emailaddress WHERE LOWER(email)=LOWER($1) LIMIT 1")
-            .bind(email).fetch_optional(&state.pool).await?.is_some()
+        if !email_valid(email) || email.chars().count() > 254 {
+            error(errors, "email", "Enter a valid email address.");
+        } else if sqlx::query_scalar::<_, i64>(
+            "SELECT CAST(CASE WHEN
+            EXISTS (SELECT 1 FROM account_emailaddress WHERE LOWER(email)=LOWER($1))
+            OR EXISTS (SELECT 1 FROM core_user WHERE LOWER(email)=LOWER($1))
+            THEN 1 ELSE 0 END AS BIGINT)",
+        )
+        .bind(email)
+        .fetch_one(&state.pool)
+        .await?
+            != 0
         {
-            error(errors,"email","A user is already registered with this email address.");
+            error(
+                errors,
+                "email",
+                "A user is already registered with this email address.",
+            );
         }
     }
     errors.extend(passwords(fields, [username, "", "", email]));

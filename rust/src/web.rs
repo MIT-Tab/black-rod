@@ -998,8 +998,7 @@ pub(crate) async fn show(
         && season == state.current_season
         && let Some(live) = &state.live
     {
-        live.active_sources(&state.pool, season, state.memcached.as_ref())
-            .await
+        live.active_sources(&state, season).await
     } else {
         Vec::new()
     };

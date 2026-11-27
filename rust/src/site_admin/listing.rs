@@ -1,6 +1,10 @@
 mod dates;
 
-use std::collections::{BTreeMap, HashMap};
+use std::{
+    borrow::Cow,
+    collections::{BTreeMap, HashMap},
+    sync::LazyLock,
+};
 
 use axum::{
     body::{Body, to_bytes},
@@ -583,6 +587,32 @@ pub(super) fn date(input: &str) -> String {
     input.to_owned()
 }
 
+fn search_terms(search: &str) -> impl Iterator<Item = Cow<'_, str>> {
+    static TOKENS: LazyLock<regex::Regex> = LazyLock::new(|| {
+        regex::Regex::new(r#"((?:[^\s'"]*(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')[^\s'"]*)+|\S+)"#)
+            .expect("Django admin query token pattern")
+    });
+    TOKENS.find_iter(search).map(|term| {
+        let term = term.as_str();
+        let quote = term
+            .starts_with('"')
+            .then_some('"')
+            .or_else(|| term.starts_with('\'').then_some('\''));
+        if let Some(quote) = quote
+            && let Some(quoted) = term
+                .strip_prefix(quote)
+                .and_then(|value| value.strip_suffix(quote))
+        {
+            let unescaped = quoted
+                .replace(&format!("\\{quote}"), &quote.to_string())
+                .replace("\\\\", "\\");
+            Cow::Owned(unescaped)
+        } else {
+            Cow::Borrowed(term)
+        }
+    })
+}
+
 pub(super) fn search_conditions(
     source: &mut Source<'_>,
     model: &Model,
@@ -590,7 +620,7 @@ pub(super) fn search_conditions(
     values: &mut Vec<String>,
 ) -> Vec<String> {
     let mut where_parts = Vec::new();
-    for term in search.split_whitespace() {
+    for term in search_terms(search) {
         let mut options = Vec::new();
         for name in &model.search {
             let name = name.trim_start_matches(['^', '=', '@']);
@@ -698,10 +728,15 @@ pub(super) fn conditions(
         } else {
             parameter
         };
-        let allowed = model
-            .filter
-            .iter()
-            .any(|filter| path == filter || path.starts_with(&format!("{filter}__")));
+        let local = model
+            .fields
+            .get(path)
+            .is_some_and(|field| field.column.is_some());
+        let allowed = local
+            || model
+                .filter
+                .iter()
+                .any(|filter| path == filter || path.starts_with(&format!("{filter}__")));
         if !allowed {
             continue;
         }

@@ -1,11 +1,10 @@
 use std::sync::Arc;
 
 use serde_pickle::{HashableValue, Value as Pickle};
-use sqlx::AnyPool;
 
 use super::{FRESH, Live, Payload, STALE};
 use crate::{
-    ApiError,
+    ApiError, AppState,
     cache::{Memcached, python_value},
 };
 
@@ -51,13 +50,13 @@ fn serialize(payload: &Payload) -> Result<Vec<u8>, serde_pickle::Error> {
 
 async fn refresh(
     live: &Live,
-    pool: &AnyPool,
+    state: &AppState,
     season: i32,
     cache: &Memcached,
     key: &str,
     lock_held: bool,
 ) -> Result<Arc<Payload>, ApiError> {
-    let result = live.rebuild(pool, season, Some(cache)).await;
+    let result = live.rebuild(state, season).await;
     if lock_held {
         cache.delete_raw(&format!("{key}:lock")).await;
     }
@@ -82,7 +81,7 @@ async fn refresh(
 
 pub(super) async fn active(
     live: &Arc<Live>,
-    pool: &AnyPool,
+    state: &AppState,
     season: i32,
     cache: &Memcached,
 ) -> Vec<String> {
@@ -93,7 +92,7 @@ pub(super) async fn active(
     let stale = load(cache, &format!("{key}:stale")).await;
     if let Ok(guard) = live.refreshing.clone().try_lock_owned() {
         let live = live.clone();
-        let pool = pool.clone();
+        let state = state.clone();
         let cache = cache.clone();
         tokio::spawn(async move {
             let _guard = guard;
@@ -101,7 +100,7 @@ pub(super) async fn active(
                 .write_raw(&format!("{key}:lock"), 2, b"1", LOCK_SECONDS, false)
                 .await
             {
-                let _ = refresh(&live, &pool, season, &cache, &key, true).await;
+                let _ = refresh(&live, &state, season, &cache, &key, true).await;
             }
         });
     }
@@ -110,7 +109,7 @@ pub(super) async fn active(
 
 pub(super) async fn data(
     live: &Live,
-    pool: &AnyPool,
+    state: &AppState,
     season: i32,
     cache: &Memcached,
 ) -> Result<Arc<Payload>, ApiError> {
@@ -134,7 +133,7 @@ pub(super) async fn data(
     if !locked && let Some(stale) = stale {
         return Ok(stale);
     }
-    refresh(live, pool, season, cache, &key, locked).await
+    refresh(live, state, season, cache, &key, locked).await
 }
 
 pub(super) async fn invalidate(cache: &Memcached, season: i32) {

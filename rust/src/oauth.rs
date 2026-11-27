@@ -10,6 +10,8 @@ use axum::{
 use serde_json::{Value, json};
 use sqlx::{AnyPool, Row};
 
+use unicode_normalization::UnicodeNormalization;
+
 use crate::{
     ApiError, AppState, account, flash,
     login::{self, SESSION_AGE},
@@ -134,6 +136,27 @@ pub(crate) async fn sync_video_access(pool: &AnyPool, id: i64) -> Result<(), Api
     Ok(())
 }
 
+fn signup_username_base(first: &str, last: &str, email: &str) -> String {
+    [first, last, email]
+        .into_iter()
+        .find_map(|source| {
+            let ascii = source.nfkd().filter(char::is_ascii).collect::<String>();
+            let filtered = ascii
+                .split('@')
+                .next()
+                .unwrap_or_default()
+                .chars()
+                .filter(|ch| {
+                    ch.is_ascii_alphanumeric() || ch.is_ascii_whitespace() || "_+.-".contains(*ch)
+                })
+                .collect::<String>()
+                .to_ascii_lowercase();
+            let username = filtered.split_whitespace().collect::<Vec<_>>().join("_");
+            (!username.is_empty()).then(|| username.chars().take(130).collect())
+        })
+        .unwrap_or_else(|| "user".to_owned())
+}
+
 async fn save(
     pool: &AnyPool,
     profile: &Profile,
@@ -220,7 +243,6 @@ async fn save(
             .filter(|ch| ch.is_alphanumeric() || "_@.+-".contains(*ch))
             .take(130)
             .collect();
-        let base = chosen_username.unwrap_or(if base.is_empty() { "user" } else { &base });
         let (first, last) = profile
             .display_name
             .split_once(' ')
@@ -235,17 +257,19 @@ async fn save(
             )
             .map_err(|_| AccountError::Invalid)?
         );
+        let fallback = signup_username_base(&first, &last, &email);
+        let initial = chosen_username.or_else(|| (!base.is_empty()).then_some(base.as_str()));
+        let candidates = initial.map(str::to_owned).into_iter().chain(
+            std::iter::once(fallback.clone())
+                .chain((1..100).map(|suffix| format!("{fallback}{suffix}"))),
+        );
         let mut id = None;
-        for suffix in 0..if chosen_username.is_some() { 1 } else { 100 } {
-            let username = if suffix == 0 {
-                base.to_owned()
-            } else {
-                format!("{base}{suffix}")
-            };
+        for username in candidates.take(if chosen_username.is_some() { 1 } else { 101 }) {
             id = sqlx::query_scalar::<_, i64>("
                 INSERT INTO core_user (username, password, first_name, last_name, email, is_superuser, is_staff,
                     is_active, date_joined, can_view_private_videos)
-                VALUES ($1, $2, $3, $4, $5, FALSE, FALSE, TRUE, CURRENT_TIMESTAMP, $6)
+                SELECT $1, $2, $3, $4, $5, FALSE, FALSE, TRUE, CURRENT_TIMESTAMP, $6
+                WHERE NOT EXISTS (SELECT 1 FROM core_user WHERE LOWER(username)=LOWER($1))
                 ON CONFLICT(username) DO NOTHING RETURNING CAST(id AS BIGINT)
             ").bind(username).bind(&password).bind(&first).bind(&last).bind(&email)
                 .bind(profile.can_view_video()).fetch_optional(&mut *tx).await?;

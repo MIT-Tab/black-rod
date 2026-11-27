@@ -1579,6 +1579,26 @@ def assert_account_entry_and_email(driver, django, rust, smtp):
         driver.find_element("css selector",selector).click()
         WebDriverWait(driver,10).until(document_replaced(old))
 
+    code = """
+from django import setup
+setup()
+from core.models import User
+User.objects.create_user(username="legacy_signup_fixture", email="legacy-signup@example.test")
+"""
+    subprocess.run([str(ROOT / "venv/bin/python"), "-c", code], check=True, capture_output=True)
+    for server in (django, rust):
+        open_page(server, signup)
+        driver.delete_all_cookies()
+        open_page(server, signup)
+        fill("username", "legacy_signup_attempt")
+        fill("email", "LEGACY-SIGNUP@example.test")
+        fill("password1", starting)
+        fill("password2", starting)
+        submit()
+        assert "A user is already registered with this email address." in driver.find_element(
+            "tag name", "body"
+        ).text
+
     driver.delete_all_cookies()
     open_page(rust, signup + "?next=/games/")
     fill("username",username)
@@ -2216,8 +2236,9 @@ user = get_user_model().objects.get(username="tab")
 for index in range(102):
     AgentCredential.issue(admin=user, name=f"Pagination parity {index}",
         expires_at=timezone.now() + timedelta(days=1), can_write=index != 101)
-    label = f"Pagination parity school {index}" if index != 101 else "Unselected control school"
-    School.objects.create(name=label, short_name=f"Bulk page {index}")
+    School.objects.create(name=f"Pagination parity school {index}", short_name=f"Bulk page {index}",
+                          included_in_oty=index != 101)
+School.objects.create(name="Unselected control school")
 """
     subprocess.run([str(ROOT / "venv/bin/python"), "-c", code], check=True)
     driver.get(root + "/robots.txt")
@@ -2234,7 +2255,7 @@ for index in range(102):
 
     credentials = "/admin/core/agentcredential/?can_write__exact=1"
     select_all(credentials, "revoke_credentials")
-    schools = "/admin/core/school/?q=Pagination+parity+school"
+    schools = "/admin/core/school/?q=Pagination+parity+school&included_in_oty__exact=1"
     select_all(schools, "delete_selected")
     assert len(driver.find_elements("css selector", 'input[name="_selected_action"]')) == 101
     previous = driver.find_element("tag name", "html")
@@ -2249,7 +2270,8 @@ from core.models import AgentCredential, School
 credentials = AgentCredential.objects.filter(name__startswith="Pagination parity ")
 assert credentials.filter(can_write=True, revoked_at__isnull=False).count() == 101
 assert credentials.filter(can_write=False, revoked_at__isnull=True).count() == 1
-assert not School.objects.filter(name__startswith="Pagination parity school ").exists()
+remaining = School.objects.filter(name__startswith="Pagination parity school ").values_list("name", flat=True)
+assert list(remaining) == ["Pagination parity school 101"]
 assert School.objects.filter(name="Unselected control school").exists()
 """], check=True)
     driver.delete_all_cookies()
@@ -2373,7 +2395,7 @@ print(school.id)
     existing = int(result.splitlines()[-1])
     credential = django_session()
     root = f"http://{HOST}:{rust.port}"
-    query = "?" + urlencode({"q":"Échange"})
+    query = "?" + urlencode({"q":'"Disposable Échange"', "included_in_oty__exact": 1})
     route = "/admin/core/school/"
     formats = ("csv","xls","xlsx","tsv","ods","json","yaml","html")
     exports = {}
@@ -2506,6 +2528,39 @@ print(json.dumps((standing.pk, result.pk, event.pk, person.pk)))
         with sqlite3.connect(f"{db.as_uri()}?mode=ro", uri=True) as connection:
             assert connection.execute("SELECT place FROM core_speakerresult WHERE id=?", (award,)).fetchone() == (place,)
             assert connection.execute("SELECT place,points FROM core_soty WHERE id=?", (standing,)).fetchone() == (1, 8)
+    route = "/admin/core/team/"
+    team_name = "Disposable Team Exchange"
+    with sqlite3.connect(f"{db.as_uri()}?mode=ro", uri=True) as connection:
+        members = [row[0] for row in connection.execute(
+            "SELECT id FROM core_debater WHERE NOT(temporary OR synthetic) ORDER BY id LIMIT 2")]
+
+    def submit_team(record, short_name):
+        open_page(rust, "import/")
+        with NamedTemporaryFile(mode="w", encoding="utf-8", suffix=".csv") as fixture:
+            fixture.write("id,name,short_name,synthetic,debaters\n")
+            fixture.write(f'{record},{team_name},{short_name},0,"{members[0]},{members[1]}"\n')
+            fixture.flush()
+            driver.find_element("name", "import_file").send_keys(fixture.name)
+            driver.find_element("css selector", 'select[name="input_format"] option[value="0"]').click()
+            previous = driver.find_element("tag name", "html")
+            driver.find_element("css selector", '#content input[value="Submit"]').click()
+            WebDriverWait(driver, 10).until(document_replaced(previous))
+        assert "Preview" in driver.find_element("id", "content").text
+        assert team_name in driver.find_element("css selector", ".import-preview").text
+        previous = driver.find_element("tag name", "html")
+        driver.find_element("name", "confirm").click()
+        WebDriverWait(driver, 10).until(document_replaced(previous))
+        assert driver.current_url == root + route
+
+    submit_team("", "Imported roster")
+    with sqlite3.connect(f"{db.as_uri()}?mode=ro", uri=True) as connection:
+        team, = connection.execute("SELECT id FROM core_team WHERE name=?", (team_name,)).fetchone()
+        sql = "SELECT id,debater_id FROM core_team_debaters WHERE team_id=? ORDER BY id"
+        roster = connection.execute(sql, (team,)).fetchall()
+        assert [member for _, member in roster] == members
+        submit_team(team, "Updated label")
+        assert connection.execute(sql, (team,)).fetchall() == roster
+        assert connection.execute("SELECT short_name FROM core_team WHERE id=?", (team,)).fetchone() == ("Updated label",)
     driver.delete_all_cookies()
 
 
@@ -3786,6 +3841,46 @@ def assert_oauth_roundtrip(driver, rust, django):
         driver.delete_cookie("sessionid")
 
 
+def assert_oauth_username_collision(driver, django, rust, provider):
+    code = """
+from django import setup
+setup()
+from core.models import User
+for name in ("Django", "Rust"):
+    User.objects.create_user(username=f"CaseCollision{name}")
+"""
+    subprocess.run([str(ROOT / "venv/bin/python"), "-c", code], check=True, capture_output=True)
+    db = Path(os.environ["BR_STATE"]) / "dev.sqlite3"
+    original_profile = provider.oauth_profile
+    try:
+        for number, (server, name) in enumerate(((django, "django"), (rust, "rust"))):
+            uid = 6792000 + number
+            provider.oauth_profile = {
+                "ID": uid,
+                "user_nicename": f"casecollision{name}",
+                "user_email": f"collision-{name}@example.test",
+                "display_name": f"Fallback{name} Fixture",
+                "user_roles": [],
+            }
+            root = f"http://{HOST}:{server.port}"
+            driver.get(root + "/robots.txt")
+            driver.delete_all_cookies()
+            driver.get(root + "/accounts/apdaonline/login/?next=/games/")
+            driver.find_element("css selector", '.card form button[type="submit"]').click()
+            WebDriverWait(driver, 10).until(lambda browser: browser.current_url == root + "/games/")
+            with sqlite3.connect(f"{db.as_uri()}?mode=ro", uri=True) as connection:
+                user = connection.execute(
+                    """SELECT username FROM core_user JOIN socialaccount_socialaccount
+                    ON core_user.id = socialaccount_socialaccount.user_id
+                    WHERE provider = 'apdaonline' AND uid = ?""",
+                    (str(uid),),
+                ).fetchone()
+            assert user == (f"fallback{name}",), (server.name, user)
+            driver.delete_all_cookies()
+    finally:
+        provider.oauth_profile = original_profile
+
+
 def assert_oauth_pending_signup(driver, django, rust, provider):
     code = """
 from django import setup
@@ -3983,6 +4078,7 @@ def browser_checks(database, options, output):
         assert_account_entry_and_email(driver, django, rust, mail)
         assert_password_login_syncs_video_access(driver, django, rust)
         assert_oauth_roundtrip(driver, rust, django)
+        assert_oauth_username_collision(driver, django, rust, provider)
         assert_oauth_connections(driver, django, rust, provider)
         assert_oauth_pending_signup(driver, django, rust, provider)
         assert_directories(driver, django, rust)

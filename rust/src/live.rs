@@ -20,7 +20,6 @@ use url::Url;
 
 use crate::{
     ApiError, AppState,
-    cache::Memcached,
     points::{speaker_points_for_size, team_points_for_size},
     schedule::qualification_label,
     session,
@@ -67,17 +66,13 @@ impl Live {
             .map(|(_, payload)| payload.clone())
     }
 
-    async fn rebuild(
-        &self,
-        pool: &AnyPool,
-        season: i32,
-        cache: Option<&Memcached>,
-    ) -> Result<Arc<Payload>, ApiError> {
+    async fn rebuild(&self, state: &AppState, season: i32) -> Result<Arc<Payload>, ApiError> {
+        let pool = &state.pool;
         let mut boards = base_boards(pool, season).await?;
         let mut coty = base_coty(pool, season).await?;
         let mut names = BTreeSet::new();
         if !matches!(season, 2020 | 2021) {
-            let payloads = self.fetch(cache).await;
+            let payloads = self.fetch(state).await;
             let people = People::load(pool, &payloads).await?;
             for source in payloads {
                 if apply(pool, season, &source, &people, &mut boards, &mut coty).await?
@@ -98,7 +93,7 @@ impl Live {
                           "noty": finalize(noty, 5), "coty": coty.finalize()}),
             active_sources: names.into_iter().collect(),
         });
-        if cache.is_none()
+        if state.memcached.is_none()
             && let Ok(mut last) = self.last.write()
         {
             *last = Some((Instant::now(), payload.clone()));
@@ -108,23 +103,21 @@ impl Live {
 
     pub(crate) async fn active_sources(
         self: &Arc<Self>,
-        pool: &AnyPool,
+        state: &AppState,
         season: i32,
-        cache: Option<&Memcached>,
     ) -> Vec<String> {
-        if let Some(cache) = cache {
-            return shared::active(self, pool, season, cache).await;
+        if let Some(cache) = &state.memcached {
+            return shared::active(self, state, season, cache).await;
         }
         if let Some(payload) = self.last(FRESH) {
             return payload.active_sources.clone();
         }
         if let Ok(guard) = self.refreshing.clone().try_lock_owned() {
             let live = self.clone();
-            let pool = pool.clone();
-            let cache = cache.cloned();
+            let state = state.clone();
             tokio::spawn(async move {
                 let _guard = guard;
-                let _ = live.rebuild(&pool, season, cache.as_ref()).await;
+                let _ = live.rebuild(&state, season).await;
             });
         }
         self.last(STALE)
@@ -132,20 +125,15 @@ impl Live {
             .unwrap_or_default()
     }
 
-    async fn page_data(
-        &self,
-        pool: &AnyPool,
-        season: i32,
-        cache: Option<&Memcached>,
-    ) -> Result<Arc<Payload>, ApiError> {
-        if let Some(cache) = cache {
-            return shared::data(self, pool, season, cache).await;
+    async fn page_data(&self, state: &AppState, season: i32) -> Result<Arc<Payload>, ApiError> {
+        if let Some(cache) = &state.memcached {
+            return shared::data(self, state, season, cache).await;
         }
         if let Some(payload) = self.last(FRESH) {
             return Ok(payload);
         }
         if let Ok(_guard) = self.refreshing.try_lock() {
-            return self.rebuild(pool, season, cache).await;
+            return self.rebuild(state, season).await;
         }
         if let Some(payload) = self.last(STALE) {
             return Ok(payload);
@@ -153,7 +141,7 @@ impl Live {
         let _guard = self.refreshing.lock().await;
         match self.last(FRESH) {
             Some(payload) => Ok(payload),
-            None => self.rebuild(pool, season, cache).await,
+            None => self.rebuild(state, season).await,
         }
     }
 
@@ -163,12 +151,7 @@ impl Live {
         if let Some(directory) = &self.directory
             && let Some(payload) = read_json(&self.client, directory, Duration::from_secs(5)).await
         {
-            confirmed = payload["tournaments"].is_array();
-            sources.extend(
-                array(&payload["tournaments"])
-                    .iter()
-                    .filter_map(|row| text(&row["url"]).map(str::to_owned)),
-            );
+            (sources, confirmed) = classify_directory(sources, &payload);
         }
         let mut seen = HashSet::new();
         let urls = sources
@@ -183,7 +166,7 @@ impl Live {
         self.directory_state().await.0
     }
 
-    async fn fetch(&self, cache: Option<&Memcached>) -> Vec<Value> {
+    async fn fetch(&self, state: &AppState) -> Vec<Value> {
         let mut pending = self.directory_urls().await.into_iter();
         let mut running = JoinSet::new();
         let add = |running: &mut JoinSet<(String, Option<Value>)>, url: String| {
@@ -214,12 +197,29 @@ impl Live {
             }
         })
         .await;
-        if let Some(cache) = cache {
-            let snapshots = snapshots::missing(cache, &loaded).await;
-            loaded.extend(snapshots);
-        }
+        let retained = if let Some(cache) = &state.memcached {
+            snapshots::missing(cache, &loaded).await
+        } else {
+            state.import_cache.retained_live(&loaded)
+        };
+        loaded.extend(retained);
         loaded.into_values().collect()
     }
+}
+
+fn classify_directory(mut sources: Vec<String>, payload: &Value) -> (Vec<String>, bool) {
+    let Some(rows) = payload["tournaments"].as_array() else {
+        return (sources, false);
+    };
+    let mut complete = true;
+    for row in rows {
+        if let Some(url) = text(&row["url"]).and_then(safe_url) {
+            sources.push(url);
+        } else {
+            complete = false;
+        }
+    }
+    (sources, complete)
 }
 
 async fn read_json(client: &Client, url: &str, duration: Duration) -> Option<Value> {
@@ -992,10 +992,7 @@ pub(crate) async fn page(
     let Some(live) = &state.live else {
         return StatusCode::SERVICE_UNAVAILABLE.into_response();
     };
-    let Ok(data) = live
-        .page_data(&state.pool, state.current_season, state.memcached.as_ref())
-        .await
-    else {
+    let Ok(data) = live.page_data(&state, state.current_season).await else {
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     };
     let Ok(user) = session::user(&state.pool, &headers, state.secret.as_deref()).await else {
@@ -1016,6 +1013,75 @@ pub(crate) async fn page(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn incomplete_directories_keep_usable_urls_without_confirming_absences() {
+        let configured = vec!["https://configured.example".to_owned()];
+        let (urls, complete) = classify_directory(
+            configured.clone(),
+            &json!({"tournaments":[{"url":"https://directory.example/"},{"name":"Incomplete"}]}),
+        );
+        assert_eq!(
+            urls,
+            ["https://configured.example", "https://directory.example"]
+        );
+        assert!(!complete);
+        assert_eq!(
+            classify_directory(configured, &json!({"tournaments":[]})),
+            (vec!["https://configured.example".to_owned()], true)
+        );
+    }
+
+    #[tokio::test]
+    async fn live_results_use_retained_local_snapshot_only_when_source_is_unavailable() {
+        use axum::{Json, Router, routing::get};
+        use sqlx::any::{AnyPoolOptions, install_default_drivers};
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        let online = Arc::new(AtomicBool::new(false));
+        let observed = online.clone();
+        let router = Router::new()
+            .route("/api/import-results", get(|| async {
+                Json(json!({
+                    "schema_version": 1, "import_ready": true, "bundle": {},
+                    "new_debater_data": [], "new_schools": [], "debater_counts": {},
+                    "tournament": {"name": "Retained fixture"},
+                    "varsity_team_placements": [], "varsity_speaker_awards": [],
+                    "novice_team_placements": [], "novice_speaker_awards": [], "non_placing_teams": []
+                }))
+            }))
+            .route("/api/live-results", get(move || async move {
+                if observed.load(Ordering::Relaxed) {
+                    Json(json!({"schema_version":1,"tournament":{"name":"Fresh fixture"}})).into_response()
+                } else {
+                    StatusCode::SERVICE_UNAVAILABLE.into_response()
+                }
+            }));
+        let fixture = tokio::spawn(async { axum::serve(listener, router).await.unwrap() });
+        install_default_drivers();
+        let pool = AnyPoolOptions::new()
+            .connect_lazy("sqlite::memory:")
+            .unwrap();
+        let state = AppState::new(pool, 2026).with_live(Live::new(None, vec![url]).unwrap());
+        crate::tournament_import::refresh_sources(&state)
+            .await
+            .unwrap();
+        let live = state.live.as_ref().unwrap();
+        let payload = live.fetch(&state).await;
+        assert_eq!(payload.len(), 1);
+        assert_eq!(payload[0]["tournament"]["name"], "Retained fixture");
+        assert_eq!(payload[0]["_cached_only"], true);
+        assert!(payload[0].get("bundle").is_none() && payload[0].get("new_debater_data").is_none());
+
+        online.store(true, Ordering::Relaxed);
+        let payload = live.fetch(&state).await;
+        assert_eq!(payload.len(), 1);
+        assert_eq!(payload[0]["tournament"]["name"], "Fresh fixture");
+        assert!(payload[0].get("_cached_only").is_none());
+        fixture.abort();
+    }
 
     #[test]
     fn equal_reviewed_marker_stays_ahead_of_live_marker_at_the_slot_limit() {

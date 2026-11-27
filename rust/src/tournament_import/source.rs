@@ -84,6 +84,30 @@ impl Cache {
                 .build(),
         }
     }
+
+    pub(crate) fn retained_live(&self, active: &HashMap<String, Value>) -> HashMap<String, Value> {
+        let now = Utc::now().timestamp() as f64;
+        self.sources
+            .iter()
+            .filter_map(|(_, (source, data))| {
+                if active.contains_key(&source.url)
+                    || source
+                        .missing_since
+                        .is_some_and(|missing| now - missing >= RETENTION)
+                {
+                    return None;
+                }
+                let mut payload = data
+                    .as_object()?
+                    .iter()
+                    .filter(|(name, _)| !matches!(name.as_str(), "bundle" | "new_debater_data"))
+                    .map(|(name, value)| (name.clone(), value.clone()))
+                    .collect::<serde_json::Map<_, _>>();
+                payload.insert("_cached_only".to_owned(), Value::Bool(true));
+                Some((source.url, Value::Object(payload)))
+            })
+            .collect()
+    }
 }
 
 pub(super) fn key(url: &str) -> String {

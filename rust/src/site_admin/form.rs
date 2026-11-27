@@ -918,30 +918,40 @@ async fn save_memberships(
             .flat_map(|value| value.split(',').map(str::to_owned).collect::<Vec<_>>())
             .filter_map(|value| value.parse::<i64>().ok())
             .collect::<BTreeSet<_>>();
-        let statement = format!("SELECT CAST({target} AS BIGINT) FROM {table} WHERE {current}=$1");
-        let existing = sqlx::query_scalar::<_, i64>(AssertSqlSafe(statement))
+        sync_memberships(conn, [table, current, target], record, &new).await?;
+    }
+    Ok(())
+}
+
+pub(super) async fn sync_memberships(
+    conn: &mut AnyConnection,
+    [table, current, target]: [&str; 3],
+    record: i64,
+    new: &BTreeSet<i64>,
+) -> Result<(), ApiError> {
+    let statement = format!("SELECT CAST({target} AS BIGINT) FROM {table} WHERE {current}=$1");
+    let existing = sqlx::query_scalar::<_, i64>(AssertSqlSafe(statement))
+        .bind(record)
+        .fetch_all(&mut *conn)
+        .await?
+        .into_iter()
+        .collect::<BTreeSet<_>>();
+    let delete = format!("DELETE FROM {table} WHERE {current}=$1 AND {target}=$2");
+    for related in existing.difference(new) {
+        sqlx::query(AssertSqlSafe(delete.as_str()))
             .bind(record)
-            .fetch_all(&mut *conn)
-            .await?
-            .into_iter()
-            .collect::<BTreeSet<_>>();
-        let delete = format!("DELETE FROM {table} WHERE {current}=$1 AND {target}=$2");
-        for related in existing.difference(&new) {
-            sqlx::query(AssertSqlSafe(delete.as_str()))
-                .bind(record)
-                .bind(related)
-                .execute(&mut *conn)
-                .await?;
-        }
-        let insert = format!("INSERT INTO {table} ({current},{target}) VALUES ($1,$2)");
-        for related in new.difference(&existing) {
-            sqlx::query(AssertSqlSafe(insert.clone()))
-                .bind(record)
-                .bind(related)
-                .execute(&mut *conn)
-                .await
-                .map_err(storage_error)?;
-        }
+            .bind(related)
+            .execute(&mut *conn)
+            .await?;
+    }
+    let insert = format!("INSERT INTO {table} ({current},{target}) VALUES ($1,$2)");
+    for related in new.difference(&existing) {
+        sqlx::query(AssertSqlSafe(insert.clone()))
+            .bind(record)
+            .bind(related)
+            .execute(&mut *conn)
+            .await
+            .map_err(storage_error)?;
     }
     Ok(())
 }

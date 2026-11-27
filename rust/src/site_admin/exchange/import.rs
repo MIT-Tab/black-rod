@@ -290,7 +290,7 @@ async fn column_diff(
         let field = &model.fields[name];
         let (old, new) = if field.through.is_some() {
             (
-                formats::text(&previous[name]),
+                previous.get(name).map(formats::text).unwrap_or_default(),
                 relations(conn, model, name, id).await?,
             )
         } else if let Some(column) = &field.column {
@@ -395,11 +395,6 @@ async fn apply_row(
             .split(',')
             .filter_map(|key| key.trim().parse::<i64>().ok())
             .collect::<std::collections::BTreeSet<_>>();
-        let clear = format!("DELETE FROM {table} WHERE {owner}=$1");
-        sqlx::query(AssertSqlSafe(clear))
-            .bind(id)
-            .execute(&mut *conn)
-            .await?;
         let Some((app, related_model)) = field
             .related
             .as_deref()
@@ -415,18 +410,24 @@ async fn apply_row(
         } else {
             ""
         };
-        let insert = format!(
-            "INSERT INTO {table} ({owner},{member})
-            SELECT $1,id FROM {} WHERE id=$2{additional}",
-            target.table
-        );
-        for key in related {
-            sqlx::query(AssertSqlSafe(insert.clone()))
-                .bind(id)
-                .bind(key)
-                .execute(&mut *conn)
-                .await?;
+        let mut valid = std::collections::BTreeSet::new();
+        if !related.is_empty() {
+            let ids = related
+                .iter()
+                .map(i64::to_string)
+                .collect::<Vec<_>>()
+                .join(",");
+            let statement = format!(
+                "SELECT CAST(id AS BIGINT) FROM {} WHERE id IN ({ids}){additional}",
+                target.table
+            );
+            valid.extend(
+                sqlx::query_scalar::<_, i64>(AssertSqlSafe(statement))
+                    .fetch_all(&mut *conn)
+                    .await?,
+            );
         }
+        form::sync_memberships(conn, [table, owner, member], id, &valid).await?;
     }
     if model.slug() == "debater" {
         crate::claims::edit::team_names(conn, id).await?;
