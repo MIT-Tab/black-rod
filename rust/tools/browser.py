@@ -2,13 +2,18 @@
 
 from argparse import ArgumentParser
 from concurrent.futures import ThreadPoolExecutor
+from email import policy
+from email.parser import BytesParser
 from contextlib import contextmanager
 from html import unescape
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from itertools import zip_longest
 import json
 from pathlib import Path
+from queue import Queue
 import os
+import socket
+from socketserver import StreamRequestHandler, ThreadingTCPServer
 import sqlite3
 import subprocess
 from tempfile import TemporaryDirectory
@@ -1322,6 +1327,173 @@ QUAL.objects.get_or_create(debater=active[-1], season="2026")
                    check=True, capture_output=True)
 
 
+class LocalSMTP(StreamRequestHandler):
+    def handle(self):
+        self.wfile.write(b"220 local parity SMTP\r\n")
+        while data := self.rfile.readline():
+            command = data.split(maxsplit=1)[0].upper()
+            if command in (b"EHLO", b"HELO", b"MAIL", b"RCPT", b"RSET", b"NOOP"):
+                self.wfile.write(b"250 okay\r\n")
+            elif command == b"DATA":
+                self.wfile.write(b"354 send the message\r\n")
+                lines = []
+                while (line := self.rfile.readline()) and line != b".\r\n":
+                    lines.append(line[1:] if line.startswith(b"..") else line)
+                self.server.messages.put(BytesParser(policy=policy.default).parsebytes(b"".join(lines)))
+                self.wfile.write(b"250 fixture queued\r\n")
+            elif command == b"QUIT":
+                self.wfile.write(b"221 goodbye\r\n")
+                return
+            else:
+                self.wfile.write(b"502 unknown command\r\n")
+
+
+@contextmanager
+def smtp_sink():
+    with ThreadingTCPServer((HOST, 0), LocalSMTP) as server:
+        server.daemon_threads = True
+        server.messages = Queue()
+        thread = Thread(target=server.serve_forever, daemon=True)
+        port = server.server_address[1]
+        exports = {"BLACK_ROD_SMTP_URL":f"smtp://{HOST}:{port}", "BLACK_ROD_PARITY_SMTP_PORT": str(port),
+                   "BLACK_ROD_FROM_EMAIL":"parity@example.test"}
+        prior = {key:os.environ.get(key) for key in exports}
+        os.environ.update(exports)
+        thread.start()
+        try:
+            yield server.messages
+        finally:
+            for key, value in prior.items():
+                if value is None:
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = value
+            server.shutdown()
+            thread.join()
+
+
+def assert_password_accounts(driver, django, rust, smtp):
+    from selenium.webdriver.support.expected_conditions import staleness_of
+
+    script = """
+from django import setup
+setup()
+from allauth.account.models import EmailAddress
+from django.contrib.auth import get_user_model
+from django.contrib.sessions.backends.db import SessionStore
+from django.contrib.auth.hashers import PBKDF2SHA1PasswordHasher
+import json
+data = {}
+for label in ("rust-change", "django-change", "oauth-set", "rust-reset", "django-reset", "legacy-hash"):
+    email = f"{label}@example.test"
+    user = get_user_model().objects.create_user(username=label, email=email,
+        password=None if label == "oauth-set" else "kN3%jku8^Qm2")
+    if label == "legacy-hash":
+        user.password = PBKDF2SHA1PasswordHasher().encode("kN3%jku8^Qm2", "fixture-legacy", iterations=3000)
+        user.save(update_fields=["password"])
+    EmailAddress.objects.create(user=user,email=email,verified=True,primary=True)
+    s = SessionStore()
+    s.update({"_auth_user_id":str(user.pk),"_auth_user_backend":"django.contrib.auth.backends.ModelBackend",
+              "_auth_user_hash":user.get_session_auth_hash()})
+    s.save()
+    data[label] = s.session_key
+print(json.dumps(data))
+"""
+    output = subprocess.check_output([str(ROOT / "venv/bin/python"), "-c", script],
+        env={**os.environ, "SECRET_KEY": "disposable-local-parity-key"}, text=True)
+    sessions = json.loads(output.splitlines()[-1])
+    change = "/accounts/password/change/"
+    reset = "/accounts/password/reset/"
+    done = "/accounts/password/reset/key/done/"
+    starting, new = "kN3%jku8^Qm2", "u5!MNaSqzV7d2"
+
+    def page(server, path, login=None):
+        driver.get(f"http://{HOST}:{server.port}{path}")
+        if login:
+            driver.add_cookie({"name":"sessionid","value":sessions[login]})
+            driver.get(f"http://{HOST}:{server.port}{path}")
+
+    def type_in(fields):
+        for key,value in fields.items():
+            field = driver.find_element("id",f"id_{key}")
+            field.clear()
+            field.send_keys(value)
+        form = driver.find_element("tag name", "form")
+        form.find_element("css selector", 'button[type="submit"]').click()
+        WebDriverWait(driver, 10).until(staleness_of(form))
+
+    def normalized():
+        return driver.execute_script("""
+            return {
+                title:document.title.trim(),heading:document.querySelector('h1').innerText,
+                links:[...document.querySelectorAll('body a')].map(a=>[a.innerText.trim(),a.pathname]),
+                fields:[...document.querySelectorAll('form input')].filter(input=>input.type!=='hidden').map(input=>
+                    [input.name,input.type,input.placeholder,input.autocomplete,input.required]),
+                buttons:[...document.querySelectorAll('form button')].map(b=>b.innerText.trim()),
+                errors:[...document.querySelectorAll('.errorlist li')].map(row=>row.innerText.trim())
+            }
+        """)
+
+    snapshots = []
+    for server,label in [(django,"django-change"),(rust,"rust-change")]:
+        driver.delete_all_cookies()
+        page(server,change,label)
+        before = normalized()
+        type_in({"oldpassword":"incorrect","password1":"1234","password2":"1234"})
+        invalid = normalized()
+        assert "Please type your current password." in invalid["errors"]
+        assert "This password is entirely numeric." in invalid["errors"]
+        snapshots.append((before,invalid))
+        old_session = driver.get_cookie("sessionid")["value"]
+        type_in({"oldpassword":starting,"password1":new,"password2":new})
+        assert "Password successfully changed." in driver.page_source
+        assert driver.get_cookie("sessionid")["value"] != old_session
+        page(django if server is rust else rust,change)
+        assert driver.find_element("tag name","h1").text == "Change Password"
+    assert snapshots[0] == snapshots[1], snapshots
+
+    driver.delete_all_cookies()
+    page(rust,change,"oauth-set")
+    assert urlsplit(driver.current_url).path == "/accounts/password/set/"
+    type_in({"password1":new,"password2":new})
+    assert "Password successfully set." in driver.page_source
+
+    def reset_from(producer, consumer, label):
+        driver.delete_all_cookies()
+        page(producer, reset)
+        type_in({"email":f"{label}@example.test"})
+        assert urlsplit(driver.current_url).path == reset + "done/"
+        message = smtp.get(timeout=5)
+        assert message["To"].addresses[0].addr_spec == f"{label}@example.test"
+        source = next(line.strip() for line in message.get_content().splitlines()
+            if line.startswith("http") and "/accounts/password/reset/key/" in line)
+        target = urlsplit(source).path
+        page(consumer, target)
+        assert urlsplit(driver.current_url).path.endswith("-set-password/")
+        type_in({"password1":new,"password2":new})
+        assert urlsplit(driver.current_url).path == done
+        assert "Your password is now changed." in driver.page_source
+        page(producer,target)
+        assert driver.find_element("tag name","h1").text == "Bad Token"
+
+    reset_from(django,rust,"django-reset")
+    reset_from(rust,django,"rust-reset")
+
+    driver.delete_all_cookies()
+    page(rust,"/auth/login/?next=/games/")
+    driver.find_element("id","id_username").send_keys("legacy-hash")
+    driver.find_element("id","id_password").send_keys(starting)
+    driver.find_element("id","id_password").submit()
+    WebDriverWait(driver,10).until(lambda browser: urlsplit(browser.current_url).path == "/games/")
+    page(django,change)
+    assert driver.find_element("tag name","h1").text == "Change Password"
+    db = Path(os.environ["BR_STATE"]) / "dev.sqlite3"
+    with sqlite3.connect(f"{db.as_uri()}?mode=ro", uri=True) as connection:
+        assert connection.execute("SELECT password FROM core_user WHERE username='legacy-hash'").fetchone()[0].startswith(
+            "pbkdf2_sha256$1000000$")
+    driver.delete_all_cookies()
+
+
 def assert_elo_dashboard(driver, django, rust, fixture):
     from selenium.webdriver.support.expected_conditions import staleness_of
 
@@ -1429,6 +1601,116 @@ def assert_elo_dashboard(driver, django, rust, fixture):
                     assert a == b, (step, key, index, a, b)
             else:
                 assert expected[key] == observed[key], (step, key, expected[key], observed[key])
+    driver.delete_all_cookies()
+
+
+def assert_mittab_dashboard(driver, django, rust):
+    path = "/core/mittab-dashboard/"
+    session = django_session()
+    snapshots = []
+    for server in (django, rust):
+        driver.get(f"http://{HOST}:{server.port}{path}")
+        driver.add_cookie({"name": "sessionid", "value": session})
+        driver.get(f"http://{HOST}:{server.port}{path}")
+        snapshots.append(driver.execute_script("""
+            return [...document.querySelectorAll('.mittab-table tbody tr')].map(row =>
+                [row.querySelector('strong').textContent, row.querySelector('a').href]);
+        """))
+    expected = [["North", "http://north.nu-tab.com/"], ["South", "https://south.example.test/"]]
+    assert snapshots[0] == snapshots[1] == expected
+    driver.delete_all_cookies()
+
+
+def assert_synthetic_cleanup(driver, django, rust):
+    code = """
+from datetime import date
+from django import setup
+setup()
+from core.models import Debater, School, Team, Tournament, TeamResult
+import json
+data = []
+for label in ("Django", "Rust"):
+    school = School.all_objects.create(name=f"Disposable {label} clean school", synthetic=True, temporary=True)
+    debater = Debater.all_objects.create(first_name=f"Disposable {label}", last_name="Clean debater",
+        school=school, synthetic=True)
+    team = Team.objects.create(name=f"Disposable {label} clean team", synthetic=True)
+    team.debaters.add(debater)
+    canonical = School.objects.create(name=f"Disposable {label} retained school")
+    source = School.all_objects.create(name=f"Disposable {label} source school", synthetic=True)
+    referenced = Debater.all_objects.create(first_name=f"Disposable {label}", school=source, synthetic=True)
+    other_team = Team.objects.create(name=f"Disposable {label} retained team", synthetic=True)
+    other_team.debaters.add(referenced)
+    event = Tournament.objects.create(manual_name=f"Disposable {label} referenced event",
+        host=canonical, season="2026", date=date(2026, 9, 18))
+    TeamResult.objects.create(tournament=event, team=other_team, place=1)
+    data.append(dict(school=school.id,debater=debater.id,team=team.id,canonical=canonical.id,
+        source=source.id,referenced=referenced.id,other_team=other_team.id))
+print(json.dumps(data))
+"""
+    output = subprocess.check_output([str(ROOT / "venv/bin/python"), "-c", code],
+        env={**os.environ, "SECRET_KEY": "disposable-local-parity-key"}, text=True)
+    records = json.loads(output.splitlines()[-1])
+    login_cookie = django_session()
+    cleanup = "/core/admin/synthetic-cleanup/"
+    tools = "/core/admin-tools/"
+    resolve = "/core/admin/synthetic-resolve/"
+
+    def admin_page(server, path):
+        driver.get(f"http://{HOST}:{server.port}{path}")
+        driver.add_cookie({"name": "sessionid", "value": login_cookie})
+        driver.get(f"http://{HOST}:{server.port}{path}")
+
+    def available():
+        return driver.execute_script("""
+            return [...document.querySelectorAll('input[name=selected_ids]')].map(input =>
+                [input.value, input.closest('tr').innerText.replace(/\s+/g, ' ').trim()]);
+        """)
+
+    def post(path, values):
+        return driver.execute_async_script("""
+            const [path, values, done] = arguments;
+            const body = new URLSearchParams(values);
+            body.set('csrfmiddlewaretoken',document.querySelector('input[name=csrfmiddlewaretoken]').value);
+            fetch(path,{method:'POST',body}).then(response =>
+                done([response.status,new URL(response.url).pathname,response.redirected]), () => done([]));
+        """, path, values)
+
+    driver.delete_all_cookies()
+    driver.get(f"http://{HOST}:{rust.port}{cleanup}")
+    assert urlsplit(driver.current_url).path == "/auth/login/"
+    admin_page(django, cleanup)
+    original = available()
+    admin_page(rust, cleanup)
+    assert original == available()
+    assert all(f"team:{row['team']}" in dict(original) for row in records)
+    assert all(f"team:{row['other_team']}" not in dict(original) for row in records)
+
+    db = Path(os.environ["BR_STATE"]) / "dev.sqlite3"
+    for server, record in zip((django, rust), records, strict=True):
+        admin_page(server, cleanup)
+        assert post(cleanup, [["selected_ids", f"debater:{record['debater']}"]]) == [200,cleanup,True]
+        with sqlite3.connect(f"{db.as_uri()}?mode=ro", uri=True) as database:
+            assert database.execute("SELECT id FROM core_debater WHERE id=?", (record["debater"],)).fetchone()
+        admin_page(server, cleanup)
+        selections = [["selected_ids",f"{name}:{record[name]}"] for name in ("school","debater","team")]
+        selections.append(["selected_ids", f"team:{record['other_team']}"])
+        assert post(cleanup, selections) == [200,cleanup,True]
+        with sqlite3.connect(f"{db.as_uri()}?mode=ro", uri=True) as database:
+            for model in ("school", "debater", "team"):
+                assert database.execute(f"SELECT id FROM core_{model} WHERE id=?", (record[model],)).fetchone() is None
+            assert database.execute("SELECT id FROM core_team WHERE id=?", (record["other_team"],)).fetchone()
+        admin_page(server, tools)
+        values = [["entity_type","school"],["synthetic_id",str(record["source"])],
+                  ["target_id",str(record["canonical"])],["reason","Disposable resolution parity"]]
+        assert post(resolve, values) == [200,tools,True]
+        with sqlite3.connect(f"{db.as_uri()}?mode=ro", uri=True) as database:
+            assert database.execute("SELECT school_id FROM core_debater WHERE id=?", (record["referenced"],)).fetchone() == (
+                record["canonical"],)
+            target, reason, context = database.execute(
+                "SELECT resolved_to_id,reason,source_context FROM core_syntheticresolutionlog WHERE entity_type='school' AND synthetic_id=?",
+                (record["source"],)).fetchone()
+            assert (target, reason, json.loads(context)) == (
+                record["canonical"],"Disposable resolution parity",{"source":"admin_tools"})
     driver.delete_all_cookies()
 
 
@@ -1972,6 +2254,17 @@ class OAuthProvider(BaseHTTPRequestHandler):
             self.send_response(302)
             self.send_header("Location", f"{redirect}?{query}")
             self.end_headers()
+        elif location.path == "/mittab-fixture":
+            payload = b"""<div id='content'>
+                <a href='/north'>&#110;orth.nu-tab.com</a>
+                <a href='https://south.example.test/'> <b>south</b>.nu-tab.com </a>
+                <a href='/ignored'>ignored.example.test</a>
+            </div>"""
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
         elif location.path == "/api/tournaments":
             self.reply({"tournaments": [{"url": f"http://{HOST}:{self.server.server_port}"}]})
         elif location.path == "/api/import-results" and self.server.import_payload:
@@ -2012,6 +2305,7 @@ def oauth_provider(fixture=None):
         origin = f"http://{HOST}:{server.server_port}"
         os.environ["BLACK_ROD_OAUTH_BASE"] = f"{origin}/"
         os.environ["LIVE_MITTAB_DIRECTORY_URL"] = f"{origin}/api/tournaments"
+        os.environ["NU_TAB_URL"] = f"{origin}/mittab-fixture"
         thread.start()
         try:
             yield server
@@ -2088,12 +2382,36 @@ def main():
         browser_checks(browser_db, options, args.output)
 
 
+def assert_live_standings(driver, django, rust):
+    def compare(reference, candidate):
+        assert any("Fixture First" in cell for row in reference["rows"] for cell in row)
+        for key in reference:
+            for index, (left, right) in enumerate(zip_longest(reference[key], candidate[key])):
+                assert left == right, f"/live {key}[{index}] differed: {left!r} vs {right!r}"
+
+    expected = directory_state(driver, django, "/live")
+    compare(expected, directory_state(driver, rust, "/live"))
+    address = os.environ.get("BLACK_ROD_PARITY_MEMCACHED_ADDR")
+    if not address:
+        return
+    host, port = address.rsplit(":", 1)
+    assert host == HOST
+    with socket.create_connection((host, int(port)), timeout=2) as client:
+        stream = client.makefile("rwb")
+        for suffix in ("", ":stale", ":lock"):
+            stream.write(f"delete :1:live-standings:v4:2026{suffix}\r\n".encode())
+            stream.flush()
+            assert stream.readline().strip() in (b"DELETED", b"NOT_FOUND")
+    compare(expected, directory_state(driver, rust, "/live"))
+    compare(expected, directory_state(driver, django, "/live"))
+
+
 def browser_checks(database, options, output):
     fixture = seed_browser_cases()
     seed_elo()
     subprocess.run([str(ROOT / "venv/bin/python"), "manage.py", "update_index", "--verbosity", "0"],
                    check=True, capture_output=True)
-    with oauth_provider(fixture) as provider, servers(database) as (django, rust), webdriver.Chrome(options=options) as driver:
+    with oauth_provider(fixture) as provider, smtp_sink() as mail, servers(database) as (django, rust), webdriver.Chrome(options=options) as driver:
         expected_home = home_state(driver, django)
         result_home = home_state(driver, rust)
         assert expected_home["active"] == "soty"
@@ -2101,6 +2419,7 @@ def browser_checks(database, options, output):
             assert result_home[key] == result, f"Home page {key} differs: {result!r} vs {result_home[key]!r}"
         assert_session_nav(driver, (django, rust))
         assert_login_roundtrip(driver, rust, django)
+        assert_password_accounts(driver, django, rust, mail)
         assert_oauth_roundtrip(driver, rust, django)
         assert_directories(driver, django, rust)
         assert_legacy_standings(driver, django, rust)
@@ -2126,6 +2445,8 @@ def browser_checks(database, options, output):
         assert_admin_tools(driver, django, rust)
         assert_speaks_statistics(driver, django, rust, fixture)
         assert_elo_dashboard(driver, django, rust, fixture)
+        assert_synthetic_cleanup(driver, django, rust)
+        assert_mittab_dashboard(driver, django, rust)
         assert_mittab_bundle_upload(driver, django, rust, fixture)
         assert_tournament_audit(driver, django, rust, fixture)
         assert_tournament_audit_writes(driver, django, rust, fixture)
@@ -2134,12 +2455,7 @@ def browser_checks(database, options, output):
         assert_school_admin(driver, django, rust, fixture)
         assert_agent_reads(django, rust, fixture)
         assert_claims(driver, django, rust, fixture)
-        live_django = directory_state(driver, django, "/live")
-        live_rust = directory_state(driver, rust, "/live")
-        assert any("Fixture First" in cell for row in live_django["rows"] for cell in row)
-        for key in live_django:
-            for index, (left, right) in enumerate(zip_longest(live_django[key], live_rust[key])):
-                assert left == right, f"/live {key}[{index}] differed: {left!r} vs {right!r}"
+        assert_live_standings(driver, django, rust)
         for mode, dimensions in [("desktop", (1440, 1000)), ("mobile", (390, 844))]:
             reference = output / f"{mode}-django.png"
             candidate = output / f"{mode}-rust.png"

@@ -1,7 +1,7 @@
 mod forms;
 mod persist;
 mod review;
-mod standings;
+pub(crate) mod standings;
 
 use axum::{
     Json,

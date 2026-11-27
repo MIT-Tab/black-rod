@@ -1,0 +1,38 @@
+{% if row.related and row.wrapped %}<div class="related-widget-wrapper" data-model-ref="{{ row.related.slug }}">{% endif %}
+{% if row.datetime %}
+    <p class="datetime">Date: <input type="text" name="{{ row.name }}_0" value="{{ row.date }}" class="vDateField" size="10"{% if row.required %} required{% endif %} id="id_{{ row.name }}_0"><br>
+        Time: <input type="text" name="{{ row.name }}_1" value="{{ row.time }}" class="vTimeField" size="8"{% if row.required %} required{% endif %} id="id_{{ row.name }}_1"></p>
+{% elif row.select %}
+    <select name="{{ row.name }}" id="id_{{ row.name }}"{% if row.required %} required{% endif %}{% if row.multiple %} multiple{% endif %}{% if row.error %} aria-invalid="true"{% endif %}
+        {% for name,value in row.attrs %}{% if value is true %} {{ name }}{% elif value is not false and value is not none %} {{ name }}="{{ value }}"{% endif %}{% endfor %}>
+        {% for item in row.options %}<option value="{{ item.value }}"{% if item.selected %} selected{% endif %}>{{ item.label }}</option>{% endfor %}
+    </select>
+{% elif row.radio or row.multicheck %}
+    <div id="id_{{ row.name }}"{% for name,value in row.attrs %} {{ name }}="{{ value }}"{% endfor %}>
+        {% for item in row.options %}
+        <div><label for="id_{{ row.name }}_{{ loop.index0 }}"><input type="{% if row.radio %}radio{% else %}checkbox{% endif %}" name="{{ row.name }}" value="{{ item.value }}"
+            id="id_{{ row.name }}_{{ loop.index0 }}"{% if item.selected %} checked{% endif %}{% if row.required %} required{% endif %}> {{ item.label }}</label></div>
+        {% endfor %}
+    </div>
+{% elif row.textarea %}
+    <textarea name="{{ row.name }}" cols="40" rows="10" id="id_{{ row.name }}"{% if row.required %} required{% endif %}{% if row.error %} aria-invalid="true"{% endif %}
+        {% for name,value in row.attrs %}{% if name != 'cols' and name != 'rows' and value is not none %} {{ name }}="{{ value }}"{% endif %}{% endfor %}>
+{{ row.value }}</textarea>
+{% elif row.password_status %}
+    <div id="id_{{ row.name }}">
+        {% if row.usable %}<div class="readonly"><strong>algorithm</strong>: {{ row.algorithm }} <strong>iterations</strong>: {{ row.iterations }} <strong>salt</strong>: {{ row.salt }} <strong>hash</strong>: {{ row.digest }}</div>
+        {% else %}<div class="readonly">No password set.</div>{% endif %}
+        <a class="button" href="{{ object_url }}password/">{% if row.usable %}Reset password{% else %}Set password{% endif %}</a>
+    </div>
+{% else %}
+    <input type="{{ row.type }}" name="{{ row.name }}"{% if row.checkbox %}{% if row.checked %} checked{% endif %}{% elif row.value and row.type != 'password' %} value="{{ row.value }}"{% endif %}
+        {% if row.required %} required{% endif %}{% if row.error %} aria-invalid="true"{% endif %}{% if row.help %} aria-describedby="id_{{ row.name }}_helptext"{% endif %} id="id_{{ row.name }}"
+        {% for name,value in row.attrs %}{% if value is true %} {{ name }}{% elif value is not false and value is not none %} {{ name }}="{{ value }}"{% endif %}{% endfor %}>
+{% endif %}
+{% if row.related and row.wrapped %}
+    {% if row.related.change %}<a class="related-widget-wrapper-link change-related" id="change_id_{{ row.name }}" data-href-template="{{ row.related.url }}__fk__/change/?_to_field=id&amp;_popup=1" data-popup="yes" title="Change selected {{ row.related.singular }}"><img src="/static/admin/img/icon-changelink.svg" alt="" width="24" height="24"></a>{% endif %}
+    {% if row.related.add %}<a class="related-widget-wrapper-link add-related" id="add_id_{{ row.name }}" data-popup="yes" href="{{ row.related.url }}add/?_to_field=id&amp;_popup=1" title="Add another {{ row.related.singular }}"><img src="/static/admin/img/icon-addlink.svg" alt="" width="24" height="24"></a>{% endif %}
+    {% if row.related.delete %}<a class="related-widget-wrapper-link delete-related" id="delete_id_{{ row.name }}" data-href-template="{{ row.related.url }}__fk__/delete/?_to_field=id&amp;_popup=1" data-popup="yes" title="Delete selected {{ row.related.singular }}"><img src="/static/admin/img/icon-deletelink.svg" alt="" width="24" height="24"></a>{% endif %}
+    {% if row.related.view %}<a class="related-widget-wrapper-link view-related" id="view_id_{{ row.name }}" data-href-template="{{ row.related.url }}__fk__/change/?_to_field=id" title="View selected {{ row.related.singular }}"><img src="/static/admin/img/icon-viewlink.svg" alt="" width="24" height="24"></a>{% endif %}
+    </div>
+{% endif %}

@@ -20,6 +20,16 @@ if memcached and os.environ.get("BLACK_ROD_PARITY_CACHE_MODE") != "cold":
         "LOCATION": memcached,
     }}
 
+smtp_port = os.environ.get("BLACK_ROD_PARITY_SMTP_PORT")
+if smtp_port:
+    if not smtp_port.isdecimal() or not 1 <= int(smtp_port) <= 65535:
+        raise ValueError("The parity reference only connects to its local SMTP sink")
+    settings.EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+    settings.EMAIL_HOST = "127.0.0.1"
+    settings.EMAIL_PORT = int(smtp_port)
+    settings.DEFAULT_FROM_EMAIL = "parity@example.test"
+    settings.EMAIL_TIMEOUT = 5
+
 postgres_url = os.environ.get("BLACK_ROD_PARITY_POSTGRES_URL")
 if postgres_url:
     parsed = urlsplit(postgres_url)

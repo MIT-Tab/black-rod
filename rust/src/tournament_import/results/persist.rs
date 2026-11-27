@@ -248,5 +248,8 @@ pub(super) async fn store(
     state.home.invalidate_all();
     state.standings.invalidate_all();
     state.replay.invalidate_all();
+    if let Ok(year) = season.parse() {
+        crate::live::invalidate(state, year).await;
+    }
     Ok(skipped)
 }

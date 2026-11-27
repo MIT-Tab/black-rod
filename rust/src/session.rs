@@ -35,7 +35,7 @@ struct DjangoSession {
     _auth_user_hash: String,
 }
 
-fn key(salt: &[u8], secret: &[u8]) -> hmac::Key {
+pub(crate) fn key(salt: &[u8], secret: &[u8]) -> hmac::Key {
     let mut hash = digest::Context::new(&digest::SHA256);
     hash.update(salt);
     hash.update(secret);
@@ -219,6 +219,56 @@ impl StoredSession {
         }))
     }
 
+    pub(crate) fn string(&self, key: &str) -> Option<String> {
+        serde_json::from_str(self.values.get(key)?.get()).ok()
+    }
+
+    pub(crate) fn set_string(&mut self, key: &str, value: &str) -> Result<(), sqlx::Error> {
+        let value = serde_json::value::to_raw_value(value)
+            .map_err(|error| sqlx::Error::Protocol(error.to_string()))?;
+        self.values.insert(key.to_owned(), value);
+        Ok(())
+    }
+
+    pub(crate) async fn rotate_password(
+        mut self,
+        conn: &mut AnyConnection,
+        secret: &[u8],
+        password_hash: &str,
+    ) -> Result<(String, bool), sqlx::Error> {
+        let id = random_token(b"abcdefghijklmnopqrstuvwxyz0123456789", 32)
+            .map_err(|_| sqlx::Error::Protocol("Unable to generate a session key".into()))?;
+        let digest = hmac::sign(&key(AUTH_SALT, secret), password_hash.as_bytes());
+        let auth = serde_json::value::to_raw_value(&hex::encode(digest))
+            .map_err(|error| sqlx::Error::Protocol(error.to_string()))?;
+        self.values.insert("_auth_user_hash".to_owned(), auth);
+        let remember = self
+            .values
+            .get("_session_expiry")
+            .is_none_or(|value| value.get() != "0");
+        let serialized = serde_json::to_string(&self.values)
+            .map_err(|error| sqlx::Error::Protocol(error.to_string()))?;
+        let data = encode_signed(
+            &crate::django_json::ascii(&serialized),
+            secret,
+            SESSION_SALT,
+        );
+        let changed = sqlx::query(
+            "UPDATE django_session SET session_key=$1,session_data=$2
+            WHERE session_key=$3 AND session_data=$4 AND expire_date>CURRENT_TIMESTAMP",
+        )
+        .bind(&id)
+        .bind(data)
+        .bind(self.id)
+        .bind(self.original)
+        .execute(conn)
+        .await?;
+        if changed.rows_affected() != 1 {
+            return Err(sqlx::Error::RowNotFound);
+        }
+        Ok((id, remember))
+    }
+
     pub(crate) async fn save(self, pool: &AnyPool, secret: &[u8]) -> Result<bool, sqlx::Error> {
         self.save_on(&mut *pool.acquire().await?, secret).await
     }
@@ -243,6 +293,31 @@ impl StoredSession {
         .await?;
         Ok(result.rows_affected() == 1)
     }
+}
+
+pub(crate) async fn create_anonymous(
+    pool: &AnyPool,
+    secret: &[u8],
+    payload: &Value,
+) -> Result<String, sqlx::Error> {
+    let id = random_token(b"abcdefghijklmnopqrstuvwxyz0123456789", 32)
+        .map_err(|_| sqlx::Error::Protocol("Unable to generate a session key".into()))?;
+    let mut expiry = (Utc::now() + Duration::days(30))
+        .format("%Y-%m-%d %H:%M:%S%.6f")
+        .to_string();
+    let query = if pool.connect_options().database_url.scheme() == "sqlite" {
+        "INSERT INTO django_session (session_key, session_data, expire_date) VALUES ($1, $2, $3)"
+    } else {
+        expiry.push_str("+00");
+        "INSERT INTO django_session (session_key, session_data, expire_date) VALUES ($1, $2, CAST($3 AS TIMESTAMPTZ))"
+    };
+    sqlx::query(query)
+        .bind(&id)
+        .bind(encode(payload, secret))
+        .bind(expiry)
+        .execute(pool)
+        .await?;
+    Ok(id)
 }
 
 pub(crate) async fn oauth_start(

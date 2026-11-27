@@ -1,4 +1,4 @@
-use std::{collections::HashMap, num::NonZeroU32};
+use std::collections::HashMap;
 
 use axum::{
     body::to_bytes,
@@ -6,15 +6,13 @@ use axum::{
     http::{HeaderMap, HeaderValue, Method, StatusCode, Uri, header},
     response::{Html, IntoResponse, Response},
 };
-use base64::{Engine, engine::general_purpose::STANDARD};
 use chrono::{Duration, Utc};
 use minijinja::context;
-use ring::pbkdf2;
 use sqlx::Row;
 use subtle::ConstantTimeEq;
 use unicode_normalization::UnicodeNormalization;
 
-use crate::{AppState, session, web};
+use crate::{AppState, password, session, web};
 
 const CSRF_ALPHABET: &[u8] = b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
 const CSRF_AGE: u32 = 31_449_600;
@@ -233,26 +231,6 @@ async fn page(state: &AppState, headers: &HeaderMap, https: bool, page: LoginPag
     response
 }
 
-fn verify_password(password: &[u8], encoded: &str) -> bool {
-    let mut parts = encoded.split('$');
-    let algorithm = match parts.next() {
-        Some("pbkdf2_sha256") => pbkdf2::PBKDF2_HMAC_SHA256,
-        Some("pbkdf2_sha1") => pbkdf2::PBKDF2_HMAC_SHA1,
-        _ => return false,
-    };
-    let Some((iterations, salt, expected)) = parts
-        .next()
-        .and_then(|value| value.parse::<NonZeroU32>().ok())
-        .filter(|value| value.get() <= 10_000_000)
-        .zip(parts.next())
-        .zip(parts.next().and_then(|value| STANDARD.decode(value).ok()))
-        .map(|((iterations, salt), expected)| (iterations, salt, expected))
-    else {
-        return false;
-    };
-    pbkdf2::verify(algorithm, iterations, salt.as_bytes(), password, &expected).is_ok()
-}
-
 pub(crate) async fn view(State(state): State<AppState>, request: Request) -> Response {
     let Some(origin) = state.origin(request.headers()) else {
         return StatusCode::BAD_REQUEST.into_response();
@@ -320,24 +298,13 @@ pub(crate) async fn view(State(state): State<AppState>, request: Request) -> Res
     };
     let hash = candidate.as_ref().map(|(_, hash)| hash.clone());
     let password = password.as_bytes().to_owned();
-    let valid = tokio::task::spawn_blocking(move || {
-        if let Some(hash) = hash.as_ref().filter(|hash| hash.starts_with("pbkdf2_")) {
-            verify_password(&password, hash)
-        } else {
-            let mut compare = [0; 32];
-            pbkdf2::derive(
-                pbkdf2::PBKDF2_HMAC_SHA256,
-                NonZeroU32::new(1_000_000).unwrap(),
-                b"Black Rod dummy password salt",
-                &password,
-                &mut compare,
-            );
-            false
-        }
+    let verification = tokio::task::spawn_blocking(move || {
+        password::verify_and_upgrade(&password, hash.as_deref())
     })
     .await
-    .unwrap_or_default();
-    let Some((id, hash)) = candidate.filter(|_| valid) else {
+    .ok()
+    .flatten();
+    let Some((id, mut hash)) = candidate.filter(|_| verification.is_some()) else {
         return page(
             &state,
             &parts.headers,
@@ -351,6 +318,24 @@ pub(crate) async fn view(State(state): State<AppState>, request: Request) -> Res
         )
         .await;
     };
+    if let Some(Some(upgraded)) = verification {
+        let updated = sqlx::query(
+            "UPDATE core_user SET password=$1 WHERE id=$2 AND password=$3 AND is_active",
+        )
+        .bind(&upgraded)
+        .bind(id)
+        .bind(&hash)
+        .execute(&state.pool)
+        .await;
+        match updated {
+            Ok(changed) if changed.rows_affected() == 1 => hash = upgraded,
+            Ok(_) => return StatusCode::CONFLICT.into_response(),
+            Err(error) => {
+                eprintln!("Password hash upgrade failed: {error}");
+                return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+            }
+        }
+    }
     sign_in(
         &state,
         &parts.headers,

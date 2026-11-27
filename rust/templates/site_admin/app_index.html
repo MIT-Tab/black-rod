@@ -1,0 +1,20 @@
+{% extends "site_admin/index.html" %}
+
+
+{% block bodyclass %}{{ super() }} app-{{ app_label }}{% endblock %}
+
+{% if not is_popup %}
+{% block nav_breadcrumbs %}
+  <nav aria-label="Breadcrumbs">
+    <div class="breadcrumbs">
+      <a href="/admin/">Home</a>
+      &rsaquo;
+      {% for app in app_list %}
+        {{ app.name }}
+      {% endfor %}
+    </div>
+  </nav>
+{% endblock %}
+{% endif %}
+
+{% block sidebar %}{% endblock %}

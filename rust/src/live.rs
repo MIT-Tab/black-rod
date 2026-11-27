@@ -12,7 +12,7 @@ use axum::{
 use chrono::{Days, NaiveDate};
 use minijinja::context;
 use reqwest::Client;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sqlx::{AnyPool, AssertSqlSafe, Row, any::AnyRow};
 use tokio::{sync::Mutex, task::JoinSet, time::timeout};
@@ -34,6 +34,7 @@ const FETCH_BUDGET: Duration = Duration::from_secs(15);
 const SOURCE_TIMEOUT: Duration = Duration::from_secs(8);
 const MARKER_LIMITS: [usize; 3] = [5, 6, 5];
 
+mod shared;
 pub(crate) mod snapshots;
 
 pub struct Live {
@@ -92,22 +93,28 @@ impl Live {
         }
         let [toty, soty, noty] = boards;
         let payload = Arc::new(Payload {
+            season: season.to_string(),
             boards: json!({"toty": finalize(toty, 5), "soty": finalize(soty, 6),
                           "noty": finalize(noty, 5), "coty": coty.finalize()}),
             active_sources: names.into_iter().collect(),
         });
-        if let Ok(mut last) = self.last.write() {
+        if cache.is_none()
+            && let Ok(mut last) = self.last.write()
+        {
             *last = Some((Instant::now(), payload.clone()));
         }
         Ok(payload)
     }
 
-    pub(crate) fn active_sources(
+    pub(crate) async fn active_sources(
         self: &Arc<Self>,
         pool: &AnyPool,
         season: i32,
         cache: Option<&Memcached>,
     ) -> Vec<String> {
+        if let Some(cache) = cache {
+            return shared::active(self, pool, season, cache).await;
+        }
         if let Some(payload) = self.last(FRESH) {
             return payload.active_sources.clone();
         }
@@ -131,6 +138,9 @@ impl Live {
         season: i32,
         cache: Option<&Memcached>,
     ) -> Result<Arc<Payload>, ApiError> {
+        if let Some(cache) = cache {
+            return shared::data(self, pool, season, cache).await;
+        }
         if let Some(payload) = self.last(FRESH) {
             return Ok(payload);
         }
@@ -258,7 +268,9 @@ fn round_points(points: f64) -> f64 {
     (points * 10_000.0).round_ties_even() / 10_000.0
 }
 
+#[derive(Serialize, Deserialize)]
 struct Payload {
+    season: String,
     boards: Value,
     active_sources: Vec<String>,
 }
@@ -957,6 +969,18 @@ fn assign_places(rows: &mut [Value]) {
         row["place"] = json!(place);
         row["tied"] = json!(tied);
         last = Some(current);
+    }
+}
+
+pub(crate) async fn invalidate(state: &AppState, season: i32) {
+    if let Some(live) = &state.live
+        && state.current_season == season
+        && let Ok(mut value) = live.last.write()
+    {
+        *value = None;
+    }
+    if let Some(cache) = &state.memcached {
+        shared::invalidate(cache, season).await;
     }
 }
 

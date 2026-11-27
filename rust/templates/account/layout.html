@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }}</title>
+</head>
+<body>
+    {% if messages %}
+        <div><strong>Messages:</strong><ul>{% for message in messages %}<li>{{ message }}</li>{% endfor %}</ul></div>
+    {% endif %}
+    <div>
+        <strong>Menu:</strong>
+        <ul>
+            {% if user.is_authenticated %}
+                <li><a href="/accounts/email/">Change Email</a></li>
+                <li><a href="/accounts/password/change/">Change Password</a></li>
+                <li><a href="/accounts/3rdparty/">Account Connections</a></li>
+                <li><a href="/accounts/logout/">Sign Out</a></li>
+            {% else %}
+                <li><a href="/accounts/login/">Sign In</a></li>
+                <li><a href="/accounts/signup/">Sign Up</a></li>
+            {% endif %}
+        </ul>
+    </div>
+    {% block content %}{% endblock %}
+</body>
+</html>

@@ -1,6 +1,9 @@
 pub(crate) mod amendment;
+pub(crate) mod mittab;
+pub(crate) mod rankings;
 pub(crate) mod short_names;
 pub(crate) mod speaks;
+pub(crate) mod synthetic;
 pub(crate) mod tournament_audit;
 
 use axum::{

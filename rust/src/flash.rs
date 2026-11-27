@@ -62,6 +62,22 @@ pub(crate) fn push(
     message: &str,
     secure: bool,
 ) {
+    push_all(
+        response,
+        headers,
+        secret,
+        &[(level, message.to_owned())],
+        secure,
+    );
+}
+
+pub(crate) fn push_all(
+    response: &mut Response,
+    headers: &HeaderMap,
+    secret: &[u8],
+    notices: &[(i32, String)],
+    secure: bool,
+) {
     let mut old = session::cookie(headers, COOKIE)
         .filter(|cookie| cookie.len() <= 2048)
         .and_then(|data| session::decode_signed(data, &key(secret), SALT))
@@ -71,7 +87,11 @@ pub(crate) fn push(
         })
         .unwrap_or_default();
     old.retain(Value::is_array);
-    old.push(json!(["__json_message", 0, level, message, ""]));
+    old.extend(
+        notices
+            .iter()
+            .map(|(level, message)| json!(["__json_message", 0, level, message, ""])),
+    );
     let serialized = Value::Array(old).to_string();
     let escaped = django_json::ascii(&serialized);
     let encoded = session::encode_signed(&escaped, &key(secret), SALT);

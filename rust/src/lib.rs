@@ -1,3 +1,4 @@
+mod account;
 mod admin;
 mod agent;
 mod autocomplete;
@@ -23,6 +24,7 @@ mod doty;
 mod oauth;
 mod outreach;
 mod partnership;
+mod password;
 mod scheduling;
 pub use oauth::OAuth;
 mod points;
@@ -38,6 +40,7 @@ mod school_profile;
 mod schools;
 mod search;
 mod session;
+mod site_admin;
 mod standings;
 mod stats;
 mod summernote;
@@ -250,6 +253,17 @@ impl AppState {
 
 fn api_routes() -> Router<AppState> {
     Router::new()
+        .route("/admin", get(append_slash))
+        .route("/admin/", get(site_admin::dispatch))
+        .route(
+            "/admin/login/",
+            get(site_admin::sign_in).post(site_admin::sign_in),
+        )
+        .route("/admin/logout/", axum::routing::post(site_admin::logout))
+        .route(
+            "/admin/{*path}",
+            get(site_admin::dispatch).post(site_admin::dispatch),
+        )
         .route(
             "/api/schools/",
             get(schools::active).options(schools::active_options),
@@ -343,6 +357,26 @@ pub fn app(state: AppState) -> Router {
         .route("/stats", get(append_slash))
         .route("/auth/login/", get(login::view).post(login::view))
         .route("/accounts/apdaonline/login/callback/", get(oauth::callback))
+        .route(
+            "/accounts/password/change/",
+            get(account::change).post(account::change),
+        )
+        .route(
+            "/accounts/password/set/",
+            get(account::change).post(account::change),
+        )
+        .route("/accounts/password/change", get(append_slash))
+        .route("/accounts/password/set", get(append_slash))
+        .route(
+            "/accounts/password/reset/",
+            get(account::reset).post(account::reset),
+        )
+        .route("/accounts/password/reset/done/", get(account::reset))
+        .route("/accounts/password/reset/key/done/", get(account::reset))
+        .route(
+            "/accounts/password/reset/key/{encoded}/",
+            get(account::reset).post(account::reset),
+        )
         .route("/auth/login", get(append_slash))
         .route("/auth/logout/", axum::routing::post(login::logout))
         .route("/auth/logout", get(append_slash))
@@ -497,6 +531,23 @@ pub fn app(state: AppState) -> Router {
         )
         .route("/core/admin/elo-cache/invalidate", get(append_slash))
         .route("/core/admin-tools/", get(admin::tools))
+        .route("/core/mittab-dashboard/", get(admin::mittab::page))
+        .route(
+            "/core/rankings-recompute/",
+            get(admin::rankings::page).post(admin::rankings::page),
+        )
+        .route("/core/rankings-recompute", get(append_slash))
+        .route("/core/mittab-dashboard", get(append_slash))
+        .route(
+            "/core/admin/synthetic-cleanup/",
+            get(admin::synthetic::cleanup_page).post(admin::synthetic::cleanup_page),
+        )
+        .route("/core/admin/synthetic-cleanup", get(append_slash))
+        .route(
+            "/core/admin/synthetic-resolve/",
+            get(admin::tools).post(admin::synthetic::resolve),
+        )
+        .route("/core/admin/synthetic-resolve", get(append_slash))
         .route(
             "/core/admin/round-amendments/",
             get(admin::amendment::upload)

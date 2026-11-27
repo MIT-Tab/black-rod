@@ -1,0 +1,117 @@
+{% extends "site_admin/base_site.html" %}
+{% block extrastyle %}
+    {{ super() }}<link rel="stylesheet" href="/static/admin/css/changelists.css">
+    {% if actions %}<script src="/admin/jsi18n/"></script>{% endif %}
+    {% for asset in css %}<link href="/static/{{ asset }}" media="all" rel="stylesheet">{% endfor %}
+    {% if not actions %}<style>#changelist table thead th:first-child {width: inherit}</style>{% endif %}
+{% endblock %}
+{% block extrahead %}
+    {{ super() }}
+    {% for asset in js %}<script src="/static/{{ asset }}"></script>{% endfor %}
+    <script src="/static/admin/js/filters.js" defer></script>
+{% endblock %}
+{% block bodyclass %}{{ super() }} app-{{ app_label }} model-{{ model_name }} change-list{% endblock %}
+{% block breadcrumbs %}
+    <div class="breadcrumbs">
+        <a href="/admin/">Home</a>
+        &rsaquo; <a href="{{ app_url }}">{{ app_name }}</a>
+        &rsaquo; {{ heading_plural }}
+    </div>
+{% endblock %}
+{% block coltype %}{% endblock %}
+{% block content %}
+<div id="content-main">
+    <ul class="object-tools">
+        {% if import_export %}<li><a href="{{ model_url }}import/" class="import_link">Import</a></li><li><a href="{{ export_link }}" class="export_link">Export</a></li>{% endif %}
+        {% if add_link %}<li><a href="{{ add_link }}" class="addlink">Add {{ singular }}</a></li>{% endif %}
+    </ul>
+    <div class="module{% if filters %} filtered{% endif %}" id="changelist">
+        <div class="changelist-form-container">
+            {% if searchable %}
+            <div id="toolbar"><form id="changelist-search" method="get" role="search">
+                <div>
+                    <label for="searchbar"><img src="/static/admin/img/search.svg" alt="Search"></label>
+                    <input type="text" size="40" name="q" value="{{ query }}" id="searchbar">
+                    <input type="submit" value="Search">
+                    {% if count != total %}<span class="small quiet">{{ count }} result{% if count != 1 %}s{% endif %} (<a href="?">{{ total }} total</a>)</span>{% endif %}
+                    {% for name, value in params %}{% if name != "q" %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endif %}{% endfor %}
+                </div>
+            </form></div>
+            {% endif %}
+            <form id="changelist-form" method="post" novalidate>
+                <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf }}">
+                {% if actions and rows %}
+                <div class="actions">
+                    <label>Action: <select name="action" required>
+                        <option value="" selected>---------</option>
+                        {% for value, label in actions %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+                    </select></label>
+                    <input type="hidden" name="select_across" value="0" class="select-across">
+                    <button type="submit" class="button" title="Run the selected action" name="index" value="0">Go</button>
+                    <span class="action-counter" data-actions-icnt="{{ rows|length }}">0 of {{ rows|length }} selected</span>
+                    {% if count != rows|length %}
+                        <span class="all hidden">{{ count }} selected</span>
+                        <span class="question hidden"><a role="button" href="#" title="Click here to select the objects across all pages">Select all {{ count }} {{ plural }}</a></span>
+                        <span class="clear hidden"><a role="button" href="#">Clear selection</a></span>
+                    {% endif %}
+                </div>
+                {% endif %}
+                {% if rows %}
+                <div class="results"><table id="result_list">
+                    <thead><tr>
+                    {% if actions %}<th scope="col" class="action-checkbox-column"><div class="text"><span><input type="checkbox" id="action-toggle" aria-label="Select all objects on this page for an action"></span></div><div class="clear"></div></th>{% endif %}
+                    {% for col in columns %}
+                    <th scope="col" class="{{ col.classes }}">
+                        {% if col.position %}
+                            <div class="sortoptions">
+                                <a class="sortremove" href="{{ col.remove }}" title="Remove from sorting"></a>
+                                {% if sort_count > 1 %}<span class="sortpriority" title="Sorting priority: {{ col.position }}">{{ col.position }}</span>{% endif %}
+                                <a href="{{ col.toggle }}" class="toggle {{ col.direction }}" title="Toggle sorting"></a>
+                            </div>
+                        {% endif %}
+                        <div class="text">{% if col.sort %}<a href="{{ col.sort }}">{{ col.label }}</a>{% else %}<span>{{ col.label }}</span>{% endif %}</div>
+                        <div class="clear"></div>
+                    </th>
+                    {% endfor %}
+                    </tr></thead>
+                    <tbody>
+                    {% for row in rows %}
+                    <tr>
+                        {% if actions %}
+                            <td class="action-checkbox"><input type="checkbox" name="_selected_action" value="{{ row.id }}" class="action-select" aria-label="Select this object for an action - {{ row.repr }}"></td>
+                        {% endif %}
+                        {% for cell in row.cells %}
+                            <{{ cell.element }} class="{{ cell.classes }}">{% if cell.url %}<a href="{{ cell.url }}">{{ cell.value }}</a>{% else %}{{ cell.value }}{% endif %}</{{ cell.element }}>
+                        {% endfor %}
+                    </tr>
+                    {% endfor %}
+                    </tbody>
+                </table></div>
+                {% endif %}
+                <p class="paginator">
+                    {% for link in pages %}
+                        {% if link.gap %}… {% elif link.active %}<span class="this-page">{{ link.label }}</span> {% else %}<a href="{{ link.url }}"{% if link.end %} class="end"{% endif %}>{{ link.label }}</a> {% endif %}
+                    {% endfor %}
+                    {{ count }} {% if count == 1 %}{{ singular }}{% else %}{{ plural }}{% endif %}
+                    {% if show_all %}<a href="{{ show_all }}" class="showall">Show all</a>{% endif %}
+                </p>
+            </form>
+        </div>
+        {% if filters %}
+        <nav id="changelist-filter" aria-labelledby="changelist-filter-header">
+            <h2 id="changelist-filter-header">Filter</h2>
+            <div id="changelist-filter-extra-actions">
+                <h3>{% if count_url.hidden %}<a href="{{ count_url.url }}" class="hidelink">Hide counts</a>{% else %}<a href="{{ count_url.url }}" class="viewlink">Show counts</a>{% endif %}</h3>
+                {% if clear_filters %}<h3><a href="{{ clear_filters }}">&#10006; Clear all filters</a></h3>{% endif %}
+            </div>
+            {% for filter in filters %}
+                <details data-filter-title="{{ filter.title }}" open>
+                    <summary> By {{ filter.title }} </summary>
+                    <ul>{% for choice in filter.choices %}<li{% if choice.selected %} class="selected"{% endif %}><a href="{{ choice.url }}">{{ choice.label }}</a></li>{% endfor %}</ul>
+                </details>
+            {% endfor %}
+        </nav>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

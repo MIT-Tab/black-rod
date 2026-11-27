@@ -19,6 +19,86 @@ use crate::{
 
 const VIEWS: &[(&str, &str)] = &[
     (
+        "site_admin/object_history.html",
+        include_str!("../templates/site_admin/object_history.html"),
+    ),
+    (
+        "site_admin/delete_confirmation.html",
+        include_str!("../templates/site_admin/delete_confirmation.html"),
+    ),
+    (
+        "site_admin/change_form.html",
+        include_str!("../templates/site_admin/change_form.html"),
+    ),
+    (
+        "site_admin/widget.html",
+        include_str!("../templates/site_admin/widget.html"),
+    ),
+    (
+        "site_admin/agent_credential_issued.html",
+        include_str!("../templates/site_admin/agent_credential_issued.html"),
+    ),
+    (
+        "site_admin/base.html",
+        include_str!("../templates/site_admin/base.html"),
+    ),
+    (
+        "site_admin/base_site.html",
+        include_str!("../templates/site_admin/base_site.html"),
+    ),
+    (
+        "site_admin/index.html",
+        include_str!("../templates/site_admin/index.html"),
+    ),
+    (
+        "site_admin/app_index.html",
+        include_str!("../templates/site_admin/app_index.html"),
+    ),
+    (
+        "site_admin/app_list.html",
+        include_str!("../templates/site_admin/app_list.html"),
+    ),
+    (
+        "site_admin/color_theme_toggle.html",
+        include_str!("../templates/site_admin/color_theme_toggle.html"),
+    ),
+    (
+        "site_admin/nav_sidebar.html",
+        include_str!("../templates/site_admin/nav_sidebar.html"),
+    ),
+    (
+        "site_admin/login.html",
+        include_str!("../templates/site_admin/login.html"),
+    ),
+    (
+        "site_admin/change_list.html",
+        include_str!("../templates/site_admin/change_list.html"),
+    ),
+    (
+        "account/reset.html",
+        include_str!("../templates/account/reset.html"),
+    ),
+    (
+        "account/layout.html",
+        include_str!("../templates/account/layout.html"),
+    ),
+    (
+        "account/password.html",
+        include_str!("../templates/account/password.html"),
+    ),
+    (
+        "admin/rankings_recompute.html",
+        include_str!("../../core/templates/admin/rankings_recompute.html"),
+    ),
+    (
+        "admin/mittab_dashboard.html",
+        include_str!("../../core/templates/admin/mittab_dashboard.html"),
+    ),
+    (
+        "admin/synthetic_cleanup.html",
+        include_str!("../../core/templates/admin/synthetic_cleanup.html"),
+    ),
+    (
         "elo/dashboard.html",
         include_str!("../../core/templates/elo/dashboard.html"),
     ),
@@ -656,6 +736,20 @@ fn adapt_scheduler(template: &str) -> String {
 fn adapt_template(name: &str, template: &str) -> String {
     let adapted;
     let template = match name {
+        "admin/mittab_dashboard.html" => {
+            adapted = template.replace(
+                "{{ tournaments|length|pluralize }}",
+                "{% if tournaments|length != 1 %}s{% endif %}",
+            );
+            &adapted
+        }
+        "admin/synthetic_cleanup.html" => {
+            adapted = template.replace(
+                r#"{{ total_count|pluralize:"y,ies" }}"#,
+                "{% if total_count == 1 %}y{% else %}ies{% endif %}",
+            );
+            &adapted
+        }
         "elo/dashboard.html" => {
             static FIELD: LazyLock<Regex> =
                 LazyLock::new(|| Regex::new(r"\{\{ form\.(\w+) \}\}").unwrap());
@@ -1157,7 +1251,7 @@ fn adapt_template(name: &str, template: &str) -> String {
             }
             "static" => format!("/static/{}", arguments.trim_matches('\'')),
             "url" => {
-                let route = arguments.split('\'').nth(1).unwrap_or_default();
+                let route = arguments.split(['\'', '"']).nth(1).unwrap_or_default();
                 let path = match route {
                     "core:index" => "/",
                     "core:school_create" => "/core/schools/create",
@@ -1522,12 +1616,12 @@ pub(crate) async fn show(
         .map(|year| (year.to_string(), season_display(year)))
         .collect();
     let left_menu = menu(&user, path);
-    let live_sources = if is_home && season == state.current_season {
-        state
-            .live
-            .as_ref()
-            .map(|live| live.active_sources(&state.pool, season, state.memcached.as_ref()))
-            .unwrap_or_default()
+    let live_sources = if is_home
+        && season == state.current_season
+        && let Some(live) = &state.live
+    {
+        live.active_sources(&state.pool, season, state.memcached.as_ref())
+            .await
     } else {
         Vec::new()
     };

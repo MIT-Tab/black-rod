@@ -1,9 +1,11 @@
+mod qualifications;
+
 use std::collections::{BTreeMap, BTreeSet};
 
 use serde_json::{Map, Value, json};
 use sqlx::{AnyConnection, AssertSqlSafe, Row};
 
-use crate::{ApiError, agent::journal::TABLES, points};
+use crate::{ApiError, agent::journal::TABLES, delete_relations, points};
 
 const LABELS: [&str; 6] = ["one", "two", "three", "four", "five", "six"];
 
@@ -265,6 +267,72 @@ impl Award {
     }
 }
 
+pub(crate) async fn recompute_rankings(
+    conn: &mut AnyConnection,
+    selected: &str,
+    ranking: &str,
+    current: i32,
+) -> Result<(), ApiError> {
+    if ranking == "coty" {
+        return qualifications::recompute(conn, selected, selected == current.to_string()).await;
+    }
+    let (kind, orphan_query, all_query, entity) = if ranking == "toty" {
+        (
+            Award::Team,
+            "SELECT CAST(id AS BIGINT) FROM core_team t WHERE NOT EXISTS (
+                SELECT 1 FROM core_teamresult r WHERE r.team_id=t.id) ORDER BY id",
+            "SELECT CAST(id AS BIGINT) FROM core_team ORDER BY id",
+            "core_team",
+        )
+    } else {
+        let kind = if ranking == "soty" {
+            Award::Speaker
+        } else {
+            Award::Novice
+        };
+        (kind,
+            "SELECT CAST(id AS BIGINT) FROM core_debater d WHERE NOT (d.temporary OR d.synthetic)
+            AND NOT EXISTS (SELECT 1 FROM core_speakerresult r WHERE r.debater_id=d.id)
+            AND NOT EXISTS (SELECT 1 FROM core_tournamentautoqual a WHERE a.debater_id=d.id)
+            AND NOT EXISTS (
+                SELECT 1 FROM core_team_debaters m WHERE m.debater_id=d.id AND (
+                    EXISTS (SELECT 1 FROM core_teamresult r WHERE r.team_id=m.team_id)
+                    OR EXISTS (SELECT 1 FROM core_round r WHERE r.gov_id=m.team_id OR r.opp_id=m.team_id)
+                )
+            ) ORDER BY id",
+            "SELECT CAST(id AS BIGINT) FROM core_debater WHERE NOT (temporary OR synthetic) ORDER BY id",
+            "core_debater")
+    };
+    if matches!(kind, Award::Novice) && year(selected).is_none_or(|value| value > 2020) {
+        return Ok(());
+    }
+    for id in sqlx::query_scalar::<_, i64>(orphan_query)
+        .fetch_all(&mut *conn)
+        .await?
+    {
+        match delete_relations::delete(conn, entity, id).await {
+            Ok(()) | Err(delete_relations::DeleteError::Absent) => (),
+            Err(delete_relations::DeleteError::Protected) => return Err(ApiError::Constraint),
+            Err(delete_relations::DeleteError::Database(error)) => return Err(error.into()),
+        }
+    }
+    let ids = sqlx::query_scalar::<_, i64>(all_query)
+        .fetch_all(&mut *conn)
+        .await?
+        .into_iter()
+        .collect();
+    let season = if matches!(kind, Award::Team) {
+        selected
+    } else {
+        selected.split('-').next().unwrap_or(selected)
+    };
+    write_awards(conn, season, kind, &ids).await?;
+    if !matches!(kind, Award::Novice) {
+        rank(conn, kind.binding().1, selected).await?;
+    }
+    Ok(())
+}
+
 pub(super) async fn awards(
     conn: &mut AnyConnection,
     season: &str,
@@ -274,6 +342,16 @@ pub(super) async fn awards(
     if matches!(kind, Award::Novice) && year(season).is_none_or(|value| value > 2020) {
         return Ok(());
     }
+    write_awards(conn, season, kind, ids).await?;
+    rank(conn, kind.binding().1, season).await
+}
+
+async fn write_awards(
+    conn: &mut AnyConnection,
+    season: &str,
+    kind: Award,
+    ids: &BTreeSet<i64>,
+) -> Result<(), ApiError> {
     let (label, table, owner) = kind.binding();
     let team = matches!(kind, Award::Team);
     let novice = matches!(kind, Award::Novice);
@@ -442,5 +520,5 @@ pub(super) async fn awards(
         }
         TABLES[label].write(conn, &values, existing).await?;
     }
-    rank(conn, table, season).await
+    Ok(())
 }

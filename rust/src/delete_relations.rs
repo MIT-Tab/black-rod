@@ -142,6 +142,30 @@ pub(crate) async fn plan(
     if selected.rows_affected() == 0 {
         return Err(DeleteError::Absent);
     }
+    collect(conn, root, id).await
+}
+
+pub(crate) async fn preview(
+    conn: &mut AnyConnection,
+    root: &'static str,
+    id: i64,
+) -> Result<Deletion, DeleteError> {
+    let sql = format!("SELECT CAST(id AS BIGINT) FROM {root} WHERE id=$1");
+    let exists = sqlx::query_scalar::<_, i64>(AssertSqlSafe(sql))
+        .bind(id)
+        .fetch_optional(&mut *conn)
+        .await?;
+    if exists.is_none() {
+        return Err(DeleteError::Absent);
+    }
+    collect(conn, root, id).await
+}
+
+async fn collect(
+    conn: &mut AnyConnection,
+    root: &'static str,
+    id: i64,
+) -> Result<Deletion, DeleteError> {
     let mut selected: BTreeMap<&str, BTreeSet<i64>> =
         BTreeMap::from([(root, BTreeSet::from([id]))]);
     let mut todo = VecDeque::from([(root, vec![id])]);
@@ -179,6 +203,12 @@ pub(crate) async fn plan(
 }
 
 impl Deletion {
+    pub(crate) fn removed(&self) -> impl Iterator<Item = (&'static str, i64)> + '_ {
+        self.selected
+            .iter()
+            .flat_map(|(&table, rows)| rows.iter().map(move |&id| (table, id)))
+    }
+
     pub(crate) fn affected(&self) -> impl Iterator<Item = (&'static str, i64)> + '_ {
         self.selected
             .iter()
