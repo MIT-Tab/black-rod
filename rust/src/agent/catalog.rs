@@ -127,7 +127,7 @@ fn ordered(value: &Value) -> Value {
 pub(super) fn hash(value: &Value) -> String {
     hex::encode(digest::digest(
         &digest::SHA256,
-        django_json::ascii(&ordered(value).to_string()).as_bytes(),
+        django_json::canonical(&ordered(value)).as_bytes(),
     ))
 }
 
@@ -238,5 +238,21 @@ impl Model {
         }
         visible.insert("revision".to_owned(), json!(hash(&Value::Object(actual))));
         Ok(Value::Object(visible))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn agent_hash_matches_django_for_arbitrary_integers_and_float_exponents() {
+        let value: Value = serde_json::from_str(
+            r#"{"large":340282366920938463463374607431768211455,"low":0.000001,"high":1e20,"near":0.0001,"float":1.0,"negative":-0.0,"halfway":-2176312437815957.2,"python_scientific":2.402375202447831e-05,"del":"\u007f"}"#,
+        ).unwrap();
+        assert_eq!(
+            hash(&value),
+            "ad21fd9fc4289fb5f558690d35ae5192bdbcdb52060b6ed02b66b63235d3bd2c"
+        );
     }
 }

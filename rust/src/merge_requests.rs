@@ -293,7 +293,7 @@ async fn mutate_review(
                 let detail=match error{
                     Failure::Invalid(message)=>format!("Merge failed: {message}"),
                     Failure::Database(ApiError::Constraint)=>"Merge failed: A database constraint was violated. This usually means the debaters have conflicting records that cannot be automatically merged. Please contact a technical administrator for assistance.".to_owned(),
-                    _=>{eprintln!("Merge request did not complete");"An unexpected error occurred while processing the merge request. The merge has been cancelled and no changes were made. Please contact a technical administrator for assistance.".to_owned()}
+                    _=>{eprintln!("Merge request did not complete");"An unexpected error occurred while processing the merge request. The merge has been cancelled and no changes were made. Please contact a technical administrator if this problem persists.".to_owned()}
                 };
                 return Ok((40, detail));
             }

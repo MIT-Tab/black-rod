@@ -19,16 +19,23 @@ use crate::{
 pub use provider::OAuth;
 use provider::{Profile, Token};
 
-pub(crate) async fn start(state: &AppState, origin: &str, next: &str, remember: bool) -> Response {
-    start_process(state, origin, next, remember, None).await
+pub(crate) async fn start(
+    state: &AppState,
+    headers: &HeaderMap,
+    origin: &str,
+    next: &str,
+    remember: bool,
+) -> Response {
+    start_process(state, headers, origin, next, remember, false).await
 }
 
 async fn start_process(
     state: &AppState,
+    headers: &HeaderMap,
     origin: &str,
     next: &str,
     remember: bool,
-    connecting: Option<&HeaderMap>,
+    connect: bool,
 ) -> Response {
     let (Some(config), Some(secret)) = (&state.oauth, state.secret.as_deref()) else {
         return StatusCode::SERVICE_UNAVAILABLE.into_response();
@@ -40,12 +47,10 @@ async fn start_process(
     let Ok(state_id) = state_id else {
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     };
-    let pending = if let Some(headers) = connecting {
+    let pending = if connect {
         session::oauth_connect(&state.pool, headers, secret, &state_id, next).await
     } else {
-        session::oauth_start(&state.pool, secret, &state_id, next, remember)
-            .await
-            .map(Some)
+        session::oauth_start(&state.pool, headers, secret, &state_id, next, remember).await
     };
     let pending = match pending {
         Ok(Some(pending)) => pending,
@@ -68,7 +73,7 @@ async fn start_process(
         ],
     )
         .into_response();
-    if connecting.is_none() {
+    if !connect && session::session_id(headers) != Some(pending.as_str()) {
         login::set_cookie(
             &mut response,
             "sessionid",
@@ -537,14 +542,7 @@ pub(crate) async fn provider(State(state): State<AppState>, request: Request) ->
             ) {
                 return Ok(login::csrf_failure());
             }
-            return Ok(start_process(
-                &state,
-                &origin,
-                &next,
-                true,
-                connect.then_some(&parts.headers),
-            )
-            .await);
+            return Ok(start_process(&state, &parts.headers, &origin, &next, true, connect).await);
         }
         let (csrf, token) =
             login::csrf_tokens(&parts.headers).map_err(|_| ApiError::Serialization)?;

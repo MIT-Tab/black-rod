@@ -804,8 +804,14 @@ static TEMPLATES: LazyLock<Result<Environment<'static>, minijinja::Error>> = Laz
     Ok(environment)
 });
 
-pub(crate) fn bundles(path: &Path) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+pub(crate) fn bundles(
+    path: &Path,
+    production: bool,
+) -> Result<Vec<String>, Box<dyn std::error::Error>> {
     let stats: Value = serde_json::from_slice(&fs::read(path)?)?;
+    if production && stats["status"] != "done" {
+        return Err("Production webpack assets have not finished building".into());
+    }
     let Some(main) = stats["chunks"]["main"].as_array() else {
         return Err("Webpack stats has no main chunk".into());
     };
@@ -960,13 +966,7 @@ pub(crate) async fn show(
         .filter(|value| matches!(*value, "toty" | "soty" | "coty") || (is_home && *value == "noty"))
         .unwrap_or("toty");
     let home = if is_home {
-        let data = state
-            .home
-            .try_get_with(
-                season,
-                standings::boards(&state.pool, season, "", View::Home),
-            )
-            .await;
+        let data = standings::cached_boards(&state, season, "", View::Home).await;
         match data {
             Ok(data) => Some(data),
             Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),
@@ -1066,6 +1066,49 @@ pub(crate) fn seasons(current: i32) -> Vec<(String, String)> {
         .collect()
 }
 
+fn template_numbers(value: minijinja::Value) -> minijinja::Value {
+    use minijinja::{Value, value::ValueKind};
+
+    // serde_json represents arbitrary-precision numbers as a Serde struct.
+    // MiniJinja receives that framework-specific representation as a map.
+    const NUMBER: &str = "$serde_json::private::Number";
+    match value.kind() {
+        ValueKind::Map => {
+            if value.len() == Some(1)
+                && let Ok(number) = value.get_attr(NUMBER)
+                && let Some(text) = number.as_str()
+                && let Ok(number) = text.parse::<serde_json::Number>()
+            {
+                if let Some(integer) = number.as_i64() {
+                    return Value::from(integer);
+                }
+                if let Some(integer) = number.as_u64() {
+                    return Value::from(integer);
+                }
+                if let Some(float) = number.as_f64() {
+                    return Value::from(float);
+                }
+                return number.to_string().into();
+            }
+            if let Ok(keys) = value.try_iter() {
+                return keys
+                    .map(|key| {
+                        let item = value.get_item(&key).unwrap_or_default();
+                        (key, template_numbers(item))
+                    })
+                    .collect();
+            }
+        }
+        ValueKind::Seq => {
+            if let Ok(items) = value.try_iter() {
+                return items.map(template_numbers).collect();
+            }
+        }
+        _ => (),
+    }
+    value
+}
+
 pub(crate) fn render(name: &str, bindings: minijinja::Value) -> Result<String, String> {
     TEMPLATES
         .as_ref()
@@ -1073,7 +1116,7 @@ pub(crate) fn render(name: &str, bindings: minijinja::Value) -> Result<String, S
         .and_then(|environment| {
             environment
                 .get_template(name)
-                .and_then(|template| template.render(bindings))
+                .and_then(|template| template.render(template_numbers(bindings)))
                 .map_err(|error| error.to_string())
         })
 }

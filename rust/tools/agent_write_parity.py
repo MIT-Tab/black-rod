@@ -51,8 +51,11 @@ opp.debaters.add(third)
 tournament = Tournament.objects.create(host=school, season='2035', date=date(2035, 10, 1), num_teams=24)
 TeamResult.objects.create(tournament=tournament, team=gov, place=1)
 SpeakerResult.objects.create(tournament=tournament, debater=synthetic, place=1)
-round = Round.objects.create(tournament=tournament, gov=gov, opp=opp, round_number=1, victor=Round.GOV)
-stat = RoundStats.objects.create(round=round, debater=real, speaks='27.5000', ranks='1.0000', debater_role='PM')
+details = {"wide_id": 340282366920938463463374607431768211455,
+    "float_values": [0.000001, 0.0001, -0.125, 1.25e-8], "marker": chr(127)}
+round = Round.objects.create(tournament=tournament, gov=gov, opp=opp, round_number=1,
+    victor=Round.GOV, metadata=details)
+stat = RoundStats.objects.create(round=round, debater=real, speaks='27.5000', ranks='1.0000', debater_role='PM', metadata=details)
 synthetic_stat = RoundStats.objects.create(round=round, debater=synthetic, speaks='28.5000', ranks='1.0000', debater_role='LO')
 synthetic_alias = DebaterAlias.objects.create(debater=synthetic, source_name='Example', normalized_name='example')
 instant = timezone.now().replace(microsecond=1)

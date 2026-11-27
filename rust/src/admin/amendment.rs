@@ -330,9 +330,12 @@ pub(super) async fn execute(
 
 pub(super) async fn invalidate(state: &AppState) {
     state.search.invalidate_all();
-    state.standings.invalidate_all();
-    state.replay.invalidate_all();
-    crate::live::invalidate(state, state.current_season).await;
+    crate::standings::invalidate(
+        state,
+        &state.current_season.to_string(),
+        crate::standings::STORED_BOARDS,
+    )
+    .await;
     crate::elo::invalidate(state).await;
 }
 

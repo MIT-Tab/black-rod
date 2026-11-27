@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+use serde_json::Value as Json;
+use serde_pickle::{HashableValue, Value as Pickle};
 use sqlx::AnyPool;
 
 use super::{FRESH, Live, Payload, STALE};
@@ -20,6 +22,57 @@ async fn load(cache: &Memcached, key: &str) -> Option<Arc<Payload>> {
         .map(Arc::new)
 }
 
+// JSON numbers use a private Serde representation to preserve arbitrary precision.
+// Encode ordinary live standings values as Python primitives for Django's cache.
+fn python_value(value: &Json) -> Pickle {
+    match value {
+        Json::Null => Pickle::None,
+        Json::Bool(value) => Pickle::Bool(*value),
+        Json::String(value) => Pickle::String(value.clone()),
+        Json::Array(values) => Pickle::List(values.iter().map(python_value).collect()),
+        Json::Object(fields) => Pickle::Dict(
+            fields
+                .iter()
+                .map(|(key, value)| (HashableValue::String(key.clone()), python_value(value)))
+                .collect(),
+        ),
+        Json::Number(number) => {
+            if let Some(value) = number.as_i64() {
+                Pickle::I64(value)
+            } else if let Some(value) = number.as_u64() {
+                Pickle::Int(value.into())
+            } else {
+                Pickle::F64(number.as_f64().expect("live standings uses finite numbers"))
+            }
+        }
+    }
+}
+
+fn serialize(payload: &Payload) -> Result<Vec<u8>, serde_pickle::Error> {
+    let fields = [
+        ("season", Pickle::String(payload.season.clone())),
+        ("boards", python_value(&payload.boards)),
+        (
+            "active_sources",
+            Pickle::List(
+                payload
+                    .active_sources
+                    .iter()
+                    .cloned()
+                    .map(Pickle::String)
+                    .collect(),
+            ),
+        ),
+    ];
+    let value = Pickle::Dict(
+        fields
+            .into_iter()
+            .map(|(key, value)| (HashableValue::String(key.to_owned()), value))
+            .collect(),
+    );
+    serde_pickle::value_to_vec(&value, Default::default())
+}
+
 async fn refresh(
     live: &Live,
     pool: &AnyPool,
@@ -33,7 +86,7 @@ async fn refresh(
         cache.delete_raw(&format!("{key}:lock")).await;
     }
     if let Ok(payload) = &result
-        && let Ok(bytes) = serde_pickle::to_vec(payload.as_ref(), Default::default())
+        && let Ok(bytes) = serialize(payload)
     {
         cache
             .write_raw(key, 1, &bytes, FRESH.as_secs() as u32, true)

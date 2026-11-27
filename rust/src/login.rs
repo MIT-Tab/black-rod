@@ -270,7 +270,7 @@ pub(crate) async fn view(State(state): State<AppState>, request: Request) -> Res
     let remember =
         field("remember").is_some_and(|value| !matches!(value, "" | "0" | "false" | "False"));
     if field("provider") == Some("apdaonline") {
-        return crate::oauth::start(&state, &origin, &next, remember).await;
+        return crate::oauth::start(&state, &parts.headers, &origin, &next, remember).await;
     }
     if state.secret.is_none() {
         return StatusCode::SERVICE_UNAVAILABLE.into_response();

@@ -223,7 +223,8 @@ async fn publish(state: &AppState, url: &str, data: Arc<Value>) -> Result<(), Er
             snapshots::source_index(cache)
                 .await
                 .ok()
-                .map(|index| index.get(&id).is_some_and(|source| source.chunks == stored))
+                .filter(|index| index.get(&id).is_some_and(|source| source.chunks == stored))
+                .map(|_| true)
         }
         Err(_) => Some(false),
     };
@@ -240,7 +241,7 @@ async fn publish(state: &AppState, url: &str, data: Arc<Value>) -> Result<(), Er
     Ok(())
 }
 
-async fn fetch(state: &AppState, url: &str) -> Result<Arc<Value>, Error> {
+async fn fetch_payload(url: &str) -> Result<(String, Arc<Value>), Error> {
     let url = api_url(url).ok_or_else(|| invalid("Enter a valid URL."))?;
     let response = CLIENT
         .get(format!("{url}/api/import-results"))
@@ -269,7 +270,11 @@ async fn fetch(state: &AppState, url: &str) -> Result<Arc<Value>, Error> {
         return Err(invalid("Incomplete tournament import snapshot"));
     }
     payload["source_url"] = json!(url);
-    let payload = Arc::new(payload);
+    Ok((url, Arc::new(payload)))
+}
+
+async fn fetch(state: &AppState, url: &str) -> Result<Arc<Value>, Error> {
+    let (url, payload) = fetch_payload(url).await?;
     publish(state, &url, payload.clone()).await?;
     Ok(payload)
 }
@@ -647,13 +652,62 @@ pub(crate) async fn page(State(state): State<AppState>, request_body: Request) -
     }
 }
 
-pub(super) async fn refresh(state: &AppState) -> usize {
+async fn refresh_presence(
+    cache: &Memcached,
+    active: &HashSet<String>,
+    outcomes: &HashSet<String>,
+    now: f64,
+) -> Result<(), &'static str> {
+    let mut cached = snapshots::source_index(cache)
+        .await
+        .map_err(|_| "Could not read the tournament snapshot index")?;
+    for row in cached.values_mut() {
+        if active.contains(&row.url) {
+            if row.missing_since.is_some() {
+                for key in &row.chunks {
+                    if !cache.touch_raw(&django_key(key), 0).await {
+                        return Err("Could not extend an active tournament snapshot");
+                    }
+                }
+                row.missing_since = None;
+            }
+        } else if row.missing_since.is_none() && !outcomes.contains(&row.url) {
+            row.missing_since = Some(now);
+        }
+    }
+    let bytes = serde_pickle::to_vec(&cached, Default::default())
+        .map_err(|_| "Could not encode the tournament snapshot index")?;
+    if !cache.write_raw(INDEX, 1, &bytes, 0, true).await {
+        return Err("Could not save tournament snapshot retention");
+    }
+    // Shorten chunk lifetimes only after the index records when they disappeared.
+    let mut complete = true;
+    for row in cached.values() {
+        if let Some(missing) = row.missing_since {
+            let remaining = ((RETENTION + missing - now).ceil() as u32).clamp(1, RETENTION as u32);
+            for key in &row.chunks {
+                complete &= cache.touch_raw(&django_key(key), remaining).await;
+            }
+        }
+    }
+    complete
+        .then_some(())
+        .ok_or("Could not update all retained snapshot lifetimes")
+}
+
+pub(super) async fn refresh(state: &AppState) -> Result<usize, &'static str> {
     let Some(live) = &state.live else {
-        return 0;
+        return Ok(0);
     };
     let (urls, confirmed) = live.directory_state().await;
     let active = urls.into_iter().collect::<HashSet<_>>();
-    let previous = index(state).await;
+    let previous = if let Some(cache) = &state.memcached {
+        snapshots::source_index(cache)
+            .await
+            .map_err(|_| "Could not read the tournament snapshot index")?
+    } else {
+        index(state).await
+    };
     let mut urls = active
         .iter()
         .cloned()
@@ -664,54 +718,46 @@ pub(super) async fn refresh(state: &AppState) -> usize {
     let mut workers = tokio::task::JoinSet::new();
     let start = |workers: &mut tokio::task::JoinSet<_>, url: String| {
         let state = state.clone();
-        workers.spawn(async move { fetch(&state, &url).await.ok().map(|_| url) });
+        workers.spawn(async move {
+            match fetch_payload(&url).await {
+                Ok((url, payload)) => publish(&state, &url, payload).await.map(|_| Some(url)),
+                Err(_) => {
+                    eprintln!("Could not fetch a tournament import snapshot during refresh");
+                    Ok(None)
+                }
+            }
+        });
     };
     for url in urls.by_ref().take(8) {
         start(&mut workers, url);
     }
+    let mut published = true;
     while let Some(result) = workers.join_next().await {
-        if let Ok(Some(url)) = result {
-            outcomes.insert(url);
+        match result {
+            Ok(Ok(Some(url))) => {
+                outcomes.insert(url);
+            }
+            Ok(Ok(None)) => (),
+            _ => published = false,
         }
         if let Some(url) = urls.next() {
             start(&mut workers, url);
         }
     }
-    let ok = outcomes.len();
+    if !published {
+        return Err("Could not publish all refreshed tournament snapshots");
+    }
     if !confirmed {
-        return ok;
+        return Ok(outcomes.len());
     }
     let now = Utc::now().timestamp() as f64;
     if let Some(cache) = &state.memcached {
         if !guard_index(cache).await {
-            return ok;
+            return Err("Could not lock the tournament snapshot index");
         }
-        let mut cached = match snapshots::source_index(cache).await {
-            Ok(index) => index,
-            Err(error) => {
-                cache.delete_raw(&format!("{INDEX}:lock")).await;
-                eprintln!("Could not read the tournament snapshot index: {error}");
-                return ok;
-            }
-        };
-        for row in cached.values_mut() {
-            if active.contains(&row.url) {
-                if row.missing_since.take().is_some() {
-                    for key in &row.chunks {
-                        cache.touch_raw(&django_key(key), 0).await;
-                    }
-                }
-            } else if row.missing_since.is_none() && !outcomes.contains(&row.url) {
-                row.missing_since = Some(now);
-                for key in &row.chunks {
-                    cache.touch_raw(&django_key(key), RETENTION as u32).await;
-                }
-            }
-        }
-        if let Ok(bytes) = serde_pickle::to_vec(&cached, Default::default()) {
-            cache.write_raw(INDEX, 1, &bytes, 0, true).await;
-        }
+        let result = refresh_presence(cache, &active, &outcomes, now).await;
         cache.delete_raw(&format!("{INDEX}:lock")).await;
+        result?;
     } else {
         for (key, (mut row, value)) in state.import_cache.sources.iter() {
             if active.contains(&row.url) {
@@ -726,5 +772,5 @@ pub(super) async fn refresh(state: &AppState) -> usize {
                 .await;
         }
     }
-    ok
+    Ok(outcomes.len())
 }

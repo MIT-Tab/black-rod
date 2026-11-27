@@ -17,7 +17,7 @@ const WIDGET_TTL: u32 = 24 * 60 * 60;
 
 pub(crate) async fn invalidate(state: &AppState) {
     if let Some(cache) = &state.memcached {
-        cache.delete_raw(WIDGET_KEY).await;
+        cache.invalidate_raw(WIDGET_KEY).await;
     } else {
         state.recent_results.invalidate(&()).await;
     }

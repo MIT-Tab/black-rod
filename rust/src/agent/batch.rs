@@ -61,18 +61,20 @@ fn matches_journal_row(table: &Table, current: &Value, expected: &Value) -> bool
             if actual == value {
                 return true;
             }
-            table
-                .fields
-                .get(name)
-                .is_some_and(|field| field.kind() == "DateTimeField")
-                && actual
-                    .as_str()
-                    .zip(value.as_str())
-                    .is_some_and(|(actual, expected)| {
-                        actual.ends_with('Z')
-                            && expected.ends_with('Z')
-                            && zero_fraction(actual) == zero_fraction(expected)
-                    })
+            match table.fields.get(name).map(|field| field.kind()) {
+                Some("JSONField") => catalog::hash(actual) == catalog::hash(value),
+                Some("DateTimeField") => {
+                    actual
+                        .as_str()
+                        .zip(value.as_str())
+                        .is_some_and(|(actual, expected)| {
+                            actual.ends_with('Z')
+                                && expected.ends_with('Z')
+                                && zero_fraction(actual) == zero_fraction(expected)
+                        })
+                }
+                _ => false,
+            }
         })
 }
 
@@ -371,6 +373,8 @@ async fn complete(
                     | "core.OnlineQUAL"
                     | "core.QUAL"
                     | "core.QualPoints"
+                    | "core.Reaff"
+                    | "core.TOTYReaff"
                     | "core.Tournament"
             )
         ) {

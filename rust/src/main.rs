@@ -53,6 +53,16 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let database = database_url(production)?;
     let pool = AnyPoolOptions::new()
         .max_connections(8)
+        .after_connect(|connection, _| {
+            Box::pin(async move {
+                if connection.backend_name() == "PostgreSQL" {
+                    sqlx::query("SET TIME ZONE 'UTC'")
+                        .execute(connection)
+                        .await?;
+                }
+                Ok(())
+            })
+        })
         .connect(&database)
         .await?;
     let season = env::var("BLACK_ROD_CURRENT_SEASON").unwrap_or_else(|_| "2026".into());

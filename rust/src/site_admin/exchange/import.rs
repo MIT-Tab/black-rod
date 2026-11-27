@@ -607,6 +607,9 @@ async fn process(
         }
         tx.commit().await?;
         admin.state.search.invalidate_all();
+        if model.table == "core_tournament" && (result.new > 0 || result.updated > 0) {
+            crate::recent_results::invalidate(admin.state).await;
+        }
     } else {
         tx.rollback().await?;
     }

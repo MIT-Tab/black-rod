@@ -542,10 +542,17 @@ pub(crate) async fn handle(
     } else {
         None
     };
-    let replay = state
-        .replay
-        .try_get_with((origin.clone(), season), load(&state.pool, season, &origin))
-        .await;
+    let generation = crate::standings::generation(&state).await;
+    let load = load(&state.pool, season, &origin);
+    let replay = match generation {
+        Some(generation) => {
+            state
+                .replay
+                .try_get_with((generation, origin.clone(), season), load)
+                .await
+        }
+        None => load.await.map_err(Arc::new),
+    };
     let Ok(replay) = replay else {
         return json_error(StatusCode::INTERNAL_SERVER_ERROR, "Internal server error.");
     };
@@ -567,12 +574,19 @@ pub(crate) async fn handle(
     }
     let season_display = season_display(season);
     if let Some(through) = through {
-        let partial = state
-            .snapshots
-            .get_with((origin.clone(), season, through.clone()), async {
-                Arc::new(snapshot(&replay, &through))
-            })
-            .await;
+        let compute = async { Arc::new(snapshot(&replay, &through)) };
+        let partial = match generation {
+            Some(generation) => {
+                state
+                    .snapshots
+                    .get_with(
+                        (generation, origin.clone(), season, through.clone()),
+                        compute,
+                    )
+                    .await
+            }
+            None => compute.await,
+        };
         api_response(Json(Payload {
             season: season.to_string(),
             season_display,

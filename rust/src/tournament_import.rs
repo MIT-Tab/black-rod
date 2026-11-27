@@ -268,6 +268,6 @@ pub(crate) async fn upload(State(state): State<AppState>, http: Request) -> Resp
     }
 }
 
-pub(crate) async fn refresh_sources(state: &AppState) -> usize {
+pub(crate) async fn refresh_sources(state: &AppState) -> Result<usize, &'static str> {
     source::refresh(state).await
 }

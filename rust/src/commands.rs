@@ -47,7 +47,7 @@ impl AppState {
             "agent_credential" => self.manage_credential(args).await?,
             "clean_duplicate_debaters" => self.clean_duplicates(args).await?,
             "cache_mittab_results" | "refresh_import_sources" if args.is_empty() => {
-                let count = self.refresh_tournament_sources().await;
+                let count = self.refresh_tournament_sources().await?;
                 let verb = if command == "cache_mittab_results" {
                     "Retained"
                 } else {

@@ -1119,6 +1119,9 @@ async fn save(
     )
     .await?;
     tx.commit().await?;
+    if model.table == "core_tournament" {
+        crate::recent_results::invalidate(admin.state).await;
+    }
     if let Some(token) = generated_token {
         let mut response=admin.view("site_admin/agent_credential_issued.html",context!{
             title=>"Agent credential issued",token,credential=>context!{

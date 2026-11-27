@@ -111,9 +111,9 @@ pub struct AppState {
     synthetic_suggestions: admin::synthetic::suggestions::Cache,
     cache_lifetime: Duration,
     import_cache: tournament_import::source::Cache,
-    standings: Cache<(String, i32), Arc<standings::Boards>>,
-    replay: Cache<(String, i32), Arc<replay::Replay>>,
-    home: Cache<i32, Arc<standings::Boards>>,
+    standings: Cache<(uuid::Uuid, String, i32), Arc<standings::Boards>>,
+    replay: Cache<(uuid::Uuid, String, i32), Arc<replay::Replay>>,
+    home: Cache<(uuid::Uuid, i32), Arc<standings::Boards>>,
     stats: Cache<(), Arc<serde_json::Value>>,
     recent_results: Cache<(), Arc<String>>,
     search: Cache<u32, Arc<search::SearchIndex>>,
@@ -121,7 +121,7 @@ pub struct AppState {
     claim_limits: claims::Limits,
     account_limits: account::limits::Limits,
     school_admin_limits: school_admin::debater::Limits,
-    snapshots: Cache<(String, i32, String), Arc<standings::Boards>>,
+    snapshots: Cache<(uuid::Uuid, String, i32, String), Arc<standings::Boards>>,
 }
 
 impl AppState {
@@ -249,34 +249,36 @@ impl AppState {
     }
 
     pub fn with_webpack_stats(mut self, path: &Path) -> Result<Self, Box<dyn std::error::Error>> {
-        self.bundles = Arc::new(web::bundles(path)?);
+        self.bundles = Arc::new(web::bundles(path, false)?);
         Ok(self)
     }
 
     pub fn with_production_webpack_stats(
-        self,
+        mut self,
         path: &Path,
     ) -> Result<Self, Box<dyn std::error::Error>> {
-        let state = self
-            .with_webpack_stats(path)
+        let bundles = web::bundles(path, true)
             .map_err(|error| format!("Could not load production webpack stats: {error}"))?;
-        if state.bundles.is_empty() {
+        if bundles.is_empty() {
             return Err("Production webpack stats has no main JavaScript assets.".into());
         }
-        Ok(state)
+        self.bundles = Arc::new(bundles);
+        Ok(self)
     }
 
     pub fn watch_webpack_stats(mut self, path: &Path) -> Self {
         self.watched_webpack = Some(Arc::new(WatchedWebpack {
             path: path.to_owned(),
-            bundles: std::sync::RwLock::new(Arc::new(web::bundles(path).unwrap_or_default())),
+            bundles: std::sync::RwLock::new(Arc::new(
+                web::bundles(path, false).unwrap_or_default(),
+            )),
         }));
         self
     }
 
     fn bundles(&self) -> Arc<Vec<String>> {
         if let Some(watch) = &self.watched_webpack {
-            if let Ok(bundles) = web::bundles(&watch.path)
+            if let Ok(bundles) = web::bundles(&watch.path, false)
                 && let Ok(mut current) = watch.bundles.write()
             {
                 if **current != bundles {
@@ -291,7 +293,7 @@ impl AppState {
         self.bundles.clone()
     }
 
-    pub async fn refresh_tournament_sources(&self) -> usize {
+    pub async fn refresh_tournament_sources(&self) -> Result<usize, &'static str> {
         tournament_import::refresh_sources(self).await
     }
 

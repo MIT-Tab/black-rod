@@ -33,8 +33,9 @@ tower-http = { version = "0.6", features = ["fs"] }
 porter-stemmer = "0.1.2"
 moka = { version = "0.12", features = ["future"] }
 serde = { version = "1", features = ["derive"] }
-serde_json = { version = "1", features = ["raw_value"] }
+serde_json = { version = "1", features = ["arbitrary_precision", "raw_value"] }
 serde-pickle = "1.2"
+ryu = "1"
 sentry = { version = "0.49", default-features = false, features = ["backtrace", "panic", "ureq", "rustls"] }
 subtle = "2"
 sqlx = { version = "0.9", default-features = false, features = [

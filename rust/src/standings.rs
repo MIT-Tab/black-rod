@@ -19,15 +19,48 @@ use crate::{
     schools::{DEBATER_COLUMNS, Debater, School},
 };
 
+const GENERATION: &str = "black-rod:rust:standings-generation:v1";
+
+pub(crate) async fn generation(state: &AppState) -> Option<uuid::Uuid> {
+    let Some(cache) = &state.memcached else {
+        return Some(uuid::Uuid::nil());
+    };
+    let version = |record: (u32, Vec<u8>)| match record {
+        (0, bytes) => uuid::Uuid::from_slice(&bytes).ok(),
+        _ => None,
+    };
+    if let Some(record) = cache.read_raw_checked(GENERATION).await.ok()? {
+        return version(record);
+    }
+    let proposed = uuid::Uuid::new_v4();
+    if cache
+        .write_raw(GENERATION, 0, proposed.as_bytes(), 0, false)
+        .await
+    {
+        return Some(proposed);
+    }
+    cache.read_raw(GENERATION).await.and_then(version)
+}
+
 pub(crate) async fn invalidate(state: &AppState, season: &str, boards: &[&str]) {
     use md5::{Digest, Md5};
 
     state.home.invalidate_all();
     state.standings.invalidate_all();
     state.replay.invalidate_all();
+    state.snapshots.invalidate_all();
     if let Some(cache) = &state.memcached {
         let hash = Md5::digest(format!("{season}:"));
         let mut deletes = tokio::task::JoinSet::new();
+        let writer = cache.clone();
+        deletes.spawn(async move {
+            if !writer
+                .write_raw(GENERATION, 0, uuid::Uuid::new_v4().as_bytes(), 0, true)
+                .await
+            {
+                writer.invalidate_raw(GENERATION).await;
+            }
+        });
         let keys = boards
             .iter()
             .map(|board| format!(":1:template.cache.{board}.{hash:x}"))
@@ -38,7 +71,7 @@ pub(crate) async fn invalidate(state: &AppState, season: &str, boards: &[&str]) 
         for key in keys {
             let cache = cache.clone();
             deletes.spawn(async move {
-                cache.delete_raw(&key).await;
+                cache.invalidate_raw(&key).await;
             });
         }
         while deletes.join_next().await.is_some() {}
@@ -494,6 +527,25 @@ pub(crate) fn filter_boards<'a>(
         .collect()
 }
 
+pub(crate) async fn cached_boards(
+    state: &AppState,
+    season: i32,
+    origin: &str,
+    view: View,
+) -> Result<Arc<Boards>, Arc<ApiError>> {
+    let load = boards(&state.pool, season, origin, view);
+    match (generation(state).await, view) {
+        (Some(generation), View::Home) => state.home.try_get_with((generation, season), load).await,
+        (Some(generation), View::Api) => {
+            state
+                .standings
+                .try_get_with((generation, origin.to_owned(), season), load)
+                .await
+        }
+        _ => load.await.map_err(Arc::new),
+    }
+}
+
 pub(crate) async fn standings(
     State(state): State<AppState>,
     OriginalUri(uri): OriginalUri,
@@ -503,13 +555,7 @@ pub(crate) async fn standings(
         return StatusCode::BAD_REQUEST.into_response();
     };
     let season = requested_season(uri.query().unwrap_or_default(), state.current_season);
-    let boards = state
-        .standings
-        .try_get_with(
-            (origin.clone(), season),
-            boards(&state.pool, season, &origin, View::Api),
-        )
-        .await;
+    let boards = cached_boards(&state, season, &origin, View::Api).await;
     let Ok(boards) = boards else {
         return json_error(StatusCode::INTERNAL_SERVER_ERROR, "Internal server error.");
     };

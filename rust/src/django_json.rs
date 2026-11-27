@@ -36,7 +36,7 @@ impl Formatter for Spaced {
 pub(crate) fn ascii(value: &str) -> String {
     let mut output = String::with_capacity(value.len());
     for ch in value.chars() {
-        if ch.is_ascii() {
+        if ch.is_ascii() && ch != '\u{007f}' {
             output.push(ch);
         } else {
             let mut units = [0; 2];
@@ -46,6 +46,62 @@ pub(crate) fn ascii(value: &str) -> String {
         }
     }
     output
+}
+
+struct Canonical;
+
+impl Formatter for Canonical {
+    fn write_number_str<W: ?Sized + io::Write>(
+        &mut self,
+        out: &mut W,
+        number: &str,
+    ) -> io::Result<()> {
+        if number.contains(['.', 'e', 'E'])
+            && let Ok(float) = number.parse::<f64>()
+        {
+            if float.is_infinite() {
+                return out.write_all(if float.is_sign_negative() {
+                    b"-Infinity"
+                } else {
+                    b"Infinity"
+                });
+            }
+            let mut buffer = ryu::Buffer::new();
+            let repr = buffer.format_finite(float);
+            if let Some((mantissa, exp)) = repr.split_once('e')
+                && let Ok(exp) = exp.parse::<i32>()
+            {
+                return write!(out, "{mantissa}e{exp:+03}");
+            }
+            let (sign, magnitude) = repr
+                .strip_prefix('-')
+                .map_or(("", repr), |value| ("-", value));
+            // Python uses scientific notation one decade earlier than Ryū.
+            if let Some(digits) = magnitude.strip_prefix("0.0000")
+                && let Some((first, rest)) = digits.split_at_checked(1)
+            {
+                write!(out, "{sign}{first}")?;
+                if !rest.is_empty() {
+                    write!(out, ".{rest}")?;
+                }
+                return out.write_all(b"e-05");
+            }
+            return out.write_all(repr.as_bytes());
+        }
+        out.write_all(if number == "-0" {
+            b"0"
+        } else {
+            number.as_bytes()
+        })
+    }
+}
+
+pub(crate) fn canonical(value: &serde_json::Value) -> String {
+    let mut output = Vec::new();
+    value
+        .serialize(&mut Serializer::with_formatter(&mut output, Canonical))
+        .expect("a JSON value can be written to memory");
+    ascii(std::str::from_utf8(&output).expect("JSON is UTF-8"))
 }
 
 pub(crate) fn encode<T: ?Sized + Serialize>(value: &T) -> Result<String, serde_json::Error> {

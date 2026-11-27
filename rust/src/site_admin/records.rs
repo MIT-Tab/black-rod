@@ -340,6 +340,9 @@ pub(super) async fn delete(
         }
         tx.commit().await?;
         admin.state.search.invalidate_all();
+        if removed.iter().any(|(table, _)| *table == "core_tournament") {
+            crate::recent_results::invalidate(admin.state).await;
+        }
         let mut response = redirect(&model.url());
         if let Some(secret) = admin.state.secret.as_deref() {
             let message = if bulk {

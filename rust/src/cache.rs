@@ -126,7 +126,7 @@ impl Memcached {
         .map_err(io::Error::other)?
     }
 
-    async fn send(&self, command: &str, body: Option<&[u8]>, expected: &[u8]) -> bool {
+    async fn reply(&self, command: &str, body: Option<&[u8]>) -> io::Result<Vec<u8>> {
         timeout(SERVICE_TIMEOUT, async {
             let stream = TcpStream::connect(self.0).await?;
             let mut reader = BufReader::new(stream);
@@ -140,10 +140,16 @@ impl Memcached {
                 .take(300)
                 .read_until(b'\n', &mut response)
                 .await?;
-            Ok::<_, io::Error>(response == expected)
+            Ok(response)
         })
         .await
-        .is_ok_and(|result| result.unwrap_or_default())
+        .map_err(io::Error::other)?
+    }
+
+    async fn send(&self, command: &str, body: Option<&[u8]>, expected: &[u8]) -> bool {
+        self.reply(command, body)
+            .await
+            .is_ok_and(|reply| reply == expected)
     }
 
     pub(crate) async fn write_raw(
@@ -167,6 +173,17 @@ impl Memcached {
             && self
                 .send(&format!("delete {key}\r\n"), None, b"DELETED\r\n")
                 .await
+    }
+
+    pub(crate) async fn invalidate_raw(&self, key: &str) {
+        if !valid_key(key)
+            || !self
+                .reply(&format!("delete {key}\r\n"), None)
+                .await
+                .is_ok_and(|reply| matches!(reply.as_slice(), b"DELETED\r\n" | b"NOT_FOUND\r\n"))
+        {
+            eprintln!("Could not invalidate shared cache key {key}");
+        }
     }
 
     pub(crate) async fn touch_raw(&self, key: &str, seconds: u32) -> bool {

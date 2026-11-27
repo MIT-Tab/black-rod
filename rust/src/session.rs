@@ -91,8 +91,20 @@ fn encode(session: &Value, secret: &[u8]) -> String {
     )
 }
 
+type SessionValues = std::collections::BTreeMap<String, Box<RawValue>>;
+
+fn encode_values(values: &SessionValues, secret: &[u8]) -> Result<String, sqlx::Error> {
+    let serialized =
+        serde_json::to_string(values).map_err(|error| sqlx::Error::Protocol(error.to_string()))?;
+    Ok(encode_signed(
+        &crate::django_json::ascii(&serialized),
+        secret,
+        SESSION_SALT,
+    ))
+}
+
 pub(crate) struct StoredSession {
-    pub(crate) values: std::collections::BTreeMap<String, Box<RawValue>>,
+    pub(crate) values: SessionValues,
     id: String,
     original: String,
 }
@@ -152,13 +164,7 @@ impl StoredSession {
             .values
             .get("_session_expiry")
             .is_none_or(|value| value.get() != "0");
-        let serialized = serde_json::to_string(&self.values)
-            .map_err(|error| sqlx::Error::Protocol(error.to_string()))?;
-        let data = encode_signed(
-            &crate::django_json::ascii(&serialized),
-            secret,
-            SESSION_SALT,
-        );
+        let data = encode_values(&self.values, secret)?;
         let changed = sqlx::query(
             "UPDATE django_session SET session_key=$1,session_data=$2
             WHERE session_key=$3 AND session_data=$4 AND expire_date>CURRENT_TIMESTAMP",
@@ -184,10 +190,7 @@ impl StoredSession {
         conn: &mut AnyConnection,
         secret: &[u8],
     ) -> Result<bool, sqlx::Error> {
-        let document = serde_json::to_string(&self.values)
-            .map(|value| crate::django_json::ascii(&value))
-            .map_err(|error| sqlx::Error::Protocol(error.to_string()))?;
-        let updated = encode_signed(&document, secret, SESSION_SALT);
+        let updated = encode_values(&self.values, secret)?;
         let result = sqlx::query(
             "UPDATE django_session SET session_data = $1
             WHERE session_key = $2 AND session_data = $3 AND expire_date > CURRENT_TIMESTAMP",
@@ -228,11 +231,15 @@ pub(crate) async fn create_anonymous(
 
 pub(crate) async fn oauth_start(
     pool: &AnyPool,
+    headers: &HeaderMap,
     secret: &[u8],
     state_id: &str,
     next: &str,
     remember: bool,
-) -> Result<String, sqlx::Error> {
+) -> Result<Option<String>, sqlx::Error> {
+    if let Some(session) = StoredSession::read(pool, headers, secret).await? {
+        return stash_oauth(session, pool, secret, state_id, next, Some(remember)).await;
+    }
     let session_key = random_token(b"abcdefghijklmnopqrstuvwxyz0123456789", 32)
         .map_err(|_| sqlx::Error::Protocol("Unable to generate an OAuth session key".into()))?;
     let now = Utc::now();
@@ -256,7 +263,7 @@ pub(crate) async fn oauth_start(
         .bind(expiry)
         .execute(pool)
         .await?;
-    Ok(session_key)
+    Ok(Some(session_key))
 }
 
 pub(crate) async fn oauth_connect(
@@ -266,8 +273,29 @@ pub(crate) async fn oauth_connect(
     state_id: &str,
     next: &str,
 ) -> Result<Option<String>, sqlx::Error> {
-    let Some(mut session) = StoredSession::read(pool, headers, secret).await? else {
+    let Some(session) = StoredSession::read(pool, headers, secret).await? else {
         return Ok(None);
+    };
+    stash_oauth(session, pool, secret, state_id, next, None).await
+}
+
+async fn stash_oauth(
+    mut session: StoredSession,
+    pool: &AnyPool,
+    secret: &[u8],
+    state_id: &str,
+    next: &str,
+    remember: Option<bool>,
+) -> Result<Option<String>, sqlx::Error> {
+    let process = if let Some(remember) = remember {
+        let value = serde_json::value::to_raw_value(&remember)
+            .map_err(|error| sqlx::Error::Protocol(error.to_string()))?;
+        session
+            .values
+            .insert("apda_remember_login".to_owned(), value);
+        "login"
+    } else {
+        "connect"
     };
     let mut states: serde_json::Map<String, Value> = session
         .values
@@ -290,7 +318,7 @@ pub(crate) async fn oauth_connect(
     }
     states.insert(
         state_id.to_owned(),
-        json!([{"process":"connect","next":next,"data":{}},now]),
+        json!([{"process":process,"next":next,"data":{}},now]),
     );
     let state = serde_json::value::to_raw_value(&states)
         .map_err(|error| sqlx::Error::Protocol(error.to_string()))?;
@@ -370,18 +398,52 @@ pub(crate) async fn create(
     remember: bool,
     backend: &str,
 ) -> Result<String, sqlx::Error> {
-    let session_key = random_token(b"abcdefghijklmnopqrstuvwxyz0123456789", 32)
-        .map_err(|_| sqlx::Error::Protocol("Unable to generate a session key".into()))?;
-    let mut session = json!({
-        "_auth_user_id": id.to_string(),
-        "_auth_user_backend": backend,
-        "_auth_user_hash": hex::encode(hmac::sign(&key(AUTH_SALT, secret), password_hash.as_bytes())),
+    let mut old = StoredSession::read(pool, headers, secret).await?;
+    let user_id = id.to_string();
+    let auth_key = key(AUTH_SALT, secret);
+    let keep_key = old.as_ref().is_some_and(|session| {
+        session.string("_auth_user_id").as_deref() == Some(&user_id)
+            && session
+                .string("_auth_user_hash")
+                .and_then(|hash| hex::decode(hash).ok())
+                .is_some_and(|hash| {
+                    hmac::verify(&auth_key, password_hash.as_bytes(), &hash).is_ok()
+                })
     });
-    if !remember {
-        session["_session_expiry"] = json!(0);
+    let mut values = old
+        .as_mut()
+        .filter(|session| keep_key || !session.values.contains_key("_auth_user_id"))
+        .map(|session| std::mem::take(&mut session.values))
+        .unwrap_or_default();
+    let session_key = if let Some(previous) = old.as_ref().filter(|_| keep_key) {
+        previous.id.clone()
+    } else {
+        random_token(b"abcdefghijklmnopqrstuvwxyz0123456789", 32)
+            .map_err(|_| sqlx::Error::Protocol("Unable to generate a session key".into()))?
+    };
+    let fields = [
+        ("_auth_user_id", json!(user_id)),
+        ("_auth_user_backend", json!(backend)),
+        (
+            "_auth_user_hash",
+            json!(hex::encode(hmac::sign(&auth_key, password_hash.as_bytes()))),
+        ),
+        (
+            "_session_expiry",
+            json!(if remember {
+                crate::login::SESSION_AGE
+            } else {
+                0
+            }),
+        ),
+    ];
+    for (field, value) in fields {
+        let raw = serde_json::value::to_raw_value(&value)
+            .map_err(|error| sqlx::Error::Protocol(error.to_string()))?;
+        values.insert(field.to_owned(), raw);
     }
     let now = Utc::now();
-    let session_data = encode(&session, secret);
+    let session_data = encode_values(&values, secret)?;
     let mut expiry = (now + Duration::days(30))
         .format("%Y-%m-%d %H:%M:%S%.6f")
         .to_string();
@@ -400,18 +462,24 @@ pub(crate) async fn create(
     if current.rows_affected() != 1 {
         return Err(sqlx::Error::RowNotFound);
     }
+    if let Some(previous) = old {
+        let changed = sqlx::query(
+            "DELETE FROM django_session WHERE session_key=$1 AND session_data=$2 AND expire_date>CURRENT_TIMESTAMP",
+        )
+        .bind(previous.id)
+        .bind(previous.original)
+        .execute(&mut *tx)
+        .await?;
+        if changed.rows_affected() != 1 {
+            return Err(sqlx::Error::RowNotFound);
+        }
+    }
     sqlx::query(query)
         .bind(&session_key)
         .bind(session_data)
         .bind(expiry)
         .execute(&mut *tx)
         .await?;
-    if let Some(old_key) = session_id(headers) {
-        sqlx::query("DELETE FROM django_session WHERE session_key = $1")
-            .bind(old_key)
-            .execute(&mut *tx)
-            .await?;
-    }
     tx.commit().await?;
     Ok(session_key)
 }
@@ -597,6 +665,15 @@ mod tests {
             header::COOKIE,
             header::HeaderValue::from_static("sessionid=oauthfixture"),
         );
+        for (tab, next) in [("one", "/standings/"), ("two", "/calendar/")] {
+            assert_eq!(
+                oauth_start(&pool, &headers, secret, tab, next, false)
+                    .await
+                    .unwrap()
+                    .as_deref(),
+                Some("oauthfixture")
+            );
+        }
         let context = consume_oauth(&pool, &headers, secret, "used")
             .await
             .unwrap()
@@ -610,6 +687,12 @@ mod tests {
                 .is_none()
         );
 
+        let other_tab = consume_oauth(&pool, &headers, secret, "one")
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(!other_tab.connect);
+        assert_eq!(other_tab.next, "/standings/");
         let stored = StoredSession::read(&pool, &headers, secret)
             .await
             .unwrap()
@@ -622,6 +705,53 @@ mod tests {
             serde_json::from_str(stored.values["socialaccount_states"].get()).unwrap();
         assert!(states.get("used").is_none());
         assert!(states.get("other").is_some());
+        assert!(states.get("two").is_some());
+
+        sqlx::query("CREATE TABLE core_user (id INTEGER PRIMARY KEY, password TEXT, last_login TEXT, is_active BOOLEAN)")
+            .execute(&pool).await.unwrap();
+        sqlx::query("INSERT INTO core_user VALUES (1, 'fixture-hash', NULL, 1), (2, 'another-fixture', NULL, 1)")
+            .execute(&pool).await.unwrap();
+        let backend = "django.contrib.auth.backends.ModelBackend";
+        let id = create(&pool, &headers, secret, 1, "fixture-hash", true, backend)
+            .await
+            .unwrap();
+        assert_ne!(
+            id, "oauthfixture",
+            "anonymous sign-in rotates the session key"
+        );
+        headers.insert(header::COOKIE, format!("sessionid={id}").parse().unwrap());
+        let kept = create(&pool, &headers, secret, 1, "fixture-hash", false, backend)
+            .await
+            .unwrap();
+        assert_eq!(
+            kept, id,
+            "same-account sign-in retains the existing session"
+        );
+        let preserved = StoredSession::read(&pool, &headers, secret)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(preserved.values["grid_seed"].get(), number);
+        assert_eq!(preserved.values["_session_expiry"].get(), "0");
+        assert!(
+            consume_oauth(&pool, &headers, secret, "two")
+                .await
+                .unwrap()
+                .is_some()
+        );
+        let replacement = create(&pool, &headers, secret, 2, "another-fixture", true, backend)
+            .await
+            .unwrap();
+        assert_ne!(replacement, id, "changing accounts starts a new session");
+        headers.insert(
+            header::COOKIE,
+            format!("sessionid={replacement}").parse().unwrap(),
+        );
+        let replacement = StoredSession::read(&pool, &headers, secret)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(!replacement.values.contains_key("grid_seed"));
     }
 
     #[test]
