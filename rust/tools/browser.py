@@ -19,6 +19,7 @@ import subprocess
 from tempfile import TemporaryDirectory
 from threading import Thread
 from urllib.parse import parse_qs, urlencode, urlsplit
+from urllib.request import urlopen
 
 from PIL import Image, ImageChops
 from selenium import webdriver
@@ -1544,7 +1545,8 @@ from django.contrib.sessions.backends.db import SessionStore
 from django.contrib.auth.hashers import PBKDF2SHA1PasswordHasher
 import json
 data = {}
-for label in ("rust-change", "django-change", "oauth-set", "rust-reset", "django-reset", "legacy-hash"):
+for label in ("rust-change", "django-change", "oauth-set", "rust-reset", "django-reset", "legacy-hash",
+              "legacy-rust-reset", "legacy-django-reset", "legacy-rust-change", "legacy-django-change"):
     email = f"{label}@example.test"
     user = get_user_model().objects.create_user(username=label, email=email,
         password=None if label == "oauth-set" else "kN3%jku8^Qm2")
@@ -1638,6 +1640,40 @@ print(json.dumps(data))
 
     reset_from(django,rust,"django-reset")
     reset_from(rust,django,"rust-reset")
+
+    def submit_legacy(fields):
+        form = driver.find_element("css selector", "#content form")
+        for key, value in fields.items():
+            form.find_element("name", key).send_keys(value)
+        form.find_element("css selector", 'input[type="submit"]').click()
+        WebDriverWait(driver, 10).until(staleness_of(form))
+
+    for source, target, label in ((django, rust, "django"), (rust, django, "rust")):
+        driver.delete_all_cookies()
+        address = f"legacy-{label}-reset@example.test"
+        page(source, "/auth/password_reset/")
+        submit_legacy({"email": address})
+        assert urlsplit(driver.current_url).path == "/auth/password_reset/done/"
+        message = smtp.get(timeout=5)
+        assert message["To"].addresses[0].addr_spec == address
+        link = next(line.strip() for line in message.get_content().splitlines()
+                    if line.startswith("http") and "/auth/reset/" in line)
+        route = urlsplit(link).path
+        page(target, route)
+        assert urlsplit(driver.current_url).path.endswith("/set-password/")
+        submit_legacy({"new_password1": new, "new_password2": new})
+        assert urlsplit(driver.current_url).path == "/auth/reset/done/"
+        page(source, route)
+        assert "The password reset link was invalid" in driver.page_source
+
+        driver.delete_all_cookies()
+        page(source, "/auth/password_change/", f"legacy-{label}-change")
+        old_session = driver.get_cookie("sessionid")["value"]
+        submit_legacy({"old_password": starting, "new_password1": new, "new_password2": new})
+        assert urlsplit(driver.current_url).path == "/auth/password_change/done/"
+        assert driver.get_cookie("sessionid")["value"] != old_session
+        page(target, "/auth/password_change/done/")
+        assert "Your password was changed." in driver.page_source
 
     driver.delete_all_cookies()
     page(rust,"/auth/login/?next=/games/")
@@ -1837,6 +1873,44 @@ def assert_native_site_admin(driver, django, rust):
             endpoint,authorization=f"Bearer {token}",
         ))
         assert status in (401,403)
+    driver.delete_all_cookies()
+
+
+def assert_admin_attachments(driver, django, rust):
+    root = Path(os.environ["BR_STATE"])
+    file = root / "fixture-attachment.txt"
+    file.write_text("Fabricated attachment for the parity test.\n")
+    admin = django_session()
+    route = "/admin/django_summernote/attachment/"
+    for source, target in ((django, rust), (rust, django)):
+        driver.get(f"http://{HOST}:{source.port}/robots.txt")
+        driver.delete_all_cookies()
+        driver.add_cookie({"name": "sessionid", "value": admin})
+        driver.get(f"http://{HOST}:{source.port}{route}add/")
+        upload = driver.find_element("name", "file")
+        assert upload.get_attribute("type") == "file"
+        upload.send_keys(str(file))
+        driver.find_element("name", "_save").click()
+        WebDriverWait(driver, 10).until(lambda browser: urlsplit(browser.current_url).path == route)
+        with sqlite3.connect(root / "dev.sqlite3") as connection:
+            record, name, stored = connection.execute(
+                "SELECT id,name,file FROM django_summernote_attachment ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+        assert name == file.name and (root / "media" / stored).read_bytes() == file.read_bytes()
+        public = f"http://{HOST}:{rust.port}/{stored}"
+        with urlopen(public) as response:
+            assert response.read() == file.read_bytes()
+        driver.get(f"http://{HOST}:{target.port}{route}{record}/change/")
+        assert driver.find_element("css selector", ".field-file a").get_attribute("href").endswith(stored)
+        label = driver.find_element("name", "name")
+        label.clear()
+        label.send_keys("Renamed local attachment")
+        driver.find_element("name", "_save").click()
+        WebDriverWait(driver, 10).until(lambda browser: urlsplit(browser.current_url).path == route)
+        with sqlite3.connect(root / "dev.sqlite3") as connection:
+            assert connection.execute(
+                "SELECT name,file FROM django_summernote_attachment WHERE id=?", (record,)
+            ).fetchone() == ("Renamed local attachment", stored)
     driver.delete_all_cookies()
 
 
@@ -3291,6 +3365,7 @@ def browser_checks(database, options, output):
         assert_native_site_admin(driver, django, rust)
         assert_admin_topic_merges(driver, django, rust)
         assert_admin_speaker_visibility(driver, django, rust)
+        assert_admin_attachments(driver, django, rust)
         assert_admin_formats(driver, django, rust)
         assert_debater_aliases(driver, django, rust)
         assert_native_round_inlines(driver, django, rust)

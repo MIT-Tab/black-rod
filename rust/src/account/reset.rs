@@ -1,3 +1,5 @@
+pub(crate) mod legacy;
+
 use std::collections::BTreeSet;
 
 use axum::{
@@ -71,9 +73,14 @@ impl ResetUser {
     }
 
     fn token(&self, timestamp: i64, secret: &[u8]) -> String {
+        self.token_with_emails(timestamp, secret, true)
+    }
+
+    fn token_with_emails(&self, timestamp: i64, secret: &[u8], allauth: bool) -> String {
         let mail = self
             .emails
             .iter()
+            .filter(|_| allauth)
             .map(String::as_str)
             .collect::<Vec<_>>()
             .join("|");
@@ -90,6 +97,10 @@ impl ResetUser {
     }
 
     fn valid(&self, candidate: &str, secret: &[u8]) -> bool {
+        self.valid_token(candidate, secret, true)
+    }
+
+    fn valid_token(&self, candidate: &str, secret: &[u8], allauth: bool) -> bool {
         let Some((stamp, _)) = candidate.split_once('-') else {
             return false;
         };
@@ -103,7 +114,7 @@ impl ResetUser {
         bool::from(
             candidate
                 .as_bytes()
-                .ct_eq(self.token(stamp, secret).as_bytes()),
+                .ct_eq(self.token_with_emails(stamp, secret, allauth).as_bytes()),
         )
     }
 }

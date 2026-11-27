@@ -1,4 +1,6 @@
 mod canonical;
+mod fixture;
+mod shorten;
 
 use std::{error::Error, fs, path::Path};
 
@@ -22,10 +24,14 @@ Commands:
   clean_duplicate_debaters        Delete result-free duplicates with a matching populated identity
   cache_mittab_results            Retain complete MIT-Tab tournament snapshots
   export_canonical_import_data    Export tournament matching data
+  create_dev_fixtures             Export sanitized development data
   export_generated_codes          Export generated codes to CSV
   rebuild_synthetic_team_names     Restore native labels for synthetic teams
   fix_novice_debaters               Restore first-season status for novice debaters
   reconstruct_historical_point_quals  Restore missing offline point qualifications
+  reindex_haystack                Refresh the native debater search index
+  redo_rankings                    Recompute qualifications for teams with nine-point debaters
+  shorten_names                   Populate school-based tournament and team short names
   seed_qual_bars                   Fill missing offline qualification bars
   seed_season_filters              Update debater season filters from results
   set_old_quals                    Print historical qualification point ranges
@@ -46,6 +52,15 @@ impl AppState {
                 println!("{verb} {count} tournament snapshots.");
             }
             "export_canonical_import_data" => canonical::export(self, args).await?,
+            "create_dev_fixtures" => {
+                let output = match args {
+                    [] => "dev_fixtures.json",
+                    [option, path] if option == "--output" => path,
+                    [option] if option.starts_with("--output=") => &option["--output=".len()..],
+                    _ => return Err("Usage: black-rod create_dev_fixtures [--output PATH]".into()),
+                };
+                fixture::export(self, Path::new(output)).await?;
+            }
             "export_generated_codes" => {
                 let output = match args {
                     [] => "generated_codes.csv",
@@ -66,6 +81,19 @@ impl AppState {
             "reconstruct_historical_point_quals" => {
                 self.reconstruct_historical_qualifications(args).await?
             }
+            "shorten_names" if args.is_empty() || args == ["--dry-run"] => {
+                shorten::names(self, !args.is_empty()).await?;
+            }
+            "reindex_haystack" => self.reindex_search(args).await?,
+            "redo_rankings" if args.is_empty() => {
+                let mut tx = self.pool.begin().await?;
+                crate::tournament_import::results::standings::qualifications::redo_nine_point_rankings(
+                    &mut tx, &self.current_season.to_string(),
+                )
+                .await
+                .map_err(|error| format!("Could not update qualifications: {error:?}"))?;
+                tx.commit().await?;
+            }
             "seed_qual_bars" if args.is_empty() => self.seed_qual_bars().await?,
             "seed_season_filters" => self.seed_seasons(args).await?,
             "set_old_quals" if args.is_empty() => self.old_quals().await?,
@@ -73,6 +101,26 @@ impl AppState {
                 return Err(format!("Unknown command or arguments: {command}. Use --help.").into());
             }
         }
+        Ok(())
+    }
+
+    async fn reindex_search(&self, args: &[String]) -> Result<()> {
+        let mut args = args.iter();
+        while let Some(value) = args.next() {
+            match value.as_str() {
+                "--remove-old" | "--using=default" => (),
+                "--using" if args.next().is_some_and(|value| value == "default") => (),
+                "--verbosity"
+                    if args
+                        .next()
+                        .is_some_and(|value| matches!(value.as_str(), "0" | "1" | "2" | "3")) => {}
+                _ => return Err(format!("Unknown search index option: {value}").into()),
+            }
+        }
+        let count = crate::search::reindex(self)
+            .await
+            .map_err(|_| "Could not rebuild the debater search index.")?;
+        println!("Indexed {count} debaters.");
         Ok(())
     }
 

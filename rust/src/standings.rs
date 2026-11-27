@@ -114,6 +114,7 @@ pub(crate) async fn coty_breakdowns(
     season: i32,
     origin: &str,
     school: Option<i64>,
+    alphabetize_qualifications: bool,
 ) -> Result<HashMap<i64, Vec<Value>>, ApiError> {
     let season_string = season.to_string();
     let quals = sqlx::query(
@@ -173,14 +174,18 @@ pub(crate) async fn coty_breakdowns(
                 .iter()
                 .any(|code| season < 2026 || !matches!(code, 1 | 2 | 3 | 5 | 6 | 16))
         });
-        let named_quals = types
+        let mut named_quals = types
             .into_iter()
             .flatten()
             .copied()
             .filter(|code| *code > 0)
             .map(qualification_label)
             .filter_map(|label| label.as_str().map(str::to_owned))
-            .collect::<BTreeSet<_>>();
+            .collect::<Vec<_>>();
+        if alphabetize_qualifications {
+            named_quals.sort_unstable();
+            named_quals.dedup();
+        }
         result.entry(school.id).or_default().push(json!({
             "debater": Debater::from_row(&row, origin, Some(&school))?,
             "points": points,
@@ -190,7 +195,7 @@ pub(crate) async fn coty_breakdowns(
             } else {
                 json!(points + if bonus { 6.0 } else { 0.0 })
             },
-            "auto_quals": named_quals.into_iter().collect::<Vec<_>>().join(", "),
+            "auto_quals": named_quals.join(", "),
         }));
     }
     Ok(result)
@@ -283,7 +288,7 @@ impl Board {
             HashMap::new()
         };
         let breakdowns = if matches!(self, Self::Schools) {
-            coty_breakdowns(pool, season, origin, None).await?
+            coty_breakdowns(pool, season, origin, None, true).await?
         } else {
             HashMap::new()
         };

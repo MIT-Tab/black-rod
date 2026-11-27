@@ -114,43 +114,57 @@ async fn read_uploads(state: &AppState, request: Request) -> Result<Vec<Upload>,
     }).await.map_err(|_|Box::new(error(StatusCode::INTERNAL_SERVER_ERROR,"Failed to read attachment")))?
 }
 
+pub(crate) async fn write_attachment(
+    name: &str,
+    mime: Option<&str>,
+    bytes: &[u8],
+) -> std::io::Result<(String, PathBuf)> {
+    let day = Utc::now().date_naive().to_string();
+    let relative = PathBuf::from(FOLDER).join(day);
+    let root = media_root();
+    tokio::fs::create_dir_all(root.join(&relative)).await?;
+    let suffix = name.rsplit('.').next().unwrap_or_default();
+    let extension = if !suffix.is_empty()
+        && suffix.bytes().all(|byte| byte.is_ascii_alphanumeric())
+        && suffix.len() <= 12
+    {
+        suffix
+    } else {
+        mime.and_then(|mime| mime.strip_prefix("image/"))
+            .unwrap_or("bin")
+    };
+    let filename = relative.join(format!("{}.{}", Uuid::new_v4(), extension));
+    let absolute = root.join(&filename);
+    let mut file = tokio::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&absolute)
+        .await?;
+    let result = async {
+        file.write_all(bytes).await?;
+        file.flush().await
+    }
+    .await;
+    if let Err(error) = result {
+        let _ = tokio::fs::remove_file(&absolute).await;
+        return Err(error);
+    }
+    Ok((filename.to_string_lossy().into_owned(), absolute))
+}
+
 async fn write_files(
     state: &AppState,
     files: Vec<Upload>,
     saved: &mut Vec<PathBuf>,
 ) -> Result<Vec<Value>, Box<dyn std::error::Error + Send + Sync>> {
-    let day = Utc::now().date_naive().to_string();
-    let relative = PathBuf::from(FOLDER).join(day);
-    let root = media_root();
-    tokio::fs::create_dir_all(root.join(&relative)).await?;
     let mut tx = state.pool.begin().await?;
     let mut results = Vec::with_capacity(files.len());
     for Upload { name, mime, bytes } in files {
-        let suffix = name.rsplit('.').next().unwrap_or_default();
-        let extension = if !suffix.is_empty()
-            && suffix.bytes().all(|byte| byte.is_ascii_alphanumeric())
-            && suffix.len() <= 12
-        {
-            suffix
-        } else {
-            mime.strip_prefix("image/").unwrap_or("img")
-        };
-        let filename = relative.join(format!("{}.{}", Uuid::new_v4(), extension));
-        let absolute = root.join(&filename);
-        let mut file = tokio::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&absolute)
-            .await?;
+        let (storage_name, absolute) = write_attachment(&name, Some(mime), &bytes).await?;
         saved.push(absolute);
-        file.write_all(&bytes).await?;
-        file.flush().await?;
-        let storage_name = filename.to_string_lossy();
         sqlx::query("INSERT INTO django_summernote_attachment (name,file,uploaded) VALUES ($1,$2,CURRENT_TIMESTAMP)")
-            .bind(&name).bind(storage_name.as_ref()).execute(&mut *tx).await?;
-        let mut url = String::from("/");
-        url.push_str(&storage_name);
-        results.push(json!({"name":name,"size":bytes.len(),"url":url}));
+            .bind(&name).bind(&storage_name).execute(&mut *tx).await?;
+        results.push(json!({"name":name,"size":bytes.len(),"url":format!("/{storage_name}")}));
     }
     tx.commit().await?;
     Ok(results)
@@ -246,12 +260,11 @@ pub(crate) async fn attachment(Path((day, name)): Path<(String, String)>) -> Res
     let Ok(bytes) = tokio::fs::read(file).await else {
         return StatusCode::NOT_FOUND.into_response();
     };
-    let Ok(format) = image::guess_format(&bytes) else {
-        return StatusCode::NOT_FOUND.into_response();
-    };
+    let mime = image::guess_format(&bytes)
+        .map_or("application/octet-stream", |format| format.to_mime_type());
     (
         [
-            (header::CONTENT_TYPE, format.to_mime_type()),
+            (header::CONTENT_TYPE, mime),
             (header::X_CONTENT_TYPE_OPTIONS, "nosniff"),
         ],
         bytes,

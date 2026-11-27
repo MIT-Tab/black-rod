@@ -332,7 +332,7 @@ async fn save(
         claims::edit::team_names(&mut tx, id).await?;
     }
     tx.commit().await?;
-    state.search.invalidate(&()).await;
+    state.search.invalidate_all();
     Ok(true)
 }
 

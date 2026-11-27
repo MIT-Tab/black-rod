@@ -30,13 +30,14 @@
     </div>
 {% else %}
     {% if row.date_widget %}<p class="date">{% endif %}{% if row.raw_url %}<div>{% endif %}
+    {% if row.file_path %}{% if row.admin_file %}<p class="file-upload">{% endif %}Currently: <a href="/{{ row.file_path }}">{{ row.file_path }}</a><br>Change:{% endif %}
     {% if row.current_url %}<p class="url">Currently: <a href="{{ row.current_url }}">{{ row.value }}</a><br>Change: {% endif %}
-    <input type="{{ row.type }}" name="{{ row.name }}"{% if row.checkbox %}{% if row.checked %} checked{% endif %}{% elif (row.value or row.empty_input_value) and row.type != 'password' %} value="{{ row.value }}"{% endif %}
+    <input type="{{ row.type }}" name="{{ row.name }}"{% if row.checkbox %}{% if row.checked %} checked{% endif %}{% elif (row.value or row.empty_input_value) and row.type not in ['password', 'file'] %} value="{{ row.value }}"{% endif %}
         {% if row.widget_required %} required{% endif %}{% if row.error %} aria-invalid="true"{% endif %}{% if row.help %} aria-describedby="id_{{ row.name }}_helptext"{% endif %} id="id_{{ row.name }}"
         {% for name,value in row.attrs %}{% if value is true %} {{ name }}{% elif value is not false and value is not none %} {{ name }}="{{ value }}"{% endif %}{% endfor %}>
     {% if row.raw_url %}<a href="{{ row.raw_url }}" class="related-lookup" id="lookup_id_{{ row.name }}" title="Lookup"></a>{% endif %}
     {% if row.raw_caption %}<strong><a href="{{ row.raw_caption[0] }}">{{ row.raw_caption[1] }}</a></strong>{% endif %}
-    {% if row.raw_url %}</div>{% endif %}{% if row.date_widget or row.current_url %}</p>{% endif %}
+    {% if row.raw_url %}</div>{% endif %}{% if row.date_widget or row.current_url or (row.file_path and row.admin_file) %}</p>{% endif %}
 {% endif %}
 {% if row.related and row.wrapped %}
     {% if row.related.change %}<a class="related-widget-wrapper-link change-related" id="change_id_{{ row.name }}" data-href-template="{{ row.related.url }}__fk__/change/?_to_field=id&amp;_popup=1" data-popup="yes" title="Change selected {{ row.related.singular }}"><img src="/static/admin/img/icon-changelink.svg" alt="" width="24" height="24"></a>{% endif %}

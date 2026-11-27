@@ -31,6 +31,7 @@ pub(super) struct Field {
     pub(super) column: Option<String>,
     pub(super) kind: String,
     pub(super) label: String,
+    pub(super) help: String,
     pub(super) choices: Vec<(serde_json::Value, String)>,
     pub(super) null: bool,
     pub(super) blank: bool,

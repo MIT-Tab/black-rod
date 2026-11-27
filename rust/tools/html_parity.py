@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import sqlite3
+import subprocess
 from tempfile import TemporaryDirectory
 from threading import Thread
 from types import SimpleNamespace
@@ -14,9 +15,10 @@ from types import SimpleNamespace
 from PIL import Image, ImageChops
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.support.ui import WebDriverWait
 
 from browser import django_session, oauth_provider, seed_browser_cases, smtp_sink
-from compare import HOST, servers
+from compare import HOST, ROOT, servers
 
 
 VIEWPORTS = {"desktop": (1440, 1000), "mobile": (390, 844)}
@@ -34,6 +36,7 @@ PUBLIC = [
     ("api-standings", "/api/standings/?season=2025&default=toty&limit=2&format=api", False),
     ("api-agent-auth", "/api/agent/v1/?format=api", False),
     ("account-login", "/accounts/login/?next=/games/", False),
+    ("account-login-code", "/accounts/login/code/confirm/", False),
     ("account-signup", "/accounts/signup/?next=/games/", False),
     ("account-logout", "/accounts/logout/?next=/games/", True),
     ("account-email", "/accounts/email/", True),
@@ -46,7 +49,52 @@ PUBLIC = [
     ("account-reauth", "/accounts/reauthenticate/?next=/games/", True),
     ("account-provider", "/accounts/apdaonline/login/?next=/games/", False),
     ("login", "/auth/login/", False),
+    ("legacy-password-change", "/auth/password_change/", True),
+    ("legacy-password-change-done", "/auth/password_change/done/", True),
+    ("legacy-password-reset", "/auth/password_reset/", False),
+    ("legacy-password-reset-done", "/auth/password_reset/done/", False),
+    ("legacy-password-reset-invalid", "/auth/reset/aW52YWxpZA/invalid/", False),
+    ("legacy-password-reset-complete", "/auth/reset/done/", False),
     ("summernote-editor", "/summernote/editor/id-description/", False),
+    ("school-profile", "/core/schools/7?season=2025", False),
+    ("debater-profile", "/core/debaters/5270", False),
+    ("team-profile", "/core/teams/6719", False),
+    ("tournament-profile", "/core/tournaments/1203", False),
+    ("tournaments", "/core/tournaments/", False),
+    ("live", "/live", False),
+    ("legacy-toty", "/core/toty?season=2025", False),
+    ("legacy-soty", "/core/soty?season=2025", False),
+    ("legacy-noty", "/core/noty?season=2019", False),
+    ("legacy-coty", "/core/coty?season=2025", False),
+    ("judges", "/core/dino-judges/", False),
+    ("tournament-organizers", "/core/dino-tos/", False),
+    ("search-form", "/search/", False),
+    ("search-results", "/search/?q=Rory+Gillis", False),
+    ("partnership-paths", "/core/debaters/partnership-paths/", False),
+    ("partnership-network", "/core/debaters/partnership-paths/network/?from_season=2025&x_axis=first_year&y_axis=tournaments", False),
+    ("partnership-stats", "/core/debaters/partnership-paths/stats/", False),
+    ("partnership-person", "/core/debaters/partnership-paths/person/?debater=5270", False),
+    ("motions", "/core/motions/", False),
+    ("motion-detail", "/core/motions/1", False),
+    ("videos", "/core/videos/", False),
+    ("resources", "/core/resources/", False),
+    ("resource-detail", "/core/resources/1", False),
+    ("score-explainer", "/llm/oty-guide/", False),
+    ("elo", "/core/elo/", False),
+    ("doty", "/DOTY", False),
+    ("daily-grid", "/immaculate-grid/", False),
+    ("infinite-grid", "/immaculate-grid/infinite/", False),
+    ("grid-leaderboard", "/immaculate-grid/leaderboard/", False),
+    ("recent-results-widget", "/core/widgets/recent-results/", False),
+    ("api-all-schools", "/api/schools/all/?format=api", False),
+    ("api-schedule", "/api/schedule/?season=2025&format=api", False),
+    ("api-replay", "/api/standings/replay/?season=2025&limit=2&format=api", False),
+    ("api-through-date", "/api/standings/through-date/?season=2025&through=2026-01-01&limit=2&format=api", False),
+    ("api-debater", "/api/debaters/5270/detail/?limit=2&format=api", False),
+    ("api-team", "/api/teams/6719/detail/?limit=2&format=api", False),
+    ("api-tournament", "/api/tournaments/1203/detail/?format=api", False),
+    ("api-school-debaters", "/api/debaters/7/?format=api", False),
+    ("api-oty-guide", "/api/oty-guide/?format=api", False),
 ]
 ADMIN = [
     ("admin-login", "/admin/login/", False),
@@ -153,20 +201,42 @@ def open_page(driver, server, route, session):
 
 def capture(driver, server, route, session, target, exclude):
     open_page(driver, server, route, session)
+    if route.startswith("/standings/replay/"):
+        WebDriverWait(driver, 20).until(lambda browser: browser.execute_script("""
+            const slider = document.getElementById("replay-slider");
+            return slider && !slider.disabled && Number(slider.max) > 0;
+        """))
+        driver.execute_script("""
+            const slider = document.getElementById("replay-slider");
+            slider.value = slider.max;
+            slider.dispatchEvent(new Event("input", {bubbles: true}));
+        """)
+        WebDriverWait(driver, 20).until(lambda browser: browser.execute_script("""
+            return document.querySelector("#replay-coty-body tr")?.children.length >= 4;
+        """))
+    if route.startswith("/core/debaters/partnership-paths/network/"):
+        WebDriverWait(driver, 30).until(lambda browser: browser.execute_script("""
+            return document.querySelector("[data-network-motion]")?.textContent === "Axes fixed";
+        """))
     driver.execute_cdp_cmd("Input.dispatchMouseEvent", {"type": "mouseMoved", "x": 0, "y": 0})
     driver.execute_async_script("""
         const done = arguments[0];
         requestAnimationFrame(() => requestAnimationFrame(() => {
-            const transitions = document.getAnimations().filter(animation => animation instanceof CSSTransition);
+            const transitions = document.getAnimations().filter(animation => animation.effect?.getTiming().iterations !== Infinity);
             Promise.race([Promise.allSettled(transitions.map(transition => transition.finished)),
-                          new Promise(resolve => setTimeout(resolve, 750))]).then(() => done());
+                          new Promise(resolve => setTimeout(resolve, 1500))])
+                .then(() => requestAnimationFrame(() => requestAnimationFrame(done)));
         }));
     """)
     html = driver.execute_script(DOM, exclude)
+    navigation = driver.execute_script("""
+        return [location.pathname + location.search,
+                performance.getEntriesByType("navigation")[0]?.responseStatus];
+    """)
     target.with_suffix(".json").write_text(json.dumps(html, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     target.with_suffix(".html").write_text(driver.page_source, encoding="utf-8")
     assert driver.save_screenshot(str(target.with_suffix(".png")))
-    return html
+    return navigation, html
 
 
 def pixels(left, right):
@@ -218,14 +288,15 @@ def compare(driver, django, rust, cases, session, output, viewports, exclude, pi
         for slug, route, authenticated in cases:
             reference = output / f"{mode}-{slug}-django"
             candidate = output / f"{mode}-{slug}-rust"
-            through_proxy = route.startswith("/api/")
             proxy.target = django
-            left = capture(driver, origin if through_proxy else django, route,
+            left_navigation, left = capture(driver, origin, route,
                            session if authenticated else None, reference, exclude)
             proxy.target = rust
-            right = capture(driver, origin if through_proxy else rust, route,
+            right_navigation, right = capture(driver, origin, route,
                             session if authenticated else None, candidate, exclude)
             structural = first_difference(left, right)
+            if left_navigation != right_navigation:
+                structural = ("navigation URL or status", left_navigation, right_navigation)
             fraction = pixels(reference, candidate)
             print(f"{mode} {route} DOM {'match' if structural is None else 'differs'}, changed pixels {fraction:.4%}")
             if structural is not None:
@@ -249,10 +320,11 @@ def main():
     output.mkdir(parents=True, exist_ok=True)
     viewports = arguments.viewport or list(VIEWPORTS)
     database = Path(os.environ["BR_STATE"]) / "dev.sqlite3"
+    os.environ["BLACK_ROD_PARITY_PRODUCTION_ERRORS"] = "1"
     os.environ["BLACK_ROD_PARITY_STATIC"] = "1"
     os.environ["BLACK_ROD_PARITY_WRITABLE"] = "1"
     options = Options()
-    for option in ("--headless=new", "--no-sandbox", "--disable-search-engine-choice-screen"):
+    for option in ("--headless=new", "--no-sandbox", "--disable-search-engine-choice-screen", "--disable-lcd-text"):
         options.add_argument(option)
     if os.environ.get("BLACK_ROD_PARITY_POSTGRES_URL"):
         parser.error("HTML parity uses a disposable local SQLite fixture.")
@@ -269,6 +341,9 @@ def main():
             cases = [case for case in cases if case[0] in arguments.page]
         if not cases:
             parser.error("No matching pages in the selected group.")
+        if any(route.startswith("/search/") for _, route, _ in cases):
+            subprocess.run([str(ROOT / "venv/bin/python"), "manage.py", "update_index", "--verbosity", "0"],
+                           check=True, capture_output=True)
         session = django_session()
         with oauth_provider(fixture), smtp_sink(), servers(local) as (django, rust), webdriver.Chrome(options=options) as browser:
             with shared_origin() as (proxy, origin):

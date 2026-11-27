@@ -7,6 +7,9 @@ from django.conf import settings
 from django.core.wsgi import get_wsgi_application
 
 
+if os.environ.get("BLACK_ROD_PARITY_PRODUCTION_ERRORS") == "1":
+    settings.DEBUG = False
+
 if os.environ.get("BLACK_ROD_PARITY_CACHE_MODE") == "cold":
     settings.CACHES = {"default": {"BACKEND": "django.core.cache.backends.dummy.DummyCache"}}
 
@@ -45,6 +48,9 @@ if postgres_url:
             "PORT": parsed.port,
         }
     }
+
+if media_root := os.environ.get("BLACK_ROD_PARITY_MEDIA_ROOT"):
+    settings.MEDIA_ROOT = media_root
 
 application = get_wsgi_application()
 

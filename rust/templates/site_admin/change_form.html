@@ -2,8 +2,8 @@
 {% block title %}{% if errors %}Error: {% endif %}{{ super() }}{% endblock %}
 {% block extrahead %}{{ super() }}
     <script src="/admin/jsi18n/"></script>
-    {% for medium,asset in css %}<link href="/static/{{ asset }}" media="{{ medium }}" rel="stylesheet">{% endfor %}
-    {% for asset in js %}<script src="/static/{{ asset }}"></script>{% endfor %}
+    {% for medium,asset in css %}<link href="/static/{{ asset|vendor_asset }}" media="{{ medium }}" rel="stylesheet">{% endfor %}
+    {% for asset in js %}<script src="/static/{{ asset|vendor_asset }}"></script>{% endfor %}
     {% if add_user %}<link rel="stylesheet" href="/static/admin/css/unusable_password_field.css">{% endif %}
 {% endblock %}
 {% block extrastyle %}{{ super() }}<link rel="stylesheet" href="/static/admin/css/forms.css">{% endblock %}
@@ -24,7 +24,7 @@
         {% if site_object %}<li><a href="{{ site_object }}" class="viewsitelink">View on site</a></li>{% endif %}
     </ul>
     {% endif %}
-    <form method="post" id="{{ model_name }}_form" novalidate>
+    <form method="post"{% if multipart %} enctype="multipart/form-data"{% endif %} id="{{ model_name }}_form" novalidate>
         <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf }}">
         {% if add_user and not is_popup %}<p>After you’ve created a user, you’ll be able to edit more user options.</p>{% endif %}
         <div>

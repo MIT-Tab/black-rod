@@ -11,6 +11,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Err(error) if error.not_found() => (),
         Err(_) => return Err("Could not read the Black Rod environment file.".into()),
     }
+    let _monitoring = if env::var("ENV").as_deref() == Ok("production") {
+        let dsn = env::var("SENTRY_DSN").unwrap_or_default();
+        if dsn.is_empty() {
+            None
+        } else {
+            let dsn = dsn
+                .parse::<sentry::types::Dsn>()
+                .map_err(|_| "Invalid Sentry DSN.")?;
+            Some(sentry::init((
+                dsn,
+                sentry::ClientOptions::new()
+                    .maybe_release(sentry::release_name!())
+                    .environment("production"),
+            )))
+        }
+    } else {
+        None
+    };
     tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()?
@@ -50,8 +68,17 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         enabled("ENABLE_DEBATER_PROFILE_TAB_CARDS"),
         enabled("ENABLE_DEBATER_PARTNER_PIE_CHART"),
     );
-    if let Ok(origin) = env::var("BLACK_ROD_PUBLIC_ORIGIN") {
+    if let Some(origin) = env::var("BLACK_ROD_PUBLIC_ORIGIN")
+        .ok()
+        .or_else(|| production.then(|| "https://results.apda.online".to_owned()))
+    {
         state = state.with_public_origin(&origin)?;
+    }
+    if let Some(hosts) = env::var("BLACK_ROD_ALLOWED_HOSTS")
+        .ok()
+        .or_else(|| production.then(|| "50.116.54.146,results.apda.online".to_owned()))
+    {
+        state = state.with_allowed_hosts(&hosts);
     }
     if let Ok(secret) = env::var("SECRET_KEY") {
         state = state.with_session_secret(secret);

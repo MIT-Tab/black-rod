@@ -106,7 +106,7 @@ async fn page(
             Ok(()) => {
                 tx.commit().await?;
                 if matches!(entity.model, "core_school" | "core_debater") {
-                    state.search.invalidate(&()).await;
+                    state.search.invalidate_all();
                 }
                 if entity.model == "core_tournament" {
                     state.recent_results.invalidate(&()).await;

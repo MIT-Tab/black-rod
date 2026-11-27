@@ -1,4 +1,4 @@
-# Black Rod Rust port
+# Black Rod Rust runtime
 
 Run the Rust service from the repository root against an existing Black Rod database. For local development, `dev-up` creates and loads the isolated SQLite fixture. The Rust server uses the existing table names and reads the schema directly. It has no startup migration.
 
@@ -12,7 +12,7 @@ cargo build --release --locked --manifest-path rust/Cargo.toml
 '
 ```
 
-`BLACK_ROD_DATABASE_URL` accepts SQLite and PostgreSQL URLs. The default listener is `127.0.0.1:9090`. Set `BLACK_ROD_BIND` to override it or set `PORT` to bind on all interfaces. The service reads `.env` from the repository root, with the same `DOT_ENV_FILE` override as Django. Shell variables take precedence. With `ENV=production` and no explicit database URL, it uses the existing Linode PostgreSQL database on `localhost:5433` with `DATABASE_USERNAME` and `DATABASE_PASSWORD` and the existing Memcached address on `127.0.0.1:11211`. Set `BLACK_ROD_PUBLIC_ORIGIN` to the HTTPS origin when running behind a proxy. Browser pages use the existing webpack bundles and assets. Set the existing `SECRET_KEY` in both services to test valid Django database sessions. Set `BLACK_ROD_MEDIA_ROOT` to the existing file storage path when using Summernote attachments.
+`BLACK_ROD_DATABASE_URL` accepts SQLite and PostgreSQL URLs. The default listener is `127.0.0.1:9090`. Set `BLACK_ROD_BIND` to override it or set `PORT` to bind on all interfaces. The service reads `.env` from the repository root, with the same `DOT_ENV_FILE` override as Django. Shell variables take precedence. With `ENV=production` and no explicit database URL, it uses the existing Linode PostgreSQL database on `localhost:5433` with `DATABASE_USERNAME` and `DATABASE_PASSWORD` and the existing Memcached address on `127.0.0.1:11211`. Production defaults to the existing HTTPS origin and allowed hosts. Use `BLACK_ROD_PUBLIC_ORIGIN` and `BLACK_ROD_ALLOWED_HOSTS` to override them. Production uses `SENTRY_DSN` for panic and server-error reporting, with route patterns and status codes in HTTP reports. Browser pages use the existing webpack bundles and assets. Set the existing `SECRET_KEY` in both services to test valid Django database sessions. Set `BLACK_ROD_MEDIA_ROOT` to the existing file storage path when using Summernote attachments.
 
 The current server covers standings, legacy standings directories, replay, live results and retained tournament snapshots, the schedule, statistics, results directories, debater search, alumni outreach, public profile APIs, the private forum and MIT-Tab lookups, and API discovery. The browser port includes tournament, school, team, and debater profiles, career tab card exports, the recent-results widget, video and motion libraries, resource authoring, motion spreadsheet imports, account code generation, Immaculate Grid, profile claims and self-service editing, the scheduling workspace, DOTY preview, partnership network and statistics, video authoring and image attachments, and school, debater, team, and tournament editing. It reads Django sessions and creates compatible sessions for password login and APDAOnline OAuth.
 
@@ -20,9 +20,9 @@ The statistics cache lasts one hour. Set `BLACK_ROD_MEMCACHED_ADDR` for shared d
 
 Rust also serves staff speaker-score statistics, manual tournament data entry, legacy bundle uploads, reviewed MIT-Tab imports, tournament audits and round amendments, and the ELO dashboard. Reviewed imports and ELO dashboard results are readable by both servers through shared Memcached, including after a server switch. ELO retains the six-hour result cache and two bounded ten-minute runtime caches.
 
-The opt-in Rust server also includes rankings recomputation, the browsable API renderer, signup and email maintenance, password reauthentication, OAuth connection management and pending signup, the Summernote iframe editor, and native Django-style model administration. Admin exchange supports CSV, TSV, JSON, YAML, HTML, XLS, XLSX, and ODS. The Rust correction API uses the same credential and change-set tables for authorized reads, atomic writes, previews, merges, and undo. Django remains the default application entry point while the remaining admin pages, account flows, and management commands are verified.
+The Rust server also includes rankings recomputation, the browsable API renderer, signup and email maintenance, password reauthentication, OAuth connection management and pending signup, the Summernote iframe editor, and native Django-style model administration. Admin exchange supports CSV, TSV, JSON, YAML, HTML, XLS, XLSX, and ODS. The Rust correction API uses the same credential and change-set tables for authorized reads, atomic writes, previews, merges, and undo. The development launcher starts Rust. The Django implementation remains available as the parity reference and for provisioning new local fixture databases. Production routing and service configuration are managed on the host.
 
-Run `black-rod --help` to list the native maintenance commands. `black-rod cache_mittab_results` uses the same retained snapshot data and can run on the existing 12-hour schedule. `black-rod export_generated_codes --output PATH` writes the existing CSV format.
+Run `black-rod --help` to list the native maintenance commands. The fixture exporter replaces credentials and access codes with sample values and redacts the contents of correction audit records. `black-rod cache_mittab_results` uses the same retained snapshot data and can run on the existing 12-hour schedule. `black-rod export_generated_codes --output PATH` writes the existing CSV format.
 
 ## Parity tests
 
@@ -83,3 +83,12 @@ A separate follow-up run after batching debater profile reads used the same data
 | Debater detail (5270) | Cache disabled | 300.46 → 21.37 | 3.58 → 86.93 | 131.02 → 17.12 |
 | Partnership network (since 2025) | Warm | 2,690.38 → 53.84 | 3.78 → 204.22 | 374.30 → 111.11 |
 | Partnership network (since 2025) | Cache disabled | 277.21 → 16.86 | 3.77 → 65.06 | 164.14 → 30.20 |
+
+A later release build was measured with the same PostgreSQL version, client counts, and request counts. The database included a small number of additional disposable test records. Other local development processes were running, so compare Django and Rust within each run. The harness verified all 249 HTTP cases and the four benchmark response pairs before load.
+
+| Endpoint | Warm p95 ms Django → Rust | Warm req/s Django → Rust | Warm peak RSS MiB Django → Rust | Cache-disabled p95 ms Django → Rust | Cache-disabled peak RSS MiB Django → Rust |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Active schools | 12.47 → 2.79 | 985 → 6,365 | 121.25 → 18.19 | 10.52 → 1.75 | 120.28 → 18.30 |
+| 2025–26 replay | 153.61 → 3.72 | 97 → 3,013 | 186.75 → 31.45 | 311.69 → 30.94 | 149.83 → 57.61 |
+| Debater detail 5270 | 4,130.41 → 54.76 | 2.53 → 254.06 | 138.06 → 36.61 | 355.22 → 16.77 | 131.02 → 20.81 |
+| Partnership network since 2025 | 7,192.45 → 104.01 | 1.54 → 106.82 | 384.16 → 106.23 | 369.74 → 21.63 | 165.91 → 34.34 |

@@ -121,6 +121,35 @@ pub(super) fn projection(source: &mut Source, name: &str) -> String {
     if name == "name" && source.model.slug() == "debateraliasgroup" {
         return label(source, source.model, "");
     }
+    if matches!(
+        name,
+        "debater_names" | "old_debaters" | "new_debaters" | "old_team_name" | "new_team_name"
+    ) {
+        let team = if name.starts_with("old_") {
+            "t0.old_team_id"
+        } else if name.starts_with("new_") {
+            "t0.new_team_id"
+        } else {
+            "t0.team_id"
+        };
+        let person = "TRIM(d.first_name || ' ' || d.last_name)";
+        let (value, separator) = if matches!(name, "old_team_name" | "new_team_name") {
+            let escape =
+                format!("REPLACE(REPLACE(REPLACE({person},'&','&amp;'),'<','&lt;'),'>','&gt;')");
+            (
+                format!(
+                    r#"'<a href="/core/debaters/' || CAST(d.id AS TEXT) || '">' || {escape} || '</a>'"#
+                ),
+                " and ",
+            )
+        } else {
+            (person.to_owned(), ", ")
+        };
+        return format!("(SELECT STRING_AGG(name,'{separator}') FROM (
+            SELECT {value} AS name FROM core_team_debaters td JOIN core_debater d ON td.debater_id=d.id
+            WHERE td.team_id={team} AND NOT(d.temporary OR d.synthetic) ORDER BY d.id
+        ) names)");
+    }
     let expanded = match name {
         "debater_name" => "debater",
         "team_name" => "team",
@@ -648,6 +677,14 @@ pub(super) fn conditions(
     {
         where_parts.push(limit);
     }
+    if model.slug() == "teamresult" {
+        let present = "EXISTS (SELECT 1 FROM core_teamresult_hidden_from_debaters m WHERE m.teamresult_id=t0.id)";
+        match params.get("profile_visibility").map(String::as_str) {
+            Some("hidden") => where_parts.push(present.to_owned()),
+            Some("visible") => where_parts.push(format!("NOT {present}")),
+            _ => (),
+        }
+    }
     for (parameter, value) in params {
         if matches!(
             parameter.as_str(),
@@ -987,7 +1024,11 @@ fn cells(
                     ""
                 }
             );
-            let value = display(data, tracked_column(model, &column.name), column.boolean);
+            let value = if matches!(column.name.as_str(),"old_team_name"|"new_team_name") && model.slug()=="totyreaff" {
+                Value::from_safe_string(data.unwrap_or("-").to_owned())
+            } else {
+                display(data, tracked_column(model, &column.name), column.boolean)
+            };
             let speaker_checkbox = edit_speakers && column.name=="hidden_from_profile";
             Ok::<_, sqlx::Error>(context! {element,classes,value,url=>destination,speaker_checkbox,checked=>data==Some("True")})
         })
@@ -1002,6 +1043,14 @@ async fn filters(
 ) -> Result<Vec<Value>, ApiError> {
     let mut filters = Vec::new();
     for filter in &model.filter {
+        if model.slug() == "teamresult" && filter == "profile_visibility" {
+            let active = params.get(filter).map(String::as_str);
+            let choices = [(None,"All"),(Some("hidden"),"Hidden for a member"),(Some("visible"),"Visible for everyone")]
+                .into_iter().map(|(value,label)|context!{label,url=>link(params,filter,value),selected=>value==active})
+                .collect::<Vec<_>>();
+            filters.push(context! {title=>"profile visibility",choices});
+            continue;
+        }
         if let Some(field) = model
             .fields
             .get(filter)
@@ -1105,6 +1154,25 @@ async fn filters(
                     choices.push(context!{label,url=>link(&cleared,&exact,Some(&value)),selected=>active==Some(&value)});
                 }
             }
+            if field.related.as_deref() == Some("contenttypes.contenttype") {
+                for (id, app, slug) in sqlx::query_as::<_, (String, String, String)>(
+                    "SELECT CAST(id AS TEXT),app_label,model FROM django_content_type ORDER BY id",
+                )
+                .fetch_all(&admin.state.pool)
+                .await?
+                {
+                    let key = format!("{app}.{slug}");
+                    let label = schema()
+                        .content_types
+                        .get(&key)
+                        .cloned()
+                        .unwrap_or_else(|| format!("{app} | {slug}"));
+                    choices.push(context!{label,url=>link(&cleared,&exact,Some(&id)),selected=>active==Some(&id)});
+                }
+            }
+            if choices.len() + usize::from(field.null) <= 2 {
+                continue;
+            }
             if field.null {
                 choices.push(context!{label=>"-",url=>link(&cleared,&null_key,Some("True")),selected=>empty});
             }
@@ -1150,7 +1218,7 @@ async fn filters(
                 choices.push(context!{label,url=>link(&cleared,&exact,Some(value)),selected=>active.is_some_and(|active|active==value)});
             }
         }
-        if choices.len() > 1 {
+        if choices.len() > 1 || matches!(filter.as_str(), "provider" | "app__provider") {
             filters.push(context! {title=>name,choices});
         }
     }

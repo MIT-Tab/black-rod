@@ -163,7 +163,7 @@ async fn debater(
                 .await?,
         )
     };
-    state.search.invalidate(&()).await;
+    state.search.invalidate_all();
     Ok(id)
 }
 

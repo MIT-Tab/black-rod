@@ -1,11 +1,5 @@
 {% if media %}
-<link href="/static/admin/css/vendor/select2/select2.css" media="screen" rel="stylesheet">
-<link href="/static/admin/css/autocomplete.css" media="screen" rel="stylesheet">
-<link href="/static/autocomplete_light/select2.css" media="screen" rel="stylesheet">
-<script src="/static/admin/js/vendor/select2/select2.full.js"></script>
-<script src="/static/autocomplete_light/autocomplete_light.js"></script>
-<script src="/static/autocomplete_light/select2.js"></script>
-<script src="/static/autocomplete_light/i18n/en.js"></script>
+{% include "autocomplete_media.html" %}
 {% elif field in ["school_one","school_two"] %}
 <select name="{{ field }}" class="form-control" required id="id_{{ field }}"{% if field_info.errors %} aria-invalid="true"{% endif %}>
     <option value=""{% if not field_info.selected %} selected{% endif %}>---------</option>

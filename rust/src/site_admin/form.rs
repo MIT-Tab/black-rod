@@ -4,7 +4,8 @@ mod tags;
 use std::collections::{BTreeMap, BTreeSet};
 
 use axum::{
-    body::{Body, to_bytes},
+    body::{Body, Bytes, to_bytes},
+    extract::{FromRequest, Multipart, Request},
     http::{Method, StatusCode, header},
     response::{IntoResponse, Response},
 };
@@ -127,6 +128,9 @@ async fn choices(
             _ => Ok(Vec::new()),
         };
     };
+    if model.slug() == "totyreaff" && target.slug() == "team" {
+        return reaff_team_choices(admin).await;
+    }
     let ids = selected
         .iter()
         .filter_map(|value| value.parse::<i64>().ok())
@@ -174,6 +178,62 @@ async fn choices(
     Ok(sqlx::query_as::<_, (String, String)>(AssertSqlSafe(sql))
         .fetch_all(&admin.state.pool)
         .await?)
+}
+
+async fn reaff_team_choices(admin: &AdminRequest<'_>) -> Result<Vec<(String, String)>, ApiError> {
+    let mut db = admin.state.pool.acquire().await?;
+    let choices = sqlx::query_as::<_, (i64, String)>(
+        "SELECT CAST(t.id AS BIGINT),t.name FROM core_team t
+         LEFT JOIN core_team_debaters td ON td.team_id=t.id
+         LEFT JOIN core_debater d ON d.id=td.debater_id LEFT JOIN core_school s ON s.id=d.school_id
+         ORDER BY s.name,d.first_name,d.last_name",
+    )
+    .fetch_all(&mut *db)
+    .await?;
+    let unique = choices
+        .iter()
+        .map(|(id, _)| *id)
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+    let rosters = crate::team_profile::members_for(&mut db, &unique, "http://localhost").await?;
+    Ok(choices
+        .into_iter()
+        .map(|(id, name)| {
+            let roster = rosters.get(&id).map(Vec::as_slice).unwrap_or_default();
+            let name = match roster {
+                [] => name,
+                [one, other] => {
+                    let school = label_school(one);
+                    let other_school = label_school(other);
+                    let schools = if school == other_school {
+                        school.to_owned()
+                    } else {
+                        format!("{school} / {other_school}")
+                    };
+                    format!(
+                        "{schools} {} and {}",
+                        label_debater(one),
+                        label_debater(other)
+                    )
+                }
+                [one, ..] => format!("{} {}", label_school(one), label_debater(one)),
+            };
+            (id.to_string(), name)
+        })
+        .collect())
+}
+
+fn label_school(person: &Json) -> &str {
+    person["school"]["name"].as_str().unwrap_or("Unaffiliated")
+}
+
+fn label_debater(person: &Json) -> String {
+    format!(
+        "{} {}",
+        person["first_name"].as_str().unwrap_or_default(),
+        person["last_name"].as_str().unwrap_or_default()
+    )
 }
 
 struct Bound<'a> {
@@ -350,8 +410,11 @@ impl Bound<'_> {
             {
                 options.insert(0, (String::new(), empty_label));
             }
-            if multicheck && team.is_empty() {
-                help.push_str(" Save the team first to select members.");
+            if multicheck && model.slug() == "teamresult" {
+                help = field.help.clone();
+                if team.is_empty() {
+                    help.push_str(" Save the team first to select members.");
+                }
             }
         }
         if autocomplete {
@@ -376,22 +439,30 @@ impl Bound<'_> {
             selected = vec!["true".to_owned()];
         }
         let widget_required = required
+            && (kind != "file" || value.as_str().is_none_or(str::is_empty))
             && (!select
                 || multiple
                 || autocomplete
                 || dal
                 || options.first().is_some_and(|option| option.0.is_empty()));
+        let mut found = false;
         let items = options
             .into_iter()
-            .map(|(value, label)| context! {selected=>!(autocomplete && value.is_empty()) && selected.contains(&value),value,label})
+            .map(|(value, label)| {
+                let chosen = (!found || multiple || multicheck)
+                    && !(autocomplete && value.is_empty())
+                    && selected.contains(&value);
+                found |= chosen;
+                context! {selected=>chosen,value,label}
+            })
             .collect::<Vec<_>>();
         let related = target.map(|target| {
             context! {
                 slug=>target.slug(),url=>target.url(),singular=>&target.singular,
                 add=>admin.viewer.allows(target,"add"),
-                change=>!multiple&&admin.viewer.allows(target,"change"),
-                delete=>!multiple&&widget.is_some_and(|widget|widget.related_delete)&&admin.viewer.allows(target,"delete"),
-                view=>!multiple&&admin.viewer.read(target),
+                change=>!multiple&&!multicheck&&admin.viewer.allows(target,"change"),
+                delete=>!multiple&&!multicheck&&widget.is_some_and(|widget|widget.related_delete)&&admin.viewer.allows(target,"delete"),
+                view=>!multiple&&!multicheck&&admin.viewer.read(target),
             }
         });
         let related = related.or_else(|| match field?.related.as_deref()? {
@@ -479,8 +550,14 @@ impl Bound<'_> {
         } else {
             display(Some(&text), field, false)
         };
+        let file_path = (kind == "file")
+            .then_some(value.as_str())
+            .flatten()
+            .filter(|path| {
+                path.starts_with("django-summernote/") && !path.split('/').any(|part| part == "..")
+            });
         Ok(context! {
-            name,label=>caption,help,required,widget_required,date_widget=>choice_kind == "AdminDateWidget",datetime,date,time=>time.split(['.','+','Z']).next().unwrap_or_default(),
+            file_path, admin_file=>choice_kind=="AdminFileWidget", name,label=>caption,help,required,widget_required,date_widget=>choice_kind == "AdminDateWidget",datetime,date,time=>time.split(['.','+','Z']).next().unwrap_or_default(),
             checkbox, checked, readonly=>read_only, read_value, read_link, preformatted, wrapped=>widget.is_some_and(|widget|widget.wrapped),
             value=>text_value,type=>kind, attrs=>attrs.iter().collect::<Vec<_>>(),related, select,multiple,radio,multicheck,empty_input_value=>choice_kind=="ManyToManyRawIdWidget",
             raw_url,raw_caption,forward,current_url,hidden_initial=>widget.is_some_and(|widget|widget.hidden_initial),
@@ -544,6 +621,13 @@ async fn render_form(
     errors: &Errors,
 ) -> Result<Response, ApiError> {
     let adding = id.is_none();
+    if adding && matches!(model.key.as_str(), "core.motion" | "core.resource") {
+        return Ok(crate::web::server_error(
+            admin.state,
+            &admin.viewer.user,
+            admin.uri,
+        ));
+    }
     let sets = if adding {
         &model.fieldsets_add
     } else {
@@ -607,7 +691,7 @@ async fn render_form(
         subtitle=>id.map(|_|&original), original,
         plural=>cap_first(&model.plural), app_label=>model.app(),app_name=>&app.name,app_url=>app.url(),
         model_name=>model.slug(),model_url=>url,object_url, fieldsets,inlines,save_on_top=>model.save_on_top,add=>adding,errors,
-        css=>&form.media.css, js=>&form.media.js,
+        css=>&form.media.css, js=>&form.media.js, multipart=>model.key=="django_summernote.attachment",
         add_user=>adding && model.slug()=="user", can_view=>admin.viewer.read(model),
         can_add=>admin.viewer.allows(model,"add"),can_change=>admin.viewer.allows(model,"change"),
         can_delete=>admin.viewer.allows(model,"delete"),save=>if adding{admin.viewer.allows(model,"add")}else{admin.viewer.allows(model,"change")},
@@ -1110,16 +1194,24 @@ pub(super) async fn page(
     if id.is_some() && !admin.viewer.allows(model, "change") {
         return Ok(StatusCode::FORBIDDEN.into_response());
     }
-    let Ok(data) = to_bytes(body, 2_621_440).await else {
-        return Ok(StatusCode::PAYLOAD_TOO_LARGE.into_response());
+    let (mut parsed, uploaded) = if model.key == "django_summernote.attachment" {
+        match attachment_form(admin, body).await {
+            Ok(values) => values,
+            Err(response) => return Ok(*response),
+        }
+    } else {
+        let Ok(data) = to_bytes(body, 2_621_440).await else {
+            return Ok(StatusCode::PAYLOAD_TOO_LARGE.into_response());
+        };
+        let mut parsed = Values::new();
+        for (name, value) in url::form_urlencoded::parse(&data) {
+            parsed
+                .entry(name.into_owned())
+                .or_default()
+                .push(value.into_owned());
+        }
+        (parsed, None)
     };
-    let mut parsed = Values::new();
-    for (name, value) in url::form_urlencoded::parse(&data) {
-        parsed
-            .entry(name.into_owned())
-            .or_default()
-            .push(value.into_owned());
-    }
     let Some(origin) = admin.origin() else {
         return Ok(StatusCode::BAD_REQUEST.into_response());
     };
@@ -1133,9 +1225,80 @@ pub(super) async fn page(
     ) {
         return Ok(login::csrf_failure());
     }
+    let mut staged = None;
+    if let Some((name, bytes)) = uploaded {
+        let (stored, path) = crate::summernote::write_attachment(&name, None, &bytes)
+            .await
+            .map_err(|_| ApiError::Database)?;
+        staged = Some(path);
+        parsed.insert("file".to_owned(), vec![stored]);
+        if raw(&parsed, "name").is_empty() {
+            parsed.insert("name".to_owned(), vec![name]);
+        }
+    } else if model.key == "django_summernote.attachment"
+        && let Some(path) = loaded["file"].as_str()
+    {
+        parsed.insert("file".to_owned(), vec![path.to_owned()]);
+        if raw(&parsed, "name").is_empty() {
+            parsed.insert("name".to_owned(), vec![path.to_owned()]);
+        }
+    }
     let mut errors = Errors::new();
-    if let Some(response) = save(admin, model, id, &loaded, &parsed, &mut errors).await? {
+    let saved = save(admin, model, id, &loaded, &parsed, &mut errors).await;
+    if !matches!(&saved, Ok(Some(_)))
+        && let Some(path) = staged
+    {
+        let _ = tokio::fs::remove_file(path).await;
+    }
+    if let Some(response) = saved? {
         return Ok(response);
     }
     render_form(admin, model, id, &loaded, Some(&parsed), &errors).await
+}
+
+type AttachmentForm = (Values, Option<(String, Bytes)>);
+
+async fn attachment_form(
+    admin: &AdminRequest<'_>,
+    body: Body,
+) -> Result<AttachmentForm, Box<Response>> {
+    let mut request = Request::new(body);
+    *request.headers_mut() = admin.headers.clone();
+    let mut multipart = Multipart::from_request(request, &())
+        .await
+        .map_err(|error| Box::new(error.into_response()))?;
+    let mut values = Values::new();
+    let mut uploaded = None;
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|error| Box::new(error.into_response()))?
+    {
+        let key = field.name().unwrap_or_default().to_owned();
+        if key == "file" {
+            let name = field
+                .file_name()
+                .unwrap_or_default()
+                .rsplit(['/', '\\'])
+                .next()
+                .unwrap_or_default()
+                .chars()
+                .take(255)
+                .collect::<String>();
+            if !name.is_empty() {
+                let bytes = field
+                    .bytes()
+                    .await
+                    .map_err(|error| Box::new(error.into_response()))?;
+                uploaded = Some((name, bytes));
+            }
+        } else {
+            let value = field
+                .text()
+                .await
+                .map_err(|error| Box::new(error.into_response()))?;
+            values.entry(key).or_default().push(value);
+        }
+    }
+    Ok((values, uploaded))
 }

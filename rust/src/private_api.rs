@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use axum::{
     Json,
     body::to_bytes,
-    extract::{Request, State},
+    extract::{FromRequest, Multipart, Request, State},
     http::{HeaderMap, Method, StatusCode, header},
     response::{IntoResponse, Response},
 };
@@ -141,34 +141,9 @@ impl Service {
             };
             return self.error(StatusCode::UNAUTHORIZED, reason);
         }
-        let (parts, body) = request.into_parts();
-        let content_type = parts
-            .headers
-            .get(header::CONTENT_TYPE)
-            .and_then(|value| value.to_str().ok())
-            .unwrap_or_default();
-        let data = match to_bytes(body, 2 * 1024 * 1024).await {
-            Ok(bytes) if bytes.is_empty() => json!({}),
-            Ok(bytes) if content_type.split(';').next() == Some("application/json") => {
-                match serde_json::from_slice(&bytes) {
-                    Ok(data) => data,
-                    Err(error) => {
-                        return self.error(
-                            StatusCode::BAD_REQUEST,
-                            &format!("JSON parse error - {error}"),
-                        );
-                    }
-                }
-            }
-            Ok(_) => {
-                return self.error(
-                    StatusCode::UNSUPPORTED_MEDIA_TYPE,
-                    &format!("Unsupported media type \"{content_type}\" in request."),
-                );
-            }
-            Err(_) => {
-                return self.error(StatusCode::PAYLOAD_TOO_LARGE, "Request body is too large.");
-            }
+        let data = match self.parse(request).await {
+            Ok(data) => data,
+            Err(response) => return *response,
         };
         let result = match self {
             Self::Forum => self.forum(state, data).await,
@@ -180,6 +155,56 @@ impl Service {
             Err(PrivateError::Database) => {
                 self.error(StatusCode::INTERNAL_SERVER_ERROR, "Internal server error.")
             }
+        }
+    }
+
+    async fn parse(self, request: Request) -> Result<Value, Box<Response>> {
+        let content_type = request
+            .headers()
+            .get(header::CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or_default()
+            .to_owned();
+        let kind = content_type.split(';').next().unwrap_or_default().trim();
+        let mut fields = serde_json::Map::new();
+        if kind == "multipart/form-data" {
+            let error =
+                || Box::new(self.error(StatusCode::BAD_REQUEST, "Multipart form parse error."));
+            let mut multipart = Multipart::from_request(request, &())
+                .await
+                .map_err(|_| error())?;
+            while let Some(field) = multipart.next_field().await.map_err(|_| error())? {
+                let key = field.name().unwrap_or_default().to_owned();
+                let value = field.text().await.map_err(|_| error())?;
+                fields.insert(key, json!(value));
+            }
+            return Ok(Value::Object(fields));
+        }
+        let bytes = to_bytes(request.into_body(), 2 * 1024 * 1024)
+            .await
+            .map_err(|_| {
+                Box::new(self.error(StatusCode::PAYLOAD_TOO_LARGE, "Request body is too large."))
+            })?;
+        if bytes.is_empty() {
+            return Ok(Value::Object(fields));
+        }
+        match kind {
+            "application/json" => serde_json::from_slice(&bytes).map_err(|error| {
+                Box::new(self.error(
+                    StatusCode::BAD_REQUEST,
+                    &format!("JSON parse error - {error}"),
+                ))
+            }),
+            "application/x-www-form-urlencoded" => {
+                for (key, value) in url::form_urlencoded::parse(&bytes) {
+                    fields.insert(key.into_owned(), json!(value));
+                }
+                Ok(Value::Object(fields))
+            }
+            _ => Err(Box::new(self.error(
+                StatusCode::UNSUPPORTED_MEDIA_TYPE,
+                &format!("Unsupported media type \"{content_type}\" in request."),
+            ))),
         }
     }
 
@@ -297,4 +322,13 @@ pub(crate) async fn forum(State(state): State<AppState>, request: Request) -> Re
 
 pub(crate) async fn mittab(State(state): State<AppState>, request: Request) -> Response {
     Service::Mittab.handle(state, request).await
+}
+
+pub(crate) fn negotiation_failure(path: &str, status: StatusCode, detail: &str) -> Response {
+    let service = if path == "/api/private/forum-profiles/" {
+        Service::Forum
+    } else {
+        Service::Mittab
+    };
+    service.error(status, detail)
 }

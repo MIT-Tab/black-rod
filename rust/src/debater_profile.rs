@@ -80,7 +80,7 @@ const TEAMS: &str = "
            CAST((SELECT SUM(b.points) FROM core_toty b WHERE b.team_id = t.id) AS DOUBLE PRECISION) AS points
     FROM core_team t JOIN core_team_debaters td ON td.team_id = t.id
     WHERE NOT t.synthetic AND td.debater_id = $1
-    ORDER BY tournament_count DESC, COALESCE((SELECT SUM(b.points) FROM core_toty b WHERE b.team_id = t.id), 0) DESC, t.id
+    ORDER BY tournament_count DESC, COALESCE((SELECT SUM(b.points) FROM core_toty b WHERE b.team_id = t.id), 0) DESC, {tie_breaker}
 ";
 const MARKER_NAMES: [&str; 6] = ["one", "two", "three", "four", "five", "six"];
 
@@ -573,7 +573,12 @@ async fn load(
         Vec::new()
     };
     let events = events(&mut tx, id).await?;
-    let participation = sqlx::query(TEAMS).bind(id).fetch_all(&mut *tx).await?;
+    let tie_breaker = if origin.is_empty() { "td.id" } else { "t.id" };
+    let sql = TEAMS.replace("{tie_breaker}", tie_breaker);
+    let participation = sqlx::query(AssertSqlSafe(sql))
+        .bind(id)
+        .fetch_all(&mut *tx)
+        .await?;
     let teams_ids = participation
         .iter()
         .map(|row| row.try_get("id"))
@@ -625,7 +630,7 @@ async fn load(
         teams_payload.push(json!({
             "team": Teams::serialize(team, row.try_get("name")?, people, origin)?,
             "tournament_count": row.try_get::<i64, _>("tournament_count")?,
-            "toty_points": row.try_get::<Option<f64>, _>("points")?.unwrap_or(0.0),
+            "toty_points": row.try_get::<Option<f64>, _>("points")?.map_or_else(|| json!(0), |points| json!(points)),
         }));
     }
     let tournaments = sqlx::query_scalar::<_, i64>(

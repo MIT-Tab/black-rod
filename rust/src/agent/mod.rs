@@ -530,6 +530,13 @@ async fn view(
     ))
 }
 
+pub(crate) fn negotiation_failure(path: &str, status: StatusCode, detail: &str) -> Response {
+    Endpoint::parse(path).map_or_else(
+        || StatusCode::NOT_FOUND.into_response(),
+        |endpoint| endpoint.render(status, json!({"detail": detail})),
+    )
+}
+
 pub(crate) async fn endpoint(State(state): State<AppState>, request: Request) -> Response {
     let path = request.uri().path().to_owned();
     let Some(endpoint) = Endpoint::parse(&path) else {

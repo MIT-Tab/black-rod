@@ -522,7 +522,7 @@ pub(crate) async fn endpoint(State(state): State<AppState>, request: Request) ->
         if errors.is_empty() {
             return match save(&state.pool, &update, id, &user).await {
                 Ok(true) => {
-                    state.search.invalidate(&()).await;
+                    state.search.invalidate_all();
                     redirect(
                         &state,
                         &parts.headers,

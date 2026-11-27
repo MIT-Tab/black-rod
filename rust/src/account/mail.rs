@@ -27,6 +27,14 @@ pub(super) async fn send(
     subject: &str,
     body: String,
 ) -> Result<(), ApiError> {
+    send_with_subject(to, &format!("[{site}] {subject}"), body).await
+}
+
+pub(crate) async fn send_with_subject(
+    to: &str,
+    subject: &str,
+    body: String,
+) -> Result<(), ApiError> {
     let from =
         std::env::var("BLACK_ROD_FROM_EMAIL").unwrap_or_else(|_| "webmaster@localhost".to_owned());
     let address = |value: &str| -> Result<Mailbox, ApiError> {
@@ -35,7 +43,7 @@ pub(super) async fn send(
     let message = Message::builder()
         .from(address(&from)?)
         .to(address(to)?)
-        .subject(format!("[{site}] {subject}"))
+        .subject(subject)
         .body(body)
         .map_err(|_| ApiError::Serialization)?;
     let transport = TRANSPORT.as_ref().ok_or(ApiError::Serialization)?;

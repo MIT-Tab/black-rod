@@ -25,15 +25,34 @@ ROUTES = {
 }
 
 
+def merge_shape(target, source):
+    if "keys" in source:
+        keys = target.setdefault("keys", [])
+        cursor = 0
+        for key in source["keys"]:
+            if key in keys:
+                cursor = keys.index(key) + 1
+            else:
+                keys.insert(cursor, key)
+                cursor += 1
+        children = target.setdefault("children", {})
+        for key, child in source["children"].items():
+            merge_shape(children.setdefault(key, {}), child)
+    if "item" in source:
+        merge_shape(target.setdefault("item", {}), source["item"])
+
+
 def shape(value):
     if isinstance(value, dict):
         return {"keys": list(value), "children": {
             key: child for key, item in value.items() if (child := shape(item))
         }}
     if isinstance(value, list):
+        item_shape = {}
         for item in value:
             if child := shape(item):
-                return {"item": child}
+                merge_shape(item_shape, child)
+        return {"item": item_shape} if item_shape else None
     return None
 
 

@@ -8,12 +8,13 @@
                 <div class="card-body">
                     <h5 class="card-title">Search</h5>
                     <form action="" method="GET">
+                        {% if tag_filters %}{% include "autocomplete_media.html" %}{% endif %}
                         {% for field in fields %}
                             <div id="div_id_{{ field.name }}" class="form-group">
                                 <label for="id_{{ field.name }}" class="">{{ field.label }}</label>
                                 <div>
                                     {% if field.autocomplete %}
-                                        <select name="{{ field.name }}" id="id_{{ field.name }}" class="selectmultiple form-control" data-rust-tag-url="{{ field.autocomplete }}" multiple>
+                                        <select name="{{ field.name }}" id="id_{{ field.name }}" class="taggitselect2 form-control" data-autocomplete-light-language="en" data-autocomplete-light-url="{{ field.autocomplete }}" data-autocomplete-light-function="select2" data-tags="," multiple>
                                             {% for value, label in field.options %}<option value="{{ value }}" selected>{{ label }}</option>{% endfor %}
                                         </select>
                                     {% elif field.options %}
@@ -62,7 +63,7 @@
                                 <thead>
                                     <tr>
                                         {% for field in columns %}
-                                            <th class="{{ field.class }}">
+                                            <th{% if field.url %} class="{{ field.class }}"{% endif %}>
                                                 {% if field.url %}<a href="{{ field.url }}">{{ field.label }}{% if field.desc %} <span aria-label="Sorted descending">▾</span>{% elif field.asc %} <span aria-label="Sorted ascending">▴</span>{% endif %}</a>{% else %}{{ field.label }}{% endif %}
                                             </th>
                                         {% endfor %}

@@ -591,6 +591,7 @@
                         "tournament",
                         "result_id",
                         "debater",
+                        "qualification",
                         "raw_points"
                       ],
                       "children": {
@@ -611,6 +612,13 @@
                             "school_id",
                             "school_name",
                             "url"
+                          ],
+                          "children": {}
+                        },
+                        "qualification": {
+                          "keys": [
+                            "type",
+                            "label"
                           ],
                           "children": {}
                         }
@@ -825,6 +833,7 @@
                         "tournament",
                         "result_id",
                         "debater",
+                        "qualification",
                         "raw_points"
                       ],
                       "children": {
@@ -845,6 +854,13 @@
                             "school_id",
                             "school_name",
                             "url"
+                          ],
+                          "children": {}
+                        },
+                        "qualification": {
+                          "keys": [
+                            "type",
+                            "label"
                           ],
                           "children": {}
                         }
@@ -1065,6 +1081,8 @@
                         "school_id",
                         "school_name",
                         "school",
+                        "regions",
+                        "region_display",
                         "url",
                         "api_url"
                       ],
@@ -1281,6 +1299,8 @@
                               "school_id",
                               "school_name",
                               "school",
+                              "regions",
+                              "region_display",
                               "url",
                               "api_url"
                             ],
@@ -1335,6 +1355,8 @@
                                     "school_id",
                                     "school_name",
                                     "school",
+                                    "regions",
+                                    "region_display",
                                     "url",
                                     "api_url"
                                   ],
@@ -2009,6 +2031,8 @@
                             "school_id",
                             "school_name",
                             "school",
+                            "regions",
+                            "region_display",
                             "url",
                             "api_url"
                           ],
@@ -2175,6 +2199,8 @@
                       "school_id",
                       "school_name",
                       "school",
+                      "regions",
+                      "region_display",
                       "url",
                       "api_url"
                     ],

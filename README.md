@@ -52,10 +52,14 @@ python3 manage.py -d loaddata dev_fixtures
 python manage.py makesuperuser
 ```
 
-##### Simultaneously run Webpack and the Python server
+##### Run the Rust server with Webpack
+Install Rust 1.94.0 with `rustup toolchain install 1.94.0`, then start the development server on port 8000. It opens the existing Black Rod database without running migrations.
+
 ```bash
 ./bin/dev-server
 ```
+
+See the [Rust runtime guide](rust/README.md) for PostgreSQL configuration, the Django reference, parity checks, and benchmarks.
 
 ##### Agent implementation workflow
 

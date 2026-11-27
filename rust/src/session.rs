@@ -223,6 +223,10 @@ impl StoredSession {
         serde_json::from_str(self.values.get(key)?.get()).ok()
     }
 
+    pub(crate) fn remove(&mut self, key: &str) {
+        self.values.remove(key);
+    }
+
     pub(crate) fn set_string(&mut self, key: &str, value: &str) -> Result<(), sqlx::Error> {
         let value = serde_json::value::to_raw_value(value)
             .map_err(|error| sqlx::Error::Protocol(error.to_string()))?;

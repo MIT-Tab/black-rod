@@ -141,17 +141,18 @@ pub(crate) async fn videos(
             };
             participants.insert(role.into(), person.clone());
         }
-        let tags = sqlx::query_scalar::<_, String>(
+        let order = if origin.is_empty() { "ti.id" } else { "t.id" };
+        let query = format!(
             "
             SELECT t.name FROM taggit_tag t JOIN taggit_taggeditem ti ON ti.tag_id = t.id
             JOIN django_content_type ct ON ct.id = ti.content_type_id
             WHERE ct.app_label = 'core' AND ct.model = 'video' AND ti.object_id = $1
-            ORDER BY ti.id
-        ",
-        )
-        .bind(id)
-        .fetch_all(&mut *conn)
-        .await?;
+            ORDER BY {order}"
+        );
+        let tags = sqlx::query_scalar::<_, String>(AssertSqlSafe(query))
+            .bind(id)
+            .fetch_all(&mut *conn)
+            .await?;
         videos.push(json!({
             "id": id, "round": round_label, "round_code": round,
             "link": row.try_get::<&str, _>("link")?,

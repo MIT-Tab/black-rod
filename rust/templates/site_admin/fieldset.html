@@ -17,7 +17,7 @@
                                     {% if row.readonly %}<div class="readonly">{% if row.preformatted %}<pre>{{ row.read_value }}</pre>{% elif row.read_link %}<a href="{{ row.read_link }}">{{ row.read_value }}</a>{% else %}{{ row.read_value }}{% endif %}</div>
                                     {% elif not row.checkbox %}{% include "site_admin/widget.html" %}{% endif %}
                                 </div>
-                                {% if row.help %}<div class="help"{% if not row.readonly and not row.radio and not row.password_status %} id="id_{{ row.name }}{% if row.datetime %}_0{% endif %}_helptext"{% endif %}><div>{{ row.help|safe }}</div></div>{% endif %}
+                                {% if row.help %}<div class="help"{% if not row.readonly and not row.radio and not row.multicheck and not row.password_status %} id="id_{{ row.name }}{% if row.datetime %}_0{% endif %}_helptext"{% endif %}><div>{{ row.help|safe }}</div></div>{% endif %}
                             </div>
                         {% endfor %}
                         {% if line|length != 1 %}</div>{% endif %}

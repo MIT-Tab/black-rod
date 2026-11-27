@@ -4,7 +4,7 @@ use serde_json::{Map, Value, json};
 use sqlx::{AnyConnection, Row};
 
 use super::{LABELS, bonus, rank, ranked, year};
-use crate::{ApiError, agent::journal::TABLES, points};
+use crate::{ApiError, agent::journal::TABLES, delete_relations, points};
 
 const DEBATERS: &str = "
 WITH teams AS (
@@ -86,6 +86,15 @@ pub(super) async fn recompute(
     season: &str,
     current: bool,
 ) -> Result<(), ApiError> {
+    recompute_for(conn, season, current, None).await
+}
+
+async fn recompute_for(
+    conn: &mut AnyConnection,
+    season: &str,
+    current: bool,
+    selected_people: Option<&BTreeSet<i64>>,
+) -> Result<(), ApiError> {
     let online = matches!(year(season), Some(2020 | 2021));
     let mut results = BTreeMap::<i64, Vec<sqlx::any::AnyRow>>::new();
     for row in sqlx::query(RESULTS)
@@ -108,6 +117,7 @@ pub(super) async fn recompute(
         manual.entry(row.0).or_default().push((row.1, row.2));
     }
     let mut cleared_schools = BTreeSet::new();
+    let mut selected_schools = BTreeSet::new();
     let people = sqlx::query(DEBATERS)
         .bind(season)
         .fetch_all(&mut *conn)
@@ -115,10 +125,17 @@ pub(super) async fn recompute(
     for row in people {
         let id: i64 = row.try_get("id")?;
         let included = row.try_get::<i64, _>("included")? == 1;
-        let recalc = row.try_get::<i64, _>("recalc")? == 1;
-        let recalc_online = row.try_get::<i64, _>("recalc_online")? == 1;
+        let recalc = match selected_people {
+            Some(ids) => ids.contains(&id),
+            None => row.try_get::<i64, _>("recalc")? == 1,
+        };
+        let recalc_online =
+            selected_people.is_none() && row.try_get::<i64, _>("recalc_online")? == 1;
         if !recalc && !recalc_online {
             continue;
+        }
+        if selected_people.is_some() {
+            selected_schools.insert(row.try_get::<Option<i64>, _>("school")?);
         }
         let rounds = results.get(&id).map_or(&[][..], Vec::as_slice);
         if recalc
@@ -277,6 +294,12 @@ pub(super) async fn recompute(
             }
         }
     }
+    if selected_people.is_some() {
+        for school in selected_schools.into_iter().flatten() {
+            refresh_school(conn, season, online, school).await?;
+        }
+        return Ok(());
+    }
     if online {
         sqlx::query("DELETE FROM core_coty WHERE season=$1")
             .bind(season)
@@ -311,4 +334,100 @@ pub(super) async fn recompute(
     }
     rank(conn, "core_coty", season).await?;
     rank(conn, "core_onlinequal", season).await
+}
+
+async fn refresh_school(
+    conn: &mut AnyConnection,
+    season: &str,
+    online: bool,
+    school: i64,
+) -> Result<(), ApiError> {
+    let included = sqlx::query_scalar::<_, i64>(
+        "SELECT CAST(CASE WHEN included_in_oty THEN 1 ELSE 0 END AS BIGINT)
+         FROM core_school WHERE id=$1",
+    )
+    .bind(school)
+    .fetch_one(&mut *conn)
+    .await?
+        == 1;
+    if online || !included {
+        sqlx::query("DELETE FROM core_coty WHERE season=$1 AND school_id=$2")
+            .bind(season)
+            .bind(school)
+            .execute(conn)
+            .await?;
+        return Ok(());
+    }
+    let points = sqlx::query_scalar::<_, f64>(
+        "SELECT CAST(p.points AS DOUBLE PRECISION) FROM core_qualpoints p
+         JOIN core_debater d ON d.id=p.debater_id WHERE p.season=$1 AND d.school_id=$2",
+    )
+    .bind(season)
+    .bind(school)
+    .fetch_all(&mut *conn)
+    .await?;
+    let people = sqlx::query_as::<_, (i64, i64)>(
+        "SELECT CAST(q.debater_id AS BIGINT),CAST(q.qual_type AS BIGINT) FROM core_qual q
+         JOIN core_debater d ON d.id=q.debater_id WHERE q.season=$1 AND d.school_id=$2",
+    )
+    .bind(season)
+    .bind(school)
+    .fetch_all(&mut *conn)
+    .await?;
+    let qualified = people
+        .into_iter()
+        .filter_map(|(debater, kind)| bonus(kind, season).then_some(debater))
+        .collect::<BTreeSet<_>>();
+    let total =
+        points.into_iter().map(|value| value.min(60.0)).sum::<f64>() + 6.0 * qualified.len() as f64;
+    sqlx::query(
+        "INSERT INTO core_coty (season,school_id,points,place,tied) VALUES ($1,$2,$3,-1,FALSE)
+         ON CONFLICT (season,school_id) DO UPDATE SET points=excluded.points",
+    )
+    .bind(season)
+    .bind(school)
+    .bind(total)
+    .execute(conn)
+    .await?;
+    Ok(())
+}
+
+pub(crate) async fn redo_nine_point_rankings(
+    conn: &mut AnyConnection,
+    season: &str,
+) -> Result<(), ApiError> {
+    let teams = sqlx::query_as::<_, (i64, String, i64)>(
+        "SELECT CAST(t.id AS BIGINT), t.name,
+            CAST(CASE WHEN EXISTS(SELECT 1 FROM core_teamresult r WHERE r.team_id=t.id)
+                 THEN 1 ELSE 0 END AS BIGINT)
+         FROM core_team t JOIN core_team_debaters m ON m.team_id=t.id
+         WHERE EXISTS(SELECT 1 FROM core_qualpoints p WHERE p.debater_id=m.debater_id
+            AND p.season=$1 AND p.points=9)
+         GROUP BY t.id,t.name ORDER BY MIN(m.id)",
+    )
+    .bind(season)
+    .fetch_all(&mut *conn)
+    .await?;
+    let mut people = BTreeSet::new();
+    for (id, name, has_results) in teams {
+        println!("Updating {name}");
+        if has_results == 0 {
+            delete_relations::delete(conn, "core_team", id)
+                .await
+                .map_err(|_| ApiError::Constraint)?;
+        } else {
+            people.extend(
+                sqlx::query_scalar::<_, i64>(
+                    "SELECT CAST(debater_id AS BIGINT) FROM core_team_debaters WHERE team_id=$1",
+                )
+                .bind(id)
+                .fetch_all(&mut *conn)
+                .await?,
+            );
+        }
+    }
+    if people.is_empty() {
+        return Ok(());
+    }
+    recompute_for(conn, season, true, Some(&people)).await
 }

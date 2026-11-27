@@ -7,10 +7,10 @@
     </div>
 {% else %}
     <div id="div_id_{{ field_name }}" class="form-group">
-        <label for="id_{{ field_name }}">{{ label }}</label>
+        <label for="id_{{ field_name }}" class="">{{ label }}</label>
         <div>
             {% if field_name == "schools" %}
-                <select name="schools" id="id_schools" class="modelselect2multiple form-control" multiple data-rust-select-url="/core/schools/autocomplete" data-rust-select-placeholder="All schools">
+                <select name="schools" id="id_schools" class="modelselect2multiple form-control" multiple data-autocomplete-light-language="en" data-autocomplete-light-url="/core/schools/autocomplete" data-autocomplete-light-function="select2" data-width="100%" data-placeholder="All schools">
                     {% for id, name in filters.schools %}<option value="{{ id }}" selected>{{ name }}</option>{% endfor %}
                 </select>
             {% elif field_name == "min_tournaments" %}

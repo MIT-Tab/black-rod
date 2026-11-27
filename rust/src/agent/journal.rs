@@ -94,6 +94,47 @@ impl Table {
         Ok(Value::Object(fields))
     }
 
+    pub(crate) async fn rows(
+        &self,
+        conn: &mut AnyConnection,
+        ordering: &[(String, bool)],
+    ) -> Result<Vec<Map<String, Value>>, ApiError> {
+        let columns = self
+            .fields
+            .values()
+            .map(|field| format!("CAST(\"{}\" AS TEXT) AS \"{}\"", field.column, field.column))
+            .collect::<Vec<_>>()
+            .join(",");
+        let order = ordering
+            .iter()
+            .map(|(name, desc)| format!("t.\"{name}\"{}", if *desc { " DESC" } else { "" }))
+            .collect::<Vec<_>>()
+            .join(",");
+        let order = if order.is_empty() {
+            String::new()
+        } else {
+            format!(" ORDER BY {order}")
+        };
+        let statement = format!("SELECT {columns} FROM \"{}\" t{order}", self.table);
+        sqlx::query(AssertSqlSafe(statement))
+            .fetch_all(conn)
+            .await?
+            .iter()
+            .map(|row| {
+                self.fields
+                    .iter()
+                    .map(|(name, field)| {
+                        let value = row
+                            .try_get::<Option<&str>, _>(field.column.as_str())?
+                            .map_or(Value::Null, |raw| field.convert(raw));
+                        Ok((name.clone(), value))
+                    })
+                    .collect::<Result<Map<_, _>, sqlx::Error>>()
+                    .map_err(ApiError::from)
+            })
+            .collect()
+    }
+
     fn expression(field: &Field, index: usize, sqlite: bool) -> String {
         let marker = format!("${index}");
         if sqlite {

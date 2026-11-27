@@ -54,6 +54,7 @@ jobs:
           .agents/skills/black-rod-task/scripts/br venv/bin/python rust/tools/export_relations.py
           .agents/skills/black-rod-task/scripts/br venv/bin/python rust/tools/export_agent_schema.py
           .agents/skills/black-rod-task/scripts/br venv/bin/python rust/tools/export_admin_schema.py
+          .agents/skills/black-rod-task/scripts/br venv/bin/python rust/tools/export_fixture_schema.py
           git diff --exit-code -- rust/schema/
       - name: Compare HTTP responses on SQLite
         run: .agents/skills/black-rod-task/scripts/br venv/bin/python rust/tools/compare.py

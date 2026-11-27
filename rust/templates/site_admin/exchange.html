@@ -1,7 +1,7 @@
 {% extends "site_admin/base_site.html" %}
 {% block bodyclass %}{{ super() }} {{ app_label }}-{{ model_name }} change-form{% endblock %}
 {% block extrahead %}{{ super() }}{% if importing %}
-{% for asset in media %}<script src="/static/{{ asset }}"></script>{% endfor %}
+{% for asset in media %}<script src="/static/{{ asset|vendor_asset }}"></script>{% endfor %}
 {% endif %}{% endblock %}
 {% block extrastyle %}{{ super() }}<link rel="stylesheet" type="text/css" href="/static/admin/css/forms.css">
 {% if importing %}<link rel="stylesheet" type="text/css" href="/static/import_export/import.css">{% endif %}

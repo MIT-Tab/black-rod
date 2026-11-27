@@ -24,7 +24,7 @@ pub(crate) use emails::endpoint as emails;
 pub(crate) use entrance::{email_valid, endpoint as entrance, normal_username};
 pub(crate) use passwords::change;
 pub(crate) use reauthentication::endpoint as reauthenticate;
-pub(crate) use reset::page as reset;
+pub(crate) use reset::{legacy::page as legacy_passwords, page as reset};
 
 type Fields = HashMap<String, String>;
 type Errors = HashMap<&'static str, Vec<String>>;
@@ -107,6 +107,10 @@ pub(crate) fn render(
         flash::clear(&mut response, visit.secure());
     }
     Ok(response)
+}
+
+pub(crate) async fn unavailable_login_code() -> Response {
+    redirect("/accounts/login/")
 }
 
 fn redirect(url: &str) -> Response {

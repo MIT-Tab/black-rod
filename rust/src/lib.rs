@@ -94,6 +94,7 @@ pub struct AppState {
     debater_tab_cards: bool,
     debater_partner_chart: bool,
     public_origin: Option<String>,
+    allowed_hosts: Option<Arc<[String]>>,
     guide_modified: Option<String>,
     public_json: Cache<(String, Endpoint), cache::CachedBody>,
     memcached: Option<cache::Memcached>,
@@ -107,7 +108,7 @@ pub struct AppState {
     home: Cache<i32, Arc<standings::Boards>>,
     stats: Cache<(), Arc<serde_json::Value>>,
     recent_results: Cache<(), Arc<String>>,
-    search: Cache<(), Arc<search::SearchIndex>>,
+    search: Cache<u32, Arc<search::SearchIndex>>,
     partnership_stats: Arc<partnership::stats::Cache>,
     claim_limits: claims::Limits,
     account_limits: account::limits::Limits,
@@ -137,6 +138,7 @@ impl AppState {
             debater_tab_cards: false,
             debater_partner_chart: false,
             public_origin: None,
+            allowed_hosts: None,
             guide_modified,
             snapshots: Cache::builder()
                 .time_to_live(lifetime)
@@ -256,6 +258,44 @@ impl AppState {
         Ok(self)
     }
 
+    pub fn with_allowed_hosts(mut self, hosts: &str) -> Self {
+        self.allowed_hosts = Some(
+            hosts
+                .split(',')
+                .map(str::trim)
+                .filter(|host| !host.is_empty())
+                .map(str::to_ascii_lowercase)
+                .collect::<Arc<[_]>>(),
+        );
+        self
+    }
+
+    fn host_allowed(&self, headers: &HeaderMap) -> bool {
+        let Some(allowed) = &self.allowed_hosts else {
+            return true;
+        };
+        let Some(host) = headers
+            .get(header::HOST)
+            .and_then(|value| value.to_str().ok())
+        else {
+            return false;
+        };
+        if host.contains('@') {
+            return false;
+        }
+        let Ok(authority) = host.parse::<axum::http::uri::Authority>() else {
+            return false;
+        };
+        let host = authority.host().trim_end_matches('.').to_ascii_lowercase();
+        allowed.iter().any(|rule| {
+            rule == "*"
+                || *rule == host
+                || rule
+                    .strip_prefix('.')
+                    .is_some_and(|domain| host == domain || host.ends_with(rule))
+        })
+    }
+
     fn origin(&self, headers: &HeaderMap) -> Option<String> {
         if self.public_origin.is_some() {
             return self.public_origin.clone();
@@ -343,7 +383,7 @@ fn local_api(state: AppState) -> Router {
 }
 
 pub fn app(state: AppState) -> Router {
-    api_routes()
+    let router = api_routes()
         .route("/api/standings", get(append_slash))
         .route("/api/standings/replay", get(append_slash))
         .route("/api/standings/through-date", get(append_slash))
@@ -394,6 +434,11 @@ pub fn app(state: AppState) -> Router {
             "/accounts/login/",
             get(account::entrance).post(account::entrance),
         )
+        .route(
+            "/accounts/login/code/confirm/",
+            axum::routing::any(account::unavailable_login_code),
+        )
+        .route("/accounts/login/code/confirm", get(append_slash))
         .route("/accounts/login", get(append_slash))
         .route(
             "/accounts/signup/",
@@ -463,6 +508,26 @@ pub fn app(state: AppState) -> Router {
             "/accounts/password/reset/key/{encoded}/",
             get(account::reset).post(account::reset),
         )
+        .route(
+            "/auth/password_change/",
+            get(account::legacy_passwords).post(account::legacy_passwords),
+        )
+        .route(
+            "/auth/password_change/done/",
+            get(account::legacy_passwords),
+        )
+        .route(
+            "/auth/password_reset/",
+            get(account::legacy_passwords).post(account::legacy_passwords),
+        )
+        .route("/auth/password_reset/done/", get(account::legacy_passwords))
+        .route("/auth/reset/done/", get(account::legacy_passwords))
+        .route(
+            "/auth/reset/{uid}/{token}/",
+            get(account::legacy_passwords).post(account::legacy_passwords),
+        )
+        .route("/auth/password_change", get(append_slash))
+        .route("/auth/password_reset", get(append_slash))
         .route("/auth/login", get(append_slash))
         .route("/auth/logout/", axum::routing::post(login::logout))
         .route("/auth/logout", get(append_slash))
@@ -913,8 +978,17 @@ pub fn app(state: AppState) -> Router {
             state.clone(),
             api_protocol,
         ))
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            validate_host,
+        ))
         .layer(axum::middleware::from_fn(security_headers))
-        .with_state(state)
+        .with_state(state);
+    if sentry::Hub::current().client().is_some() {
+        router.layer(axum::middleware::from_fn(report_server_errors))
+    } else {
+        router
+    }
 }
 
 fn public_api_path(path: &str) -> bool {
@@ -975,14 +1049,6 @@ async fn api_protocol(
             request.headers().clone(),
         )
     });
-    if private {
-        let result = next.run(request).await;
-        return if let Some((uri, method, headers)) = view {
-            drf::response(&state, &uri, &method, &headers, result).await
-        } else {
-            result
-        };
-    }
     let mut indent = 0;
     let mut suitable = false;
     for media in request
@@ -1005,22 +1071,37 @@ async fn api_protocol(
                 .unwrap_or(indent);
         }
     }
-    let response = if format
+    let error = if format
         .as_deref()
         .is_some_and(|format| !matches!(format, "" | "json" | "api"))
     {
-        negotiation_error(StatusCode::NOT_FOUND, "Not found.")
+        Some((StatusCode::NOT_FOUND, "Not found."))
     } else if (!suitable || (format.as_deref() == Some("api") && !browse))
         && request.headers().contains_key(header::ACCEPT)
     {
-        negotiation_error(
+        Some((
             StatusCode::NOT_ACCEPTABLE,
             "Could not satisfy the request Accept header.",
+        ))
+    } else {
+        None
+    };
+    let response = if let Some((status, detail)) = error {
+        if private {
+            if path.starts_with("/api/agent/v1/") {
+                agent::negotiation_failure(path, status, detail)
+            } else {
+                private_api::negotiation_failure(path, status, detail)
+            }
+        } else {
+            negotiation_error(status, detail)
+        }
+    } else if public
+        && !matches!(
+            *request.method(),
+            Method::GET | Method::HEAD | Method::OPTIONS
         )
-    } else if !matches!(
-        *request.method(),
-        Method::GET | Method::HEAD | Method::OPTIONS
-    ) {
+    {
         json_error(
             StatusCode::METHOD_NOT_ALLOWED,
             &format!("Method \"{}\" not allowed.", request.method()),
@@ -1066,6 +1147,37 @@ async fn api_protocol(
     }
     parts.headers.remove(header::CONTENT_LENGTH);
     Response::from_parts(parts, output.into())
+}
+
+async fn validate_host(
+    State(state): State<AppState>,
+    request: Request,
+    next: axum::middleware::Next,
+) -> Response {
+    if !state.host_allowed(request.headers()) {
+        let html = web::render("400.html", minijinja::context! {})
+            .unwrap_or_else(|_| "Bad request".to_owned());
+        return (StatusCode::BAD_REQUEST, axum::response::Html(html)).into_response();
+    }
+    next.run(request).await
+}
+
+async fn report_server_errors(request: Request, next: axum::middleware::Next) -> Response {
+    let route = request
+        .extensions()
+        .get::<axum::extract::MatchedPath>()
+        .cloned();
+    let response = next.run(request).await;
+    if response.status().is_server_error() {
+        let route = route
+            .as_ref()
+            .map_or("Unmatched route", |route| route.as_str());
+        sentry::capture_message(
+            &format!("HTTP {} in {route}", response.status().as_u16()),
+            sentry::Level::Error,
+        );
+    }
+    response
 }
 
 async fn security_headers(request: Request, next: axum::middleware::Next) -> Response {

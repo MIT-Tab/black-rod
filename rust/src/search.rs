@@ -211,6 +211,19 @@ impl SearchIndex {
     }
 }
 
+const GENERATION: &str = ":1:black-rod:search-index:generation";
+
+pub(crate) async fn reindex(state: &AppState) -> Result<usize, ApiError> {
+    let index = SearchIndex::load(&state.pool).await?;
+    if let Some(cache) = &state.memcached
+        && !cache.advance_counter(GENERATION, 0).await
+    {
+        return Err(ApiError::Serialization);
+    }
+    state.search.invalidate_all();
+    Ok(index.records.len())
+}
+
 pub(crate) async fn page(
     State(state): State<AppState>,
     OriginalUri(uri): OriginalUri,
@@ -238,9 +251,13 @@ pub(crate) async fn page(
     {
         Arc::new(SearchIndex::default())
     } else {
+        let generation = match &state.memcached {
+            Some(cache) => cache.read_counter(GENERATION).await.unwrap_or_default(),
+            None => 0,
+        };
         match state
             .search
-            .try_get_with((), async {
+            .try_get_with(generation, async {
                 SearchIndex::load(&state.pool).await.map(Arc::new)
             })
             .await

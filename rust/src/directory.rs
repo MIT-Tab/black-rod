@@ -443,10 +443,10 @@ impl Kind {
         match self {
             Self::Standing(_) | Self::Debaters => "x.id DESC",
             Self::Schools => "x.name",
-            Self::Tournaments => "x.date",
+            Self::Tournaments | Self::Videos => "x.id DESC",
             Self::Motions => "x.date_set DESC, x.id DESC",
             Self::Resources { .. } => "x.created_at DESC",
-            Self::Teams | Self::Videos | Self::Outreach { .. } => "x.id",
+            Self::Teams | Self::Outreach { .. } => "x.id",
         }
     }
 }
@@ -1541,6 +1541,7 @@ pub(crate) async fn page(
         warning => empty_random.then_some(if is_motion { "No motions match those filters." }
             else { "No results found, or you don't have access to any matching videos." }),
         motion_warning => is_motion,
+        tag_filters => is_media || matches!(kind, Kind::Resources { .. }),
         resource_rows => matches!(kind, Kind::Resources { .. }),
         comma_cells => matches!(kind, Kind::Resources { .. } | Kind::Outreach { .. }),
         striped => matches!(kind, Kind::Outreach { .. }),

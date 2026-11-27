@@ -112,7 +112,8 @@ def model_config(request, model, model_admin):
 
     def form_meta(obj, change):
         form = model_admin.get_form(request, obj, change=change)
-        media = model_admin.media + form().media
+        instance = form()
+        media = model_admin.media + instance.media
         inlines = []
         for formset, inline in model_admin.get_formsets_with_inlines(request, obj):
             prefix = formset.get_default_prefix()
@@ -139,7 +140,7 @@ def model_config(request, model, model_admin):
                                 "deleteText": "Remove"},
                 }),
             })
-        return {"widgets": widgets_for(form.base_fields), "inlines": inlines,
+        return {"widgets": widgets_for(instance.fields), "inlines": inlines,
                 "media": {"css": [(section, path) for section, paths in sorted(media._css.items()) for path in paths], "js": media._js}}
 
     def display_filter(entry):

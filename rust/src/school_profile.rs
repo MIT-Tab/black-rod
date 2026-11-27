@@ -131,7 +131,7 @@ async fn load(
         .collect::<Result<Vec<_>, _>>()?;
     let history = history(&state.pool, &school, origin, max).await?;
     let members = members(&state.pool, &school, origin, season).await?;
-    let breakdown = coty_breakdowns(&state.pool, season, origin, Some(id))
+    let breakdown = coty_breakdowns(&state.pool, season, origin, Some(id), !path.is_empty())
         .await?
         .remove(&id)
         .unwrap_or_default();

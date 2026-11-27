@@ -35,6 +35,7 @@ class Case:
     accept: str = "application/json"
     body: str | None = None
     authorization: str | None = None
+    content_type: str = "application/json"
 
 
 @dataclass
@@ -99,6 +100,7 @@ def servers(database, cold=False):
     django_env = {
         "PYTHONPATH": f"{Path(__file__).resolve().parent}{os.pathsep}{os.environ['PYTHONPATH']}",
         "BLACK_ROD_PARITY_CACHE_MODE": "cold" if cold else "warm",
+        "BLACK_ROD_PARITY_MEDIA_ROOT": str(Path(os.environ["BR_STATE"]) / "media"),
         "SECRET_KEY": "disposable-local-parity-key",
         "LIVE_MITTAB_DIRECTORY_URL": os.environ.get("LIVE_MITTAB_DIRECTORY_URL", "http://127.0.0.1:1"),
         "MITTAB_PRIVATE_API_TOKENS": "fixture-one, fixture-two",
@@ -117,6 +119,8 @@ def servers(database, cold=False):
         "MITTAB_PRIVATE_API_TOKENS": django_env["MITTAB_PRIVATE_API_TOKENS"],
         "FORUM_PROFILE_API_TOKEN": django_env["FORUM_PROFILE_API_TOKEN"],
     }
+    if os.environ.get("BLACK_ROD_PARITY_PRODUCTION_ERRORS") == "1":
+        rust_env["DEBUG"] = "0"
     memcached = os.environ.get("BLACK_ROD_PARITY_MEMCACHED_ADDR")
     if memcached and not cold:
         host, _, port = memcached.rpartition(":")
@@ -137,7 +141,7 @@ def request(server, case, connection=None):
     try:
         headers = {"Host": HOST, "Accept": case.accept}
         if case.body is not None:
-            headers["Content-Type"] = "application/json"
+            headers["Content-Type"] = case.content_type
         if case.authorization is not None:
             headers["Authorization"] = case.authorization
         connection.request(case.method, case.path, body=case.body, headers=headers)
@@ -326,6 +330,18 @@ def fixture_cases(django):
              authorization="Bearer fixture-forum"),
         Case("/api/private/forum-profiles/", "POST", body='{"wordpress_user_id":true}',
              authorization="Bearer fixture-forum"),
+        Case("/api/private/forum-profiles/", "OPTIONS"),
+        Case("/api/private/debater-emails/", "OPTIONS"),
+        Case("/api/private/forum-profiles/", accept="application/xml"),
+        Case("/api/private/forum-profiles/?format=nope"),
+        Case("/api/private/forum-profiles/", "POST", body="wordpress_user_id=1",
+             authorization="Bearer fixture-forum", content_type="application/x-www-form-urlencoded"),
+        Case("/api/private/debater-emails/", "POST", body="debater_ids=1",
+             authorization="Bearer fixture-one", content_type="application/x-www-form-urlencoded"),
+        Case("/api/private/forum-profiles/", "POST", body="other=value",
+             authorization="Bearer fixture-forum", content_type="text/plain"),
+        Case("/api/agent/v1/", accept="application/xml"),
+        Case("/api/agent/v1/?format=nope"),
         Case("/api/standings/replay/", "OPTIONS"),
         Case("/api/standings/through-date/", "OPTIONS"),
         Case("/api/standings/through-date/"),

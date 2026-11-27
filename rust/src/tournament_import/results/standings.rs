@@ -1,4 +1,4 @@
-mod qualifications;
+pub(crate) mod qualifications;
 
 use std::collections::{BTreeMap, BTreeSet};
 

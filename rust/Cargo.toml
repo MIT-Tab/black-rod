@@ -32,6 +32,7 @@ moka = { version = "0.12", features = ["future"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["raw_value"] }
 serde-pickle = "1.2"
+sentry = { version = "0.49", default-features = false, features = ["backtrace", "panic", "ureq", "rustls"] }
 subtle = "2"
 sqlx = { version = "0.9", default-features = false, features = [
     "any",

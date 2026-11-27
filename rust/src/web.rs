@@ -27,6 +27,10 @@ const VIEWS: &[(&str, &str)] = &[
         include_str!("../../core/templates/admin/merge_debater_requests.html"),
     ),
     (
+        "autocomplete_media.html",
+        include_str!("../templates/autocomplete_media.html"),
+    ),
+    (
         "school_admin/merge_controls.html",
         include_str!("../templates/merge_controls.html"),
     ),
@@ -129,6 +133,10 @@ const VIEWS: &[(&str, &str)] = &[
     (
         "site_admin/change_list.html",
         include_str!("../templates/site_admin/change_list.html"),
+    ),
+    (
+        "account/legacy_passwords.html",
+        include_str!("../templates/account/legacy_passwords.html"),
     ),
     (
         "account/reset.html",
@@ -462,6 +470,8 @@ const VIEWS: &[(&str, &str)] = &[
         "admin/claim_debater_requests.html",
         include_str!("../../core/templates/admin/claim_debater_requests.html"),
     ),
+    ("400.html", include_str!("../../core/templates/400.html")),
+    ("500.html", include_str!("../../core/templates/500.html")),
     ("403.html", include_str!("../../core/templates/403.html")),
     (
         "search/search.html",
@@ -634,6 +644,27 @@ static TEMPLATES: LazyLock<Result<Environment<'static>, minijinja::Error>> = Laz
     let mut environment = Environment::new();
     environment.set_auto_escape_callback(|_| AutoEscape::Html);
     environment.set_keep_trailing_newline(true);
+    environment.add_filter("vendor_asset", |asset: String| {
+        static DEBUG: LazyLock<bool> = LazyLock::new(|| {
+            std::env::var("DEBUG").map_or_else(
+                |_| std::env::var("ENV").as_deref() != Ok("production"),
+                |value| value == "1",
+            )
+        });
+        if !*DEBUG
+            && matches!(
+                asset.as_str(),
+                "admin/css/vendor/select2/select2.css"
+                    | "admin/js/vendor/select2/select2.full.js"
+                    | "admin/js/vendor/jquery/jquery.js"
+                    | "admin/js/vendor/xregexp/xregexp.js"
+            )
+            && let Some((name, extension)) = asset.rsplit_once('.')
+        {
+            return format!("{name}.min.{extension}");
+        }
+        asset
+    });
     environment.add_filter("number", |number: minijinja::Value| {
         f64::try_from(number)
             .ok()
@@ -1208,7 +1239,7 @@ fn adapt_template(name: &str, template: &str) -> String {
         "debaters/personal_partnership_stats.html"
         | "debaters/_partnership_stats_results.html"
         | "debaters/_partnership_rankings.html" => {
-            adapted = template.replace("{{ form.media }}", "")
+            adapted = template.replace("{{ form.media }}", r#"{% include "autocomplete_media.html" %}"#)
                 .replace("{{ form.debater|as_crispy_field }}", r#"{% with select_name="debater", select_label="Debater" %}{% include "debaters/partnership_person.html" %}{% endwith %}"#)
                 .replace(r#"{% include "debaters/_partnership_rankings.html" with rankings=reach_leaders only %}"#,
                     r#"{% with rankings=reach_leaders %}{% include "debaters/_partnership_rankings.html" %}{% endwith %}"#)
@@ -1223,7 +1254,7 @@ fn adapt_template(name: &str, template: &str) -> String {
             &adapted
         }
         "debaters/partnership_paths.html" => {
-            adapted = template.replace("{{ form.media }}", "")
+            adapted = template.replace("{{ form.media }}", r#"{% include "autocomplete_media.html" %}"#)
                 .replace("{{ form.first_debater|as_crispy_field }}", r#"{% with select_name="first_debater", select_label="First debater" %}{% include "debaters/partnership_person.html" %}{% endwith %}"#)
                 .replace("{{ form.second_debater|as_crispy_field }}", r#"{% with select_name="second_debater", select_label="Second debater" %}{% include "debaters/partnership_person.html" %}{% endwith %}"#)
                 .replace(r#"path|length|add:"-1""#, "(path|length - 1)")
@@ -1233,7 +1264,10 @@ fn adapt_template(name: &str, template: &str) -> String {
             &adapted
         }
         "debaters/partnership_network.html" => {
-            let mut updated = template.replace("{{ form.media }}", "");
+            let mut updated = template.replace(
+                "{{ form.media }}",
+                r#"{% include "autocomplete_media.html" %}"#,
+            );
             for (field, label, axis) in [
                 ("schools", "Schools", ""),
                 ("from_season", "From season", ""),
@@ -1618,6 +1652,7 @@ pub(crate) struct MenuItem {
 impl MenuItem {
     fn link(name: &'static str, url: &'static str, actual_path: &str) -> Self {
         let selected = url == actual_path
+            || (url == "/stats/" && actual_path == "/core/debaters/partnership-paths/stats/")
             || (url.starts_with("/core/")
                 && url != "/core/debaters/partnership-paths/"
                 && actual_path.starts_with(url));
@@ -1637,7 +1672,8 @@ impl MenuItem {
         Self {
             name,
             url: "",
-            selected: submenu.iter().any(|item| item.selected),
+            selected: submenu.iter().any(|item| item.selected)
+                && !(name == "Fun" && path == "/core/debaters/partnership-paths/stats/"),
             submenu,
         }
     }
@@ -1831,6 +1867,12 @@ pub(crate) fn base_context(
         left_menu,
         seasons => seasons(state.current_season),
     }
+}
+
+pub(crate) fn server_error(state: &AppState, user: &User, uri: &axum::http::Uri) -> Response {
+    let content = render("500.html", base_context(state, user, uri))
+        .unwrap_or_else(|_| "Server error".to_owned());
+    (StatusCode::INTERNAL_SERVER_ERROR, Html(content)).into_response()
 }
 
 pub(crate) fn permission_denied(state: &AppState, user: &User, uri: &axum::http::Uri) -> Response {

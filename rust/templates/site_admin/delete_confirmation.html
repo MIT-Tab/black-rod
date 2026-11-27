@@ -1,8 +1,8 @@
 {% extends "site_admin/base_site.html" %}
 {% block extrahead %}
     {{ super() }}
-    {% for medium,style in css %}<link href="/static/{{ style }}" media="{{ medium }}" rel="stylesheet">{% endfor %}
-    {% for asset in js %}<script src="/static/{{ asset }}"></script>{% endfor %}
+    {% for medium,style in css %}<link href="/static/{{ style|vendor_asset }}" media="{{ medium }}" rel="stylesheet">{% endfor %}
+    {% for asset in js %}<script src="/static/{{ asset|vendor_asset }}"></script>{% endfor %}
     <script src="/static/admin/js/cancel.js" async></script>
 {% endblock %}
 {% block bodyclass %}{{ super() }} app-{{ app_label }} model-{{ model_name }} delete-confirmation{% if bulk %} delete-selected-confirmation{% endif %}{% endblock %}
