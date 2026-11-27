@@ -462,7 +462,7 @@ async fn view(state: &AppState, request: Request, id: Option<i64>) -> Result<Res
     let bindings = context! {fields,errors,csrf=>token, tournament_types=>TOURNAMENT_TYPES.iter().map(|(id,name)|(id.to_string(),*name)).collect::<Vec<_>>(),
     name_suffixes=>NAME_SUFFIXES, edit_seasons=>web::seasons(state.current_season),messages=>Vec::<String>::new()};
     let html = if let Some(id) = id {
-        super::html(state, &user, id, &uri, Some(bindings)).await?
+        super::html(state, &user, id, &uri, &[], Some(bindings)).await?
     } else {
         let common = web::base_context(state, &user, &uri);
         web::render("tournaments/create.html", context! {..common,..bindings}).map_err(|error| {

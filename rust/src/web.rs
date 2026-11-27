@@ -19,6 +19,14 @@ use crate::{
 
 const VIEWS: &[(&str, &str)] = &[
     (
+        "tournaments/mittab_bundle_upload.html",
+        include_str!("../../core/templates/tournaments/mittab_bundle_upload.html"),
+    ),
+    (
+        "tournaments/mittab_bundle_file.html",
+        include_str!("../templates/mittab_bundle_file.html"),
+    ),
+    (
         "admin/speaks_statistics.html",
         include_str!("../../core/templates/admin/speaks_statistics.html"),
     ),
@@ -580,6 +588,23 @@ fn adapt_scheduler(template: &str) -> String {
 fn adapt_template(name: &str, template: &str) -> String {
     let adapted;
     let template = match name {
+        "tournaments/mittab_bundle_upload.html" => {
+            adapted = template
+                .replace(
+                    "{{ form.bundle_file|as_crispy_field }}",
+                    r#"{% include "tournaments/mittab_bundle_file.html" %}"#,
+                )
+                .replace(
+                    "{% url 'core:tournament_detail' pk=tournament.id %}",
+                    "/core/tournaments/{{ tournament.id }}",
+                )
+                .replace("form.non_field_errors", "[]");
+            &adapted
+        }
+        "tournaments/detail.html" => {
+            adapted = template.replace("{{ message }}", "{{ message.text }}");
+            &adapted
+        }
         "admin/speaks_statistics.html"
         | "admin/includes/speaks_record_distribution.html"
         | "admin/includes/speaks_percentile_chart.html" => {

@@ -10,12 +10,12 @@ use crate::ApiError;
 const SCHEMA: &str = include_str!("../../schema/agent_storage.json");
 
 #[derive(Deserialize)]
-pub(super) struct Table {
+pub(crate) struct Table {
     pub(super) table: String,
     pub(super) fields: BTreeMap<String, Field>,
 }
 
-pub(super) static TABLES: LazyLock<BTreeMap<String, Table>> =
+pub(crate) static TABLES: LazyLock<BTreeMap<String, Table>> =
     LazyLock::new(|| serde_json::from_str(SCHEMA).expect("agent journal storage schema"));
 
 pub(super) static LABELS: LazyLock<BTreeMap<&'static str, &'static str>> = LazyLock::new(|| {
@@ -52,7 +52,7 @@ pub(super) async fn lock(conn: &mut AnyConnection, credential: i64) -> Result<bo
     .is_some())
 }
 
-pub(super) fn storage_error(error: sqlx::Error) -> ApiError {
+pub(crate) fn storage_error(error: sqlx::Error) -> ApiError {
     if error.as_database_error().is_some_and(|detail| {
         detail.is_unique_violation()
             || detail.is_foreign_key_violation()
@@ -119,7 +119,7 @@ impl Table {
         format!("CAST(CAST({marker} AS TEXT) AS {ty})")
     }
 
-    pub(super) async fn write(
+    pub(crate) async fn write(
         &self,
         conn: &mut AnyConnection,
         fields: &Map<String, Value>,

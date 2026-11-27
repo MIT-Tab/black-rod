@@ -234,6 +234,7 @@ from core.models.debater import Debater
 from core.models.immaculate_grid import ImmaculateGridBoard
 from core.models.motion import Motion
 from core.models.results.speaker import SpeakerResult
+from core.models.results.team import TeamResult
 from core.models.resource import Resource
 from core.models.school import School
 from core.models.round import RoundStats
@@ -254,6 +255,13 @@ motion.tags.add("Fixture topic")
 award = SpeakerResult.objects.filter(tournament=tournament, type_of_place=1, place=1).order_by("pk").first()
 result = {"tournament": tournament.pk, "debater": award.debater_id, "motion": motion.pk, "videos": [], "sessions": {},
     "authors": debaters, "users": {}, "role_school": School.objects.create(name="Disposable school role tests", short_name="Roles").pk}
+from datetime import date
+bundle_host = School.objects.get(pk=tournament.host_id)
+bundle_event = Tournament.objects.create(host=bundle_host, season="2026", date=date(2026, 9, 15),
+    manual_name="Disposable MIT-Tab bundle tournament")
+original_award = TeamResult.objects.filter(tournament=tournament).first()
+TeamResult.objects.create(tournament=bundle_event, team=original_award.team, type_of_place=1, place=1)
+result["bundle_event"] = bundle_event.pk
 for access, _ in Video.PERMISSIONS:
     video = Video.objects.create(
         tournament=tournament, round=Video.VF, permissions=access,
@@ -1248,6 +1256,81 @@ def assert_speaks_statistics(driver, django, rust, fixture):
     driver.delete_all_cookies()
 
 
+def assert_mittab_bundle_upload(driver, django, rust, fixture):
+    event = fixture["bundle_event"]
+    path = f"/core/tournaments/mittab_bundle/upload?tournament={event}"
+    driver.delete_all_cookies()
+    driver.get(f"http://{HOST}:{rust.port}{path}")
+    assert urlsplit(driver.current_url).path == "/auth/login/"
+    driver.add_cookie({"name": "sessionid", "value": django_session()})
+    db = Path(os.environ["BR_STATE"]) / "dev.sqlite3"
+
+    def snapshot():
+        with sqlite3.connect(f"{db.as_uri()}?mode=ro", uri=True) as connection:
+            return connection.execute("""
+                SELECT r.id, r.import_key, r.victor, r.stage, a.source_name, a.normalized_name,
+                    j.original_name, j.is_chair, i.source_hash
+                FROM core_round r JOIN core_importedroundmetadata m ON m.round_id=r.id
+                JOIN core_debateralias a ON a.id=m.gov_1_alias_id
+                JOIN core_importedroundjudge j ON j.round_metadata_id=m.id
+                JOIN core_importedroundmetadata_sources s ON s.importedroundmetadata_id=m.id
+                JOIN core_tournamentimport i ON i.id=s.tournamentimport_id
+                WHERE r.tournament_id=? ORDER BY r.import_key
+            """, (event,)).fetchall()
+
+    def submit(server, document, name="fixture.json"):
+        driver.get(f"http://{HOST}:{server.port}{path}")
+        field = driver.find_element("id", "id_bundle_file")
+        assert field.get_attribute("accept") == ".json,application/json"
+        return driver.execute_async_script("""
+            const [documentData, fileName, done] = arguments;
+            const form = new FormData(document.querySelector('form[enctype]'));
+            form.set('bundle_file', new Blob([documentData], {type:'application/json'}), fileName);
+            fetch(location.pathname + location.search, {method:"POST", body:form}).then(async response => {
+                const page = new DOMParser().parseFromString(await response.text(), "text/html");
+                done({status:response.status, path:new URL(response.url).pathname, redirected:response.redirected,
+                    message:page.querySelector('[role=status]')?.textContent.trim(),
+                    error:page.querySelector('#error_1_id_bundle_file')?.textContent.trim()});
+            }, () => done({status:0}));
+        """, json.dumps(document, ensure_ascii=False), name)
+
+    fixture_round = {
+        "import_key": "prelim-1", "stage": "prelim", "division": "varsity", "round_number": 1, "label": "P1",
+        "gov": {"debater_ids": [1, 2], "source_names": ["Grüße A", "Fixture B"]},
+        "opp": {"debater_ids": [3, 4], "source_names": ["Fixture C", "Fixture D"]},
+        "victor": 1, "judges": [{"original_name": "Disposable Judge", "is_chair": True}],
+    }
+    reference = {"schema_version": 1, "source": "mit_tab_black_rod_bundle", "tournament_name": "Disposable event",
+                 "exported_at": "2026-09-20T23:00:00Z", "schools": [],
+                 "debaters": [{"id": index+1, "apda_id": pk} for index, pk in enumerate(fixture["authors"])],
+                 "rounds": [fixture_round, {**fixture_round, "round_number": 2, "label": "P2", "import_key": "prelim-2"}]}
+    for server in (django, rust):
+        bad_extension = submit(server, reference, name="fixture.txt")
+        assert bad_extension["error"] == "Please upload a .json Mit-Tab bundle file.", bad_extension
+    assert not snapshot()
+    saved = submit(rust, reference)
+    assert saved["redirected"] and saved["path"] == f"/core/tournaments/{event}", saved
+    assert "Created 2 rounds" in saved["message"], saved
+    before = snapshot()
+    assert len(before) == 2 and before[0][4:8] == ("Grüße A", "grüsse a", "Disposable Judge", 1), before
+    for server in (django, rust):
+        duplicate = submit(server, reference)
+        assert duplicate["error"] == "This exact Mit-Tab bundle was already uploaded for the selected tournament.", duplicate
+    invalid = {**reference, "rounds": [{**fixture_round, "victor": 2},
+                                      {**fixture_round, "import_key": "bad", "stage": "invalid"}]}
+    failed = submit(rust, invalid)
+    assert failed["error"] == "Round 'bad' has an unsupported stage." and snapshot() == before, failed
+    skipped = {**reference, "rounds": [{**fixture_round, "opp": {}}]}
+    answer = submit(rust, skipped)
+    assert "Skipped 1 round with incomplete rosters." in answer["message"] and snapshot() == before, answer
+    updated = {**reference, "rounds": [{**fixture_round, "victor": 2}]}
+    result = submit(rust, updated)
+    assert "updated 1 rounds, deleted 1 stale rounds." in result["message"], result
+    after = snapshot()
+    assert len(after) == 1 and after[0][:4] == (before[0][0], "prelim-1", 2, "prelim"), after
+    driver.delete_all_cookies()
+
+
 def assert_agent_reads(django, rust, fixture):
     base = "/api/agent/v1/"
     authorization = "Bearer " + fixture["agent"]
@@ -1573,6 +1656,7 @@ def browser_checks(database, options, output):
         assert_doty(driver, django, rust)
         assert_admin_tools(driver, django, rust)
         assert_speaks_statistics(driver, django, rust, fixture)
+        assert_mittab_bundle_upload(driver, django, rust, fixture)
         assert_generated_codes(driver, django, rust, fixture)
         assert_entities(driver, django, rust, fixture)
         assert_school_admin(driver, django, rust, fixture)

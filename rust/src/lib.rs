@@ -41,6 +41,7 @@ mod stats;
 mod summernote;
 mod tag_filter;
 mod team_profile;
+mod tournament_import;
 mod tournament_profile;
 mod video;
 mod web;
@@ -525,6 +526,12 @@ pub fn app(state: AppState) -> Router {
             get(team_profile::edit::endpoint).post(team_profile::edit::endpoint),
         )
         .route("/core/tournaments/", get(directory::page))
+        .route(
+            "/core/tournaments/mittab_bundle/upload",
+            get(tournament_import::upload)
+                .post(tournament_import::upload)
+                .layer(axum::extract::DefaultBodyLimit::max(64 * 1024 * 1024)),
+        )
         .route(
             "/core/tournaments/create",
             get(tournament_profile::edit::endpoint).post(tournament_profile::edit::endpoint),

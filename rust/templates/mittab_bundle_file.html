@@ -1,0 +1,10 @@
+<div id="div_id_bundle_file" class="form-group">
+    <label for="id_bundle_file" class="requiredField">Mit-Tab bundle JSON<span class="asteriskField">*</span></label>
+    <div>
+        <input type="file" name="bundle_file" accept=".json,application/json"
+               class="clearablefileinput form-control-file{% if error %} is-invalid{% endif %}" required
+               aria-describedby="{% if error %}error_1_id_bundle_file {% endif %}hint_id_bundle_file" id="id_bundle_file">
+        {% if error %}<span id="error_1_id_bundle_file" class="invalid-feedback"><strong>{{ error }}</strong></span>{% endif %}
+        <small id="hint_id_bundle_file" class="form-text text-muted">Upload a JSON bundle exported from Mit-Tab for this tournament.</small>
+    </div>
+</div>

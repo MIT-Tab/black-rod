@@ -1,6 +1,6 @@
 mod batch;
 mod catalog;
-mod journal;
+pub(crate) mod journal;
 mod merge;
 mod mutation;
 

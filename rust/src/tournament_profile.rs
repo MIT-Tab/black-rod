@@ -381,8 +381,22 @@ pub(crate) async fn page(
     let Ok(user) = session::user(&state.pool, &headers, state.secret.as_deref()).await else {
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     };
-    match html(&state, &user, id, &uri, None).await {
-        Ok(html) => ([(header::VARY, "Cookie")], Html(html)).into_response(),
+    let notices = state
+        .secret
+        .as_deref()
+        .map(|secret| crate::flash::alerts(&headers, secret))
+        .unwrap_or_default();
+    match html(&state, &user, id, &uri, &notices, None).await {
+        Ok(html) => {
+            let mut response = ([(header::VARY, "Cookie")], Html(html)).into_response();
+            if !notices.is_empty() {
+                let secure = state
+                    .origin(&headers)
+                    .is_some_and(|origin| origin.starts_with("https://"));
+                crate::flash::clear(&mut response, secure);
+            }
+            response
+        }
         Err(ApiError::NotFound(_)) => StatusCode::NOT_FOUND.into_response(),
         Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
     }
@@ -393,6 +407,7 @@ async fn html(
     user: &User,
     id: i64,
     uri: &axum::http::Uri,
+    messages: &[crate::flash::Alert],
     editing: Option<minijinja::Value>,
 ) -> Result<String, ApiError> {
     let mut tx = read_transaction(&state.pool).await?;
@@ -469,7 +484,7 @@ async fn html(
     let specific = minijinja::context! {
         object => tournament, perms, buttons, recipients, varsity_team_results, novice_team_results,
         varsity_speaker_results, novice_speaker_results, videos => metadata,
-        tab_cards_search_enabled => false, messages => Vec::<String>::new(),
+        tab_cards_search_enabled => false, messages,
     };
     let (template, bindings) = match editing {
         Some(form) => (
