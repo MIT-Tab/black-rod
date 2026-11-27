@@ -47,6 +47,23 @@ pub(crate) fn speaker_points_for_size(teams: i64, place: i64) -> f64 {
     (first - 2.5 * (place - 1) as f64).max(0.0)
 }
 
+pub(crate) fn novice_points_for_size(novices: i64, place: i64) -> f64 {
+    let first = (10 + novices.div_euclid(8)).min(20) as f64;
+    (first - 2.5 * (place - 1) as f64).max(0.0)
+}
+
+pub(crate) fn online_points(place: i64) -> f64 {
+    match place {
+        1 => 12.5,
+        2 => 10.0,
+        ..=4 => 7.5,
+        5..=8 => 5.0,
+        9..=16 => 2.5,
+        17..=32 => 1.25,
+        _ => 0.0,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -1,3 +1,6 @@
+mod debater;
+mod rankings;
+
 use chrono::{SecondsFormat, Utc};
 use serde_json::{Map, Value, json};
 use sqlx::{AnyConnection, AssertSqlSafe};
@@ -89,14 +92,11 @@ async fn standings(
 
 async fn team_snapshot(conn: &mut AnyConnection, source: &Value) -> Result<Value, ApiError> {
     let members=sqlx::query_scalar::<_,i64>("SELECT CAST(d.id AS BIGINT) FROM core_debater d
-        JOIN core_team_debaters m ON m.debater_id=d.id WHERE m.team_id=$1 AND NOT d.synthetic ORDER BY d.id")
+        JOIN core_team_debaters m ON m.debater_id=d.id WHERE m.team_id=$1 AND NOT d.temporary AND NOT d.synthetic ORDER BY d.id")
         .bind(source["id"].as_i64()).fetch_all(&mut *conn).await?;
-    let temporary=sqlx::query_scalar::<_,i64>("SELECT CAST(d.id AS BIGINT) FROM core_debater d
-        JOIN core_team_debaters m ON m.debater_id=d.id WHERE m.team_id=$1 AND NOT d.synthetic AND d.temporary ORDER BY d.id")
-        .bind(source["id"].as_i64()).fetch_all(conn).await?;
     Ok(
         json!({"id":source["id"],"name":source["name"],"short_name":source["short_name"],"synthetic":source["synthetic"],
-        "member_ids":members,"temporary_members":temporary}),
+        "member_ids":members,"temporary_members":[]}),
     )
 }
 
@@ -206,8 +206,10 @@ pub(super) async fn apply(
             ));
         }
     }
-    if entity == "debater" {
-        return Err(invalid("This correction operation is unavailable."));
+    let synthetic = operation.get("op").and_then(Value::as_str) == Some("merge_synthetic");
+    if !synthetic {
+        debater::merge(conn, journal, target_id, source_id).await?;
+        return Ok(json!({"entity_type":entity,"source_id":source_id,"target_id":target_id}));
     }
     if source["synthetic"] != true {
         return Err(invalid(format!(
@@ -218,6 +220,16 @@ pub(super) async fn apply(
         return Err(invalid(format!(
             "Target {entity} must have synthetic=False"
         )));
+    }
+    if entity == "debater" {
+        let snapshot = debater::snapshot(conn, &source).await?;
+        let mut source = source;
+        let mut target = target;
+        source["name"] = json!(debater::name(&source));
+        target["name"] = json!(debater::name(&target));
+        log(conn, journal, entity, &source, &target, snapshot, actor).await?;
+        debater::merge(conn, journal, target_id, source_id).await?;
+        return Ok(json!({"entity_type":entity,"source_id":source_id,"target_id":target_id}));
     }
     let snapshot = if entity == "school" {
         for (label, field) in [

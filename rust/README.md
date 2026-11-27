@@ -18,7 +18,7 @@ The current server covers standings, legacy standings directories, replay, live 
 
 The statistics cache lasts one hour. Set `BLACK_ROD_MEMCACHED_ADDR` for shared directory and schedule caching across instances and to read existing MIT-Tab snapshots. Those entries use a separate key namespace and retain the five-minute lifetime. The debater search index uses a bounded in-process cache and refreshes from the shared database, with immediate invalidation after a native profile edit.
 
-The Rust runtime is a partial port. Remaining work includes school administration, ELO administration, tournament data entry and imports, Django admin equivalents, remaining account flows, management commands, the agent API, and the browsable API. Django is the application entry point.
+The Rust runtime is a partial port. Remaining work includes ELO administration, tournament data entry and imports, Django admin equivalents, remaining account flows, management commands, and the browsable API. Django is the application entry point. The Rust correction API uses the same credential and change-set tables for authorized reads, atomic writes, previews, merges, and undo.
 
 ## Parity tests
 
@@ -27,9 +27,12 @@ cargo fmt --manifest-path rust/Cargo.toml --check
 cargo clippy --manifest-path rust/Cargo.toml --locked --all-targets -- -D warnings
 cargo test --manifest-path rust/Cargo.toml --locked
 "$scripts/br" venv/bin/python rust/tools/compare.py
+"$scripts/br" venv/bin/python rust/tools/agent_write_parity.py
 ```
 
 The HTTP harness starts Django and Rust against the same fixture. It compares status, relevant headers, JSON fields, array order, and plain text. Equal-score COTY ties, equal-rank TOTY ties, school members with equal tenure, video lists, and tags are compared without requiring an order where the reference query has no final sort. The SQLite fixture is hashed before and after the run. Set `BLACK_ROD_PARITY_POSTGRES_URL` to a locally seeded PostgreSQL database for the PostgreSQL run. The Rust parity workflow loads the tracked fixture into both database engines.
+
+The Agent harness tests both runtimes against the same local database. It covers atomic and reversible correction batches, stale revisions, preview hashes, concurrent idempotent requests, cascading deletes, and identity merges. It copies SQLite to a temporary file and accepts PostgreSQL only against a disposable loopback database whose name starts with `black_rod_parity`.
 
 The Chrome harness compares the standings, directories, search, profiles, recent-results widget, live results, media permissions, motion progress, authoring, and spreadsheet imports, career CSV exports, profile claims, outreach, scheduling, legacy standings, DOTY, resource authoring, account code generation, and the daily and infinite Immaculate Grid flows. It also checks password and OAuth session compatibility, theme persistence, and desktop and mobile replay screenshots. The harness makes writes only against a temporary copy of the SQLite fixture.
 

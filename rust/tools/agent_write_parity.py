@@ -1,4 +1,5 @@
 """Verify reversible Agent writes across runtimes on disposable fixture databases."""
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
 import json
@@ -21,7 +22,7 @@ from django.utils import timezone
 from core.models import (
     AgentCredential, COTY, TOTY, Debater, DebaterAlias, ImportBatch, ImportedRoundJudge,
     ImportedRoundMetadata, Round, RoundStats, School, Team, Tournament,
-    TournamentImport, User,
+    SpeakerResult, TeamResult, TournamentImport, User,
 )
 
 admin = User.objects.create_superuser(username='parity-agent-writer-' + str(timezone.now().timestamp()))
@@ -34,6 +35,7 @@ COTY.objects.create(school=school, season='2025', points=4)
 COTY.objects.create(school=synthetic_school, season='2025', points=13)
 second = Debater.objects.create(first_name='Second', last_name='Example', school=school)
 third = Debater.objects.create(first_name='Opponent', last_name='Fixture', school=school)
+synthetic = Debater.all_objects.create(first_name='Synthetic', last_name='Person', school=school, synthetic=True)
 gov, opp = (Team.objects.create(name=name, short_name=name) for name in ('Agent Gov', 'Agent Opp'))
 gov.debaters.add(real, second)
 synthetic_team = Team.objects.create(name='Agent synthetic fixture team', synthetic=True)
@@ -41,9 +43,13 @@ synthetic_team.debaters.add(real)
 TOTY.objects.create(team=gov, season='2025', points=2)
 TOTY.objects.create(team=synthetic_team, season='2025', points=8)
 opp.debaters.add(third)
-tournament = Tournament.objects.create(host=school, season='2025', date=date(2025, 10, 1))
+tournament = Tournament.objects.create(host=school, season='2035', date=date(2035, 10, 1), num_teams=24)
+TeamResult.objects.create(tournament=tournament, team=gov, place=1)
+SpeakerResult.objects.create(tournament=tournament, debater=synthetic, place=1)
 round = Round.objects.create(tournament=tournament, gov=gov, opp=opp, round_number=1, victor=Round.GOV)
 stat = RoundStats.objects.create(round=round, debater=real, speaks='27.5000', ranks='1.0000', debater_role='PM')
+synthetic_stat = RoundStats.objects.create(round=round, debater=synthetic, speaks='28.5000', ranks='1.0000', debater_role='LO')
+synthetic_alias = DebaterAlias.objects.create(debater=synthetic, source_name='Example', normalized_name='example')
 alias = DebaterAlias.objects.create(debater=real, source_name='Example', normalized_name='example')
 metadata = ImportedRoundMetadata.objects.create(round=round, gov_1_alias=alias, raw_result_code='G')
 ImportedRoundJudge.objects.create(round_metadata=metadata, original_name='Fixture', debater_alias=alias, is_chair=True)
@@ -52,7 +58,8 @@ source = TournamentImport.objects.create(tournament=tournament, batch=ImportBatc
 metadata.sources.add(source)
 print(json.dumps({'token':token, 'rounds':round.pk, 'round_stats':stat.pk, 'round_metadata':metadata.pk,
     'teams':gov.pk, 'debaters':real.pk, 'school_ids':[synthetic_school.pk,school.pk],
-    'team_ids':[synthetic_team.pk,gov.pk]}))
+    'team_ids':[synthetic_team.pk,gov.pk], 'synthetic':synthetic.pk, 'synthetic_stat':synthetic_stat.pk,
+    'synthetic_alias':synthetic_alias.pk}))
 """
 
 
@@ -165,8 +172,39 @@ def exercise(django, rust, fixture):
         run(django, f"batches/{merged['id']}/undo/", payload=prepare())
         assert run(rust, source_path) == source and run(rust, target_path) == target
     assert get(rust, "debaters")["school_id"] == fixture["school_ids"][0]
+    source_id, target_id = fixture["synthetic"], fixture["debaters"]
+    source_path, target_path = (f"records/debaters/{pk}/" for pk in (source_id, target_id))
+    source, target = run(django, source_path), run(django, target_path)
+    stat_path = f"records/round_stats/{fixture['synthetic_stat']}/"
+    alias_path = f"records/aliases/{fixture['synthetic_alias']}/"
+    synthetic_stat = run(django, stat_path)
+    for action in ("merge_synthetic", "merge_debaters"):
+        operation = {
+            "op": action, "source_id": source_id, "target_id": target_id,
+            "source_revision": source["revision"], "target_revision": target["revision"],
+        }
+        if action == "merge_synthetic":
+            operation["entity_type"] = "debater"
+        reference = run(django, "batches/", payload={**prepare([operation]), "dry_run": True})
+        candidate = run(rust, "batches/", payload={**prepare([operation]), "dry_run": True})
+        def effects(batch):
+            # Log timestamps and IDs of newly sequenced PostgreSQL rows vary across previews.
+            return Counter((entry["model"], entry["action"], entry["after"].get("points"))
+                           for entry in batch["changes"] if entry["model"] != "core.SyntheticResolutionLog")
+        assert effects(reference) == effects(candidate), (effects(reference), effects(candidate))
+        merged = run(rust, "batches/", payload=prepare([operation]))
+        assert merged["results"] == [{"entity_type": "debater", "source_id": source_id, "target_id": target_id}]
+        assert merged == run(django, f"batches/{merged['id']}/")
+        run(django, source_path, expected=404)
+        run(django, alias_path, expected=404)
+        stat = run(django, stat_path)
+        assert stat["debater_id"] == target_id and stat["score_index"] == 2
+        undo_server = django if action == "merge_synthetic" else rust
+        run(undo_server, f"batches/{merged['id']}/undo/", payload=prepare())
+        assert run(rust, source_path) == source and run(rust, target_path) == target
+        assert run(rust, stat_path) == synthetic_stat
     print("Agent write parity passed: preview hashes, concurrent cross-runtime retries, stale revisions, "
-          "atomic rollback, references, teams, cascade restoration, conflicting later edits, and synthetic school/team merges")
+          "atomic rollback, references, teams, cascade restoration, conflicting later edits, and school, team, and debater merges")
 
 
 def main():
