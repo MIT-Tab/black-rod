@@ -20,6 +20,8 @@ import "./replay";
 import initPartnershipNetwork from "./partnership_network";
 import "./immaculate_grid";
 import initPartnershipStats from "./partnership_stats";
+import initTagFilters from "./rust_tag_filters";
+import settleSummernoteLayout from "./summernote_layout";
 import initSchedulingBrowserRunner from "./scheduling_browser_runner";
 
 function getCookie(name) {
@@ -86,9 +88,6 @@ $(document).ready(() => {
     toSerialize = `${toSerialize}&first_name=${$("#id_name").val().split(" ")[0]}`;
     toSerialize = `${toSerialize}&last_name=${$("#id_name").val().split(" ")[1]}`;
 
-    // eslint-disable-next-line no-console
-    console.log(toSerialize);
-
     $.post("/core/debaters/create", toSerialize).done((data) => {
       $("#new_debaters").append(
         `<li>${$("#id_name").val().split(" ")[0]} ${
@@ -113,3 +112,6 @@ $(document).ready(() => {
   initPartnershipNetwork();
   initPartnershipStats();
 });
+
+$(() => initTagFilters());
+$(settleSummernoteLayout);

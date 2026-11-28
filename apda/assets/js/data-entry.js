@@ -6,6 +6,7 @@
 
 import $ from "jquery";
 import "jquery-ui/ui/widgets/sortable";
+import initTagFilters from "./rust_tag_filters";
 
 /**
  * Update the management form with the new count
@@ -21,6 +22,7 @@ function updateManagementForm(prefix, newCount) {
  * @param {jQuery} $tbody - The tbody element containing the forms
  */
 function initializeNewFormFields($tbody) {
+  initTagFilters($tbody.find("tr:last"));
   $tbody.find("tr:last .django-select2").each(function initSelect2() {
     if (!$(this).hasClass("select2-hidden-accessible")) {
       $(this).djangoSelect2();
@@ -227,9 +229,22 @@ function deleteForm($row) {
   }
 }
 
+function initializeDataEntryTabs() {
+  const tabs = $("#dataEntryTabs [role='tab']");
+  tabs.on("click", function selectTab(event) {
+    event.preventDefault();
+    tabs.removeClass("active").attr("aria-selected", "false");
+    $(this).addClass("active").attr("aria-selected", "true");
+    $("#dataEntryTabContent > .tab-pane").removeClass("active show");
+    const panel = document.getElementById(this.hash.slice(1));
+    $(panel).addClass("active show");
+  });
+}
+
 // Module initialization
 function initializeDataEntryForm() {
   $(document).ready(() => {
+    initializeDataEntryTabs();
     // Initialize sortable formsets
     initializeSortableFormsets();
 

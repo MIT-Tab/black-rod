@@ -1,0 +1,222 @@
+"""Check account and session consistency across overlapping writes and mail failure."""
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import closing
+import json
+import os
+from pathlib import Path
+import subprocess
+from tempfile import TemporaryDirectory
+from time import monotonic, sleep
+from unittest.mock import patch
+
+from bs4 import BeautifulSoup
+import psycopg2
+import requests
+
+from agent_write_parity import fixture_database
+from compare import HOST, ROOT, RUST_BIN, available_port, servers, start_server
+
+SEED = """
+from reference import application
+from allauth.account.models import EmailAddress
+from django.contrib.sessions.backends.db import SessionStore
+from core.models import User
+import json
+
+user = User.objects.create_user(username="email-write-parity-fixture", email="primary@example.test",
+                                password="fixture-locked-login-password")
+EmailAddress.objects.create(user=user, email=user.email, primary=True, verified=True)
+EmailAddress.objects.create(user=user, email="alternate@example.test", verified=True)
+session = SessionStore()
+session.update({"_auth_user_id": str(user.pk), "_auth_user_backend": "django.contrib.auth.backends.ModelBackend",
+                "_auth_user_hash": user.get_session_auth_hash()})
+session.save()
+anonymous = SessionStore()
+anonymous["fixture_marker"] = "before"
+anonymous.save()
+print(json.dumps([user.id, session.session_key, anonymous.session_key,
+                  anonymous.encode({"fixture_marker": "after"})]))
+"""
+
+PRIMARY = "primary@example.test"
+ALTERNATE = "alternate@example.test"
+
+
+def wait_for_account_lock(observer, pending):
+    deadline = monotonic() + 10
+    with observer.cursor() as cursor:
+        while monotonic() < deadline:
+            cursor.execute("""
+                SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE datname=current_database()
+                    AND wait_event_type='Lock' AND query LIKE 'UPDATE core_user SET id=id%')
+            """)
+            if cursor.fetchone()[0]:
+                return
+            assert not pending.done(), "The email edit bypassed the account lock"
+            sleep(0.025)
+    raise AssertionError("The email edit did not reach the account lock")
+
+
+def exercise(server, user, session, control, observer):
+    url = f"http://{HOST}:{server.port}/accounts/email/"
+    with requests.Session() as client, control.cursor() as db, ThreadPoolExecutor(max_workers=1) as workers:
+        client.cookies.set("sessionid", session)
+        form = BeautifulSoup(client.get(url, timeout=15).content, "html.parser")
+        csrf = form.select_one('input[name=csrfmiddlewaretoken]')["value"]
+        for action in ("action_primary", "action_remove"):
+            db.execute("SELECT id FROM core_user WHERE id=%s FOR UPDATE", (user,))
+            pending = workers.submit(client.post, url, timeout=20, allow_redirects=False,
+                                     data={"csrfmiddlewaretoken": csrf, "email": ALTERNATE, action: "1"})
+            try:
+                wait_for_account_lock(observer, pending)
+                if action == "action_primary":
+                    db.execute("DELETE FROM account_emailaddress WHERE user_id=%s AND email=%s", (user, ALTERNATE))
+                    expected = [(PRIMARY, True)]
+                else:
+                    db.execute('UPDATE account_emailaddress SET "primary"=FALSE WHERE user_id=%s', (user,))
+                    db.execute('UPDATE account_emailaddress SET "primary"=TRUE WHERE user_id=%s AND email=%s',
+                               (user, ALTERNATE))
+                    db.execute("UPDATE core_user SET email=%s WHERE id=%s", (ALTERNATE, user))
+                    expected = [(ALTERNATE, True), (PRIMARY, False)]
+            finally:
+                control.commit()
+            result = pending.result(timeout=20)
+            assert result.status_code == 200, (action, result.status_code)
+            db.execute('SELECT email,"primary" FROM account_emailaddress WHERE user_id=%s ORDER BY email', (user,))
+            assert db.fetchall() == expected, action
+            db.execute("SELECT email FROM core_user WHERE id=%s", (user,))
+            assert db.fetchone() == (expected[0][0],), action
+            if action == "action_primary":
+                db.execute('INSERT INTO account_emailaddress (user_id,email,verified,"primary") VALUES (%s,%s,TRUE,FALSE)',
+                           (user, ALTERNATE))
+                control.commit()
+
+
+def login_during_session_update(server, user, anonymous, refreshed, env, control, observer):
+    url = f"http://{HOST}:{server.port}/accounts/login/"
+    with requests.Session() as client, control.cursor() as db, observer.cursor() as monitoring, ThreadPoolExecutor(
+        max_workers=1
+    ) as workers:
+        client.cookies.set("sessionid", anonymous)
+        form = BeautifulSoup(client.get(url, timeout=15).content, "html.parser")
+        csrf = form.select_one('input[name=csrfmiddlewaretoken]')["value"]
+        db.execute("SELECT id FROM core_user WHERE id=%s FOR UPDATE", (user,))
+        pending = workers.submit(client.post, url, timeout=20, allow_redirects=False, data={
+            "csrfmiddlewaretoken": csrf, "login": "email-write-parity-fixture",
+            "password": "fixture-locked-login-password",
+        })
+        try:
+            deadline = monotonic() + 10
+            while monotonic() < deadline:
+                monitoring.execute("""
+                    SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE datname=current_database()
+                        AND wait_event_type='Lock' AND query LIKE 'UPDATE core_user SET last_login%')
+                """)
+                if monitoring.fetchone()[0]:
+                    break
+                assert not pending.done(), "Login bypassed the locked account"
+                sleep(0.025)
+            else:
+                raise AssertionError("Login did not reach its account update")
+            db.execute("UPDATE django_session SET session_data=%s WHERE session_key=%s",
+                       (refreshed, anonymous))
+        finally:
+            control.commit()
+        result = pending.result(timeout=20)
+        assert result.status_code == 302, result.status_code
+        key = result.cookies["sessionid"]
+        assert key != anonymous
+        subprocess.run([str(ROOT / "venv/bin/python"), "-c", """
+from reference import application
+from django.contrib.sessions.backends.db import SessionStore
+from sys import argv
+session = SessionStore(argv[1])
+data = session.load()
+assert data["fixture_marker"] == "after"
+assert data["_auth_user_id"] == argv[3]
+assert not session.exists(argv[2])
+""", key, anonymous, str(user)], env=env, check=True, capture_output=True)
+
+
+def signup_when_mail_is_unavailable(database):
+    port = available_port()
+    root = f"http://{HOST}:{port}"
+    config = {
+        "ENV": "production", "SECRET_KEY": "disposable-local-parity-key",
+        "DOT_ENV_FILE": os.devnull, "BLACK_ROD_CURRENT_SEASON": "2026",
+        "BLACK_ROD_DATABASE_URL": database, "BLACK_ROD_BIND": f"{HOST}:{port}",
+        "BLACK_ROD_DIRECT_CONNECTIONS": "1", "BLACK_ROD_ALLOWED_HOSTS": HOST,
+        "BLACK_ROD_PUBLIC_ORIGIN": root, "SENTRY_DSN": "", "LIVE_MITTAB_DIRECTORY_URL": "",
+        "BLACK_ROD_MEMCACHED_ADDR": f"{HOST}:{available_port()}",
+        "BLACK_ROD_SMTP_URL": f"smtp://{HOST}:{available_port()}",
+    }
+    with start_server("Rust", [str(RUST_BIN)], port, config), requests.Session() as client:
+        signup = root + "/accounts/signup/?next=/accounts/email/"
+        form = BeautifulSoup(client.get(signup, timeout=15).content, "html.parser")
+        csrf = form.select_one('input[name=csrfmiddlewaretoken]')["value"]
+        result = client.post(signup, timeout=25, allow_redirects=False, data={
+            "csrfmiddlewaretoken": csrf, "username": "delivery-failure-fixture",
+            "email": "unavailable@example.test", "password1": "W7fish!test-river-pony-93",
+            "password2": "W7fish!test-river-pony-93", "next": "/accounts/email/",
+        })
+        assert result.status_code == 302 and client.cookies.get("sessionid"), result.status_code
+        addresses = client.get(root + "/accounts/email/", timeout=15)
+        assert addresses.status_code == 200 and "unavailable@example.test" in addresses.text
+        assert "We could not send a confirmation email." in addresses.text
+
+
+def session_from_shared_environment(database, user, folder, env):
+    config = Path(folder) / "synthetic.env"
+    config.write_text(r"SECRET_KEY=synthetic-$STANDINGS_CONFIG_SUFFIX\nkey" + "\n", encoding="utf-8")
+    port = available_port()
+    runtime = {
+        "DOT_ENV_FILE": str(config), "PYTHON_DOTENV_DISABLED": "0", "STANDINGS_CONFIG_SUFFIX": "literal",
+        "BLACK_ROD_DATABASE_URL": database, "BLACK_ROD_BIND": f"{HOST}:{port}",
+        "SENTRY_DSN": "", "LIVE_MITTAB_DIRECTORY_URL": "",
+    }
+    django = {**env, **runtime}
+    django.pop("SECRET_KEY", None)
+    session = subprocess.check_output([str(ROOT / "venv/bin/python"), "-c", """
+from reference import application
+from django.contrib.sessions.backends.db import SessionStore
+from core.models import User
+from sys import argv
+user = User.objects.get(pk=int(argv[1]))
+session = SessionStore()
+session.update({"_auth_user_id": str(user.pk), "_auth_user_backend": "django.contrib.auth.backends.ModelBackend",
+                "_auth_user_hash": user.get_session_auth_hash()})
+session.save()
+print(session.session_key)
+""", str(user)], env=django, text=True).splitlines()[-1]
+    with patch.dict(os.environ):
+        os.environ.pop("SECRET_KEY", None)
+        with start_server("Rust shared environment", [str(RUST_BIN)], port, runtime):
+            response = requests.get(f"http://{HOST}:{port}/accounts/email/", cookies={"sessionid": session},
+                                    allow_redirects=False, timeout=15)
+            assert response.status_code == 200 and ALTERNATE in response.text, response.status_code
+
+
+def main():
+    postgres = os.environ["BLACK_ROD_PARITY_POSTGRES_URL"]
+    seed = Path(os.environ["BR_STATE"]) / "dev.sqlite3"
+    with TemporaryDirectory(prefix="standings-account-write-") as folder:
+        database = Path(folder) / "dev.sqlite3"
+        with fixture_database(seed, database, postgres):
+            target = os.environ["BLACK_ROD_PARITY_POSTGRES_URL"]
+            env = {**os.environ, "BR_STATE": folder, "SECRET_KEY": "disposable-local-parity-key",
+                   "PYTHONPATH": f"{Path(__file__).resolve().parent}{os.pathsep}{os.environ['PYTHONPATH']}"}
+            output = subprocess.check_output([str(ROOT / "venv/bin/python"), "-c", SEED], text=True, env=env)
+            user, session, anonymous, refreshed = json.loads(output.splitlines()[-1])
+            with servers(database) as (_, rust), closing(psycopg2.connect(target)) as control, closing(
+                psycopg2.connect(target)
+            ) as observer:
+                observer.autocommit = True
+                exercise(rust, user, session, control, observer)
+                login_during_session_update(rust, user, anonymous, refreshed, env, control, observer)
+            signup_when_mail_is_unavailable(target)
+            session_from_shared_environment(target, user, folder, env)
+    print("Concurrent account edits, shared environment sessions, and signup mail failure match expectations")
+
+
+if __name__ == "__main__":
+    main()

@@ -1,26 +1,39 @@
-#!/usr/bin/env python
+#!/usr/bin/env bash
 
-import os
-import signal
-import subprocess
-import sys
+set -euo pipefail
+cd "$(dirname "$0")/.."
 
-server_env = os.environ.copy()
-server_env["DEBUG"] = "1"
+export ENV="${ENV:-development}"
+database="${BR_STATE:+$BR_STATE/dev.sqlite3}"
+export BLACK_ROD_DATABASE_URL="${BLACK_ROD_DATABASE_URL:-sqlite://${database:-apda/db.sqlite3}?mode=rw}"
+export BLACK_ROD_BIND="${BLACK_ROD_BIND:-0.0.0.0:8000}"
 
-webpack_args = ["npm", "run", "watch"]
-server_args = ["python", "manage.py", "runserver", "0.0.0.0:8000"]
+export BLACK_ROD_WATCH_WEBPACK=1
+webpack_stats="${WEBPACK_STATS_FILE:-webpack-stats.json}"
 
-webpack_proc = subprocess.Popen(webpack_args, stdout=sys.stdout, stderr=sys.stderr)
-server_proc = subprocess.Popen(server_args, stdout=sys.stdout, stderr=sys.stderr, env=server_env)
+webpack_previous=$(node -e '
+  try { console.log(require("node:fs").statSync(process.argv[1]).mtimeMs); }
+  catch { console.log(0); }
+' "$webpack_stats")
 
-def on_interrupt(*args):
-    print("Exiting webpack and python...")
-    webpack_proc.terminate()
-    server_proc.terminate()
-    sys.exit(0)
-  
-signal.signal(signal.SIGINT, on_interrupt)
+node_modules/.bin/webpack --config webpack.config.js --watch --mode=development &
+webpack_pid=$!
+trap 'kill "$webpack_pid" 2>/dev/null || true' EXIT
 
+webpack_start=$SECONDS
+until node -e '
+  try {
+    const fs = require("node:fs"), path = process.argv[1], previous = Number(process.argv[2]);
+    const stats = JSON.parse(fs.readFileSync(path, "utf8"));
+    if (fs.statSync(path).mtimeMs !== previous && stats.status === "done" && stats.chunks?.main?.length) process.exit(0);
+  } catch {}
+  process.exit(1);
+' "$webpack_stats" "$webpack_previous"; do
+  if ! kill -0 "$webpack_pid" 2>/dev/null || ((SECONDS - webpack_start >= 60)); then
+    echo "Webpack did not produce its development manifest." >&2
+    exit 1
+  fi
+  sleep 0.25
+done
 
-for p in [webpack_proc, server_proc]: p.communicate()
+cargo +1.94.0 run --locked --manifest-path rust/Cargo.toml -- serve

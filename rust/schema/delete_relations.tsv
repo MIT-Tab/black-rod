@@ -1,0 +1,123 @@
+account_emailaddress	account_emailconfirmation	email_address_id	CASCADE	-	-
+auth_group	auth_group_permissions	group_id	CASCADE	-	-
+auth_group	core_user_groups	group_id	CASCADE	-	-
+auth_permission	auth_group_permissions	permission_id	CASCADE	-	-
+auth_permission	core_user_user_permissions	permission_id	CASCADE	-	-
+core_agentchangeset	core_agentchangeset	undoes_id	PROTECT	-	"id" DESC
+core_agentcredential	core_agentchangeset	credential_id	PROTECT	-	"id" DESC
+core_debater	core_qualpoints	debater_id	CASCADE	-	-
+core_debater	core_reaff	old_debater_id	CASCADE	-	-
+core_debater	core_reaff	new_debater_id	CASCADE	-	-
+core_debater	core_debateralias	debater_id	CASCADE	-	"source_name" ASC,"id" ASC
+core_debater	core_immaculategridhiddendebater	debater_id	CASCADE	-	-
+core_debater	core_speakerresult	debater_id	CASCADE	-	-
+core_debater	core_team_debaters	debater_id	CASCADE	-	-
+core_debater	core_teamresult_hidden_from_debaters	debater_id	CASCADE	-	-
+core_debater	core_roundstats	debater_id	CASCADE	-	-
+core_debater	core_noty	debater_id	CASCADE	-	"place" ASC
+core_debater	core_onlinequal	debater_id	CASCADE	-	"place" ASC
+core_debater	core_qual	debater_id	CASCADE	-	-
+core_debater	core_soty	debater_id	CASCADE	-	"place" ASC
+core_debater	core_tournamentautoqual	debater_id	CASCADE	-	-
+core_debater	core_video	pm_id	CASCADE	-	-
+core_debater	core_video	lo_id	CASCADE	-	-
+core_debater	core_video	mg_id	CASCADE	-	-
+core_debater	core_video	mo_id	CASCADE	-	-
+core_debater	core_resource_authors	debater_id	CASCADE	-	-
+core_debater	core_mergedebaterrequest	primary_debater_id	SET_NULL	-	"created_at" ASC
+core_debater	core_mergedebaterrequest	secondary_debater_id	SET_NULL	-	"created_at" ASC
+core_debater	core_claimdebaterrequest	debater_id	CASCADE	-	"created_at" DESC
+core_debateralias	core_importedroundmetadata	gov_1_alias_id	PROTECT	-	-
+core_debateralias	core_importedroundmetadata	gov_2_alias_id	PROTECT	-	-
+core_debateralias	core_importedroundmetadata	opp_1_alias_id	PROTECT	-	-
+core_debateralias	core_importedroundmetadata	opp_2_alias_id	PROTECT	-	-
+core_debateralias	core_importedroundjudge	debater_alias_id	SET_NULL	-	"id" ASC
+core_debateraliasgroup	core_debater	alias_group_id	SET_NULL	-	-
+core_immaculategridboard	core_immaculategridplay	board_id	PROTECT	-	-
+core_importbatch	core_tournamentimport	batch_id	SET_NULL	-	"tournament_id" ASC,"imported_at" DESC,"id" DESC
+core_importedroundmetadata	core_importedroundmetadata_sources	importedroundmetadata_id	CASCADE	-	-
+core_importedroundmetadata	core_importedroundjudge	round_metadata_id	CASCADE	-	"id" ASC
+core_motion	core_motionuserstatus	motion_id	CASCADE	-	-
+core_motion	core_taggedmotion	content_object_id	CASCADE	-	-
+core_motiontopic	core_taggedmotion	tag_id	CASCADE	-	-
+core_resource	core_resource_authors	resource_id	CASCADE	-	-
+core_resource	core_taggedresource	object_id	CASCADE	content_type_id:core.resource	-
+core_resourcetag	core_taggedresource	tag_id	CASCADE	-	-
+core_round	core_roundstats	round_id	CASCADE	-	-
+core_round	core_importedroundmetadata	round_id	CASCADE	-	-
+core_schedulerworkspace	core_schedulingrun	workspace_id	CASCADE	-	"created_at" DESC
+core_school	core_schoollookup	school_id	CASCADE	-	-
+core_school	core_debater	school_id	SET_NULL	-	-
+core_school	core_tournament	host_id	SET_NULL	-	"date" ASC
+core_school	core_schooladmin	school_id	CASCADE	-	-
+core_school	core_coty	school_id	CASCADE	-	"place" ASC
+core_team	core_team_debaters	team_id	CASCADE	-	-
+core_team	core_teamresult	team_id	CASCADE	-	-
+core_team	core_round	gov_id	CASCADE	-	-
+core_team	core_round	opp_id	CASCADE	-	-
+core_team	core_toty	team_id	CASCADE	-	"place" ASC
+core_team	core_totyreaff	old_team_id	CASCADE	-	-
+core_team	core_totyreaff	new_team_id	CASCADE	-	-
+core_teamresult	core_teamresult_hidden_from_debaters	teamresult_id	CASCADE	-	-
+core_tournament	core_speakerresult	tournament_id	CASCADE	-	-
+core_tournament	core_teamresult	tournament_id	CASCADE	-	-
+core_tournament	core_round	tournament_id	CASCADE	-	-
+core_tournament	core_tournamentimport	tournament_id	CASCADE	-	"tournament_id" ASC,"imported_at" DESC,"id" DESC
+core_tournament	core_noty	tournament_one_id	CASCADE	-	"place" ASC
+core_tournament	core_noty	tournament_two_id	CASCADE	-	"place" ASC
+core_tournament	core_noty	tournament_three_id	CASCADE	-	"place" ASC
+core_tournament	core_noty	tournament_four_id	CASCADE	-	"place" ASC
+core_tournament	core_noty	tournament_five_id	CASCADE	-	"place" ASC
+core_tournament	core_noty	tournament_six_id	CASCADE	-	"place" ASC
+core_tournament	core_onlinequal	tournament_one_id	CASCADE	-	"place" ASC
+core_tournament	core_onlinequal	tournament_two_id	CASCADE	-	"place" ASC
+core_tournament	core_onlinequal	tournament_three_id	CASCADE	-	"place" ASC
+core_tournament	core_onlinequal	tournament_four_id	CASCADE	-	"place" ASC
+core_tournament	core_onlinequal	tournament_five_id	CASCADE	-	"place" ASC
+core_tournament	core_onlinequal	tournament_six_id	CASCADE	-	"place" ASC
+core_tournament	core_qual	tournament_id	CASCADE	-	-
+core_tournament	core_soty	tournament_one_id	CASCADE	-	"place" ASC
+core_tournament	core_soty	tournament_two_id	CASCADE	-	"place" ASC
+core_tournament	core_soty	tournament_three_id	CASCADE	-	"place" ASC
+core_tournament	core_soty	tournament_four_id	CASCADE	-	"place" ASC
+core_tournament	core_soty	tournament_five_id	CASCADE	-	"place" ASC
+core_tournament	core_soty	tournament_six_id	CASCADE	-	"place" ASC
+core_tournament	core_toty	tournament_one_id	CASCADE	-	"place" ASC
+core_tournament	core_toty	tournament_two_id	CASCADE	-	"place" ASC
+core_tournament	core_toty	tournament_three_id	CASCADE	-	"place" ASC
+core_tournament	core_toty	tournament_four_id	CASCADE	-	"place" ASC
+core_tournament	core_toty	tournament_five_id	CASCADE	-	"place" ASC
+core_tournament	core_toty	tournament_six_id	CASCADE	-	"place" ASC
+core_tournament	core_tournamentautoqual	tournament_id	CASCADE	-	-
+core_tournament	core_video	tournament_id	CASCADE	-	-
+core_tournament	core_motion	tournament_id	SET_NULL	-	"date_set" DESC,"id" DESC
+core_tournamentimport	core_importedroundmetadata_sources	tournamentimport_id	CASCADE	-	-
+core_user	django_admin_log	user_id	CASCADE	-	"action_time" DESC
+core_user	core_debater	user_id	SET_NULL	-	-
+core_user	core_immaculategridplay	user_id	CASCADE	-	-
+core_user	core_schooladmin	user_id	CASCADE	-	-
+core_user	core_schedulerworkspace	updated_by_id	SET_NULL	-	-
+core_user	core_schedulingrun	created_by_id	SET_NULL	-	"created_at" DESC
+core_user	core_user_groups	user_id	CASCADE	-	-
+core_user	core_user_user_permissions	user_id	CASCADE	-	-
+core_user	core_motionuserstatus	user_id	CASCADE	-	-
+core_user	core_resource	created_by_id	SET_NULL	-	"created_at" DESC
+core_user	core_mergedebaterrequest	requested_by_id	CASCADE	-	"created_at" ASC
+core_user	core_mergedebaterrequest	processed_by_id	SET_NULL	-	"created_at" ASC
+core_user	core_claimdebaterrequest	requested_by_id	CASCADE	-	"created_at" DESC
+core_user	core_claimdebaterrequest	processed_by_id	SET_NULL	-	"created_at" DESC
+core_user	core_generatedcode	user_id	CASCADE	-	"created_at" DESC,"id" DESC
+core_user	core_syntheticresolutionlog	actor_id	SET_NULL	-	"created_at" DESC,"id" DESC
+core_user	core_agentcredential	created_by_id	PROTECT	-	-
+core_user	account_emailaddress	user_id	CASCADE	-	-
+core_user	socialaccount_socialaccount	user_id	CASCADE	-	-
+core_video	taggit_taggeditem	object_id	CASCADE	content_type_id:core.video	-
+django_content_type	django_admin_log	content_type_id	SET_NULL	-	"action_time" DESC
+django_content_type	auth_permission	content_type_id	CASCADE	-	"codename" ASC
+django_content_type	taggit_taggeditem	content_type_id	CASCADE	-	-
+django_content_type	core_taggedresource	content_type_id	CASCADE	-	-
+django_site	socialaccount_socialapp_sites	site_id	CASCADE	-	-
+socialaccount_socialaccount	socialaccount_socialtoken	account_id	CASCADE	-	-
+socialaccount_socialapp	socialaccount_socialapp_sites	socialapp_id	CASCADE	-	-
+socialaccount_socialapp	socialaccount_socialtoken	app_id	SET_NULL	-	-
+taggit_tag	taggit_taggeditem	tag_id	CASCADE	-	-

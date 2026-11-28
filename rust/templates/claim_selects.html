@@ -1,0 +1,13 @@
+{% if field == "school" %}
+    <label for="id_school">Select School:</label>
+    <select name="school" id="id_school" required aria-describedby="id_school_helptext" data-autocomplete-light-language="en" data-autocomplete-light-url="/core/schools/autocomplete/claim" data-autocomplete-light-function="select2">
+        <option value=""{% if not school %} selected{% endif %}>---------</option>
+        {% if school %}<option value="{{ school.0 }}" selected>{{ school.1 }}</option>{% endif %}
+    </select>
+{% else %}
+    <label for="id_debater">Select Debater to Claim:</label>
+    <select name="debater" id="id_debater" required aria-describedby="id_debater_helptext" data-autocomplete-light-language="en" data-autocomplete-light-url="/core/debaters/autocomplete" data-autocomplete-light-function="select2">
+        <option value=""{% if not debater %} selected{% endif %}>---------</option>
+        {% if debater %}<option value="{{ debater.0 }}" selected>{{ debater.1 }}</option>{% endif %}
+    </select><div style="display:none" class="dal-forward-conf" id="dal-forward-conf-for_id_debater"><script type="text/dal-forward-conf">[{"type": "field", "src": "school"}]</script></div>
+{% endif %}

@@ -13,15 +13,16 @@ class Command(BaseCommand):
         # for team in tqdm(Team.objects.all()):
         #     print ('Updating %s' % (team,))
         #     update_toty(team)
-        qual_points = QualPoints.objects.filter(
-            season=settings.CURRENT_SEASON, points=9
-        )
-        debaters = Debater.objects.filter(qual_points__in=qual_points).distinct()
-        teams = Team.objects.filter(debaters__in=debaters).distinct()
+        with standings_write_lock(settings.CURRENT_SEASON):
+            qual_points = QualPoints.objects.filter(
+                season=settings.CURRENT_SEASON, points=9
+            )
+            debaters = Debater.objects.filter(qual_points__in=qual_points).distinct()
+            teams = Team.objects.filter(debaters__in=debaters).distinct()
 
-        for team in tqdm(teams):
-            print(f"Updating {team}")
-            update_qual_points(team)
+            for team in tqdm(teams):
+                print(f"Updating {team}")
+                update_qual_points(team)
 
         # for debater in tqdm(Debater.objects.all()):
         #     print ('Updating %s' % (debater,))

@@ -1,0 +1,12 @@
+<div id="div_id_{{ select_name }}" class="form-group">
+    <label for="id_{{ select_name }}" class="requiredField">{{ select_label }}<span class="asteriskField">*</span></label>
+    <div>
+        <select name="{{ select_name }}" id="id_{{ select_name }}" class="modelselect2 form-control{% if fields[select_name].error %} is-invalid{% endif %}"
+                data-autocomplete-light-language="en" data-autocomplete-light-url="/core/debaters/partnership-paths/autocomplete/" data-autocomplete-light-function="select2"
+                data-width="100%" data-placeholder="Search by name" data-minimum-input-length="1" required>
+            <option value=""{% if not fields[select_name].value %} selected{% endif %}>---------</option>
+            {% if fields[select_name].value %}<option value="{{ fields[select_name].value }}" selected>{{ fields[select_name].label }}</option>{% endif %}
+        </select>
+        {% if fields[select_name].error %}<p id="error_1_id_{{ select_name }}" class="invalid-feedback d-block"><strong>{{ fields[select_name].error }}</strong></p>{% endif %}
+    </div>
+</div>

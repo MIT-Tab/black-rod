@@ -1,0 +1,352 @@
+{
+  "account_emailaddress": [
+    "EmailAddress",
+    "email address",
+    "email addresses"
+  ],
+  "account_emailconfirmation": [
+    "EmailConfirmation",
+    "email confirmation",
+    "email confirmations"
+  ],
+  "auth_group": [
+    "Group",
+    "group",
+    "groups"
+  ],
+  "auth_group_permissions": [
+    "Group_permissions",
+    "group-permission relationship",
+    "group-permission relationships"
+  ],
+  "auth_permission": [
+    "Permission",
+    "permission",
+    "permissions"
+  ],
+  "core_agentchangeset": [
+    "AgentChangeSet",
+    "agent change set",
+    "agent change sets"
+  ],
+  "core_agentcredential": [
+    "AgentCredential",
+    "agent credential",
+    "agent credentials"
+  ],
+  "core_claimdebaterrequest": [
+    "ClaimDebaterRequest",
+    "claim debater request",
+    "claim debater requests"
+  ],
+  "core_coty": [
+    "COTY",
+    "coty",
+    "cotys"
+  ],
+  "core_debater": [
+    "Debater",
+    "debater",
+    "debaters"
+  ],
+  "core_debateralias": [
+    "DebaterAlias",
+    "debater alias",
+    "debater aliass"
+  ],
+  "core_debateraliasgroup": [
+    "DebaterAliasGroup",
+    "Debater Alias Group",
+    "Debater Alias Groups"
+  ],
+  "core_generatedcode": [
+    "GeneratedCode",
+    "generated code",
+    "generated codes"
+  ],
+  "core_immaculategridboard": [
+    "ImmaculateGridBoard",
+    "immaculate grid board",
+    "immaculate grid boards"
+  ],
+  "core_immaculategridhiddendebater": [
+    "ImmaculateGridHiddenDebater",
+    "Immaculate Grid hidden debater",
+    "Immaculate Grid hidden debaters"
+  ],
+  "core_immaculategridplay": [
+    "ImmaculateGridPlay",
+    "immaculate grid play",
+    "immaculate grid plays"
+  ],
+  "core_importbatch": [
+    "ImportBatch",
+    "import batch",
+    "import batchs"
+  ],
+  "core_importedroundjudge": [
+    "ImportedRoundJudge",
+    "imported round judge",
+    "imported round judges"
+  ],
+  "core_importedroundmetadata": [
+    "ImportedRoundMetadata",
+    "imported round metadata",
+    "imported round metadatas"
+  ],
+  "core_importedroundmetadata_sources": [
+    "ImportedRoundMetadata_sources",
+    "importedroundmetadata-tournamentimport relationship",
+    "importedroundmetadata-tournamentimport relationships"
+  ],
+  "core_mergedebaterrequest": [
+    "MergeDebaterRequest",
+    "merge debater request",
+    "merge debater requests"
+  ],
+  "core_motion": [
+    "Motion",
+    "motion",
+    "motions"
+  ],
+  "core_motiontopic": [
+    "MotionTopic",
+    "Motion Topic",
+    "Motion Topics"
+  ],
+  "core_motionuserstatus": [
+    "MotionUserStatus",
+    "motion user status",
+    "motion user statuss"
+  ],
+  "core_noty": [
+    "NOTY",
+    "noty",
+    "notys"
+  ],
+  "core_onlinequal": [
+    "OnlineQUAL",
+    "online qual",
+    "online quals"
+  ],
+  "core_qual": [
+    "QUAL",
+    "qual",
+    "quals"
+  ],
+  "core_qualbar": [
+    "QualBar",
+    "qual bar",
+    "qual bars"
+  ],
+  "core_qualpoints": [
+    "QualPoints",
+    "qual points",
+    "qual pointss"
+  ],
+  "core_reaff": [
+    "Reaff",
+    "reaff",
+    "reaffs"
+  ],
+  "core_resource": [
+    "Resource",
+    "resource",
+    "resources"
+  ],
+  "core_resource_authors": [
+    "Resource_authors",
+    "resource-debater relationship",
+    "resource-debater relationships"
+  ],
+  "core_resourcetag": [
+    "ResourceTag",
+    "Resource Tag",
+    "Resource Tags"
+  ],
+  "core_round": [
+    "Round",
+    "round",
+    "rounds"
+  ],
+  "core_roundstats": [
+    "RoundStats",
+    "round stats",
+    "round statss"
+  ],
+  "core_schedulerworkspace": [
+    "SchedulerWorkspace",
+    "Scheduler workspace",
+    "Scheduler workspaces"
+  ],
+  "core_schedulingrun": [
+    "SchedulingRun",
+    "scheduling run",
+    "scheduling runs"
+  ],
+  "core_school": [
+    "School",
+    "school",
+    "schools"
+  ],
+  "core_schooladmin": [
+    "SchoolAdmin",
+    "school admin",
+    "school admins"
+  ],
+  "core_schoollookup": [
+    "SchoolLookup",
+    "school lookup",
+    "school lookups"
+  ],
+  "core_sitesetting": [
+    "SiteSetting",
+    "site setting",
+    "site settings"
+  ],
+  "core_soty": [
+    "SOTY",
+    "soty",
+    "sotys"
+  ],
+  "core_speakerresult": [
+    "SpeakerResult",
+    "speaker result",
+    "speaker results"
+  ],
+  "core_syntheticresolutionlog": [
+    "SyntheticResolutionLog",
+    "synthetic resolution log",
+    "synthetic resolution logs"
+  ],
+  "core_taggedmotion": [
+    "TaggedMotion",
+    "tagged motion",
+    "tagged motions"
+  ],
+  "core_taggedresource": [
+    "TaggedResource",
+    "tagged resource",
+    "tagged resources"
+  ],
+  "core_team": [
+    "Team",
+    "team",
+    "teams"
+  ],
+  "core_team_debaters": [
+    "Team_debaters",
+    "team-debater relationship",
+    "team-debater relationships"
+  ],
+  "core_teamresult": [
+    "TeamResult",
+    "team result",
+    "team results"
+  ],
+  "core_teamresult_hidden_from_debaters": [
+    "TeamResult_hidden_from_debaters",
+    "teamresult-debater relationship",
+    "teamresult-debater relationships"
+  ],
+  "core_toty": [
+    "TOTY",
+    "toty",
+    "totys"
+  ],
+  "core_totyreaff": [
+    "TOTYReaff",
+    "toty reaff",
+    "toty reaffs"
+  ],
+  "core_tournament": [
+    "Tournament",
+    "tournament",
+    "tournaments"
+  ],
+  "core_tournamentautoqual": [
+    "TournamentAutoQual",
+    "tournament auto qual",
+    "tournament auto quals"
+  ],
+  "core_tournamentimport": [
+    "TournamentImport",
+    "tournament import",
+    "tournament imports"
+  ],
+  "core_user": [
+    "User",
+    "user",
+    "users"
+  ],
+  "core_user_groups": [
+    "User_groups",
+    "user-group relationship",
+    "user-group relationships"
+  ],
+  "core_user_user_permissions": [
+    "User_user_permissions",
+    "user-permission relationship",
+    "user-permission relationships"
+  ],
+  "core_video": [
+    "Video",
+    "video",
+    "videos"
+  ],
+  "django_admin_log": [
+    "LogEntry",
+    "log entry",
+    "log entries"
+  ],
+  "django_content_type": [
+    "ContentType",
+    "content type",
+    "content types"
+  ],
+  "django_session": [
+    "Session",
+    "session",
+    "sessions"
+  ],
+  "django_site": [
+    "Site",
+    "site",
+    "sites"
+  ],
+  "django_summernote_attachment": [
+    "Attachment",
+    "attachment",
+    "attachments"
+  ],
+  "socialaccount_socialaccount": [
+    "SocialAccount",
+    "social account",
+    "social accounts"
+  ],
+  "socialaccount_socialapp": [
+    "SocialApp",
+    "social application",
+    "social applications"
+  ],
+  "socialaccount_socialapp_sites": [
+    "SocialApp_sites",
+    "socialapp-site relationship",
+    "socialapp-site relationships"
+  ],
+  "socialaccount_socialtoken": [
+    "SocialToken",
+    "social application token",
+    "social application tokens"
+  ],
+  "taggit_tag": [
+    "Tag",
+    "tag",
+    "tags"
+  ],
+  "taggit_taggeditem": [
+    "TaggedItem",
+    "tagged item",
+    "tagged items"
+  ]
+}

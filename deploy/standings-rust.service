@@ -1,0 +1,26 @@
+[Unit]
+Description=Standings Rust web service
+After=network-online.target
+Wants=network-online.target
+ConditionFileIsExecutable=/var/lib/standings-rust/current/black-rod
+
+[Service]
+User=rodda
+Group=rodda
+WorkingDirectory=/var/lib/standings-rust
+Environment=ENV=production
+Environment=DOT_ENV_FILE=/home/rodda/black-rod/.env
+Environment=BLACK_ROD_RELEASE_ROOT=/var/lib/standings-rust/current
+Environment=WEBPACK_STATS_FILE=/var/lib/standings-rust/current/webpack-stats.json
+Environment=BLACK_ROD_MEDIA_ROOT=/home/rodda/black-rod
+Environment=BLACK_ROD_SEARCH_GENERATION_FILE=/var/lib/standings-rust/state/search-generation
+EnvironmentFile=/etc/default/standings-rust
+ExecStart=/bin/sh -c 'exec /var/lib/standings-rust/current/black-rod serve'
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=20
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=yes
+ReadWritePaths=/var/lib/standings-rust/state /home/rodda/black-rod/django-summernote

@@ -41,6 +41,18 @@ def test_team_creation():
     assert debater1 in team.debaters.all()
     assert debater2 in team.debaters.all()
 
+
+@pytest.mark.django_db
+def test_team_display_escapes_names_stored_by_other_writers():
+    debater = Debater.objects.create(first_name="Example")
+    Debater.all_objects.filter(pk=debater.pk).update(first_name="<b>Example</b> & Co")
+    team = Team.objects.create(name="Example Team")
+    team.debaters.add(debater)
+    assert team.debaters_display == (
+        f'<a href="{debater.get_absolute_url()}">&lt;b&gt;Example&lt;/b&gt; &amp; Co</a>'
+    )
+
+
 @pytest.mark.django_db
 def test_team_string_representation():
     """Test team string representation"""

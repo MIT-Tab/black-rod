@@ -18,7 +18,9 @@ module.exports = {
   },
 
   plugins: [
-    new BundleTracker({ filename: "webpack-stats.json" }),
+    new BundleTracker({
+      filename: process.env.WEBPACK_STATS_FILE || "webpack-stats.json",
+    }),
     new webpack.ProvidePlugin({
       $: "jquery",
       jQuery: "jquery",
@@ -28,6 +30,10 @@ module.exports = {
 
   module: {
     rules: [
+      {
+        test: /\.(woff2?|ttf|eot)$/,
+        type: "asset/resource",
+      },
       {
         test: /\.css$/,
         use: ["style-loader", "css-loader"],
@@ -73,6 +79,7 @@ module.exports = {
 
   resolve: {
     extensions: [".js", ".jsx"],
+    alias: { jQuery: "jquery" },
   },
 
   devtool: "source-map",

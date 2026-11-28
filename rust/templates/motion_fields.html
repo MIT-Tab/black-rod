@@ -1,0 +1,38 @@
+<div id="div_id_text" class="form-group">
+    <label for="id_text" class="requiredField">Motion text<span class="asteriskField">*</span></label>
+    <div>
+        <textarea name="text" cols="40" rows="10" class="textarea form-control{% if errors.text %} is-invalid{% endif %}" required id="id_text">{{ fields.text }}</textarea>
+        {% if errors.text %}<p class="invalid-feedback"><strong>{{ errors.text }}</strong></p>{% endif %}
+    </div>
+</div>
+<div id="div_id_background_slide" class="form-group">
+    <label for="id_background_slide" class="">Background slide</label>
+    <div><textarea name="background_slide" cols="40" rows="4" class="textarea form-control" id="id_background_slide">{{ fields.background_slide }}</textarea></div>
+</div>
+<div id="div_id_date_set" class="form-group">
+    <label for="id_date_set" class="">Date set</label>
+    <div>
+        <input type="date" name="date_set" class="dateinput form-control{% if errors.date_set %} is-invalid{% endif %}" {% if fields.date_set %} value="{{ fields.date_set }}"{% endif %} id="id_date_set">
+        {% if errors.date_set %}<p class="invalid-feedback"><strong>{{ errors.date_set }}</strong></p>{% endif %}
+    </div>
+</div>
+<div id="div_id_tournament" class="form-group">
+    <label for="id_tournament" class="">Tournament</label>
+    <div>
+        <select name="tournament" class="modelselect2 form-control{% if errors.tournament %} is-invalid{% endif %}" id="id_tournament" data-autocomplete-light-language="en" data-autocomplete-light-url="/core/tournaments/all_autocomplete" data-autocomplete-light-function="select2">
+            <option value=""{% if not fields.tournament_label %} selected{% endif %}>---------</option>
+            {% if fields.tournament_label %}<option value="{{ fields.tournament }}" selected>{{ fields.tournament_label }}</option>{% endif %}
+        </select>
+        {% if errors.tournament %}<p class="invalid-feedback"><strong>{{ errors.tournament }}</strong></p>{% endif %}
+    </div>
+</div>
+<div id="div_id_tags" class="form-group">
+    <label for="id_tags" class="">Tags</label>
+    <div>
+        <select name="tags" class="taggitselect2 form-control{% if errors.tags %} is-invalid{% endif %}" multiple id="id_tags" aria-describedby="id_tags_helptext" data-autocomplete-light-language="en" data-autocomplete-light-url="/core/motions/topics" data-autocomplete-light-function="select2" data-tags=",">
+            {% for tag in fields.tags %}<option value="{{ tag }}" selected>{{ tag }}</option>{% endfor %}
+        </select>
+        {% if errors.tags %}<p class="invalid-feedback"><strong>{{ errors.tags }}</strong></p>{% endif %}
+        <small id="hint_id_tags" class="form-text text-muted">A comma-separated list of tags.</small>
+    </div>
+</div>

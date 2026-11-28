@@ -1,0 +1,38 @@
+    {% macro text_field(name, label, maxlength, required=false) %}
+        <div id="div_id_{{ name }}" class="form-group">
+            <label for="id_{{ name }}"{% if required %} class="requiredField"{% endif %}>{{ label }}{% if required %}<span class="asteriskField">*</span>{% endif %}</label>
+            <div>
+                <input type="text" name="{{ name }}" id="id_{{ name }}" class="textinput textInput form-control{% if errors[name] %} is-invalid{% endif %}" maxlength="{{ maxlength }}"{% if fields[name] %} value="{{ fields[name] }}"{% endif %}{% if required %} required{% endif %}>
+                {% if errors[name] %}<p id="error_1_id_{{ name }}" class="invalid-feedback d-block"><strong>{{ errors[name] }}</strong></p>{% endif %}
+            </div>
+        </div>
+    {% endmacro %}
+    {% macro select(name, label, url, required=false, help="") %}
+        <div id="div_id_{{ name }}" class="form-group">
+            <label for="id_{{ name }}"{% if required %} class="requiredField"{% endif %}>{{ label }}{% if required %}<span class="asteriskField">*</span>{% endif %}</label>
+            <div>
+                <select name="{{ name }}" id="id_{{ name }}" class="modelselect2 form-control{% if errors[name] %} is-invalid{% endif %}" data-rust-select-url="{{ url }}"{% if required %} required{% endif %}>
+                    <option value=""></option>
+                    {% if choices[name] %}<option value="{{ fields[name] }}" selected>{{ choices[name] }}</option>{% endif %}
+                </select>
+                {% if errors[name] %}<p id="error_1_id_{{ name }}" class="invalid-feedback d-block"><strong>{{ errors[name] }}</strong></p>{% endif %}
+                {% if help %}<small class="form-text text-muted">{{ help }}</small>{% endif %}
+            </div>
+        </div>
+    {% endmacro %}
+        {% if is_school %}
+            {{ text_field("name", "Name", 64, true) }}
+            {{ text_field("short_name", "Short name", 64, true) }}
+            <div class="form-group"><div id="div_id_included_in_oty" class="form-check">
+                <input type="checkbox" name="included_in_oty" class="checkboxinput form-check-input" id="id_included_in_oty"{% if included %} checked{% endif %}>
+                <label for="id_included_in_oty" class="form-check-label">Included in OTY</label>
+            </div></div>
+        {% else %}
+            {{ text_field("first_name", "First name", 32, true) }}
+            {{ text_field("last_name", "Last name", 32) }}
+            {{ select("school", "School", "/core/schools/autocomplete", true) }}
+            {{ select("alias_group", "Alias group", "/core/debater-alias-groups/autocomplete", false, "Optional: link this affiliation to an existing alias group.") }}
+            {{ select("existing_debater", "Link to Existing Debater", "/core/debaters/autocomplete", false, "If this debater already exists under a different spelling, link them here.") }}
+            <input type="hidden" name="tournament_id" value="{{ fields.tournament_id|default('') }}" id="id_tournament_id">
+            <input type="hidden" name="school_name" value="{{ fields.school_name|default('') }}" id="id_school_name">
+        {% endif %}

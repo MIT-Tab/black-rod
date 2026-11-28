@@ -1,0 +1,51 @@
+{% extends "site_admin/base_site.html" %}
+
+
+{% block extrastyle %}{{ super() }}<link rel="stylesheet" href="/static/admin/css/dashboard.css">{% endblock %}
+
+{% block coltype %}colMS{% endblock %}
+
+{% block bodyclass %}{{ super() }} dashboard{% endblock %}
+
+{% block nav_breadcrumbs %}{% endblock %}
+
+{% block nav_sidebar %}{% endblock %}
+
+{% block content %}
+<div id="content-main">
+  {% with show_changelinks=true %}{% include "site_admin/app_list.html" %}{% endwith %}
+</div>
+{% endblock %}
+
+{% block sidebar %}
+<div id="content-related">
+    <div class="module" id="recent-actions-module">
+        <h2>Recent actions</h2>
+        <h3>My actions</h3>
+
+
+            {% if not admin_log %}
+            <p>None available</p>
+            {% else %}
+            <ul class="actionlist">
+            {% for entry in admin_log %}
+            <li class="{% if entry.is_addition %}addlink{% endif %}{% if entry.is_change %}changelink{% endif %}{% if entry.is_deletion %}deletelink{% endif %}">
+                <span class="visually-hidden">{% if entry.is_addition %}Added:{% elif entry.is_change %}Changed:{% elif entry.is_deletion %}Deleted:{% endif %}</span>
+                {% if entry.is_deletion or not entry.get_admin_url %}
+                    {{ entry.object_repr }}
+                {% else %}
+                    <a href="{{ entry.get_admin_url }}">{{ entry.object_repr }}</a>
+                {% endif %}
+                <br>
+                {% if entry.model %}
+                    <span class="mini quiet">{{ entry.model }}</span>
+                {% else %}
+                    <span class="mini quiet">Unknown content</span>
+                {% endif %}
+            </li>
+            {% endfor %}
+            </ul>
+            {% endif %}
+    </div>
+</div>
+{% endblock %}

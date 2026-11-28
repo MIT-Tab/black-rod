@@ -2,6 +2,7 @@ from concurrent.futures import ThreadPoolExecutor, wait
 from datetime import date, timedelta
 import logging
 import threading
+from uuid import uuid4
 
 import requests
 from django.conf import settings
@@ -592,6 +593,18 @@ def _cache_set(key, value, timeout):
         LOGGER.exception("Could not cache live standings under %s", key)
 
 
+def _active_cache_key(season):
+    key = f"{CACHE_KEY}:{season}"
+    marker = f"{key}:generation"
+    generation = cache.get(marker)
+    if generation is None:
+        proposed = uuid4().bytes
+        generation = proposed if cache.add(marker, proposed, None) else cache.get(marker)
+    if isinstance(generation, bytes) and len(generation) == 16:
+        return f"{key}:{generation.hex()}"
+    return None
+
+
 def cached_live_standings(season=None):
     """Return the last computed live standings without waiting on a refresh.
 
@@ -599,21 +612,23 @@ def cached_live_standings(season=None):
     like the index can advertise live results without visitors loading /live.
     """
     season = str(season or settings.CURRENT_SEASON)
-    fresh_key = f"{CACHE_KEY}:{season}"
+    fresh_key = _active_cache_key(season)
+    if fresh_key is None:
+        return None
     cached = cache.get(fresh_key)
     if cached is not None:
         return cached
     if cache.add(f"{fresh_key}:lock", 1, LOCK_SECONDS):
-        _start_refresh(season)
+        _start_refresh(season, fresh_key)
     return cache.get(f"{fresh_key}:stale")
 
 
-def _refresh(season):
-    fresh_key = f"{CACHE_KEY}:{season}"
+def _refresh(season, fresh_key):
     try:
-        result = _compute_live_standings(season)
-        _cache_set(fresh_key, result, CACHE_SECONDS)
-        _cache_set(f"{fresh_key}:stale", result, STALE_SECONDS)
+        if cache.get(fresh_key) is None:
+            result = _compute_live_standings(season)
+            _cache_set(fresh_key, result, CACHE_SECONDS)
+            _cache_set(f"{fresh_key}:stale", result, STALE_SECONDS)
     except Exception:  # pylint: disable=broad-except
         LOGGER.exception("Background live standings refresh failed")
     finally:
@@ -621,19 +636,26 @@ def _refresh(season):
         close_old_connections()
 
 
-def _start_refresh(season):
-    threading.Thread(target=_refresh, args=(season,), daemon=True).start()
+def _start_refresh(season, fresh_key):
+    threading.Thread(target=_refresh, args=(season, fresh_key), daemon=True).start()
 
 
 def invalidate_live_standings(season):
     """Drop cached live standings once reviewed results change."""
-    fresh_key = f"{CACHE_KEY}:{season}"
-    cache.delete_many([fresh_key, f"{fresh_key}:stale"])
+    key = f"{CACHE_KEY}:{season}"
+    previous = _active_cache_key(season)
+    cache.set(f"{key}:generation", uuid4().bytes, None)
+    keys = [key, f"{key}:stale"]
+    if previous is not None:
+        keys.extend((previous, f"{previous}:stale"))
+    cache.delete_many(keys)
 
 
 def build_live_standings(season=None):
     season = str(season or settings.CURRENT_SEASON)
-    fresh_key = f"{CACHE_KEY}:{season}"
+    fresh_key = _active_cache_key(season)
+    if fresh_key is None:
+        return _compute_live_standings(season)
     stale_key = f"{fresh_key}:stale"
     lock_key = f"{fresh_key}:lock"
 
@@ -642,14 +664,19 @@ def build_live_standings(season=None):
         return cached
 
     stale = cache.get(stale_key)
-    if not cache.add(lock_key, 1, LOCK_SECONDS) and stale is not None:
+    locked = cache.add(lock_key, 1, LOCK_SECONDS)
+    if not locked and stale is not None:
         # Someone else is refreshing; serve the previous standings.
         return stale
 
     try:
+        if locked and (cached := cache.get(fresh_key)) is not None:
+            return cached
         result = _compute_live_standings(season)
+        if locked:
+            _cache_set(fresh_key, result, CACHE_SECONDS)
+            _cache_set(stale_key, result, STALE_SECONDS)
+        return result
     finally:
-        cache.delete(lock_key)
-    _cache_set(fresh_key, result, CACHE_SECONDS)
-    _cache_set(stale_key, result, STALE_SECONDS)
-    return result
+        if locked:
+            cache.delete(lock_key)

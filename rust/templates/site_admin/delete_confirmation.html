@@ -1,0 +1,65 @@
+{% extends "site_admin/base_site.html" %}
+{% block extrahead %}
+    {{ super() }}
+    {% for medium,style in css %}<link href="/static/{{ style }}" media="{{ medium }}" rel="stylesheet">{% endfor %}
+    {% for asset in js %}<script src="/static/{{ asset }}"></script>{% endfor %}
+    <script src="/static/admin/js/cancel.js" async></script>
+{% endblock %}
+{% block bodyclass %}{{ super() }} app-{{ app_label }} model-{{ model_name }} delete-confirmation{% if bulk %} delete-selected-confirmation{% endif %}{% endblock %}
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+    <a href="/admin/">Home</a>
+    &rsaquo; <a href="{{ app_url }}">{{ app_name }}</a>
+    &rsaquo; <a href="{{ model_url }}">{{ plural }}</a>
+    {% if bulk %}&rsaquo; Delete multiple objects
+    {% else %}&rsaquo; <a href="{{ object_url }}change/">{{ original }}</a> &rsaquo; Delete{% endif %}
+</div>
+{% endblock %}
+{% macro item(value) %}
+<li>{{ value.kind }}: {% if value.url %}<a href="{{ value.url }}">{{ value.label }}</a>{% else %}{{ value.label }}{% endif %}
+    {% if value.children %}<ul>{% for child in value.children %}{{ item(child) }}{% endfor %}</ul>{% endif %}
+</li>
+{% endmacro %}
+{% block content %}
+{% if lacking %}
+    {% if bulk %}
+    <p>Deleting the selected {{ plural|lower }} would result in deleting related objects, but your account doesn't have permission to delete the following types of objects:</p>
+    {% else %}
+    <p>Deleting the {{ singular }} '{{ original }}' would result in deleting related objects, but your account doesn't have permission to delete the following types of objects:</p>
+    {% endif %}
+    <ul id="deleted-objects">{% for denied in lacking %}<li>{{ denied }}</li>{% endfor %}</ul>
+{% elif protected %}
+    {% if bulk %}
+    <p>Deleting the selected {{ plural|lower }} would require deleting the following protected related objects:</p>
+    {% else %}
+    <p>Deleting the {{ singular }} '{{ original }}' would require deleting the following protected related objects:</p>
+    {% endif %}
+    <ul id="deleted-objects">{% for value in protected %}{{ item(value) }}{% endfor %}</ul>
+{% else %}
+    {% if bulk %}
+    <p>Are you sure you want to delete the selected {{ plural|lower }}? All of the following objects and their related items will be deleted:</p>
+    {% else %}
+    <p>Are you sure you want to delete the {{ singular }} "{{ original }}"? All of the following related items will be deleted:</p>
+    {% endif %}
+    <h2>Summary</h2>
+    <ul>{% for name,count in summary %}<li>{{ name }}: {{ count }}</li>{% endfor %}</ul>
+    <h2>Objects</h2>
+    {% if bulk %}
+        {% for root in tree %}<ul>{{ item(root) }}</ul>{% endfor %}
+    {% else %}<ul id="deleted-objects">{% for root in tree %}{{ item(root) }}{% endfor %}</ul>{% endif %}
+    <form method="post">
+        <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf }}">
+        <div>
+            {% if bulk %}
+                {% for id in ids %}<input type="hidden" name="_selected_action" value="{{ id }}">{% endfor %}
+                <input type="hidden" name="action" value="delete_selected">
+            {% endif %}
+            <input type="hidden" name="post" value="yes">
+            {% if is_popup %}<input type="hidden" name="_popup" value="1">{% endif %}
+            {% if to_field %}<input type="hidden" name="_to_field" value="{{ to_field }}">{% endif %}
+            <input type="submit" value="Yes, I’m sure">
+            <a href="#" class="button cancel-link">No, take me back</a>
+        </div>
+    </form>
+{% endif %}
+{% endblock %}

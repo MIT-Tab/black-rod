@@ -1,0 +1,101 @@
+{% extends "base/base.html" %}
+{% block content %}
+    <div class="row mt-lg-5 ml-lg-2 mr-lg-2 mb-lg-5 m-1">
+        <div class="col-lg-3">
+            {% for message in messages %}<div class="alert alert-info m-2">{{ message }}</div>{% endfor %}
+            {% if warning %}<div class="alert {% if motion_warning %}alert-info{% else %}alert-warning{% endif %} m-2" role="alert">{{ warning }}</div>{% endif %}
+            <div class="rounded-l5 shadow-lg card m-2 ">
+                <div class="card-body">
+                    <h5 class="card-title">Search</h5>
+                    <form action="" method="GET">
+                        {% if tag_filters %}{% include "autocomplete_media.html" %}{% endif %}
+                        {% for field in fields %}
+                            <div id="div_id_{{ field.name }}" class="form-group">
+                                <label for="id_{{ field.name }}" class="">{{ field.label }}</label>
+                                <div>
+                                    {% if field.autocomplete %}
+                                        <select name="{{ field.name }}" id="id_{{ field.name }}" class="taggitselect2 form-control" data-autocomplete-light-language="en" data-autocomplete-light-url="{{ field.autocomplete }}" data-autocomplete-light-function="select2" data-tags="," multiple>
+                                            {% for value, label in field.options %}<option value="{{ value }}" selected>{{ label }}</option>{% endfor %}
+                                        </select>
+                                    {% elif field.options %}
+                                        <select name="{{ field.name }}" class="select form-control" id="id_{{ field.name }}">
+                                            {% for value, label in field.options %}<option value="{{ value }}"{% if field.value == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+                                        </select>
+                                    {% elif field.date %}
+                                        <input type="date" name="{{ field.name }}" class="dateinput form-control" id="id_{{ field.name }}"{% if field.value %} value="{{ field.value }}"{% endif %}>
+                                    {% elif field.numeric %}
+                                        <input type="number" name="{{ field.name }}" step="any" class="numberinput form-control" id="id_{{ field.name }}"{% if field.value %} value="{{ field.value }}"{% endif %}>
+                                    {% else %}
+                                        <input type="text" name="{{ field.name }}" class="textinput textInput form-control" id="id_{{ field.name }}"{% if field.value %} value="{{ field.value }}"{% endif %}>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        {% endfor %}
+                        {% if season_filters %}
+                            <div id="div_id_season_filter" class="form-group">
+                                <label class="">Season Filter</label>
+                                <div>
+                                    {% for field in season_filters %}
+                                        <select name="{{ field.name }}" class="form-control select" id="id_{{ field.name }}">
+                                            {% for value, label in field.options %}<option value="{{ value }}"{% if field.value == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+                                        </select>
+                                    {% endfor %}
+                                    <small id="hint_id_season_filter" class="form-text text-muted">Select filter type and season</small>
+                                </div>
+                            </div>
+                        {% endif %}
+                        <div class="d-flex align-items-center">
+                            <input type="submit" class="btn btn-info" value="Search">
+                            {% if random_url %}<button type="submit" class="btn btn-secondary ml-2" formaction="{{ random_url }}">Random</button>{% endif %}
+                            {% if clear_url %}<a class="btn btn-outline-secondary ml-2" href="{{ clear_url }}">Clear</a>{% endif %}
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-9">
+            <div class="shadow-lg card m-2 rounded-l5">
+                <div class="card-body">
+                    <h5 class="card-title">{{ title }}{% include "base/_buttons.html" %}</h5>
+                    <div class="table-container">
+                        <div class="table-responsive">
+                            <table class="table {% if striped %}table-striped{% else %}table-hover{% endif %}">
+                                <thead>
+                                    <tr>
+                                        {% for field in columns %}
+                                            <th{% if field.url %} class="{{ field.class }}"{% endif %}>
+                                                {% if field.url %}<a href="{{ field.url }}">{{ field.label }}{% if field.desc %} <span aria-label="Sorted descending">▾</span>{% elif field.asc %} <span aria-label="Sorted ascending">▴</span>{% endif %}</a>{% else %}{{ field.label }}{% endif %}
+                                            </th>
+                                        {% endfor %}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for row in rows %}
+                                        <tr class="{{ loop.cycle('even', 'odd') }}">
+                                            {% for pieces in row %}
+                                                <td{% if resource_rows and loop.index in [3, 5] %} style="white-space: nowrap;"{% endif %}>{% for piece in pieces %}{% if piece.1 %}<a href="{{ piece.1 }}">{{ piece.0 }}</a>{% else %}{{ piece.0 }}{% endif %}{% if not loop.last %}{% if comma_cells %}, {% else %} and {% endif %}{% endif %}{% endfor %}</td>
+                                            {% endfor %}
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        {% if pagination %}
+                            <nav aria-label="Table navigation">
+                                <ul class="pagination justify-content-left">
+                                    {% if previous %}<li class="previous page-item"><a href="{{ previous }}" class="page-link"><span aria-hidden="true">&laquo;</span></a></li>{% endif %}
+                                    {% for page in pagination %}
+                                        <li class="page-item{% if page.active %} active{% endif %}">
+                                            <a class="page-link"{% if page.url %} href="{{ page.url }}"{% endif %}>{{ page.label }}</a>
+                                        </li>
+                                    {% endfor %}
+                                    {% if next %}<li class="next page-item"><a href="{{ next }}" class="page-link"><span aria-hidden="true">&raquo;</span></a></li>{% endif %}
+                                </ul>
+                            </nav>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock content %}

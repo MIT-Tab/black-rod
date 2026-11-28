@@ -57,10 +57,13 @@ for this workflow. Plain commands without `br` retain the application's normal s
 
 For visible UI changes, `"$S/dev-up"` migrates private SQLite, loads the tracked
 `dev_fixtures`, sets the local **tab / password** superuser, and starts webpack and
-Django bound to `127.0.0.1`. It prints the URL and log paths. `--empty` skips the
+Rust bound to `127.0.0.1`. Install Rust 1.94.0 with rustup before starting the
+server. Use `--django` to run the Django reference on the same private database.
+The helper prints the URL and log paths. `--empty` skips the
 fixture on first initialization; `--fresh` rebuilds only this checkout's private
 dev DB. Seed additional feature data through `br ... manage.py shell`.
-Fixture loading defers search indexing; for search UI work run
+The Django reference defers indexing when loading fixtures. To test search in
+Django, run
 `"$S/br" venv/bin/python manage.py rebuild_index --noinput` after setup.
 Stop background servers with `"$S/dev-down"`. Skip screenshots for changes
 without visible UI, except when verifying the screenshot helper itself.

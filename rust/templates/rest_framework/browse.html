@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="robots" content="NONE,NOARCHIVE">
+    <title>{{ name }} – Django REST framework</title>
+    {% include "base/_theme_head.html" %}
+    <link rel="stylesheet" type="text/css" href="/static/rest_framework/css/bootstrap.min.css">
+    <link rel="stylesheet" type="text/css" href="/static/rest_framework/css/bootstrap-tweaks.css">
+    <link rel="stylesheet" type="text/css" href="/static/rest_framework/css/prettify.css">
+    <link rel="stylesheet" type="text/css" href="/static/rest_framework/css/default.css">
+    <style>{{ code_style|safe }}</style>
+    <link rel="stylesheet" href="/static/css/api-theme.css">
+</head>
+<body class="">
+<div class="wrapper">
+    <div class="navbar navbar-static-top navbar-inverse" role="navigation" aria-label="navbar">
+        <div class="container">
+            <span><a class="navbar-brand" rel="nofollow" href="https://www.django-rest-framework.org/">Django REST framework</a></span>
+            <ul class="nav navbar-nav pull-right"></ul>
+        </div>
+    </div>
+    <div class="container">
+        <ul class="breadcrumb">
+            {% for item in breadcrumbs %}
+                <li{% if loop.last %} class="active"{% endif %}><a href="{{ item.url }}">{{ item.name }}</a></li>
+            {% endfor %}
+        </ul>
+        <div id="content" role="main" aria-label="content">
+            <div class="region" aria-label="request form">
+                {% if can_get %}
+                <form id="get-form" class="pull-right"><fieldset>
+                    <div class="btn-group format-selection">
+                        <a class="btn btn-primary js-tooltip" href="{{ full_path }}" rel="nofollow" title="Make a GET request on the {{ name }} resource">GET</a>
+                        <button class="btn btn-primary dropdown-toggle js-tooltip" data-toggle="dropdown" title="Specify a format for the GET request"><span class="caret"></span></button>
+                        <ul class="dropdown-menu">
+                            {% for format in formats %}
+                            <li><a class="js-tooltip format-option" href="{{ format.url }}" rel="nofollow" title="Make a GET request on the {{ name }} resource with the format set to `{{ format.name }}`">{{ format.name }}</a></li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                </fieldset></form>
+                {% endif %}
+                {% if can_options %}
+                <form class="button-form" action="{{ full_path }}" data-method="OPTIONS">
+                    <button class="btn btn-primary js-tooltip" title="Make an OPTIONS request on the {{ name }} resource">OPTIONS</button>
+                </form>
+                {% endif %}
+            </div>
+            <div class="content-main" role="main" aria-label="main content">
+                <div class="page-header"><h1>{{ name }}</h1></div>
+                <div class="pull-left">{{ description|safe }}</div>
+                <div class="request-info" aria-label="request info">
+                    <pre class="prettyprint"><b>{{ method }}</b> {{ full_path }}</pre>
+                </div>
+                <div class="response-info" aria-label="response info">
+                    <pre class="prettyprint"><span class="meta nocode"><b>HTTP {{ status }} {{ reason }}</b>
+{% for item in headers -%}
+<b>{{ item.name }}:</b> <span class="lit">{{ item.value }}</span>
+{% endfor %}
+</span>{{ body|safe }}</pre>
+                </div>
+            </div>
+            {% if raw_form %}
+            <div>
+                <div class="well tab-content">
+                    <div id="post-generic-content-form">
+                        <form action="{{ full_path }}" method="POST" class="form-horizontal">
+                            <fieldset>
+                                <div class="form-group">
+                                    <label for="id__content_type" class="col-sm-2 control-label">Media type:</label>
+                                    <div class="col-sm-10"><select name="_content_type" data-override="content-type" id="id__content_type" class="form-control"><option value="application/json" selected>application/json</option><option value="application/x-www-form-urlencoded">application/x-www-form-urlencoded</option><option value="multipart/form-data">multipart/form-data</option></select><span class="help-block"></span></div>
+                                </div>
+                                <div class="form-group">
+                                    <label for="id__content" class="col-sm-2 control-label">Content:</label>
+                                    <div class="col-sm-10"><textarea name="_content" cols="40" rows="10" data-override="content" id="id__content" class="form-control"></textarea><span class="help-block"></span></div>
+                                </div>
+                                <div class="form-actions"><button class="btn btn-primary js-tooltip" title="Make a POST request on the {{ name }} resource">POST</button></div>
+                            </fieldset>
+                        </form>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+<script type="application/json" id="drf_csrf">
+        {
+          "csrfHeaderName": "X-CSRFTOKEN",
+          "csrfToken": "{{ csrf }}"
+        }
+      </script>
+{% for script in ["jquery-3.7.1.min.js","ajax-form.js","csrf.js","bootstrap.min.js","prettify-min.js","default.js","load-ajax-form.js"] %}
+<script src="/static/rest_framework/js/{{ script }}"></script>
+{% endfor %}
+</body>
+</html>

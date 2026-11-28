@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ head_title|default(title) }}</title>
+    {% for pass in [1,2] %}
+        {% include "base/_theme_head.html" %}
+        {% for bundle in bundles %}<script src="{{ bundle }}"></script>{% endfor %}
+    {% endfor %}
+</head>
+<body>
+<main class="container-fluid account-content py-3">
+<main class="container-fluid account-content py-3">
+    {% if messages %}
+        <div><strong>Messages:</strong><ul>{% for message in messages %}<li>{{ message }}</li>{% endfor %}</ul></div>
+    {% endif %}
+    <div>
+        <strong>Menu:</strong>
+        <ul>
+            {% if user.is_authenticated %}
+                <li><a href="/accounts/email/">Change Email</a></li>
+                <li><a href="/accounts/password/change/">Change Password</a></li>
+                <li><a href="/accounts/3rdparty/">Account Connections</a></li>
+                <li><a href="/accounts/logout/">Sign Out</a></li>
+            {% else %}
+                <li><a href="/accounts/login/">Sign In</a></li>
+                <li><a href="/accounts/signup/">Sign Up</a></li>
+            {% endif %}
+        </ul>
+    </div>
+    {% block content %}{% endblock %}
+    <div class="mt-3">{% include "base/_theme_picker.html" %}</div>
+</main>
+<div class="mt-3">{% include "base/_theme_picker.html" %}</div>
+</main>
+{% block extra_body %}{% endblock %}
+</body>
+</html>

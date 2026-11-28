@@ -11,12 +11,44 @@ concurrency:
 
 jobs:
   deploy:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - name: Add server to known_hosts
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: npm
+      - name: Build the Linux Rust release
         run: |
-          mkdir -p ~/.ssh
-          ssh-keyscan ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
+          rustup toolchain install 1.94.0 --profile minimal
+          cargo +1.94.0 build --manifest-path rust/Cargo.toml --release --locked
+          npm ci
+          npm run build
+          printf '%s\n' "$GITHUB_SHA" > "$RUNNER_TEMP/standings-revision"
+          tar --dereference --hard-dereference -czf "$RUNNER_TEMP/standings-release.tar.gz" \
+            --transform='s|^rust/target/release/black-rod$|black-rod|' \
+            --transform='s|^standings-revision$|revision|' \
+            rust/target/release/black-rod webpack-stats.json apda/assets rust/static/vendor \
+            -C "$RUNNER_TEMP" standings-revision
+      - name: Prepare the Rust release on Linode
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+        run: |
+          set -euo pipefail
+          umask 077
+          ssh_dir=$(mktemp -d)
+          trap 'rm -rf -- "$ssh_dir"' EXIT
+          printf '%s\n' "$SSH_KEY" > "$ssh_dir/key"
+          unset SSH_KEY
+          ssh-keyscan -T 10 -t ed25519 "$SSH_HOST" > "$ssh_dir/known_hosts"
+          fingerprint=$(ssh-keygen -lf "$ssh_dir/known_hosts" -E sha256 | awk '{print $2}' | sort -u)
+          test "$fingerprint" = 'SHA256:5HeVlb0uLTqSGTsbdfmkp6v3k1rgbK6dviEqjeeilko'
+          archive="$RUNNER_TEMP/standings-release.tar.gz"
+          checksum=$(sha256sum "$archive" | awk '{print $1}')
+          ssh -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$ssh_dir/known_hosts" -i "$ssh_dir/key" "root@$SSH_HOST" \
+            "/usr/local/sbin/standings-prepare-rust '$GITHUB_SHA' '$checksum'" < "$archive"
 
       - name: Deploy over SSH
         uses: appleboy/ssh-action@v1.0.3

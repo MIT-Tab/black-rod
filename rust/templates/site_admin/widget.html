@@ -1,0 +1,48 @@
+{% if row.related and row.wrapped %}<div class="related-widget-wrapper" data-model-ref="{{ row.related.slug }}">{% endif %}
+{% if row.datetime %}
+    <p class="datetime">Date: <input type="text" name="{{ row.name }}_0"{% if row.date %} value="{{ row.date }}"{% endif %} class="vDateField" size="10"{% if row.widget_required %} required{% endif %} id="id_{{ row.name }}_0"><br>
+        Time: <input type="text" name="{{ row.name }}_1"{% if row.time %} value="{{ row.time }}"{% endif %} class="vTimeField" size="8"{% if row.widget_required %} required{% endif %} id="id_{{ row.name }}_1"></p>
+    {% if row.hidden_initial and row.date %}
+    <input type="hidden" name="initial-{{ row.name }}_0" value="{{ row.date }}" id="initial-id_{{ row.name }}_0">
+    <input type="hidden" name="initial-{{ row.name }}_1" value="{{ row.time }}" id="initial-id_{{ row.name }}_1">
+    {% endif %}
+{% elif row.select %}
+    <select name="{{ row.name }}" id="id_{{ row.name }}"{% if row.widget_required %} required{% endif %}{% if row.multiple %} multiple{% endif %}{% if row.help %} aria-describedby="id_{{ row.name }}_helptext"{% endif %}{% if row.error %} aria-invalid="true"{% endif %}
+        {% for name,value in row.attrs %}{% if value is true %} {{ name }}{% elif value is not false and value is not none %} {{ name }}="{{ value }}"{% endif %}{% endfor %}>
+        {% for item in row.options %}<option value="{{ item.value }}"{% if item.selected %} selected{% endif %}>{{ item.label }}</option>{% endfor %}
+    </select>{% if row.forward %}<div style="display:none" class="dal-forward-conf" id="dal-forward-conf-for_id_{{ row.name }}"><script type="text/dal-forward-conf">{{ row.forward|safe }}</script></div>{% endif %}
+{% elif row.radio or row.multicheck %}
+    <div id="id_{{ row.name }}"{% if row.radio %}{% for name,value in row.attrs %} {{ name }}="{{ value }}"{% endfor %}{% endif %}>
+        {% for item in row.options -%}
+        <div><label for="id_{{ row.name }}_{{ loop.index0 }}"><input type="{% if row.radio %}radio{% else %}checkbox{% endif %}" name="{{ row.name }}" value="{{ item.value }}"
+            id="id_{{ row.name }}_{{ loop.index0 }}"{% for name,value in row.attrs %} {{ name }}="{{ value }}"{% endfor %}{% if item.selected %} checked{% endif %}{% if row.widget_required %} required{% endif %}{% if row.multicheck and row.help %} aria-describedby="id_{{ row.name }}_helptext"{% endif %}> {{ item.label }}</label></div>
+        {%- endfor %}
+    </div>
+{% elif row.textarea %}
+    <textarea name="{{ row.name }}" cols="40" rows="10" id="id_{{ row.name }}"{% if row.widget_required %} required{% endif %}{% if row.error %} aria-invalid="true"{% endif %}{% if row.help %} aria-describedby="id_{{ row.name }}_helptext"{% endif %}
+        {% for name,value in row.attrs %}{% if name != 'cols' and name != 'rows' and value is not none %} {{ name }}="{{ value }}"{% endif %}{% endfor %}>
+{{ row.value }}</textarea>{% if row.hidden_initial %}<input type="hidden" name="initial-{{ row.name }}" value="{{ row.value }}" id="initial-id_{{ row.name }}"{% if row.help %} aria-describedby="id_{{ row.name }}_helptext"{% endif %}>{% endif %}
+{% elif row.password_status %}
+    <div id="id_{{ row.name }}" disabled{% if row.help %} aria-describedby="id_{{ row.name }}_helptext"{% endif %}>
+        {% if row.usable %}<p><strong>algorithm</strong>: <bdi>{{ row.algorithm }}</bdi> <strong>iterations</strong>: <bdi>{{ row.iterations }}</bdi> <strong>salt</strong>: <bdi>{{ row.salt }}</bdi> <strong>hash</strong>: <bdi>{{ row.digest }}</bdi></p>
+        {% else %}<p>No password set.</p>{% endif %}
+        <p><a class="button" href="../password/">{% if row.usable %}Reset password{% else %}Set password{% endif %}</a></p>
+    </div>
+{% else %}
+    {% if row.date_widget %}<p class="date">{% endif %}{% if row.raw_url %}<div>{% endif %}
+    {% if row.file_path %}{% if row.admin_file %}<p class="file-upload">{% endif %}Currently: <a href="/{{ row.file_path }}">{{ row.file_path }}</a><br>Change:{% endif %}
+    {% if row.current_url %}<p class="url">Currently: <a href="{{ row.current_url }}">{{ row.value }}</a><br>Change: {% endif %}
+    <input type="{{ row.type }}" name="{{ row.name }}"{% if row.checkbox %}{% if row.checked %} checked{% endif %}{% elif (row.value or row.empty_input_value) and row.type not in ['password', 'file'] %} value="{{ row.value }}"{% endif %}
+        {% if row.widget_required %} required{% endif %}{% if row.error %} aria-invalid="true"{% endif %}{% if row.help %} aria-describedby="id_{{ row.name }}_helptext"{% endif %} id="id_{{ row.name }}"
+        {% for name,value in row.attrs %}{% if value is true %} {{ name }}{% elif value is not false and value is not none %} {{ name }}="{{ value }}"{% endif %}{% endfor %}>
+    {% if row.raw_url %}<a href="{{ row.raw_url }}" class="related-lookup" id="lookup_id_{{ row.name }}" title="Lookup"></a>{% endif %}
+    {% if row.raw_caption %}<strong><a href="{{ row.raw_caption[0] }}">{{ row.raw_caption[1] }}</a></strong>{% endif %}
+    {% if row.raw_url %}</div>{% endif %}{% if row.date_widget or row.current_url or (row.file_path and row.admin_file) %}</p>{% endif %}
+{% endif %}
+{% if row.related and row.wrapped %}
+    {% if row.related.change %}<a class="related-widget-wrapper-link change-related" id="change_id_{{ row.name }}" data-href-template="{{ row.related.url }}__fk__/change/?_to_field=id&amp;_popup=1" data-popup="yes" title="Change selected {{ row.related.singular }}"><img src="/static/admin/img/icon-changelink.svg" alt="" width="24" height="24"></a>{% endif %}
+    {% if row.related.add %}<a class="related-widget-wrapper-link add-related" id="add_id_{{ row.name }}" data-popup="yes" href="{{ row.related.url }}add/?_to_field=id&amp;_popup=1" title="Add another {{ row.related.singular }}"><img src="/static/admin/img/icon-addlink.svg" alt="" width="24" height="24"></a>{% endif %}
+    {% if row.related.delete %}<a class="related-widget-wrapper-link delete-related" id="delete_id_{{ row.name }}" data-href-template="{{ row.related.url }}__fk__/delete/?_to_field=id&amp;_popup=1" data-popup="yes" title="Delete selected {{ row.related.singular }}"><img src="/static/admin/img/icon-deletelink.svg" alt="" width="24" height="24"></a>{% endif %}
+    {% if row.related.view %}<a class="related-widget-wrapper-link view-related" id="view_id_{{ row.name }}" data-href-template="{{ row.related.url }}__fk__/change/?_to_field=id" title="View selected {{ row.related.singular }}"><img src="/static/admin/img/icon-viewlink.svg" alt="" width="24" height="24"></a>{% endif %}
+    </div>
+{% endif %}

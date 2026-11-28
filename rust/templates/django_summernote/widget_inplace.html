@@ -1,0 +1,14 @@
+<textarea name="{{ name }}" cols="40" rows="10" class="summernoteinplacewidget form-control" id="id_{{ name }}" hidden="true">{{ fields[name] }}</textarea>
+{% set id = "id_" ~ name %}
+{% set id_safe = id %}
+{% set iframe = false %}
+{% set config = {"jquery": "$", "disable_attachment": false} %}
+{% set CSRF_COOKIE_NAME = "csrftoken" %}
+{% set attrs = [("cols","40"), ("rows","10"), ("class","summernoteinplacewidget")] %}
+{% set settings = '{"width": "100%", "height": 480, "lang": "en-US", "toolbar": [["style", ["style"]], ["font", ["bold", "italic", "underline", "superscript", "subscript", "strikethrough", "clear"]], ["fontname", ["fontname"]], ["fontsize", ["fontsize"]], ["color", ["color"]], ["para", ["ul", "ol", "paragraph"]], ["height", ["height"]], ["table", ["table"]], ["insert", ["link", "picture", "video", "hr"]], ["view", ["fullscreen", "codeview"]], ["help", ["help"]]], "url": {"language": "/static/summernote/lang/summernote-en-US.min.js", "upload_attachment": "/summernote/upload_attachment/"}}' %}
+{% include "django_summernote/widget_common.html" %}
+<script>
+
+    initSummernote_{{ id_safe }}();
+
+</script>

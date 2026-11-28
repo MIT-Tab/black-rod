@@ -1,0 +1,66 @@
+{% extends "account/layout.html" %}
+{% macro errors_at(key) %}
+    {% if errors[key] %}<ul class="errorlist{% if key == '__all__' %} nonfield{% endif %}">{% for problem in errors[key] %}<li>{{ problem }}</li>{% endfor %}</ul>{% endif %}
+{% endmacro %}
+{% macro password_policy() %}<ul><li>Your password can’t be too similar to your other personal information.</li><li>Your password must contain at least 8 characters.</li><li>Your password can’t be a commonly used password.</li><li>Your password can’t be entirely numeric.</li></ul>{% endmacro %}
+{% block content %}
+<h1>{{ title }}</h1>
+{% if kind in ["signup","login"] %}
+    {% if kind == "signup" %}<p>Already have an account? Then please <a href="/accounts/login/{{ next_query }}">sign in</a>.</p>
+    {% else %}<p>If you have not created an account yet, then please <a href="/accounts/signup/{{ next_query }}">sign up</a> first.</p>{% endif %}
+    <form method="post" action="/accounts/{{ kind }}/">
+        <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf }}">
+        {{ errors_at("__all__") }}
+        {% if kind == "signup" %}
+            {{ errors_at("username") }}
+            <p><label for="id_username">Username:</label>
+                <input type="text" name="username" placeholder="Username" autocomplete="username" minlength="1" maxlength="150" required id="id_username"{% if username %} value="{{ username }}"{% endif %}{% if errors.username %} aria-invalid="true"{% endif %}>
+            </p>
+            {{ errors_at("email") }}
+            <p><label for="id_email">Email (optional):</label>
+                <input type="email" name="email" autocomplete="email" placeholder="Email address" maxlength="320" id="id_email"{% if email %} value="{{ email }}"{% endif %}{% if errors.email %} aria-invalid="true"{% endif %}>
+            </p>
+            {{ errors_at("password1") }}
+            <p><label for="id_password1">Password:</label>
+                <input type="password" name="password1" placeholder="Password" autocomplete="new-password" required aria-describedby="id_password1_helptext" id="id_password1"{% if errors.password1 %} aria-invalid="true"{% endif %}>
+                <span class="helptext" id="id_password1_helptext">{{ password_policy() }}</span>
+            </p>
+            {{ errors_at("password2") }}
+            <p><label for="id_password2">Password (again):</label>
+                <input type="password" name="password2" placeholder="Password (again)" autocomplete="new-password" required id="id_password2"{% if errors.password2 %} aria-invalid="true"{% endif %}>
+            </p>
+        {% else %}
+            {{ errors_at("login") }}
+            <p><label for="id_login">Username:</label>
+                <input type="text" name="login" placeholder="Username" autocomplete="username" maxlength="150" required id="id_login"{% if username %} value="{{ username }}"{% endif %}{% if errors.login %} aria-invalid="true"{% endif %}>
+            </p>
+            {{ errors_at("password") }}
+            <p><label for="id_password">Password:</label>
+                <input type="password" name="password" placeholder="Password" autocomplete="current-password" required aria-describedby="id_password_helptext" id="id_password"{% if errors.password %} aria-invalid="true"{% endif %}>
+                <span class="helptext" id="id_password_helptext"><a href="/accounts/password/reset/">Forgot your password?</a></span>
+            </p>
+            <p><label for="id_remember">Remember Me:</label> <input type="checkbox" name="remember" id="id_remember"{% if remember %} checked{% endif %}></p>
+        {% endif %}
+        {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
+        <button type="submit">{{ title }}</button>
+    </form>
+    <hr>
+    <h2>Or use a third-party</h2>
+    <ul><li><a title="APDAOnline" href="/accounts/apdaonline/login/?process=login{{ provider_query }}">APDAOnline</a></li></ul>
+{% elif kind == "logout" %}
+    <p>Are you sure you want to sign out?</p>
+    <form method="post" action="/accounts/logout/">
+        <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf }}">
+        {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
+        <button type="submit">Sign Out</button>
+    </form>
+{% elif kind == "inactive" %}
+    <p>This account is inactive.</p>
+{% elif kind == "verification" %}
+    <p>We have sent an email to you for verification. Follow the link provided to finalize the signup process. If you do not see the verification email in your main inbox, check your spam folder. Please contact us if you do not receive the verification email within a few minutes.</p>
+{% elif kind == "social-error" %}
+    <p>An error occurred while attempting to login via your third-party account.</p>
+{% elif kind == "social-cancelled" %}
+    <p>You decided to cancel logging in to our site using one of your existing accounts. If this was a mistake, please proceed to <a href="/accounts/login/">sign in</a>.</p>
+{% endif %}
+{% endblock %}

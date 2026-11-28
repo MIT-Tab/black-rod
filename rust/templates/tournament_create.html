@@ -1,0 +1,9 @@
+{% extends "base/create.html" %}
+{% block form %}
+    <form action="" method="POST" novalidate>
+        <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf }}">
+        {% include "autocomplete_media.html" %}
+        {% include "tournaments/fields.html" %}
+        <input type="submit" class="btn btn-success" value="Create">
+    </form>
+{% endblock form %}

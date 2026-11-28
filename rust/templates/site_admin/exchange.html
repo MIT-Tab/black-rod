@@ -1,0 +1,72 @@
+{% extends "site_admin/base_site.html" %}
+{% block bodyclass %}{{ super() }} {{ app_label }}-{{ model_name }} change-form{% endblock %}
+{% block extrahead %}{{ super() }}{% if importing %}
+{% for asset in media %}<script src="/static/{{ asset }}"></script>{% endfor %}
+{% endif %}{% endblock %}
+{% block extrastyle %}{{ super() }}<link rel="stylesheet" type="text/css" href="/static/admin/css/forms.css">
+{% if importing %}<link rel="stylesheet" type="text/css" href="/static/import_export/import.css">{% endif %}
+{% endblock %}
+{% block breadcrumbs %}
+<div class="breadcrumbs"><a href="/admin/">Home</a>
+&rsaquo; <a href="{{ app_url }}">{{ app_name }}</a>
+&rsaquo; <a href="{{ model_url }}">{{ plural }}</a>
+&rsaquo; {{ title }}</div>
+{% endblock %}
+{% block content %}
+{% if problem %}<h2>Errors</h2><ul><li>{{ problem }}</li></ul>{% endif %}
+{% if token %}
+    <form action="{{ model_url }}process_import/" method="POST">
+        <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf }}">
+        <input type="hidden" name="import_file_name" value="{{ token }}" id="id_import_file_name">
+        <input type="hidden" name="original_file_name" value="{{ original_file_name }}" id="id_original_file_name">
+        <input type="hidden" name="input_format" value="{{ selected }}" id="id_input_format">
+        <p>Below is a preview of data to be imported. If you are satisfied with the results, click 'Confirm import'</p>
+        <div class="submit-row"><input type="submit" class="default" name="confirm" value="Confirm import"></div>
+    </form>
+{% else %}
+    <form action="" method="{% if importing %}post{% else %}POST{% endif %}"{% if importing %} enctype="multipart/form-data"{% endif %}>
+        <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf }}">
+        {% if importing %}<p>This importer will import the following fields: <code>{{ fields|join(", ") }}</code></p>{% endif %}
+        <fieldset class="module aligned">
+            {% if importing %}
+            <div class="form-row">
+                {% if file_error %}<ul class="errorlist" id="id_import_file_error"><li>{{ file_error }}</li></ul>{% endif %}
+                <label for="id_import_file">File to import:</label>
+                <input type="file" name="import_file" class="guess_format" required id="id_import_file"{% if file_error %} aria-invalid="true" aria-describedby="id_import_file_error"{% endif %}>
+            </div>
+            {% endif %}
+            {% set field = "input_format" if importing else "file_format" %}
+            <div class="form-row">
+                {% if error %}<ul class="errorlist" id="id_{{ field }}_error"><li>{{ error }}</li></ul>{% endif %}
+                <label for="id_{{ field }}">Format:</label>
+                <select name="{{ field }}"{% if importing %} class="guess_format"{% endif %} required id="id_{{ field }}"{% if error %} aria-invalid="true" aria-describedby="id_{{ field }}_error"{% endif %}>
+                    <option value=""{% if selected is undefined or selected is none %} selected{% endif %}>---</option>
+                    {% for format in formats %}<option value="{{ loop.index0 }}"{% if selected == loop.index0 %} selected{% endif %}>{{ format }}</option>{% endfor %}
+                </select>
+            </div>
+        </fieldset>
+        <div class="submit-row"><input type="submit" class="default" value="Submit"></div>
+    </form>
+{% endif %}
+{% if row_errors %}
+<h2>Errors</h2>
+<ul>
+{% for error in row_errors %}<li>Line number: {{ error.number }} - {{ error.message }}<div><code>{{ error.values }}</code></div></li>{% endfor %}
+</ul>
+{% elif token %}
+<h2>Preview</h2>
+<table class="import-preview">
+    <thead><tr><th></th>{% for field in fields %}<th>{{ field }}</th>{% endfor %}</tr></thead>
+    <tbody>
+    {% for row in preview %}
+        <tr class="{{ row.kind }}">
+            <td class="import-type">{% if row.kind == "new" %}New{% else %}Update{% endif %}</td>
+            {% for cell in row.cells %}
+            <td>{% if cell.single %}{% if cell.after %}<span>{{ cell.after }}</span>{% endif %}{% else %}{% if cell.before %}<del style="background:#ffe6e6;">{{ cell.before }}</del>{% endif %}{% if cell.after %}<ins style="background:#e6ffe6;">{{ cell.after }}</ins>{% endif %}{% endif %}</td>
+            {% endfor %}
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+{% endblock %}

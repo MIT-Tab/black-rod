@@ -59,6 +59,7 @@ from core.utils.result_visibility import preserve_profile_result_visibility
 from core.utils.rankings import (
     rebuild_import_qualifications,
     redo_rankings,
+    standings_write_lock,
     update_noty,
     update_soty,
     update_toty,
@@ -777,15 +778,19 @@ class TournamentDataEntryView(PermissionRequiredMixin, View):
         handler = self.get_api_handler()
         schools_by_server = seed_temporary_schools(handler)
         debaters = seed_temporary_debaters(handler, schools_by_server)
+        school_map = handler._school_name_map  # pylint: disable=protected-access
+        debater_map = handler._debater_id_map  # pylint: disable=protected-access
+        school_ids = {school.id for school in schools_by_server.values()} | set(school_map.values())
+        debater_ids = {debater.id for debater in debaters} | set(debater_map.values())
         token = self.request.GET.get("review")
         if token:
             cache.set(f"mittab-review:{token}:mappings", {
-                "debaters": handler._debater_id_map,  # pylint: disable=protected-access
-                "schools": handler._school_name_map,  # pylint: disable=protected-access
+                "debaters": debater_map,
+                "schools": school_map,
             }, 3600)
         return {
-            "schools": list(schools_by_server.values()),
-            "debaters": debaters,
+            "schools": list(School.all_objects.filter(id__in=school_ids, temporary=True)),
+            "debaters": list(Debater.all_objects.filter(id__in=debater_ids, temporary=True)),
             "initial": build_api_initial(handler, selected_api_tabs),
         }
 
@@ -817,16 +822,8 @@ class TournamentDataEntryView(PermissionRequiredMixin, View):
                     debater_total_forms is None or debater_total_forms > 0
                 )
             else:
-                school_qs = (
-                    School.all_objects.filter(id__in=school_ids)
-                    if school_ids
-                    else School.all_objects.filter(temporary=True)
-                )
-                debater_qs = (
-                    Debater.all_objects.filter(id__in=debater_ids)
-                    if debater_ids
-                    else Debater.all_objects.filter(temporary=True)
-                )
+                school_qs = School.all_objects.filter(id__in=school_ids, temporary=True)
+                debater_qs = Debater.all_objects.filter(id__in=debater_ids, temporary=True)
                 school_total_forms = school_qs.count()
                 debater_total_forms = debater_qs.count()
                 self._show_school_tab = school_total_forms > 0
@@ -993,7 +990,11 @@ class TournamentDataEntryView(PermissionRequiredMixin, View):
         autoqual_form=None,
     ) -> list[str]:
         skipped_rounds = []
-        with transaction.atomic(), preserve_profile_result_visibility(tournament):
+        with (
+            transaction.atomic(),
+            standings_write_lock(tournament.season),
+            preserve_profile_result_visibility(tournament),
+        ):
             resolution = ImportResolution(
                 teams_to_update=list(Team.objects.filter(team_results__tournament=tournament).distinct()),
                 speakers_to_update=list(Debater.all_objects.filter(speaker_results__tournament=tournament,

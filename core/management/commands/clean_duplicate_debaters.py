@@ -1,3 +1,4 @@
+from django.db import transaction
 from django.core.management.base import BaseCommand
 from django.db.models import Count
 from core.models.debater import Debater
@@ -117,8 +118,15 @@ class Command(BaseCommand):
                     )
                 )
             else:
-                # Batch delete
-                deleted_count, _ = Debater.objects.filter(id__in=debaters_to_delete).delete()
+                with transaction.atomic():
+                    locked = list(Debater.objects.select_for_update().filter(
+                        id__in=debaters_to_delete
+                    ).order_by("id"))
+                    still_unlinked = [
+                        debater.id for debater in locked
+                        if not debater.teams.exists() and not debater.speaker_results.exists()
+                    ]
+                    deleted_count, _ = Debater.objects.filter(id__in=still_unlinked).delete()
                 self.stdout.write(
                     self.style.SUCCESS(
                         f"\nSuccessfully deleted {deleted_count} duplicate debater(s)"

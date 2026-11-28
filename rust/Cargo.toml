@@ -1,0 +1,66 @@
+[package]
+name = "black-rod"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.94"
+publish = false
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[dependencies]
+axum = { version = "0.8", features = ["multipart"] }
+chrono = { version = "0.4", features = ["serde"] }
+deunicode = "1.6.2"
+dotenvy = "0.15"
+csv = "1.4"
+xls = { version = "0.1.0", default-features = false }
+yaml-rust2 = "0.13"
+calamine = { version = "0.38", features = ["chrono"] }
+zip = { version = "9.8", default-features = false, features = ["deflate"] }
+base64 = "0.22"
+flate2 = "1"
+hex = "0.4"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp", "bmp", "tiff", "ico", "pnm", "dds", "tga"] }
+uuid = { version = "1", features = ["v4"] }
+minijinja = { version = "2", features = ["loader"] }
+percent-encoding = "2"
+regex = "1"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+ring = "0.17"
+tokio-stream = "0.1"
+tower = { version = "0.5", features = ["util"] }
+tower-http = { version = "0.6", features = ["fs"] }
+porter-stemmer = "0.1.2"
+moka = { version = "0.12", features = ["future"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["arbitrary_precision", "raw_value"] }
+serde-pickle = "1.2"
+ryu = "1"
+sentry = { version = "0.49", default-features = false, features = ["backtrace", "panic", "ureq", "rustls"] }
+subtle = "2"
+sqlx = { version = "0.9", default-features = false, features = [
+    "any",
+    "postgres",
+    "runtime-tokio",
+    "sqlite",
+    "tls-rustls-ring-webpki",
+] }
+url = "2"
+unicode-normalization = "0.1"
+tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "signal", "io-util", "time", "fs"] }
+rust_decimal = { version = "1.43.0", default-features = false, features = ["std", "serde"] }
+unicode-casefold = "0.2.0"
+scraper = { version = "0.29", default-features = false }
+argon2 = "0.5"
+bcrypt = "0.19"
+md-5 = "0.10"
+scrypt = { version = "0.11", default-features = false }
+lettre = { version = "0.11.24", default-features = false, features = ["builder", "smtp-transport", "tokio1-rustls-tls"] }
+oauth2 = { version = "5.0.0", default-features = false, features = ["reqwest"] }
+cookie = { version = "0.18.1", default-features = false }
+tempfile = "3.27.0"
+adotenv = { version = "1.8.0", default-features = false }
+
+[dev-dependencies]
+http-body-util = "0.1"

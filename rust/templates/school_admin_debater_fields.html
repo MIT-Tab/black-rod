@@ -1,0 +1,55 @@
+{% macro field(name, label, type, required=false, choices=none) %}
+    <div id="div_id_{{ name }}" class="form-group">
+        <label for="id_{{ name }}"{% if required %} class="requiredField"{% endif %}>{{ label }}{% if required %}<span class="asteriskField">*</span>{% endif %}</label>
+        <div>
+            {% if choices %}
+                <select name="{{ name }}" id="id_{{ name }}" class="select form-control{% if errors[name] %} is-invalid{% endif %}"{% if required %} required{% endif %}>
+                    {% for value, label in choices %}<option value="{{ value }}"{% if fields[name] == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+                </select>
+            {% elif type == "alias" %}
+                <select name="alias_group" id="id_alias_group" class="modelselect2 form-control" data-rust-select-url="/core/debater-alias-groups/autocomplete">
+                    <option value=""></option>
+                    {% if fields.alias_group %}<option value="{{ fields.alias_group }}" selected>{{ fields.alias_label }}</option>{% endif %}
+                </select>
+                <small class="form-text text-muted">Link this debater to an existing alias group if applicable.</small>
+            {% else %}
+                <input type="{{ type }}" name="{{ name }}" id="id_{{ name }}" class="{{ 'emailinput' if type == 'email' else 'textinput textInput' }} form-control{% if errors[name] %} is-invalid{% endif %}"
+                       maxlength="{{ 254 if type == 'email' else 32 }}"{% if fields[name] %} value="{{ fields[name] }}"{% endif %}{% if required %} required{% endif %}>
+                {% if type == "email" %}<small class="form-text text-muted">Private contact email for tournament registration prefill.</small>{% endif %}
+            {% endif %}
+            {% if errors[name] %}<p class="invalid-feedback d-block"><strong>{{ errors[name] }}</strong></p>{% endif %}
+        </div>
+    </div>
+{% endmacro %}
+{% if errors.form %}<div class="alert alert-block alert-danger"><ul><li>{{ errors.form }}</li></ul></div>{% endif %}
+{{ field("first_name", "First name", "text", true) }}
+{{ field("last_name", "Last name", "text") }}
+{{ field("email", "Email", "email") }}
+{{ field("status", "Status", "select", true, statuses) }}
+{{ field("first_season", "First season", "select", true, first_choices) }}
+{{ field("latest_season", "Latest season", "select", true, latest_choices) }}
+{{ field("alias_group", "Alias group", "alias") }}
+{% for name, label, checked, help in [
+    ("dino_to_contact_opt_in", "Open to Dino TO/observer outreach", fields.outreach, "Visible only for Dinos. Enable if this debater wants tournaments to reach out about TOing."),
+    ("dino_judge_contact_opt_in", "Open to Dino judging outreach", fields.judging, "Visible only for Dinos. Enable if this debater is open to judging when tournaments need dinos.")
+] %}
+    {% if fields.initial_dino or fields.status == "2" %}
+        <div class="form-group"><div id="div_id_{{ name }}" class="form-check">
+            <input type="checkbox" name="{{ name }}" class="checkboxinput form-check-input" id="id_{{ name }}"{% if checked %} checked{% endif %}>
+            <label for="id_{{ name }}" class="form-check-label">{{ label }}</label>
+            <small class="form-text text-muted">{{ help }}</small>
+        </div></div>
+    {% else %}
+        <input type="hidden" id="id_{{ name }}" name="{{ name }}" value="{{ 'True' if checked else 'False' }}">
+    {% endif %}
+{% endfor %}
+<div id="div_id_region" class="form-group">
+    <label for="id_region">Outreach Region</label>
+    <div>
+        <select name="region" id="id_region" class="form-control select2-multi{% if errors.region %} is-invalid{% endif %}" multiple data-placeholder="Select regions">
+            {% for code, label in region_choices %}<option value="{{ code }}"{% if code in fields.regions %} selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select>
+        <small class="form-text text-muted">Let tournaments filter outreach lists by location.</small>
+        {% if errors.region %}<p class="invalid-feedback d-block"><strong>{{ errors.region }}</strong></p>{% endif %}
+    </div>
+</div>

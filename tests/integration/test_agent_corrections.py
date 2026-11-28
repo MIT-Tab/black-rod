@@ -376,8 +376,10 @@ def test_create_refs_membership_and_round_delete_restore_every_row(access, graph
     ],
 )
 def test_synthetic_merge_undo_restores_complete_database_graph(
-    access, graph, entity, source_key, target_key
+    access, graph, entity, source_key, target_key, monkeypatch
 ):
+    instant = timezone.now().replace(microsecond=123000)
+    monkeypatch.setattr(timezone, "now", lambda: instant)
     client, _, _ = access
     g = graph
     ClaimDebaterRequest.objects.create(

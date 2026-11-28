@@ -1,0 +1,12 @@
+{% extends "site_admin/base.html" %}
+
+{% block title %}{% if subtitle %}{{ subtitle }} | {% endif %}{{ title }} | {{ site_title }}{% endblock %}
+
+{% block branding %}
+<div id="site-name"><a href="/admin/">{{ site_header }}</a></div>
+{% if not user.is_authenticated %}
+  {% include "site_admin/color_theme_toggle.html" %}
+{% endif %}
+{% endblock %}
+
+{% block nav_global %}{% endblock %}

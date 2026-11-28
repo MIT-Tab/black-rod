@@ -1,0 +1,30 @@
+{% extends "site_admin/base_site.html" %}
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+    <a href="/admin/">Home</a>
+    &rsaquo; <a href="{{ app_url }}">{{ app_name }}</a>
+    &rsaquo; <a href="{{ model_url }}">{{ plural }}</a>
+    &rsaquo; <a href="{{ object_url }}change/">{{ original }}</a>
+    &rsaquo; History
+</div>
+{% endblock %}
+{% block content %}
+<div id="content-main"><div id="change-history" class="module">
+{% if actions %}
+    <table>
+        <thead><tr><th scope="col">Date/time</th><th scope="col">User</th><th scope="col">Action</th></tr></thead>
+        <tbody>
+        {% for item in actions %}
+        <tr><th scope="row">{{ item.date }}</th><td>{{ item.user }}{% if item.full_name %} ({{ item.full_name }}){% endif %}</td><td>{{ item.change }}</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    <p class="paginator">
+        {% if pages|length > 1 %}{% for page in pages %}{% if page.active %}<span class="this-page">{{ page.number }}</span>{% else %}<a href="?p={{ page.number }}"{% if loop.last %} class="end"{% endif %}>{{ page.number }}</a>{% endif %} {% endfor %}{% endif %}
+        {{ total }} {% if total == 1 %}entry{% else %}entries{% endif %}
+    </p>
+{% else %}
+    <p>This object doesn’t have a change history. It probably wasn’t added via this admin site.</p>
+{% endif %}
+</div></div>
+{% endblock %}

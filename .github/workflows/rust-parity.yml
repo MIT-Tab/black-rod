@@ -1,0 +1,134 @@
+name: Rust parity
+
+on:
+  pull_request:
+    branches: [master, main]
+
+jobs:
+  parity:
+    runs-on: ubuntu-24.04
+    services:
+      memcached:
+        image: memcached:1.6
+        ports:
+          - 11211:11211
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: black_rod
+          POSTGRES_PASSWORD: fixture
+          POSTGRES_DB: black_rod_parity
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U black_rod"
+          --health-interval=3s
+          --health-timeout=3s
+          --health-retries=10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10.16'
+          cache: pip
+      - name: Install reference dependencies
+        run: |
+          python -m venv venv
+          venv/bin/python -m pip install -r requirements.txt -c constraints.txt
+      - name: Check Rust code
+        run: |
+          rustup toolchain install 1.94.0 --profile minimal --component clippy,rustfmt
+          cargo +1.94.0 fmt --manifest-path rust/Cargo.toml --check
+          cargo +1.94.0 clippy --manifest-path rust/Cargo.toml --locked --all-targets -- -D warnings
+          cargo +1.94.0 test --manifest-path rust/Cargo.toml --locked
+          cargo +1.94.0 build --manifest-path rust/Cargo.toml --release --locked
+      - name: Load SQLite fixture
+        env:
+          BR_LOADING_FIXTURE: '1'
+        run: |
+          scripts=.agents/skills/black-rod-task/scripts
+          "$scripts/br" venv/bin/python manage.py migrate --noinput
+          "$scripts/br" venv/bin/python manage.py loaddata dev_fixtures
+      - name: Check compatibility with Django model deletion rules
+        run: |
+          .agents/skills/black-rod-task/scripts/br venv/bin/python rust/tools/export_relations.py
+          .agents/skills/black-rod-task/scripts/br venv/bin/python rust/tools/export_agent_schema.py
+          .agents/skills/black-rod-task/scripts/br venv/bin/python rust/tools/export_admin_schema.py
+          .agents/skills/black-rod-task/scripts/br venv/bin/python rust/tools/export_fixture_schema.py
+          git diff --exit-code -- rust/schema/
+      - name: Match the Django URL inventory
+        run: .agents/skills/black-rod-task/scripts/br venv/bin/python rust/tools/route_parity.py
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: npm
+      - name: Build frontend assets for parity checks
+        run: |
+          npm ci
+          npm run build
+      - name: Compare HTTP responses on SQLite
+        run: .agents/skills/black-rod-task/scripts/br venv/bin/python rust/tools/compare.py
+      - name: Compare reversible Agent corrections on SQLite
+        run: .agents/skills/black-rod-task/scripts/br venv/bin/python rust/tools/agent_write_parity.py
+      - name: Compare standings recomputation on disposable SQLite databases
+        run: .agents/skills/black-rod-task/scripts/br venv/bin/python rust/tools/rankings_parity.py
+      - name: Compare maintenance commands on disposable SQLite databases
+        run: .agents/skills/black-rod-task/scripts/br venv/bin/python rust/tools/command_parity.py
+      - name: Compare browser interactions and replay rendering in Chrome
+        env:
+          BLACK_ROD_PARITY_MEMCACHED_ADDR: 127.0.0.1:11211
+        run: |
+          venv/bin/python -m venv venv/screenshots
+          venv/screenshots/bin/python -m pip install -r .agents/skills/black-rod-task/requirements.txt Pillow==12.3.0
+          scripts=.agents/skills/black-rod-task/scripts
+          "$scripts/br" venv/bin/python manage.py shell -c "from django.contrib.auth import get_user_model; u, _ = get_user_model().objects.get_or_create(username='tab'); u.is_staff = True; u.is_superuser = True; u.set_password('password'); u.save()"
+          "$scripts/br" venv/screenshots/bin/python -u rust/tools/browser.py "${RUNNER_TEMP}/black-rod-replay"
+      - name: Compare rendered HTML and desktop and mobile screenshots
+        run: |
+          scripts=.agents/skills/black-rod-task/scripts
+          "$scripts/br" venv/screenshots/bin/python -u rust/tools/html_parity.py "${RUNNER_TEMP}/black-rod-html" --group all
+      - name: Compare optional tab-card and partnership features
+        env:
+          ENABLE_DEBATER_PROFILE_TAB_CARDS: '1'
+          ENABLE_DEBATER_PARTNER_PIE_CHART: '1'
+          ENABLE_TOURNAMENT_TAB_CARD_SEARCH: '1'
+        run: |
+          scripts=.agents/skills/black-rod-task/scripts
+          "$scripts/br" venv/screenshots/bin/python -u rust/tools/html_parity.py "${RUNNER_TEMP}/black-rod-html-features" \
+            --page tournament-tab-cards --page tournament-tab-cards-member --page debater-profile-tab-cards
+      - name: Compare HTTP responses on PostgreSQL
+        env:
+          BLACK_ROD_PARITY_POSTGRES_URL: postgres://black_rod:fixture@127.0.0.1:5432/black_rod_parity
+        run: |
+          scripts=.agents/skills/black-rod-task/scripts
+          BR_LOADING_FIXTURE=1 "$scripts/br" venv/bin/python -c '
+          import sys
+          sys.path.insert(0, "rust/tools")
+          from reference import application
+          from django.core.management import call_command
+          call_command("migrate", interactive=False)
+          call_command("loaddata", "dev_fixtures")
+          '
+          "$scripts/br" venv/bin/python rust/tools/compare.py
+          "$scripts/br" venv/bin/python rust/tools/agent_write_parity.py
+          "$scripts/br" venv/bin/python rust/tools/qualification_rebuild_parity.py
+          "$scripts/br" venv/bin/python rust/tools/admin_import_concurrency.py
+          "$scripts/br" venv/bin/python rust/tools/account_write_parity.py
+      - name: Verify write quotas, account rate limits, and cross-runtime standings caching
+        env:
+          BLACK_ROD_PARITY_POSTGRES_URL: postgres://black_rod:fixture@127.0.0.1:5432/black_rod_parity
+          BLACK_ROD_PARITY_MEMCACHED_ADDR: 127.0.0.1:11211
+        run: |
+          scripts=.agents/skills/black-rod-task/scripts
+          "$scripts/br" venv/bin/python rust/tools/write_quota_parity.py
+          "$scripts/br" venv/bin/python rust/tools/standings_cache_parity.py
+      - name: Retain failing parity screenshots
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: screenshot-parity-failures
+          path: |
+            ${{ runner.temp }}/black-rod-html/failures/*.png
+            ${{ runner.temp }}/black-rod-html-features/failures/*.png
+          if-no-files-found: ignore
+          retention-days: 7

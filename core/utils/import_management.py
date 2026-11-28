@@ -14,6 +14,7 @@ from core.models.team import Team
 from core.utils.rankings import (
     rebuild_coty_related_rankings,
     redo_rankings,
+    standings_write_lock,
     update_noty,
     update_soty,
     update_toty,
@@ -179,74 +180,76 @@ def create_debaters(school_completed_actions, debater_actions):
 def create_speaker_awards(
     debater_completed_actions, speaker_awards, type_of_result, tournament
 ):
-    debaters_changed = []
+    with standings_write_lock(tournament.season, settings.CURRENT_SEASON):
+        debaters_changed = []
 
-    to_delete = SpeakerResult.objects.filter(
-        tournament=tournament, type_of_place=type_of_result
-    )
-
-    for speaker in to_delete:
-        debaters_changed += [speaker.debater]
-        speaker.delete()
-
-    for award in speaker_awards[:10]:
-        debater = Debater.objects.get(id=debater_completed_actions[award["debater"]])
-        SpeakerResult.objects.create(
-            tournament=tournament,
-            debater=debater,
-            type_of_place=type_of_result,
-            place=award["place"],
-            tie=award["tie"],
-            counts_for_points=award.get("counts_for_points", True),
+        to_delete = SpeakerResult.objects.filter(
+            tournament=tournament, type_of_place=type_of_result
         )
 
-        debaters_changed += [debater]
+        for speaker in to_delete:
+            debaters_changed += [speaker.debater]
+            speaker.delete()
 
-    for debater in debaters_changed:
-        update_soty(debater)
-        update_noty(debater)
+        for award in speaker_awards[:10]:
+            debater = Debater.objects.get(id=debater_completed_actions[award["debater"]])
+            SpeakerResult.objects.create(
+                tournament=tournament,
+                debater=debater,
+                type_of_place=type_of_result,
+                place=award["place"],
+                tie=award["tie"],
+                counts_for_points=award.get("counts_for_points", True),
+            )
 
-    redo_rankings(
-        SOTY.objects.filter(season=settings.CURRENT_SEASON),
-        season=settings.CURRENT_SEASON,
-        cache_type="soty",
-    )
-    redo_rankings(
-        NOTY.objects.filter(season=settings.CURRENT_SEASON),
-        season=settings.CURRENT_SEASON,
-        cache_type="noty",
-    )
+            debaters_changed += [debater]
+
+        for debater in debaters_changed:
+            update_soty(debater)
+            update_noty(debater)
+
+        redo_rankings(
+            SOTY.objects.filter(season=settings.CURRENT_SEASON),
+            season=settings.CURRENT_SEASON,
+            cache_type="soty",
+        )
+        redo_rankings(
+            NOTY.objects.filter(season=settings.CURRENT_SEASON),
+            season=settings.CURRENT_SEASON,
+            cache_type="noty",
+        )
 
 
 def create_team_awards(team_completed_actions, team_awards, type_of_result, tournament):
-    teams_changed = []
+    with standings_write_lock(tournament.season, settings.CURRENT_SEASON):
+        teams_changed = []
 
-    to_delete = TeamResult.objects.filter(
-        tournament=tournament, type_of_place=type_of_result
-    )
-
-    for team in to_delete:
-        teams_changed += [team.team]
-        team.delete()
-
-    for award in team_awards[:16]:
-        team = Team.objects.get(id=team_completed_actions[award["team"]])
-        TeamResult.objects.create(
-            tournament=tournament,
-            team=team,
-            type_of_place=type_of_result,
-            place=award["place"],
-            counts_for_points=award.get("counts_for_points", True),
+        to_delete = TeamResult.objects.filter(
+            tournament=tournament, type_of_place=type_of_result
         )
 
-        teams_changed += [team]
+        for team in to_delete:
+            teams_changed += [team.team]
+            team.delete()
 
-    for team in teams_changed:
-        update_toty(team)
-    rebuild_coty_related_rankings(season=tournament.season)
+        for award in team_awards[:16]:
+            team = Team.objects.get(id=team_completed_actions[award["team"]])
+            TeamResult.objects.create(
+                tournament=tournament,
+                team=team,
+                type_of_place=type_of_result,
+                place=award["place"],
+                counts_for_points=award.get("counts_for_points", True),
+            )
 
-    redo_rankings(
-        TOTY.objects.filter(season=settings.CURRENT_SEASON),
-        season=settings.CURRENT_SEASON,
-        cache_type="toty",
-    )
+            teams_changed += [team]
+
+        for team in teams_changed:
+            update_toty(team)
+        rebuild_coty_related_rankings(season=tournament.season)
+
+        redo_rankings(
+            TOTY.objects.filter(season=settings.CURRENT_SEASON),
+            season=settings.CURRENT_SEASON,
+            cache_type="toty",
+        )

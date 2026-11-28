@@ -1,0 +1,61 @@
+{% macro field(name, label, control, required=false, help="", rows=0, choices=[]) %}
+    <div id="div_id_{{ name }}" class="form-group">
+        <label for="id_{{ name }}"class="{% if required %}requiredField{% endif %}">{{ label }}{% if required %}<span class="asteriskField">*</span>{% endif %}</label>
+        <div>
+            {% if control == "text" or control == "url" %}
+                <input type="{{ control }}" name="{{ name }}" {% if fields[name] %} value="{{ fields[name] }}"{% endif %} maxlength="{{ 255 if control == 'text' else 4096 }}" class="{{ 'textinput textInput' if control == 'text' else 'urlinput' }} form-control{% if errors[name] %} is-invalid{% endif %}"{% if required %} required{% endif %}{% if help %} aria-describedby="id_{{ name }}_helptext"{% endif %} id="id_{{ name }}">
+            {% elif control == "textarea" %}
+                <textarea name="{{ name }}" cols="40" rows="{{ rows }}" class="textarea form-control{% if errors[name] %} is-invalid{% endif %}" {% if help %} aria-describedby="id_{{ name }}_helptext"{% endif %} id="id_{{ name }}">{{ fields[name] }}</textarea>
+            {% elif control == "authors" %}
+                <select name="authors" id="id_authors" class="modelselect2multiple {{ 'form-control' if object else 'custom-select' }}{% if errors[name] %} is-invalid{% endif %}" aria-describedby="id_authors_helptext" data-autocomplete-light-language="en" data-autocomplete-light-url="/core/debaters/autocomplete" data-autocomplete-light-function="select2" multiple required>
+                    {% for id, label in fields.authors %}<option value="{{ id }}" selected>{{ label }}</option>{% endfor %}
+                </select>
+            {% elif control == "tags" %}
+                <select name="tags" id="id_tags" class="taggitselect2 {{ 'form-control' if object else 'custom-select' }}{% if errors[name] %} is-invalid{% endif %}" data-autocomplete-light-language="en" data-autocomplete-light-url="{{ resource_tag_url }}" data-autocomplete-light-function="select2" data-tags="," multiple>
+                    {% for tag in fields.tags %}<option value="{{ tag }}" selected>{{ tag }}</option>{% endfor %}
+                </select>
+            {% else %}
+                <select name="{{ name }}" id="id_{{ name }}" class="select {{ 'form-control' if object else 'custom-select' }}{% if errors[name] %} is-invalid{% endif %}"{% if help %} aria-describedby="id_{{ name }}_helptext"{% endif %}>
+                    {% for value, label in choices %}<option value="{{ value }}"{% if fields[name] == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+                </select>
+            {% endif %}
+            {% if errors[name] %}<p id="error_1_id_{{ name }}" class="invalid-feedback d-block"><strong>{{ errors[name] }}</strong></p>{% endif %}
+            {% if help %}<small id="hint_id_{{ name }}" class="form-text text-muted">{{ help }}</small>{% endif %}
+        </div>
+    </div>
+{% endmacro %}
+{% set authors_help = "At least one author is required. Only people with claimed debater profiles can be authors." %}
+{% set link_help = "Link to the resource content" %}
+{% set usage_help = "Specify any usage permissions or restrictions for this resource" %}
+{% set viewing_help = "Public means discoverable by Google search. Requires Login uses the same permission as viewing videos." %}
+{% if object %}
+    {{ field("title", "Title", "text", true) }}
+    {{ field("authors", "Authors", "authors", true, authors_help) }}
+    {{ field("resource_type", "Type", "select", true, choices=resource_types) }}
+    {{ field("content_link", "Content Link", "url", true, link_help) }}
+    {{ field("description", "Description", "textarea", rows=5) }}
+    {{ field("usage_permissions", "Usage permissions", "textarea", help=usage_help, rows=4) }}
+    {{ field("viewing_permission", "Viewing Permission", "select", true, viewing_help, choices=resource_permissions) }}
+    {{ field("tags", "Tags", "tags") }}
+{% else %}
+    <form method="post">
+        <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf }}">
+        {% include "autocomplete_media.html" %}
+        <div class="form-row">
+            <div class="col-md-8">{{ field("title", "Title", "text", true) }}</div>
+            <div class="col-md-4">{{ field("resource_type", "Type", "select", true, choices=resource_types) }}</div>
+        </div>
+        <div class="border-top my-3"></div>
+        {{ field("authors", "Authors", "authors", true, authors_help) }}
+        <div class="border-top my-3"></div>
+        {{ field("content_link", "Content Link", "url", true, link_help) }}
+        {{ field("description", "Description", "textarea", rows=5) }}
+        {{ field("usage_permissions", "Usage permissions", "textarea", help=usage_help, rows=4) }}
+        <div class="border-top my-3"></div>
+        <div class="form-row">
+            <div class="col-md-6">{{ field("viewing_permission", "Viewing Permission", "select", true, viewing_help, choices=resource_permissions) }}</div>
+            <div class="col-md-6">{{ field("tags", "Tags", "tags") }}</div>
+        </div>
+        <input type="submit" name="save" value="Save" class="btn btn-primary" id="submit-id-save">
+    </form>
+{% endif %}

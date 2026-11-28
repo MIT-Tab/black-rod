@@ -1,6 +1,10 @@
+from contextlib import contextmanager
+from uuid import uuid4
+
 from django.conf import settings
 from django.core.cache import cache
 from django.core.cache.utils import make_template_fragment_key
+from django.db import connection, transaction
 from django.db.models import Exists, OuterRef, Q
 
 from core.live_results import invalidate_live_standings
@@ -17,6 +21,21 @@ from core.models.team import Team
 from core.models.tournament import Tournament
 from core.utils.qualifications import coty_bonus_quals, qual_awards_coty_bonus, sync_manual_autoquals
 from core.models.tournament_autoqual import TournamentAutoQual
+
+
+@contextmanager
+def standings_write_lock(*seasons):
+    """Serialize standings writes for each affected season on PostgreSQL."""
+    with transaction.atomic():
+        if connection.vendor == "postgresql":
+            with connection.cursor() as cursor:
+                # Take multiple season locks in the same order across writers.
+                for season in sorted({str(value) for value in seasons}):
+                    cursor.execute(
+                        "SELECT pg_advisory_xact_lock(hashtext('black-rod standings'), hashtext(%s))",
+                        (season,),
+                    )
+        yield
 
 
 def _school_included_in_oty(debater):
@@ -440,10 +459,15 @@ def redo_rankings(rankings, season=settings.CURRENT_SEASON, cache_type="toty"):
         previous_points = row.points
     if rows:
         rankings.model.objects.bulk_update(rows, ["place", "tied"], batch_size=500)
-    cache.delete(make_template_fragment_key(cache_type, [season]))
-    if cache_type == "coty":
-        cache.delete(f"api:standings_replay:{season}")
-    invalidate_live_standings(season)
+
+    def invalidate_rankings():
+        cache.delete(make_template_fragment_key(cache_type, [season]))
+        if cache_type == "coty":
+            cache.delete(f"api:standings_replay:{season}")
+        invalidate_live_standings(season)
+        cache.set("black-rod:rust:standings-generation:v1", uuid4().bytes, timeout=None)
+
+    transaction.on_commit(invalidate_rankings, robust=True)
 
 
 def rebuild_coty_related_rankings(season=settings.CURRENT_SEASON):
@@ -615,7 +639,6 @@ def rebuild_import_qualifications(season=settings.CURRENT_SEASON):
     This also removes stale qualifications after corrections or deleted results.
     """
     from collections import defaultdict  # pylint: disable=import-outside-toplevel
-    from django.db import transaction  # pylint: disable=import-outside-toplevel
     from django.db.models import Prefetch  # pylint: disable=import-outside-toplevel
 
     season = str(season)

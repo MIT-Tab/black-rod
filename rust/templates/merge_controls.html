@@ -1,0 +1,14 @@
+{% if media %}
+{% include "autocomplete_media.html" %}
+{% elif field in ["school_one","school_two"] %}
+<select name="{{ field }}" class="form-control" required id="id_{{ field }}"{% if field_info.errors %} aria-invalid="true"{% endif %}>
+    <option value=""{% if not field_info.selected %} selected{% endif %}>---------</option>
+    {% for school in field_info.options %}<option value="{{ school.id }}"{% if school.id == field_info.selected %} selected{% endif %}>{{ school.name }}</option>{% endfor %}
+</select>
+{% else %}
+<select name="{{ field }}" data-placeholder="Search for a debater" required id="id_{{ field }}"{% if field_info.errors %} aria-invalid="true"{% endif %}
+    data-autocomplete-light-language="en" data-autocomplete-light-url="/core/debaters/autocomplete/merge" data-autocomplete-light-function="select2">
+    <option value=""{% if not field_info.selected %} selected{% endif %}>---------</option>
+    {% if field_info.selected %}<option value="{{ field_info.selected.id }}" selected>{{ field_info.selected.name }}</option>{% endif %}
+</select><div style="display:none" class="dal-forward-conf" id="dal-forward-conf-for_id_{{ field }}"><script type="text/dal-forward-conf">[{"type": "field", "src": "{% if field == 'debater_one' %}school_one{% else %}school_two{% endif %}", "dst": "school"}]</script></div>
+{% endif %}

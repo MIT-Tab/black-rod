@@ -12,6 +12,10 @@ from core.models import (
 )
 
 FAKE_PW = "pbkdf2_sha256$260000$fake$fakehashfordev"
+# Tag assignment natural keys are incomplete or nonunique. Preserve the row
+# identity while keeping natural foreign keys for the tag names.
+FIXTURE_EXPLICIT_PKS = {"taggit.taggeditem", "core.taggedmotion", "core.taggedresource"}
+
 
 class Command(BaseCommand):
     help = "Preconfigured data dump to create development fixtures with private data sanitized."
@@ -67,6 +71,11 @@ class Command(BaseCommand):
             self._rewrite_sanitized_user_relations(payload)
             self._inject_sanitized_user_m2m(payload)
             self._inject_unfiltered_debater_m2m(payload)
+            for item, obj in zip(payload, all_objects, strict=True):
+                if item["model"] in FIXTURE_EXPLICIT_PKS:
+                    item["pk"] = obj.pk
+                if item["model"] == "core.debater" and item["fields"].get("email"):
+                    item["fields"]["email"] = f"debater-{item['pk']}@example.invalid"
             data = json.dumps(payload, ensure_ascii=False, cls=DjangoJSONEncoder)
         except Exception as e:
             self.stdout.write(self.style.ERROR(f"Error serializing data: {e}"))

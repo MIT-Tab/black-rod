@@ -1,0 +1,53 @@
+{% extends "site_admin/base_site.html" %}
+{% block title %}{% if errors %}Error: {% endif %}{{ super() }}{% endblock %}
+{% block extrahead %}{{ super() }}
+    <script src="/admin/jsi18n/"></script>
+    {% for medium,asset in css %}<link href="/static/{{ asset }}" media="{{ medium }}" rel="stylesheet">{% endfor %}
+    {% for asset in js %}<script src="/static/{{ asset }}"></script>{% endfor %}
+    {% if add_user %}<link rel="stylesheet" href="/static/admin/css/unusable_password_field.css">{% endif %}
+{% endblock %}
+{% block extrastyle %}{{ super() }}<link rel="stylesheet" href="/static/admin/css/forms.css">{% endblock %}
+{% block bodyclass %}{{ super() }} app-{{ app_label }} model-{{ model_name }} change-form{% endblock %}
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+    <a href="/admin/">Home</a>
+    &rsaquo; <a href="{{ app_url }}">{{ app_name }}</a>
+    &rsaquo; {% if can_view %}<a href="{{ model_url }}">{{ plural }}</a>{% else %}{{ plural }}{% endif %}
+    &rsaquo; {% if add %}{{ title }}{% else %}{{ original }}{% endif %}
+</div>
+{% endblock %}
+{% block content %}
+<div id="content-main">
+    {% if not add and not is_popup %}
+    <ul class="object-tools">
+        <li><a href="{{ history_url }}" class="historylink">History</a></li>
+        {% if site_object %}<li><a href="{{ site_object }}" class="viewsitelink">View on site</a></li>{% endif %}
+    </ul>
+    {% endif %}
+    <form method="post"{% if multipart %} enctype="multipart/form-data"{% endif %} id="{{ model_name }}_form" novalidate>
+        <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf }}">
+        {% if add_user and not is_popup %}<p>After you’ve created a user, you’ll be able to edit more user options.</p>{% endif %}
+        <div>
+            {% if is_popup %}<input type="hidden" name="_popup" value="1">{% endif %}
+            {% if to_field %}<input type="hidden" name="_to_field" value="{{ to_field }}">{% endif %}
+            {% if save_on_top %}{% include "site_admin/submit.html" %}{% endif %}
+            {% if errors %}
+                <p class="errornote">Please correct the error{% if errors|length != 1 %}s{% endif %} below.</p>
+                {% if errors.form %}<ul class="errorlist nonfield">{% for message in errors.form %}<li>{{ message }}</li>{% endfor %}</ul>{% endif %}
+            {% endif %}
+            {% for set in fieldsets %}
+            {% set fieldset_id = "fieldset-0-" ~ loop.index0 %}
+            {% include "site_admin/fieldset.html" %}
+            {% endfor %}
+            {% for group in inlines %}
+                {% set last_group = loop.last %}
+                {% include "site_admin/inline.html" %}
+            {% endfor %}
+            {% include "site_admin/submit.html" %}
+            <script id="django-admin-form-add-constants" src="/static/admin/js/change_form.js"{% if add %} data-model-name="{{ model_name }}"{% endif %} async></script>
+            {% if add_user %}<script src="/static/admin/js/unusable_password_field.js" defer></script>{% endif %}
+            <script id="django-admin-prepopulated-fields-constants" src="/static/admin/js/prepopulate_init.js" data-prepopulated-fields="[]"></script>
+        </div>
+    </form>
+</div>
+{% endblock %}

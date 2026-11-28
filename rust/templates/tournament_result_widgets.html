@@ -1,0 +1,39 @@
+{% macro field(prefix, name, label, value, url, choices, multiple=false, help="", required=false, error="") -%}
+<div id="div_id_{{ prefix }}{{ name }}" class="form-group">
+    {% if label %}<label for="id_{{ prefix }}{{ name }}" class="{{ 'requiredField' if required else '' }}">{{ label }}{% if required %}<span class="asteriskField">*</span>{% endif %}</label>{% endif %}
+    <div>
+        <select name="{{ prefix }}{{ name }}" id="id_{{ prefix }}{{ name }}"
+                class="{{ 'modelselect2multiple' if multiple else 'modelselect2' }} form-control{% if error %} is-invalid{% endif %}"
+                data-autocomplete-light-language="en" data-autocomplete-light-url="{{ url }}" data-autocomplete-light-function="select2"{% if multiple %} multiple{% endif %}{% if required %} required{% endif %}{% if help %} aria-describedby="id_{{ prefix }}{{ name }}_helptext"{% endif %}>
+            {% if not multiple %}<option value=""{% if not value %} selected{% endif %}>---------</option>{% endif %}
+            {% if multiple %}
+                {% for id in value %}<option value="{{ id }}" selected>{{ choices[id|string] }}</option>{% endfor %}
+            {% elif value %}
+                <option value="{{ value }}" selected>{{ choices[value|string] }}</option>
+            {% endif %}
+        </select>
+        {% if error %}<p id="error_1_id_{{ prefix }}{{ name }}" class="invalid-feedback"><strong>{{ error }}</strong></p>{% endif %}
+        {% if help %}<small id="hint_id_{{ prefix }}{{ name }}" class="form-text text-muted">{{ help }}</small>{% endif %}
+    </div>
+</div>
+{%- endmacro %}
+{% macro checkbox(prefix, name, label, checked) -%}
+<div class="form-group">
+    <div id="div_id_{{ prefix }}{{ name }}" class="form-check">
+        <input type="checkbox" name="{{ prefix }}{{ name }}" class="checkboxinput form-check-input"
+               id="id_{{ prefix }}{{ name }}"{% if checked %} checked{% endif %}>
+        <label for="id_{{ prefix }}{{ name }}" class="form-check-label">{{ label }}</label>
+    </div>
+</div>
+{%- endmacro %}
+{% macro hidden(prefix,name,value='') -%}
+<input type="hidden" name="{{ prefix }}{{ name }}"{% if value %} value="{{ value }}"{% endif %} id="id_{{ prefix }}{{ name }}">
+{%- endmacro %}
+
+{% macro input(prefix,name,label,value,error="") -%}
+<div id="div_id_{{ prefix }}{{ name }}" class="form-group">
+    <label for="id_{{ prefix }}{{ name }}" class="">{{ label }}</label>
+    <div><input id="id_{{ prefix }}{{ name }}" name="{{ prefix }}{{ name }}" value="{{ value }}" class="textinput form-control{% if error %} is-invalid{% endif %}">
+    {% if error %}<p id="error_1_id_{{ prefix }}{{ name }}" class="invalid-feedback"><strong>{{ error }}</strong></p>{% endif %}</div>
+</div>
+{%- endmacro %}

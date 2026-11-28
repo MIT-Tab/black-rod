@@ -1,0 +1,45 @@
+{% extends "base/base.html" %}
+{% block content %}
+    <div class="row">
+        <div class="col"></div>
+        <div class="col-md-6 col-lg-4">
+            <div class="card mt-5">
+                <div class="card-body">
+                    <h5 class="card-title">Login</h5>
+                    {% if next %}
+                        <div class="alert alert-info" role="alert">Please sign in to continue to this page.</div>
+                    {% endif %}
+                    <form method="post" action="/auth/login/" novalidate>
+                        <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf }}">
+                        <input type="hidden" name="next" value="{{ next }}">
+                        <div class="form-group">
+                            <div id="div_id_remember" class="form-check">
+                                <input type="checkbox" name="remember" class="checkboxinput form-check-input" id="id_remember"{% if remember %} checked{% endif %}>
+                                <label for="id_remember" class="form-check-label">Keep me signed in for 30 days</label>
+                            </div>
+                        </div>
+                        <button class="btn btn-primary" type="submit" name="provider" value="apdaonline">Login with apda.online</button>
+                        <hr>
+                        {% if error %}<ul class="errorlist nonfield"><li>{{ error }}</li></ul>{% endif %}
+                        <div id="div_id_username" class="form-group">
+                            <label for="id_username" class=" requiredField">Username<span class="asteriskField">*</span></label>
+                            <div>
+                                <input type="text" name="username" autofocus autocapitalize="none" autocomplete="username" maxlength="150" class="textinput textInput form-control{% if username_error %} is-invalid{% endif %}" required{% if username_error %} aria-invalid="true"{% endif %} id="id_username"{% if username %} value="{{ username }}"{% endif %}>
+                                {% if username_error %}<p id="error_1_id_username" class="invalid-feedback"><strong>{{ username_error }}</strong></p>{% endif %}
+                            </div>
+                        </div>
+                        <div id="div_id_password" class="form-group">
+                            <label for="id_password" class=" requiredField">Password<span class="asteriskField">*</span></label>
+                            <div>
+                                <input type="password" name="password" autocomplete="current-password" class="textinput textInput form-control{% if password_error %} is-invalid{% endif %}" required{% if password_error %} aria-invalid="true"{% endif %} id="id_password">
+                                {% if password_error %}<p id="error_1_id_password" class="invalid-feedback"><strong>{{ password_error }}</strong></p>{% endif %}
+                            </div>
+                        </div>
+                        <input class="btn btn-secondary" type="submit" value="Login">
+                    </form>
+                </div>
+            </div>
+        </div>
+        <div class="col"></div>
+    </div>
+{% endblock content %}

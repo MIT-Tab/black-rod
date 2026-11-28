@@ -1,0 +1,3 @@
+{% from "tournaments/includes/result_widgets.html" import field %}
+{{ field("", "autoqual_debaters", "Individual autoqual recipients", autoquals, "/core/debaters/autocomplete", people, true, help="Select every debater receiving an autoqual. No team or placement is recorded. The tournament type determines the autoqual type.") }}
+{% for error in autoqual_errors %}<div class="text-danger">{{ error }}</div>{% endfor %}
