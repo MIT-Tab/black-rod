@@ -167,7 +167,7 @@ impl Results {
             if points > 0.0 {
                 markers.entry(source_id).or_default().push(json!({
                     "points": if matches!(self, Self::Team)
-                        && (place <= 2 || (size >= 80 && (place <= 8 || (place == 9 && flag))))
+                        && (matches!(place, 1 | 2) || (size >= 80 && (place <= 8 || (place == 9 && flag))))
                     {
                         json!(points as i64)
                     } else {

@@ -138,9 +138,6 @@ async fn read_uploads(state: &AppState, request: Request) -> Result<Vec<Upload>,
                 return Err(Box::new(error(StatusCode::BAD_REQUEST,
                     "Upload a valid image. The file you uploaded was either not an image or a corrupted image.")));
             };
-            if image::ImageFormat::from_path(&name).is_err() {
-                return Err(Box::new(error(StatusCode::BAD_REQUEST, "Upload a valid image file extension.")));
-            }
             Ok(Upload {name, mime, bytes})
         }).collect()
     }).await.map_err(|_| failed())?
@@ -156,14 +153,18 @@ pub(crate) async fn write_attachment(
     let root = media_root();
     tokio::fs::create_dir_all(root.join(&relative)).await?;
     let suffix = name.rsplit('.').next().unwrap_or_default();
-    let extension = if !suffix.is_empty()
+    let extension = if let Some(mime) = mime {
+        match image::ImageFormat::from_path(name) {
+            Ok(format) if format.to_mime_type() == mime => suffix,
+            _ => mime.strip_prefix("image/").unwrap_or("bin"),
+        }
+    } else if !suffix.is_empty()
         && suffix.bytes().all(|byte| byte.is_ascii_alphanumeric())
         && suffix.len() <= 12
     {
         suffix
     } else {
-        mime.and_then(|mime| mime.strip_prefix("image/"))
-            .unwrap_or("bin")
+        "bin"
     };
     let filename = relative.join(format!("{}.{}", Uuid::new_v4(), extension));
     let absolute = root.join(&filename);

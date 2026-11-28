@@ -9,7 +9,7 @@ import subprocess
 from tempfile import TemporaryDirectory
 from urllib.parse import urlencode
 
-from compare import ROOT, servers
+from compare import Case, ROOT, request, servers
 
 PATH = "/core/rankings-recompute/"
 
@@ -66,6 +66,10 @@ for year in [2019, 2020, 2026]:
     TOTY.objects.create(season=str(year),team=teams[2],points=20)
     SOTY.objects.update_or_create(season=str(year), debater=people[5], defaults={"points":13})
     NOTY.objects.update_or_create(season=str(year), debater=people[5], defaults={"points":13})
+event = Tournament.objects.create(
+    season="2026", date=date(2026, 9, 8), host=school, num_teams=40,
+)
+TeamResult.objects.create(tournament=event, team=teams[0], place=0)
 print(session.session_key)
 """
 
@@ -105,6 +109,13 @@ def exercise(server, session):
                             "message": f"Successfully recomputed {ranking.upper()} rankings for season {year}"}, (
                 server.name, ranking, year, data,
             )
+
+
+    status, _, body = request(server, Case("/api/standings/replay/?season=2026&board=toty"))
+    assert status == 200, (server.name, status)
+    rows = json.loads(body)["standings"]["toty"]
+    place_zero = [marker["points"] for row in rows for marker in row["all_markers"] if marker["place"] == 0]
+    assert place_zero == [5.25], (server.name, place_zero)
 
 
 def snapshot(path):

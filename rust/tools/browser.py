@@ -669,17 +669,19 @@ def assert_video_editor(driver, django, rust, fixture):
             }, () => done([0]));
         """, b64encode(pixels.getvalue()).decode())
         assert uploaded[0] == 200 and [file["size"] for file in uploaded[1]["files"]] == [size] * 3, uploaded
-        rejected = driver.execute_async_script("""
+        renamed = driver.execute_async_script("""
             const [data, done] = arguments;
             const body = new FormData();
             const bytes = Uint8Array.from(atob(data), char => char.charCodeAt(0));
             body.append("files", new File([bytes], "fixture.txt"));
             body.set("csrfmiddlewaretoken", document.querySelector("[name=csrfmiddlewaretoken]").value);
             fetch("/summernote/upload_attachment/", {method: "POST", body})
-                .then(async response => done([response.status, (await response.json()).status]))
+                .then(async response => done([response.status, (await response.json()).files?.[0]?.url]))
                 .catch(() => done([0]));
         """, b64encode(pixels.getvalue()).decode())
-        assert rejected == [400, "false"], (root, rejected)
+        assert renamed[0] == 200, (root, renamed[0])
+        if root == rust_root:
+            assert renamed[1].endswith(".png"), renamed[1]
     attachment = uploaded[1]["files"][0]["url"]
     wait.until(lambda browser: len(browser.find_elements("css selector", ".note-editor .note-editable")) == 2)
     from selenium.webdriver.support.expected_conditions import alert_is_present
@@ -2235,15 +2237,26 @@ def assert_native_site_admin(driver, django, rust):
     assert urlsplit(driver.current_url).path == school_admin
     assert "was deleted successfully" in driver.page_source
 
-    driver.get(root + credentials + "add/")
-    driver.find_element("id","id_name").send_keys("Disposable native admin credential")
-    # Fixed future expiration keeps fixture behavior independent of the user's clock.
-    driver.find_element("id","id_expires_at_0").send_keys("2035-01-01")
-    driver.find_element("id","id_expires_at_1").send_keys("12:00:00")
-    submit('input[name="_save"]')
-    assert "Agent credential issued" in driver.title
-    token = driver.find_element("css selector","#content code").text
-    assert token.startswith("br_agent_")
+    for origin, label in ((reference, "Disposable Django admin credential"), (root, "Disposable native admin credential")):
+        driver.get(origin + credentials + "add/")
+        driver.find_element("id","id_name").send_keys(label)
+        driver.find_element("id","id_expires_at_0").send_keys("2035-01-01")
+        driver.find_element("id","id_expires_at_1").send_keys("12:00:00")
+        issued = driver.execute_async_script("""
+            const done = arguments[0];
+            const form = document.querySelector('#agentcredential_form');
+            const body = new URLSearchParams(new FormData(form));
+            body.set('_save', 'Save');
+            fetch(form.action, {method: 'POST', body}).then(async response => {
+                const page = new DOMParser().parseFromString(await response.text(), 'text/html');
+                done({status: response.status, policy: response.headers.get('Referrer-Policy'),
+                      cache: response.headers.get('Cache-Control'), token: page.querySelector('#content code')?.textContent.trim()});
+            }).catch(() => done({status: 0}));
+        """)
+        assert issued["status"] == 200 and issued["policy"] == "no-referrer", origin
+        assert "no-store" in issued["cache"] and "private" in issued["cache"], origin
+        token = issued["token"]
+        assert token.startswith("br_agent_"), origin
     endpoint = "/api/agent/v1/"
     for server in (django,rust):
         status, _, _ = request(server, Case(
@@ -3537,21 +3550,23 @@ def assert_mittab_bundle_upload(driver, django, rust, fixture):
                 WHERE r.tournament_id=? ORDER BY r.import_key
             """, (event,)).fetchall()
 
-    def submit(server, document, name="fixture.json"):
+    def submit(server, document, name="fixture.json", follow=True):
         driver.get(f"http://{HOST}:{server.port}{path}")
         field = driver.find_element("id", "id_bundle_file")
         assert field.get_attribute("accept") == ".json,application/json"
         return driver.execute_async_script("""
-            const [documentData, fileName, done] = arguments;
+            const [documentData, fileName, follow, done] = arguments;
             const form = new FormData(document.querySelector('form[enctype]'));
             form.set('bundle_file', new Blob([documentData], {type:'application/json'}), fileName);
-            fetch(location.pathname + location.search, {method:"POST", body:form}).then(async response => {
+            const redirect = follow ? "follow" : "manual";
+            fetch(location.pathname + location.search, {method:"POST", body:form, redirect}).then(async response => {
+                if (!follow) return done({redirected: response.type === "opaqueredirect"});
                 const page = new DOMParser().parseFromString(await response.text(), "text/html");
                 done({status:response.status, path:new URL(response.url).pathname, redirected:response.redirected,
                     message:page.querySelector('[role=status]')?.textContent.trim(),
                     error:page.querySelector('#error_1_id_bundle_file')?.textContent.trim()});
             }, () => done({status:0}));
-        """, json.dumps(document, ensure_ascii=False), name)
+        """, json.dumps(document, ensure_ascii=False), name, follow)
 
     fixture_round = {
         "import_key": "prelim-1", "stage": "prelim", "division": "varsity", "round_number": 1, "label": "P1",
@@ -3592,6 +3607,28 @@ def assert_mittab_bundle_upload(driver, django, rust, fixture):
     skipped = {**reference, "rounds": [{**fixture_round, "opp": {}}]}
     answer = submit(rust, skipped)
     assert "Skipped 1 round with incomplete rosters." in answer["message"] and snapshot() == before, answer
+
+    from hashlib import sha256
+
+    for writer, reader in ((django, rust), (rust, django)):
+        keys = [
+            "".join(sha256(f"{writer.name}-{row}-{piece}".encode()).hexdigest() for piece in range(12))
+            for row in range(5)
+        ]
+        long_warning = {**reference, "rounds": [
+            {**fixture_round, "import_key": key, "round_number": index + 1, "opp": {}}
+            for index, key in enumerate(keys)
+        ]}
+        assert submit(writer, long_warning, follow=False)["redirected"], writer.name
+        cookie = driver.get_cookie("messages")
+        assert cookie and len(cookie["value"]) < 2048, writer.name
+        driver.get(f"http://{HOST}:{reader.port}/core/tournaments/{event}")
+        notices = driver.find_element("tag name", "body").text
+        assert "Skipped 5 rounds with incomplete rosters." in notices and keys[-1] in notices, (writer.name, reader.name)
+        driver.refresh()
+        assert "Skipped 5 rounds with incomplete rosters." not in driver.find_element("tag name", "body").text
+        assert snapshot() == before
+
     updated = {**reference, "rounds": [{**fixture_round, "victor": " 2 "}]}
     result = submit(rust, updated)
     assert "updated 1 rounds, deleted 1 stale rounds." in result["message"], result
@@ -4201,6 +4238,28 @@ def assert_admin_tools(driver, django, rust):
 
 
 def assert_doty(driver, django, rust):
+    code = """
+from datetime import date
+from django import setup
+import json
+setup()
+from core.models import Debater, School, SpeakerResult, Team, TeamResult, Tournament
+
+school = School.objects.create(name="DOTY roster visibility fixture", short_name="DOTY", included_in_oty=True)
+event = Tournament.objects.create(host=school, season="2025", date=date(2025, 10, 1), num_teams=80)
+Tournament.objects.filter(pk=event.pk).update(qual=True, soty=True)
+active = Debater.all_objects.create(first_name="Active roster member", school=school)
+temporary = Debater.all_objects.create(first_name="Temporary roster member", school=school, temporary=True)
+synthetic = Debater.all_objects.create(first_name="Synthetic roster member", school=school, synthetic=True)
+speaker = Debater.all_objects.create(first_name="Speaker result only", school=school, temporary=True)
+team = Team.objects.create(name="DOTY roster fixture")
+team.debaters.add(active, temporary, synthetic, speaker)
+TeamResult.objects.bulk_create([TeamResult(team=team, tournament=event, place=1)])
+SpeakerResult.objects.bulk_create([SpeakerResult(debater=speaker, tournament=event, place=1)])
+print(json.dumps([active.pk, temporary.pk, synthetic.pk, speaker.pk]))
+"""
+    output = subprocess.check_output([str(ROOT / "venv/bin/python"), "-c", code], text=True)
+    active, temporary, synthetic, speaker = json.loads(output.splitlines()[-1])
     driver.get(f"http://{HOST}:{rust.port}/games/")
     driver.add_cookie({"name": "sessionid", "value": django_session()})
     for season in ("2025", "2026", "invalid"):
@@ -4217,6 +4276,11 @@ def assert_doty(driver, django, rust):
                 };
             """))
         assert responses[0]["captions"], season
+        if season == "2025":
+            for response in responses:
+                links = response["links"]
+                assert f"/core/debaters/{active}" in links and f"/core/debaters/{speaker}" in links
+                assert f"/core/debaters/{temporary}" not in links and f"/core/debaters/{synthetic}" not in links
         for key in responses[0]:
             expected, actual = responses[0][key], responses[1][key]
             if isinstance(expected, list) and isinstance(actual, list):
@@ -4606,6 +4670,24 @@ def assert_login_roundtrip(driver, rust, django):
         """)
         assert response == {"status": 200, "path": "/games/"}, (server.name, response)
         assert driver.get_cookie("sessionid")["httpOnly"], server.name
+        for values, query, expected in (
+            ({"next": "/core/tournaments/"}, "/games/", "/core/tournaments/"),
+            ({}, "/games/", "/games/"),
+            ({"next": "//external.example.test/"}, "/games/", "/"),
+        ):
+            driver.get(origin + "/auth/login/")
+            driver.add_cookie({"name": "sessionid", "value": django_session()})
+            logout = driver.execute_async_script("""
+                const [values, query, done] = arguments;
+                const csrf = document.querySelector('[name=csrfmiddlewaretoken]').value;
+                const body = new URLSearchParams({...values, csrfmiddlewaretoken:csrf});
+                const path = "/auth/logout/?" + new URLSearchParams({next:query});
+                fetch(path, {method:"POST", body}).then(response => {
+                    done({status:response.status, path:new URL(response.url).pathname});
+                }, () => done({status:0}));
+            """, values, query)
+            assert logout == {"status": 200, "path": expected}, (server.name, logout)
+            assert driver.get_cookie("sessionid") is None, server.name
     driver.delete_all_cookies()
 
 

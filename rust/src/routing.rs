@@ -635,6 +635,10 @@ pub fn app(state: AppState) -> Router {
         ))
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
+            crate::flash::middleware,
+        ))
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
             validate_host,
         ))
         .layer(axum::middleware::from_fn(security_headers))

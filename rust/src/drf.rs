@@ -13,6 +13,15 @@ use serde_json::Value;
 
 use crate::{AppState, json_error, login, session, web};
 
+pub(crate) const JSON_MEDIA: &[&str] = &["application/json", "application/*", "*/*"];
+pub(crate) const HTML_MEDIA: &[&str] = &["text/html", "text/*", "*/*"];
+
+pub(crate) fn matches_media(media: &str, supported: &[&str]) -> bool {
+    supported
+        .iter()
+        .any(|kind| media.eq_ignore_ascii_case(kind))
+}
+
 fn basic_credentials(headers: &HeaderMap) -> Result<Option<(String, String)>, &'static str> {
     let Some(authorization) = headers.get(header::AUTHORIZATION) else {
         return Ok(None);
@@ -124,28 +133,28 @@ pub(crate) fn wants_html(headers: &HeaderMap, requested: Option<&str>) -> bool {
                     .split_once('=')
                     .map(|(key, _)| key)
                     .unwrap_or_default();
-                !key.is_empty() && key != "q"
+                !key.is_empty() && !key.eq_ignore_ascii_case("q")
             }));
             let kind = kind.trim();
-            (
-                kind,
-                match kind {
-                    "*/*" => 0,
-                    "text/*" | "application/*" => 1,
-                    _ => 2 + specificity,
-                },
-            )
+            let rank = if kind == "*/*" {
+                0
+            } else if matches_media(kind, &["text/*", "application/*"]) {
+                1
+            } else {
+                2 + specificity
+            };
+            (kind, rank)
         })
         .collect::<Vec<_>>();
     let rank = |kinds: &[&str]| {
         media
             .iter()
-            .filter(|(kind, _)| kinds.contains(kind))
+            .filter(|(kind, _)| matches_media(kind, kinds))
             .map(|(_, rank)| *rank)
             .max()
     };
-    let html = rank(&["text/html", "text/*", "*/*"]);
-    let json = rank(&["application/json", "application/*", "*/*"]);
+    let html = rank(HTML_MEDIA);
+    let json = rank(JSON_MEDIA);
     if requested == Some("api") {
         return media.is_empty() || html.is_some();
     }

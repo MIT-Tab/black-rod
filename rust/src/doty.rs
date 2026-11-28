@@ -39,6 +39,7 @@ const RESULTS: &str = "SELECT CAST(r.debater_id AS BIGINT) AS debater_id,
     CAST(CASE WHEN r.ghost_points THEN 1 ELSE 0 END AS BIGINT), CAST(0 AS BIGINT)
     FROM core_teamresult r JOIN core_tournament t ON t.id=r.tournament_id
     JOIN core_team_debaters m ON m.team_id=r.team_id
+    JOIN core_debater d ON d.id=m.debater_id AND NOT(d.temporary OR d.synthetic)
     WHERE t.season=$1 AND t.qual AND r.type_of_place=1 AND r.counts_for_points";
 
 #[derive(Serialize)]

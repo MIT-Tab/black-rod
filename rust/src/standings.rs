@@ -373,7 +373,7 @@ impl Board {
             HashMap::new()
         };
         let breakdowns = if matches!(self, Self::Schools) {
-            coty_breakdowns(pool, season, origin, None, true).await?
+            coty_breakdowns(pool, season, origin, None, view != View::Home).await?
         } else {
             HashMap::new()
         };

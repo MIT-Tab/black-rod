@@ -77,8 +77,8 @@ pub(super) async fn api_protocol(
     {
         let mut parts = media.split(';');
         let media = parts.next().unwrap_or_default().trim();
-        let json = matches!(media, "*/*" | "application/*" | "application/json");
-        let html = matches!(media, "*/*" | "text/*" | "text/html");
+        let json = drf::matches_media(media, drf::JSON_MEDIA);
+        let html = drf::matches_media(media, drf::HTML_MEDIA);
         suitable |= match format.as_deref() {
             Some("json") => json,
             Some("api") => html,
@@ -86,8 +86,9 @@ pub(super) async fn api_protocol(
         };
         if json {
             indent = parts
-                .filter_map(|part| part.trim().strip_prefix("indent="))
-                .filter_map(|value| value.trim_matches('"').parse::<u8>().ok())
+                .filter_map(|part| part.trim().split_once('='))
+                .filter(|(key, _)| key.trim().eq_ignore_ascii_case("indent"))
+                .filter_map(|(_, value)| value.trim().trim_matches('"').parse::<u8>().ok())
                 .map(|width| width.min(8))
                 .next()
                 .unwrap_or(indent);
@@ -251,10 +252,9 @@ pub(super) async fn security_headers(request: Request, next: axum::middleware::N
         header::X_CONTENT_TYPE_OPTIONS,
         HeaderValue::from_static("nosniff"),
     );
-    headers.insert(
-        header::REFERRER_POLICY,
-        HeaderValue::from_static("same-origin"),
-    );
+    headers
+        .entry(header::REFERRER_POLICY)
+        .or_insert(HeaderValue::from_static("same-origin"));
     headers.insert(
         "cross-origin-opener-policy",
         HeaderValue::from_static("same-origin"),

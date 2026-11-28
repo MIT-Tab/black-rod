@@ -231,7 +231,7 @@ async fn page(state: &AppState, headers: &HeaderMap, https: bool, page: LoginPag
     response
 }
 
-async fn login_form(mut request: Request) -> Result<HashMap<String, String>, StatusCode> {
+async fn auth_form(mut request: Request) -> Result<HashMap<String, String>, StatusCode> {
     const MAX_BYTES: usize = 128 * 1024;
     let media_type = request
         .headers()
@@ -291,7 +291,7 @@ pub(crate) async fn view(State(state): State<AppState>, request: Request) -> Res
         .await;
     }
     let headers = request.headers().clone();
-    let form = match login_form(request).await {
+    let form = match auth_form(request).await {
         Ok(form) => form,
         Err(status) => return status.into_response(),
     };
@@ -525,24 +525,38 @@ pub(crate) async fn logout(State(state): State<AppState>, request: Request) -> R
     let Some(origin) = state.origin(request.headers()) else {
         return StatusCode::BAD_REQUEST.into_response();
     };
-    let (parts, body) = request.into_parts();
-    let Ok(body) = to_bytes(body, 128 * 1024).await else {
-        return StatusCode::PAYLOAD_TOO_LARGE.into_response();
+    let headers = request.headers().clone();
+    let query = form_values(request.uri().query().unwrap_or_default().as_bytes());
+    let form = match auth_form(request).await {
+        Ok(form) => form,
+        Err(status) => return status.into_response(),
     };
-    let form = form_values(&body);
     if !csrf_valid(
-        &parts.headers,
+        &headers,
         form.get("csrfmiddlewaretoken").map(String::as_str),
         &origin,
     ) {
         return csrf_failure();
     }
-    if session::delete(&state.pool, &parts.headers).await.is_err() {
+    if session::delete(&state.pool, &headers).await.is_err() {
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     }
+    let next = form
+        .get("next")
+        .or_else(|| query.get("next"))
+        .map(|value| safe_next(value, &origin))
+        .unwrap_or_default();
+    let location = if next.is_empty() { "/" } else { &next };
     let mut response = (
         StatusCode::FOUND,
-        [(header::LOCATION, "/"), (header::VARY, "Cookie")],
+        [
+            (header::LOCATION, location),
+            (header::VARY, "Cookie"),
+            (
+                header::CACHE_CONTROL,
+                "max-age=0, no-cache, no-store, must-revalidate, private",
+            ),
+        ],
     )
         .into_response();
     set_cookie(
