@@ -133,6 +133,15 @@ def exercise(django, rust, fixture):
     for server in (django, rust):
         assert alias_id in {row["id"] for row in run(server, precise)["results"]}
 
+    scientific = {**prepare([update("round_stats", speaks="2.345e1")]), "dry_run": True}
+    expected_scientific = run(django, "batches/", payload=scientific)
+    actual_scientific = run(rust, "batches/", payload=scientific)
+    assert expected_scientific == actual_scientific, (expected_scientific, actual_scientific)
+    overprecise = {**prepare([update("round_stats", speaks="1e-5")]), "dry_run": True}
+    assert run(rust, "batches/", payload=overprecise, expected=400) == run(
+        django, "batches/", payload=overprecise, expected=400,
+    )
+
     resources = ("rounds", "round_stats", "round_metadata", "teams")
     before = {resource: get(django, resource) for resource in resources}
     assert before == {resource: get(rust, resource) for resource in resources}

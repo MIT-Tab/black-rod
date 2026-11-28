@@ -7,6 +7,7 @@ mod commands;
 pub use commands::HELP as COMMAND_HELP;
 mod claims;
 mod debater_profile;
+mod decimal;
 mod delete_relations;
 mod directory;
 mod discovery;

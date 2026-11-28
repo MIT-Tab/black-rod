@@ -2,7 +2,7 @@
 from pathlib import Path
 import json
 
-from django import setup
+from django import forms, setup
 from django.conf import settings
 from django.core.serializers.json import DjangoJSONEncoder
 
@@ -109,6 +109,11 @@ def model_config(request, model, model_admin):
                 "related_delete": wrapped and widget.can_delete_related,
                 "empty_label": getattr(field, "empty_label", None),
             }
+            if isinstance(field, forms.EmailField):
+                widgets[name]["cleaning"] = "EmailField"
+            elif isinstance(field, forms.URLField):
+                widgets[name]["cleaning"] = "URLField"
+                widgets[name]["assumed_url_scheme"] = field.assume_scheme
             if type(actual).__name__ in ("RadioSelect", "Select") and hasattr(field, "_choices"):
                 choices = [(str(value), str(label)) for value, label in field.choices]
                 if name == "season" and choices == list(settings.SEASONS):

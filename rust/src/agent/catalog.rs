@@ -14,7 +14,8 @@ const SCHEMA: &str = include_str!("../../schema/agent_resources.json");
 pub(super) struct Field {
     pub(super) column: String,
     pub(super) exposed: bool,
-    scale: Option<usize>,
+    pub(super) scale: Option<usize>,
+    pub(super) max_digits: Option<usize>,
     pub(super) max_length: Option<usize>,
     #[serde(default)]
     pub(super) default: Value,
@@ -205,13 +206,19 @@ impl Model {
         &self,
         conn: &mut AnyConnection,
         index: &AnyRow,
+        submitted_decimals: Option<&serde_json::Map<String, Value>>,
     ) -> Result<Value, ApiError> {
         let mut actual = serde_json::Map::new();
         let mut visible = serde_json::Map::new();
         for (name, field) in &self.fields {
-            let value = index
-                .try_get::<Option<String>, _>(field.column.as_str())?
-                .map_or(Value::Null, |value| field.convert(&value));
+            let value = if let Some(value) = submitted_decimals.and_then(|values| values.get(name))
+            {
+                value.clone()
+            } else {
+                index
+                    .try_get::<Option<String>, _>(field.column.as_str())?
+                    .map_or(Value::Null, |value| field.convert(&value))
+            };
             if field.exposed {
                 visible.insert(name.clone(), value.clone());
             }

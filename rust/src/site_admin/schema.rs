@@ -67,6 +67,8 @@ pub(super) struct Widget {
     pub(super) empty_label: Option<String>,
     pub(super) related_url: Option<String>,
     pub(super) forward: Option<String>,
+    pub(super) cleaning: Option<String>,
+    pub(super) assumed_url_scheme: Option<String>,
     #[serde(default)]
     choices: Vec<(String, String)>,
     #[serde(default)]

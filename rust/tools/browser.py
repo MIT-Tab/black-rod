@@ -2716,6 +2716,7 @@ print(json.dumps([record.pk, allowed.pk, unavailable.pk, score.pk, str(settings.
     out = subprocess.check_output([str(ROOT / "venv/bin/python"), "-c", code], text=True)
     record, eligible, unavailable, score, season = json.loads(out.splitlines()[-1])
     session = django_session()
+    profile = f"/admin/core/debater/{eligible}/change/"
     quals = f"/admin/core/qualpoints/{record}/change/"
     scores = f"/admin/core/roundstats/{score}/change/"
     credentials = "/admin/core/agentcredential/add/"
@@ -2747,6 +2748,7 @@ print(json.dumps([record.pk, allowed.pk, unavailable.pk, score.pk, str(settings.
         assert result["status"] == 200 and not result["redirect"], (server.name, result)
         assert any(message in text for text in result["errors"]), (server.name, result)
 
+    previous_contact = (None, None)
     previous_points = 2
     previous_score = 27.1
     for value, server in enumerate((django, rust), 5):
@@ -2754,6 +2756,16 @@ print(json.dumps([record.pk, allowed.pk, unavailable.pk, score.pk, str(settings.
         driver.get(root + "/robots.txt")
         driver.delete_all_cookies()
         driver.add_cookie({"name": "sessionid", "value": session})
+        rejected(profile, {"email": "invalid address"}, "Enter a valid email address.")
+        rejected(profile, {"paradigm": "not a URL"}, "Enter a valid URL.")
+        rejected(profile, {"paradigm": "https://singlelabel"}, "Enter a valid URL.")
+        assert read("SELECT email,paradigm FROM core_debater WHERE id=?", eligible) == previous_contact
+        email = f"debater{value}@example.test"
+        address = "Example.test/research" if value == 5 else "//Example.test/revised"
+        saved = submit(profile, {"email": f" {email} ", "paradigm": address})
+        assert saved["status"] == 200 and saved["redirect"], (server.name, saved)
+        previous_contact = (email, "http://" + address.removeprefix("//"))
+        assert read("SELECT email,paradigm FROM core_debater WHERE id=?", eligible) == previous_contact
         for selection in (unavailable, 777777777, "not-a-number"):
             rejected(quals, {"debater": selection, "points": value},
                      "Select a valid choice. That choice is not one of the available choices.")
@@ -4858,7 +4870,7 @@ def assert_login_roundtrip(driver, rust, django):
             const token = document.querySelector('[name=csrfmiddlewaretoken]').value;
             const form = new FormData();
             for (const [key, value] of Object.entries({
-                username: "tab", password: "password", remember: "on", next: "/games/", csrfmiddlewaretoken: token
+                username: "tab", password: "password", remember: "on", next: "../../games/", csrfmiddlewaretoken: token
             })) form.set(key, value);
             fetch(location.href, {method: "POST", body: form})
                 .then(response => done({status: response.status, path: new URL(response.url).pathname}))

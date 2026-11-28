@@ -41,6 +41,8 @@ def main():
                     "related_model": field.related_model._meta.label if field.is_relation else None,
                 },
             }
+            if fields[field.attname]["scale"] is not None:
+                fields[field.attname]["max_digits"] = field.max_digits
         result[name] = {
             "table": model._meta.db_table,
             "label": model._meta.label,

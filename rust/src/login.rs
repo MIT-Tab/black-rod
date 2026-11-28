@@ -42,7 +42,11 @@ pub(crate) fn safe_next(value: &str, origin: &str) -> String {
     let Some(base) = url::Url::parse(origin).ok() else {
         return String::new();
     };
-    let Some(url) = url::Url::parse(value).ok() else {
+    let parsed = match url::Url::parse(value) {
+        Err(url::ParseError::RelativeUrlWithoutBase) => base.join(value),
+        absolute => absolute,
+    };
+    let Ok(url) = parsed else {
         return String::new();
     };
     if url.origin() == base.origin() && url.username().is_empty() && url.password().is_none() {
@@ -660,5 +664,8 @@ mod tests {
             safe_next("https://results.test/games/", "https://results.test"),
             "https://results.test/games/"
         );
+        for path in ["../games/", "games/?next=1", "?page=2", "#results"] {
+            assert_eq!(safe_next(path, "https://results.test"), path);
+        }
     }
 }

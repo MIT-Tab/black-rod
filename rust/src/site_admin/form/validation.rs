@@ -1,7 +1,11 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+    borrow::Cow,
+    collections::{BTreeMap, BTreeSet},
+    net::Ipv4Addr,
+    sync::LazyLock,
+};
 
 use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, SecondsFormat};
-use rust_decimal::Decimal;
 use serde_json::{Value as Json, json};
 use sqlx::{AnyConnection, AssertSqlSafe};
 
@@ -78,39 +82,78 @@ fn datetime(values: &Values, name: &str) -> Option<Json> {
         })
 }
 
-fn decimal_value(raw: &str, field: &Field) -> Result<Decimal, String> {
-    let raw = raw.trim();
-    let number = Decimal::from_str_exact(raw)
-        .or_else(|_| Decimal::from_scientific(raw))
-        .map_err(|_| "Enter a number.".to_owned())?;
-    let scale = number.scale() as usize;
-    let digits = scale.max(
-        number
-            .mantissa()
-            .unsigned_abs()
-            .checked_ilog10()
-            .map_or(1, |leading| leading as usize + 1),
-    );
-    if let Some(max) = field.precision.filter(|max| digits > *max) {
-        return Err(format!(
-            "Ensure that there are no more than {max} digits in total."
-        ));
+fn normalize_url<'a>(value: &'a str, scheme: &str) -> Cow<'a, str> {
+    let has_scheme = value.split_once(':').is_some_and(|(scheme, _)| {
+        !scheme.contains('/') && scheme.starts_with(|first: char| first.is_ascii_alphabetic())
+    });
+    if value.is_empty() || has_scheme {
+        Cow::Borrowed(value)
+    } else if value.starts_with("//") {
+        Cow::Owned(format!("{scheme}:{value}"))
+    } else {
+        Cow::Owned(format!("{scheme}://{value}"))
     }
-    if let Some(places) = field.scale {
-        if scale > places {
-            return Err(format!(
-                "Ensure that there are no more than {places} decimal places."
-            ));
-        }
-        if let Some(max) = field.precision.and_then(|max| max.checked_sub(places))
-            && digits - scale > max
-        {
-            return Err(format!(
-                "Ensure that there are no more than {max} digits before the decimal point."
-            ));
-        }
+}
+
+fn valid_url(value: &str) -> bool {
+    static AUTHORITY: LazyLock<regex::Regex> = LazyLock::new(|| {
+        regex::Regex::new(
+            r"(?i)^(?:[^\s:@/]+(?::[^\s:@/]*)?@)?(?:\[[0-9a-f:.]+\]|[a-z0-9.\-\u{a1}-\u{ffff}]+)(?::[0-9]{1,5})?$",
+        )
+        .expect("valid URL authority pattern")
+    });
+    if value.chars().count() > 2048 || value.chars().any(char::is_whitespace) {
+        return false;
     }
-    Ok(number)
+    let Some((_, address)) = value.split_once("://") else {
+        return false;
+    };
+    let authority = address.split(['/', '?', '#']).next().unwrap_or_default();
+    if authority.contains('\\') || !AUTHORITY.is_match(authority) {
+        return false;
+    }
+    let Ok(parsed) = url::Url::parse(value) else {
+        return false;
+    };
+    if !matches!(parsed.scheme(), "http" | "https" | "ftp" | "ftps") {
+        return false;
+    }
+    match parsed.host() {
+        Some(url::Host::Ipv4(_)) => {
+            let host = authority.rsplit('@').next().unwrap_or_default();
+            host.split(':')
+                .next()
+                .unwrap_or_default()
+                .parse::<Ipv4Addr>()
+                .is_ok()
+        }
+        Some(url::Host::Ipv6(_)) => true,
+        Some(url::Host::Domain(name)) => {
+            let name = name.strip_suffix('.').unwrap_or(name);
+            if name == "localhost" {
+                return true;
+            }
+            let Some((_, suffix)) = name.rsplit_once('.') else {
+                return false;
+            };
+            (2..=253).contains(&name.len())
+                && suffix.len() >= 2
+                && (suffix.starts_with("xn--")
+                    || suffix
+                        .bytes()
+                        .all(|ch| ch.is_ascii_alphabetic() || ch == b'-'))
+                && name.split('.').all(|label| {
+                    !label.is_empty()
+                        && label.len() <= 63
+                        && !label.starts_with('-')
+                        && !label.ends_with('-')
+                        && label
+                            .bytes()
+                            .all(|ch| ch.is_ascii_alphanumeric() || ch == b'-')
+                })
+        }
+        None => false,
+    }
 }
 
 pub(super) async fn cleaned(
@@ -122,7 +165,17 @@ pub(super) async fn cleaned(
     values: &Values,
     errors: &mut Errors,
 ) -> Result<Option<Json>, ApiError> {
-    let raw = raw(values, name);
+    let submitted = raw(values, name);
+    let kind = widget.cleaning.as_deref().unwrap_or(&field.kind);
+    let normalized = match kind {
+        "URLField" => normalize_url(
+            submitted.trim(),
+            widget.assumed_url_scheme.as_deref().unwrap_or("http"),
+        ),
+        "EmailField" => Cow::Borrowed(submitted.trim()),
+        _ => Cow::Borrowed(submitted),
+    };
+    let raw = normalized.as_ref();
     let date_value = if field.kind == "DateTimeField" {
         datetime(values, name)
     } else {
@@ -172,7 +225,7 @@ pub(super) async fn cleaned(
             &format!("Select a valid choice. {raw} is not one of the available choices."),
         );
     }
-    let value = match field.kind.as_str() {
+    let value = match kind {
         "BooleanField" => Some(json!(values.contains_key(name))),
         "IntegerField"
         | "SmallIntegerField"
@@ -187,13 +240,15 @@ pub(super) async fn cleaned(
                 .filter(|value| !field.kind.starts_with("Positive") || *value >= 0)
                 .map(|value| json!(value))
         }
-        "DecimalField" if !raw.trim().is_empty() => match decimal_value(raw, field) {
-            Ok(decimal) => Some(json!(decimal.to_string())),
-            Err(message) => {
-                error(errors, name, &message);
-                return Ok(None);
+        "DecimalField" if !raw.trim().is_empty() => {
+            match crate::decimal::validate(raw, field.precision, field.scale) {
+                Ok(decimal) => Some(json!(decimal.to_string())),
+                Err(message) => {
+                    error(errors, name, &message);
+                    return Ok(None);
+                }
             }
-        },
+        }
         "FloatField" if !raw.is_empty() => raw
             .parse::<f64>()
             .ok()
@@ -204,6 +259,10 @@ pub(super) async fn cleaned(
             .ok()
             .map(|date| json!(date.to_string())),
         "JSONField" if !raw.is_empty() => serde_json::from_str(raw).ok(),
+        "EmailField" if !raw.is_empty() => {
+            crate::account::contact_email_valid(raw).then(|| json!(raw))
+        }
+        "URLField" if !raw.is_empty() => valid_url(raw).then(|| json!(raw)),
         _ if raw.is_empty() && field.null => Some(Json::Null),
         _ => Some(json!(if field.kind == "TextField" {
             raw
@@ -215,9 +274,11 @@ pub(super) async fn cleaned(
         error(
             errors,
             name,
-            match field.kind.as_str() {
+            match kind {
                 "DateTimeField" | "DateField" => "Enter a valid date.",
                 "JSONField" => "Enter a valid JSON.",
+                "EmailField" => "Enter a valid email address.",
+                "URLField" => "Enter a valid URL.",
                 "FloatField" | "DecimalField" => "Enter a number.",
                 _ => "Enter a whole number.",
             },

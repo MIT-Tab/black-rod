@@ -300,7 +300,7 @@ async fn records(
         let Some(row) = row else {
             return Ok(endpoint.not_found());
         };
-        let result = model.row(&mut tx, &row).await?;
+        let result = model.row(&mut tx, &row, None).await?;
         tx.commit().await?;
         return Ok(endpoint.render(StatusCode::OK, result));
     }
@@ -394,7 +394,7 @@ async fn records(
     let rows = statement.fetch_all(&mut *tx).await?;
     let mut results = Vec::new();
     for row in rows.iter().take(limit as usize) {
-        results.push(model.row(&mut tx, row).await?);
+        results.push(model.row(&mut tx, row, None).await?);
     }
     tx.commit().await?;
     let after = results

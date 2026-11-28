@@ -146,17 +146,9 @@ async fn validate(
             }
         },
         "DecimalField" => {
-            let parsed = raw
-                .parse::<f64>()
-                .ok()
-                .filter(|value| value.is_finite() && value.abs() < 100.0);
-            let precision = raw.split_once('.').map_or(0, |(_, decimal)| decimal.len());
-            if parsed.is_none() || precision > 4 {
-                return Err(invalid(format!(
-                    "{{'{name}': ['Ensure that there are no more than 6 digits in total and 4 decimal places.']}}"
-                )));
-            }
-            field.convert(&raw)
+            let number = crate::decimal::validate(&raw, field.max_digits, field.scale)
+                .map_err(|message| invalid(format!("{{'{name}': ['{message}']}}")))?;
+            json!(number.to_string())
         }
         "FloatField" => raw
             .trim()
@@ -182,6 +174,15 @@ pub(super) async fn read(
     model: &catalog::Model,
     id: i64,
 ) -> Result<Value, Failure> {
+    read_with_decimals(conn, model, id, None).await
+}
+
+async fn read_with_decimals(
+    conn: &mut AnyConnection,
+    model: &catalog::Model,
+    id: i64,
+    submitted_decimals: Option<&Map<String, Value>>,
+) -> Result<Value, Failure> {
     let sql = format!(
         "SELECT {} FROM \"{}\" WHERE id=$1",
         model.projection(),
@@ -197,7 +198,7 @@ pub(super) async fn read(
                 model.label.rsplit('.').next().unwrap_or(&model.label)
             ))
         })?;
-    Ok(model.row(conn, &row).await?)
+    Ok(model.row(conn, &row, submitted_decimals).await?)
 }
 
 async fn membership(
@@ -586,5 +587,17 @@ pub(super) async fn apply(
     if resource == "teams" && data.contains_key("debaters") {
         claims::edit::team_name(conn, id).await?;
     }
-    read(conn, model, id).await
+    // Django returns the submitted Decimal on the just-saved model. The journal and
+    // subsequent reads use the database's canonical field scale.
+    let submitted_decimals = data
+        .keys()
+        .filter(|name| {
+            model
+                .fields
+                .get(*name)
+                .is_some_and(|field| field.kind() == "DecimalField")
+        })
+        .filter_map(|name| fields.get(name).map(|value| (name.clone(), value.clone())))
+        .collect();
+    read_with_decimals(conn, model, id, Some(&submitted_decimals)).await
 }
