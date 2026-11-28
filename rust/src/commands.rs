@@ -124,6 +124,9 @@ impl AppState {
         }
         .map_err(|reason| format!("Could not refresh standings: {reason:?}"))?;
         tx.commit().await?;
+        if refresh {
+            crate::search::invalidate(self).await;
+        }
         let seasons = if refresh {
             self.current_season..=self.current_season
         } else {

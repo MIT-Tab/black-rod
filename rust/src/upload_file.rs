@@ -1,7 +1,9 @@
 use std::io::{self, Read, Seek};
 
 use axum::{extract::multipart::Field, http::StatusCode};
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncSeekExt, AsyncWriteExt};
+
+pub(crate) const MAX_FORM_DATA: usize = 2_621_440;
 
 pub(crate) struct UploadFile {
     file: std::fs::File,
@@ -52,12 +54,18 @@ impl UploadFile {
         .await
         .map_err(io::Error::other)?
     }
+
+    pub(crate) async fn into_reader(self) -> io::Result<tokio::fs::File> {
+        let mut file = tokio::fs::File::from_std(self.file);
+        file.rewind().await?;
+        Ok(file)
+    }
 }
 
 pub(crate) async fn text(mut field: Field<'_>) -> Result<String, StatusCode> {
     let mut bytes = Vec::new();
     while let Some(chunk) = field.chunk().await.map_err(|error| error.status())? {
-        if bytes.len() + chunk.len() > 2_621_440 {
+        if bytes.len() + chunk.len() > MAX_FORM_DATA {
             return Err(StatusCode::PAYLOAD_TOO_LARGE);
         }
         bytes.extend_from_slice(&chunk);

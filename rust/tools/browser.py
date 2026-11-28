@@ -3332,8 +3332,20 @@ assert School.objects.filter(name="Unselected control school").exists()
 def assert_admin_attachments(driver, django, rust):
     root = Path(os.environ["BR_STATE"])
     file = root / "fixture-attachment.txt"
-    fixture = "Fabricated attachment for the parity test.\n"
-    file.write_text(fixture * (2 * 1024 * 1024 // len(fixture) + 1))
+    fixture = b"Fabricated attachment for the parity test.\n"
+    chunk = fixture * (1024 * 1024 // len(fixture) + 1)
+    with file.open("wb") as output:
+        for _ in range(66):
+            output.write(chunk)
+
+    def fingerprint(stream):
+        digest = sha256()
+        for part in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(part)
+        return digest.hexdigest()
+
+    with file.open("rb") as source:
+        expected = fingerprint(source)
     admin = django_session()
     route = "/admin/django_summernote/attachment/"
     for source, target in ((django, rust), (rust, django)):
@@ -3350,10 +3362,11 @@ def assert_admin_attachments(driver, django, rust):
             record, name, stored = connection.execute(
                 "SELECT id,name,file FROM django_summernote_attachment ORDER BY id DESC LIMIT 1"
             ).fetchone()
-        assert name == file.name and (root / "media" / stored).read_bytes() == file.read_bytes()
+        with (root / "media" / stored).open("rb") as saved:
+            assert name == file.name and fingerprint(saved) == expected
         public = f"http://{HOST}:{rust.port}/{stored}"
         with urlopen(public) as response:
-            assert response.read() == file.read_bytes()
+            assert fingerprint(response) == expected
         driver.get(f"http://{HOST}:{target.port}{route}{record}/change/")
         assert driver.find_element("css selector", ".field-file a").get_attribute("href").endswith(stored)
         label = driver.find_element("name", "name")

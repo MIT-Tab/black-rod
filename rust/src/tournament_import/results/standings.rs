@@ -319,7 +319,7 @@ pub(crate) async fn recompute_rankings(
         (
             Award::Team,
             "SELECT CAST(id AS BIGINT) FROM core_team t WHERE NOT EXISTS (
-                SELECT 1 FROM core_teamresult r WHERE r.team_id=t.id) ORDER BY id",
+                SELECT 1 FROM core_teamresult r WHERE r.team_id=t.id)",
             "SELECT CAST(id AS BIGINT) FROM core_team ORDER BY id",
             "core_team",
         )
@@ -338,18 +338,44 @@ pub(crate) async fn recompute_rankings(
                     EXISTS (SELECT 1 FROM core_teamresult r WHERE r.team_id=m.team_id)
                     OR EXISTS (SELECT 1 FROM core_round r WHERE r.gov_id=m.team_id OR r.opp_id=m.team_id)
                 )
-            ) ORDER BY id",
+            )",
             "SELECT CAST(id AS BIGINT) FROM core_debater WHERE NOT (temporary OR synthetic) ORDER BY id",
             "core_debater")
     };
     if matches!(kind, Award::Novice) && year(selected).is_none_or(|value| value > 2020) {
         return Ok(());
     }
-    for id in sqlx::query_scalar::<_, i64>(orphan_query)
+    let candidates = format!("{orphan_query} ORDER BY id");
+    let eligible = format!("{orphan_query} AND id=$1");
+    let postgres = conn.backend_name() == "PostgreSQL";
+    for id in sqlx::query_scalar::<_, i64>(AssertSqlSafe(candidates))
         .fetch_all(&mut *conn)
         .await?
     {
-        match delete_relations::delete(conn, entity, id).await {
+        let remove = async {
+            delete_relations::lock_records(conn, entity, &[id]).await?;
+            if postgres && entity == "core_debater" {
+                // Participation can also arrive through an existing team membership.
+                sqlx::query(
+                    "SELECT id FROM core_team t WHERE EXISTS (
+                    SELECT 1 FROM core_team_debaters m WHERE m.team_id=t.id AND m.debater_id=$1
+                ) ORDER BY id FOR UPDATE",
+                )
+                .bind(id)
+                .fetch_all(&mut *conn)
+                .await?;
+            }
+            if sqlx::query_scalar::<_, i64>(AssertSqlSafe(eligible.as_str()))
+                .bind(id)
+                .fetch_optional(&mut *conn)
+                .await?
+                .is_some()
+            {
+                delete_relations::delete_locked(conn, entity, id).await?;
+            }
+            Ok(())
+        };
+        match remove.await {
             Ok(()) | Err(delete_relations::DeleteError::Absent) => (),
             Err(delete_relations::DeleteError::Protected) => return Err(ApiError::Constraint),
             Err(delete_relations::DeleteError::Database(error)) => return Err(error.into()),

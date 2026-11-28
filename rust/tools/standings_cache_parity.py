@@ -170,6 +170,30 @@ Tournament.objects.filter(pk=event.pk).update(name="Disposable cache fixture (ol
         assert len(current) == 16 and (current == generation) == bool(args), "Incorrect name cache generation"
 
 
+def check_awards_remove_search_record(database, rust, env, cache):
+    setup = """
+from reference import application
+from core.models import Debater
+print(Debater.objects.create(first_name="Orphanwatch", last_name="Fixture").pk)
+"""
+    created = subprocess.check_output([str(ROOT / "venv/bin/python"), "-c", setup], env=env, text=True)
+    orphan = int(created.splitlines()[-1])
+    assert search_match(rust, orphan, "Orphanwatch")
+    before = cache.get(SEARCH)
+    command_env = {
+        **env, "DOT_ENV_FILE": os.devnull, "BLACK_ROD_CURRENT_SEASON": "2026",
+        "BLACK_ROD_MEMCACHED_ADDR": os.environ["BLACK_ROD_PARITY_MEMCACHED_ADDR"],
+        "BLACK_ROD_DATABASE_URL": os.environ.get(
+            "BLACK_ROD_PARITY_POSTGRES_URL", f"sqlite:{database.as_posix()}?mode=rw"
+        ),
+    }
+    result = subprocess.run([str(RUST_BIN), "update_otys"], env=command_env,
+                            capture_output=True, text=True, timeout=45)
+    assert result.returncode == 0, result.stderr
+    assert cache.get(SEARCH) != before
+    assert not search_match(rust, orphan, "Orphanwatch")
+
+
 def main():
     seed = Path(os.environ["BR_STATE"]) / "dev.sqlite3"
     postgres = os.environ.get("BLACK_ROD_PARITY_POSTGRES_URL")
@@ -208,6 +232,8 @@ def main():
                 check_search_recovers_if_generation_is_unchanged(database, debater, env, cache)
                 check_shortening_invalidates(database, env, cache)
             check_local_reindex(database, debater, env)
+            with servers(database) as (_, rust), closing(Client((host, int(port)), timeout=2)) as cache:
+                check_awards_remove_search_record(database, rust, env, cache)
     print("Search refreshes after Django edits, local reindexing and a missed shared generation update")
 
 

@@ -5,8 +5,7 @@ pub(super) mod validation;
 use std::collections::{BTreeMap, BTreeSet};
 
 use axum::{
-    body::Bytes,
-    extract::{FromRequest, Multipart, Request},
+    extract::{DefaultBodyLimit, FromRequest, Multipart, Request},
     http::{Method, StatusCode, header},
     response::{IntoResponse, Response},
 };
@@ -22,7 +21,11 @@ use super::{
     schema::{Field, Model, Widget, schema},
 };
 use crate::{
-    ApiError, account, agent::journal::storage_error, flash, login, memberships::sync_memberships,
+    ApiError, account,
+    agent::journal::storage_error,
+    flash, login,
+    memberships::sync_memberships,
+    upload_file::{self, UploadFile},
 };
 use validation::{RelatedSelections, clean_memberships, cleaned};
 
@@ -1137,7 +1140,13 @@ pub(super) async fn page(
     if *request.method() != Method::POST {
         return render_form(admin, model, id, &loaded, None, &Errors::new()).await;
     }
+    let Some(origin) = admin.origin() else {
+        return Ok(StatusCode::BAD_REQUEST.into_response());
+    };
     let (mut parsed, uploaded) = if model.key == "django_summernote.attachment" {
+        if login::csrf_request_secret(admin.headers, &origin).is_err() {
+            return Ok(login::csrf_failure());
+        }
         match attachment_form(request).await {
             Ok(values) => values,
             Err(response) => return Ok(*response),
@@ -1154,9 +1163,6 @@ pub(super) async fn page(
         }
         (parsed, None)
     };
-    let Some(origin) = admin.origin() else {
-        return Ok(StatusCode::BAD_REQUEST.into_response());
-    };
     if !login::csrf_valid(
         admin.headers,
         parsed
@@ -1168,10 +1174,17 @@ pub(super) async fn page(
         return Ok(login::csrf_failure());
     }
     let mut staged = None;
-    if let Some((name, bytes)) = uploaded {
-        let (stored, path) = crate::summernote::write_attachment(admin.state, &name, None, &bytes)
-            .await
-            .map_err(|_| ApiError::Database)?;
+    if let Some((name, upload)) = uploaded {
+        if upload.empty {
+            let mut errors = Errors::new();
+            error(&mut errors, "file", "The submitted file is empty.");
+            return render_form(admin, model, id, &loaded, Some(&parsed), &errors).await;
+        }
+        let file = upload.into_reader().await.map_err(|_| ApiError::Database)?;
+        let (stored, path) =
+            crate::summernote::write_attachment_from(admin.state, &name, None, file)
+                .await
+                .map_err(|_| ApiError::Database)?;
         staged = Some(path);
         parsed.insert("file".to_owned(), vec![stored]);
         if raw(&parsed, "name").is_empty() {
@@ -1198,14 +1211,16 @@ pub(super) async fn page(
     render_form(admin, model, id, &loaded, Some(&parsed), &errors).await
 }
 
-type AttachmentForm = (Values, Option<(String, Bytes)>);
+type AttachmentForm = (Values, Option<(String, UploadFile)>);
 
-async fn attachment_form(request: Request) -> Result<AttachmentForm, Box<Response>> {
+async fn attachment_form(mut request: Request) -> Result<AttachmentForm, Box<Response>> {
+    DefaultBodyLimit::disable().apply(&mut request);
     let mut multipart = Multipart::from_request(request, &())
         .await
         .map_err(|error| Box::new(error.into_response()))?;
     let mut values = Values::new();
     let mut uploaded = None;
+    let mut remaining = upload_file::MAX_FORM_DATA;
     while let Some(field) = multipart
         .next_field()
         .await
@@ -1223,17 +1238,18 @@ async fn attachment_form(request: Request) -> Result<AttachmentForm, Box<Respons
                 .take(255)
                 .collect::<String>();
             if !name.is_empty() {
-                let bytes = field
-                    .bytes()
+                let file = UploadFile::stage(field)
                     .await
-                    .map_err(|error| Box::new(error.into_response()))?;
-                uploaded = Some((name, bytes));
+                    .map_err(|status| Box::new(status.into_response()))?;
+                uploaded = Some((name, file));
             }
         } else {
-            let value = field
-                .text()
+            let value = upload_file::text(field)
                 .await
-                .map_err(|error| Box::new(error.into_response()))?;
+                .map_err(|status| Box::new(status.into_response()))?;
+            remaining = remaining
+                .checked_sub(key.len() + value.len())
+                .ok_or_else(|| Box::new(StatusCode::BAD_REQUEST.into_response()))?;
             values.entry(key).or_default().push(value);
         }
     }

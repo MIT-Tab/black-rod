@@ -194,16 +194,7 @@ async fn validate_uploads(files: Vec<StagedUpload>) -> Result<Vec<Upload>, Box<R
     .map_err(|_| read_error())?
 }
 
-pub(crate) async fn write_attachment(
-    state: &AppState,
-    name: &str,
-    mime: Option<&str>,
-    bytes: &[u8],
-) -> std::io::Result<(String, PathBuf)> {
-    write_attachment_from(state, name, mime, bytes).await
-}
-
-async fn write_attachment_from(
+pub(crate) async fn write_attachment_from(
     state: &AppState,
     name: &str,
     mime: Option<&str>,

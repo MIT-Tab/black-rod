@@ -15,6 +15,7 @@ from time import perf_counter, sleep
 from urllib.parse import urlencode
 
 import psycopg2
+import requests
 
 import compare
 from agent_write_parity import fixture_database
@@ -99,7 +100,11 @@ Reaff.objects.create(old_debater=old, new_debater=new, season="2026", reaff_date
 TOTY.objects.create(team=new_team, season="2026", points=6)
 SOTY.objects.create(debater=new, season="2026", points=6)
 expiry_check = (incoming_event.pk, new_team.pk, new.pk)
-print(json.dumps((event.id, session.session_key, parallel, reaff, expiry_check)))
+orphan_event = Tournament.objects.create(host=host, season="2026", date=date(2026, 10, 30))
+orphan_team = Team.objects.create(name="Concurrent ranking team fixture")
+orphan_speaker = Debater.objects.create(first_name="Concurrent", last_name="RankingFixture", school=host)
+orphan_check = (orphan_event.pk, orphan_team.pk, orphan_speaker.pk)
+print(json.dumps((event.id, session.session_key, parallel, reaff, expiry_check, orphan_check)))
 """
 
 def request_save(server, session, event, members=None, gate=None):
@@ -238,6 +243,54 @@ def check_last_direct_awards(seed, postgres, session, expiry_check):
     print("Reimport removes the final direct TOTY and SOTY awards for reaffiliated recipients")
 
 
+def check_ranking_orphan_recheck(seed, postgres, session, orphan_check):
+    event, team, speaker = orphan_check
+    cases = (
+        ("toty", "core_team", team, "core_teamresult", "team_id", "ghost_points"),
+        ("soty", "core_debater", speaker, "core_speakerresult", "debater_id", "tie,hidden_from_profile"),
+    )
+    with fixture_database(seed, seed, postgres):
+        target = os.environ["BLACK_ROD_PARITY_POSTGRES_URL"]
+        with compare.servers(seed) as (_, server), closing(psycopg2.connect(target)) as writer, \
+                closing(psycopg2.connect(target)) as observer, requests.Session() as client:
+            observer.autocommit = True
+            url = f"http://{compare.HOST}:{server.port}/core/rankings-recompute/"
+            client.cookies.set("sessionid", session)
+            assert client.get(url, timeout=30).status_code == 200
+            token = client.cookies["csrftoken"]
+            for ranking, table, owner, results, foreign_key, flags in cases:
+                with writer.cursor() as cursor, observer.cursor() as activity, ThreadPoolExecutor(max_workers=1) as executor:
+                    cursor.execute(f"SELECT id FROM {table} WHERE id=%s FOR UPDATE", (owner,))
+                    future = executor.submit(client.post, url, data={
+                        "season": "2019", "ranking_type": ranking, "csrfmiddlewaretoken": token,
+                    }, timeout=40)
+                    try:
+                        deadline = perf_counter() + 20
+                        while perf_counter() < deadline:
+                            activity.execute("""SELECT EXISTS (SELECT FROM pg_stat_activity
+                                WHERE datname=current_database() AND %s=ANY(pg_blocking_pids(pid)))""",
+                                (writer.get_backend_pid(),))
+                            if activity.fetchone()[0]:
+                                break
+                            assert not future.done(), (server.name, ranking, "rebuild did not wait for the root")
+                            sleep(0.025)
+                        else:
+                            raise AssertionError((server.name, ranking, "rebuild did not reach the locked root"))
+                        defaults = ",".join("FALSE" for _ in flags.split(","))
+                        cursor.execute(f"""INSERT INTO {results} (tournament_id,{foreign_key},type_of_place,place,counts_for_points,{flags})
+                            VALUES (%s,%s,1,1,TRUE,{defaults}) RETURNING id""", (event, owner))
+                        result_id = cursor.fetchone()[0]
+                        writer.commit()
+                    finally:
+                        writer.rollback()
+                    response = future.result()
+                    assert response.status_code == 200 and response.json()["success"], (server.name, ranking, response.text)
+                    cursor.execute(f"SELECT {foreign_key} FROM {results} WHERE id=%s", (result_id,))
+                    assert cursor.fetchone() == (owner,), (server.name, ranking, "rebuild deleted a committed result")
+                    writer.rollback()
+    print("Rankings cleanup preserves team and speaker results committed while it waits for candidate locks")
+
+
 def check_ranking_maintenance(seed, postgres):
     with fixture_database(seed, seed, postgres):
         target = os.environ["BLACK_ROD_PARITY_POSTGRES_URL"]
@@ -348,7 +401,7 @@ def main():
                 "SECRET_KEY": "disposable-local-parity-key",
             }
             raw = subprocess.check_output([str(compare.ROOT / "venv/bin/python"), "-c", SEED], text=True, env=env)
-            event, session, parallel, reaff, expiry_check = json.loads(raw.splitlines()[-1])
+            event, session, parallel, reaff, expiry_check, orphan_check = json.loads(raw.splitlines()[-1])
             benchmark_source = os.environ["BLACK_ROD_PARITY_POSTGRES_URL"]
             for label, binary in runtimes.items():
                 compare.RUST_BIN = binary
@@ -369,6 +422,7 @@ def main():
             check_ranking_maintenance(seed, benchmark_source)
             check_reaffiliation_precedence(seed, benchmark_source, session, reaff)
             check_last_direct_awards(seed, benchmark_source, session, expiry_check)
+            check_ranking_orphan_recheck(seed, benchmark_source, session, orphan_check)
     for label, contents in documents.items():
         for name, left, right in zip(("qual", "qualpoints", "onlinequal", "coty", "latest_season"),
                                      documents["Django"], contents):

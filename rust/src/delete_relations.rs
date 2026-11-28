@@ -162,6 +162,15 @@ async fn plan_many(
     root: &'static str,
     ids: &[i64],
 ) -> Result<Deletion, DeleteError> {
+    lock_records(conn, root, ids).await?;
+    collect(conn, root, ids, false).await
+}
+
+pub(crate) async fn lock_records(
+    conn: &mut AnyConnection,
+    root: &'static str,
+    ids: &[i64],
+) -> Result<(), DeleteError> {
     let postgres = conn.backend_name() == "PostgreSQL";
     for chunk in ids.chunks(200) {
         let marks = placeholders(chunk.len());
@@ -185,7 +194,7 @@ async fn plan_many(
             return Err(DeleteError::Absent);
         }
     }
-    collect(conn, root, ids, false).await
+    Ok(())
 }
 
 pub(crate) async fn preview(
@@ -346,6 +355,15 @@ pub(crate) async fn delete(
     id: i64,
 ) -> Result<(), DeleteError> {
     plan(conn, root, id).await?.apply(conn).await
+}
+
+/// Apply model deletion rules after the caller locks and rechecks the root record.
+pub(crate) async fn delete_locked(
+    conn: &mut AnyConnection,
+    root: &'static str,
+    id: i64,
+) -> Result<(), DeleteError> {
+    collect(conn, root, &[id], false).await?.apply(conn).await
 }
 
 /// Apply the same rules to unique roots in batches inside the caller's transaction.
