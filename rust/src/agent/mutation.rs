@@ -124,10 +124,7 @@ async fn validate(
             json!(id)
         }
         "IntegerField" | "PositiveIntegerField" | "PositiveSmallIntegerField" => {
-            let value = raw
-                .trim()
-                .parse::<i64>()
-                .ok()
+            let value = crate::django_int(&data)
                 .filter(|value| match kind {
                     "PositiveSmallIntegerField" => (0..=32767).contains(value),
                     "PositiveIntegerField" => (0..=i64::from(i32::MAX)).contains(value),

@@ -1,7 +1,6 @@
 use std::{
     collections::HashMap,
     io::{self, Read},
-    time::Duration,
 };
 
 use flate2::read::ZlibDecoder;
@@ -72,17 +71,16 @@ pub(super) async fn missing(
         load(&mut waiting, source);
     }
     let mut result = HashMap::new();
-    let _ = tokio::time::timeout(Duration::from_secs(5), async {
-        while let Some(value) = waiting.join_next().await {
-            if let Ok(Some((url, payload))) = value {
-                result.insert(url, payload);
-            }
-            if let Some(source) = sources.next() {
-                load(&mut waiting, source);
-            }
+    // Each cache read has its own deadline. Unlike remote requests, retained
+    // snapshots must all be attempted before publishing the rebuilt standings.
+    while let Some(value) = waiting.join_next().await {
+        if let Ok(Some((url, payload))) = value {
+            result.insert(url, payload);
         }
-    })
-    .await;
+        if let Some(source) = sources.next() {
+            load(&mut waiting, source);
+        }
+    }
     result
 }
 
@@ -114,7 +112,7 @@ pub(crate) async fn cached_source(
 
 #[cfg(test)]
 mod tests {
-    use std::io::Write;
+    use std::{io::Write, time::Duration};
 
     use flate2::{Compression, write::ZlibEncoder};
     use serde_json::json;
@@ -124,6 +122,61 @@ mod tests {
     };
 
     use super::*;
+
+    #[tokio::test]
+    async fn attempts_every_retained_snapshot_after_the_remote_fetch_budget() {
+        let chunks: Vec<_> = (0..180)
+            .map(|number| format!("mittab-import:fixture:generation:{number}"))
+            .collect();
+        let sources = HashMap::from([(
+            "fixture",
+            Source {
+                url: "http://fixture.example".into(),
+                name: "Fixture Tournament".into(),
+                updated_at: None,
+                missing_since: None,
+                chunks: chunks.clone(),
+            },
+        )]);
+        let index = serde_pickle::to_vec(&sources, Default::default()).unwrap();
+        let mut encoder = ZlibEncoder::new(Vec::new(), Compression::fast());
+        encoder
+            .write_all(br#"{"tournament":{"name":"Fixture Tournament"}}"#)
+            .unwrap();
+        let compressed = encoder.finish().unwrap();
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let cache = Memcached::new(listener.local_addr().unwrap());
+        let fixture = tokio::spawn(async move {
+            let records = std::iter::once((INDEX.to_owned(), 1, index.as_slice())).chain(
+                chunks.iter().enumerate().map(|(part, key)| {
+                    let length = compressed.len();
+                    let data = &compressed
+                        [part * length / chunks.len()..(part + 1) * length / chunks.len()];
+                    (format!(":1:{key}"), 0, data)
+                }),
+            );
+            for (key, flags, data) in records {
+                let (connection, _) = listener.accept().await.unwrap();
+                let mut reader = BufReader::new(connection);
+                let mut command = String::new();
+                reader.read_line(&mut command).await.unwrap();
+                assert_eq!(command, format!("get {key}\r\n"));
+                if flags == 0 {
+                    tokio::time::sleep(Duration::from_millis(30)).await;
+                }
+                let stream = reader.get_mut();
+                stream
+                    .write_all(format!("VALUE {key} {flags} {}\r\n", data.len()).as_bytes())
+                    .await
+                    .unwrap();
+                stream.write_all(data).await.unwrap();
+                stream.write_all(b"\r\nEND\r\n").await.unwrap();
+            }
+        });
+        let result = missing(&cache, &HashMap::new()).await;
+        assert_eq!(result["http://fixture.example"]["_cached_only"], true);
+        fixture.await.unwrap();
+    }
 
     #[tokio::test]
     async fn reads_python_cache_index_and_reassembles_compressed_chunks() {

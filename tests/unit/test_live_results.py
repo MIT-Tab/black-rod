@@ -553,12 +553,15 @@ def test_index_hides_banner_when_no_tournament_is_live():
 
 @pytest.mark.django_db
 @override_settings(CURRENT_SEASON="2026")
-def test_reviewed_rankings_update_clears_live_standings():
+def test_reviewed_rankings_update_clears_live_standings_after_commit(django_capture_on_commit_callbacks):
     cache.clear()
     with patch("core.live_results.fetch_live_sources", return_value=[_payload()]):
         build_live_standings()
 
-    redo_rankings(TOTY.objects.filter(season="2026"), season="2026")
+    with django_capture_on_commit_callbacks(execute=True):
+        redo_rankings(TOTY.objects.filter(season="2026"), season="2026")
+        assert cache.get(f"{CACHE_KEY}:2026") is not None
+        assert cache.get(f"{CACHE_KEY}:2026:stale") is not None
 
     assert cache.get(f"{CACHE_KEY}:2026") is None
     assert cache.get(f"{CACHE_KEY}:2026:stale") is None

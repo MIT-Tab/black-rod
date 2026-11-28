@@ -80,7 +80,8 @@ def exercise(django, rust, fixture):
     def run(server, path, *, payload=None, expected=200):
         code, _, body = request(server, Case(
             base + path, method="GET" if payload is None else "POST",
-            body=None if payload is None else json.dumps(payload), authorization=authorization,
+            body=payload if isinstance(payload, str) else (None if payload is None else json.dumps(payload)),
+            authorization=authorization,
         ))
         data = json.loads(body)
         assert code == expected, (server.name, path, code, expected, data)
@@ -141,6 +142,15 @@ def exercise(django, rust, fixture):
     assert run(rust, "batches/", payload=overprecise, expected=400) == run(
         django, "batches/", payload=overprecise, expected=400,
     )
+
+    event = run(django, f"records/tournaments/{fixture['tournament']}/")
+    numeric = {**prepare([{"op": "update", "resource": "tournaments", "id": event["id"],
+                           "revision": event["revision"], "data": {"num_teams": 32.0}}]), "dry_run": True}
+    normalized = run(django, "batches/", payload=numeric)
+    for representation in ("32.0", "3.2e1", "32.75"):
+        payload = json.dumps(numeric).replace('"num_teams": 32.0', f'"num_teams": {representation}')
+        assert run(django, "batches/", payload=payload) == normalized
+        assert run(rust, "batches/", payload=payload) == normalized
 
     resources = ("rounds", "round_stats", "round_metadata", "teams")
     before = {resource: get(django, resource) for resource in resources}

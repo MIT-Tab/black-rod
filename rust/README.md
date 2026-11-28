@@ -35,6 +35,8 @@ For rollback, select `django` and restore the previous service and release asset
 
 Cargo forbids unsafe code in this package. Axum and Tower own routing and HTTP transport, SQLx owns database connections and transactions, and reqwest uses Rustls for outbound TLS. The cookie crate serializes response cookies. The oauth2 client exchanges authorization codes with APDAOnline, while the provider adapter preserves allauth's callback, token envelope, and account-linking data.
 
+The `adotenv` Python dialect reads the existing `.env` file. The startup loader uses Django's `${NAME}` interpolation and preserves literal dollar signs and backslashes in unquoted credentials. Process variables take precedence over file values.
+
 The session module loads existing Django sessions and applies permissions. Its signing adapter uses Ring for HMAC, flate2 for Django's compressed payloads, and Serde for decoding. The password verifier uses Ring, Argon2, bcrypt, and scrypt for the formats stored by Django. Successful verification upgrades legacy password hashes to Django-compatible PBKDF2. Route registration, request middleware, and Django template translation live in separate modules.
 
 ## Parity tests

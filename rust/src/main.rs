@@ -9,6 +9,8 @@ use black_rod::{AppState, COMMAND_HELP, Live, OAuth, PrivateTokens, app};
 use sqlx::any::{AnyPoolOptions, install_default_drivers};
 use tokio::net::TcpListener;
 
+mod environment;
+
 fn release_root() -> std::io::Result<Option<PathBuf>> {
     if let Some(path) = env::var_os("BLACK_ROD_RELEASE_ROOT") {
         return PathBuf::from(path).canonicalize().map(Some);
@@ -29,11 +31,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .map(PathBuf::from)
         .or_else(|| root.as_ref().map(|root| root.join(".env")))
     {
-        match dotenvy::from_path(config) {
-            Ok(()) => (),
-            Err(error) if error.not_found() => (),
-            Err(_) => return Err("Could not read the Black Rod environment file.".into()),
-        }
+        environment::load(&config)?;
     }
     let _monitoring = if env::var("ENV").as_deref() == Ok("production") {
         let dsn = env::var("SENTRY_DSN").unwrap_or_default();

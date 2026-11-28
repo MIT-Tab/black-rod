@@ -60,6 +60,7 @@ lettre = { version = "0.11.24", default-features = false, features = ["builder",
 oauth2 = { version = "5.0.0", default-features = false, features = ["reqwest"] }
 cookie = { version = "0.18.1", default-features = false }
 tempfile = "3.27.0"
+adotenv = { version = "1.8.0", default-features = false }
 
 [dev-dependencies]
 http-body-util = "0.1"

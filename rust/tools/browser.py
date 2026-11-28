@@ -5,6 +5,7 @@ from concurrent.futures import ThreadPoolExecutor
 from email import policy
 from email.parser import BytesParser
 from contextlib import contextmanager
+from hashlib import sha256
 from html import unescape
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from itertools import zip_longest
@@ -1722,6 +1723,14 @@ def assert_scheduling(driver, django, rust, fixture):
             assert status == 200 and "cookie" in vary.lower(), protected
             if origin == root[1]:
                 assert {"no-store", "private"} <= set(cache.replace(" ", "").split(",")), protected
+    large_schools = schools + (" " * (96 * 1024) + "\n") * 32
+    for origin in root:
+        status, _ = call(origin, "", "POST", {"schools": large_schools})
+        assert status == 200, (origin, status)
+        with sqlite3.connect(f"{db.as_uri()}?mode=ro", uri=True) as connection:
+            length = connection.execute("SELECT length(schools_csv) FROM core_schedulerworkspace").fetchone()[0]
+            assert length == len(large_schools), (origin, length)
+    assert call(root[1], "", "POST", {"schools": schools})[0] == 200
     driver.delete_all_cookies()
 
 
@@ -4536,7 +4545,15 @@ print(json.dumps([target.id, temporary_school.id, temporary.id, synthetic.id, ea
         assert database.execute("SELECT COUNT(*) FROM core_teamresult WHERE tournament_id=?", (event,)).fetchone() == (1,)
         assert database.execute("SELECT COUNT(*) FROM core_speakerresult WHERE tournament_id=?", (event,)).fetchone() == (1,)
         assert database.execute("SELECT COUNT(*) FROM core_round WHERE tournament_id=? AND import_key='review-prelim-1'", (event,)).fetchone() == (1,)
-        assert database.execute("SELECT COUNT(*) FROM core_tournamentimport WHERE tournament_id=? AND original_file_name='api-bundle.json'", (event,)).fetchone() == (1,)
+        normalized = json.loads(json.dumps(provider.import_payload["bundle"]))
+        normalized["debaters"][0]["apda_id"] = database.execute(
+            "SELECT id FROM core_debater WHERE first_name='Incoming' AND last_name='Participant' AND NOT temporary"
+        ).fetchone()[0]
+        normalized["schools"][0]["apda_id"] = database.execute(
+            "SELECT id FROM core_school WHERE name='Reviewed Fixture School'"
+        ).fetchone()[0]
+        expected_digest = sha256(json.dumps(normalized, sort_keys=True).encode()).hexdigest()
+        assert database.execute("SELECT source_hash FROM core_tournamentimport WHERE tournament_id=? AND original_file_name='api-bundle.json'", (event,)).fetchall() == [(expected_digest,)]
         assert database.execute("SELECT temporary,short_name FROM core_school WHERE name='Reviewed Fixture School'").fetchone() == (
             0, "Reviewed Fixture School")
         assert database.execute("SELECT short_name FROM core_school WHERE name='School fallback parity'").fetchone() == (
@@ -4909,6 +4926,7 @@ def import_payload(fixture):
         "new_schools": ["Fixture School From MIT-Tab"], "new_debater_data": [incoming],
         "debater_counts": {"teams": 24, "novice": 7},
         "bundle": {"schema_version":1,"source":"mit_tab_black_rod_bundle","tournament_name":"Fixture",
+            "fixture_score":26.5,
             "schools":[{"id":100,"name":"Fixture School From MIT-Tab"}],
             "debaters":[{"id":row["debater_id"], "apda_id":row["apda_id"],
                 "school_id":100 if index==0 else None, "name":row.get("name","Existing Person")}
@@ -4925,7 +4943,8 @@ class OAuthProvider(BaseHTTPRequestHandler):
         pass
 
     def reply(self, payload):
-        payload = json.dumps(payload).encode()
+        if not isinstance(payload, bytes):
+            payload = json.dumps(payload).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(payload)))
@@ -4956,7 +4975,8 @@ class OAuthProvider(BaseHTTPRequestHandler):
         elif location.path == "/api/tournaments":
             self.reply({"tournaments": [{"url": f"http://{HOST}:{self.server.server_port}"}]})
         elif location.path == "/api/import-results" and self.server.import_payload:
-            self.reply(self.server.import_payload)
+            encoded = json.dumps(self.server.import_payload).encode()
+            self.reply(encoded.replace(b'"fixture_score": 26.5', b'"fixture_score": 26.50'))
         elif location.path == "/api/live-results":
             self.reply({
                 "schema_version": 1, "source_url": f"http://{HOST}:{self.server.server_port}",

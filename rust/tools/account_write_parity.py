@@ -7,6 +7,7 @@ from pathlib import Path
 import subprocess
 from tempfile import TemporaryDirectory
 from time import monotonic, sleep
+from unittest.mock import patch
 
 from bs4 import BeautifulSoup
 import psycopg2
@@ -164,6 +165,37 @@ def signup_when_mail_is_unavailable(database):
         assert "We could not send a confirmation email." in addresses.text
 
 
+def session_from_shared_environment(database, user, folder, env):
+    config = Path(folder) / "synthetic.env"
+    config.write_text(r"SECRET_KEY=synthetic-$STANDINGS_CONFIG_SUFFIX\nkey" + "\n", encoding="utf-8")
+    port = available_port()
+    runtime = {
+        "DOT_ENV_FILE": str(config), "PYTHON_DOTENV_DISABLED": "0", "STANDINGS_CONFIG_SUFFIX": "literal",
+        "BLACK_ROD_DATABASE_URL": database, "BLACK_ROD_BIND": f"{HOST}:{port}",
+        "SENTRY_DSN": "", "LIVE_MITTAB_DIRECTORY_URL": "",
+    }
+    django = {**env, **runtime}
+    django.pop("SECRET_KEY", None)
+    session = subprocess.check_output([str(ROOT / "venv/bin/python"), "-c", """
+from reference import application
+from django.contrib.sessions.backends.db import SessionStore
+from core.models import User
+from sys import argv
+user = User.objects.get(pk=int(argv[1]))
+session = SessionStore()
+session.update({"_auth_user_id": str(user.pk), "_auth_user_backend": "django.contrib.auth.backends.ModelBackend",
+                "_auth_user_hash": user.get_session_auth_hash()})
+session.save()
+print(session.session_key)
+""", str(user)], env=django, text=True).splitlines()[-1]
+    with patch.dict(os.environ):
+        os.environ.pop("SECRET_KEY", None)
+        with start_server("Rust shared environment", [str(RUST_BIN)], port, runtime):
+            response = requests.get(f"http://{HOST}:{port}/accounts/email/", cookies={"sessionid": session},
+                                    allow_redirects=False, timeout=15)
+            assert response.status_code == 200 and ALTERNATE in response.text, response.status_code
+
+
 def main():
     postgres = os.environ["BLACK_ROD_PARITY_POSTGRES_URL"]
     seed = Path(os.environ["BR_STATE"]) / "dev.sqlite3"
@@ -182,7 +214,8 @@ def main():
                 exercise(rust, user, session, control, observer)
                 login_during_session_update(rust, user, anonymous, refreshed, env, control, observer)
             signup_when_mail_is_unavailable(target)
-    print("Concurrent account edits preserve email and session state, and signup survives mail failure")
+            session_from_shared_environment(target, user, folder, env)
+    print("Concurrent account edits, shared environment sessions, and signup mail failure match expectations")
 
 
 if __name__ == "__main__":

@@ -16,7 +16,7 @@ async fn commands_load_release_configuration_from_another_working_directory() {
         fs::copy(original, &binary).unwrap();
     }
 
-    let db = release.join("fixture.sqlite3");
+    let db = release.join("fixture-$BLACK_ROD_FIXTURE_SUFFIX.sqlite3");
     let pool = SqlitePool::connect_with(
         SqliteConnectOptions::new()
             .filename(&db)
@@ -35,8 +35,8 @@ async fn commands_load_release_configuration_from_another_working_directory() {
     .unwrap();
     pool.close().await;
     let config = format!(
-        "ENV=development\nBLACK_ROD_DATABASE_URL=sqlite://{}?mode=ro\n",
-        db.display()
+        "ENV=development\nDATABASE_DIRECTORY={}\nBLACK_ROD_DATABASE_URL=sqlite://${{DATABASE_DIRECTORY}}/fixture-$BLACK_ROD_FIXTURE_SUFFIX.sqlite3?mode=ro\n",
+        release.display()
     );
     fs::write(release.join(".env"), &config).unwrap();
     fs::write(caller.join(".env"), "BLACK_ROD_DATABASE_URL=broken\n").unwrap();
@@ -47,11 +47,13 @@ async fn commands_load_release_configuration_from_another_working_directory() {
             .current_dir(&caller)
             .env_remove("BLACK_ROD_RELEASE_ROOT")
             .env_remove("BLACK_ROD_DATABASE_URL")
+            .env_remove("DATABASE_DIRECTORY")
             .env_remove("WEBPACK_STATS_FILE")
             .env_remove("DOT_ENV_FILE")
             .env("ENV", "development")
             .env("BLACK_ROD_BIND", "127.0.0.1:0")
             .env("LIVE_MITTAB_DIRECTORY_URL", "")
+            .env("BLACK_ROD_FIXTURE_SUFFIX", "must-not-expand")
             .args(["export_generated_codes", "--output", filename]);
         if let Some(config) = override_config {
             command.env("DOT_ENV_FILE", config);

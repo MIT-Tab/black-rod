@@ -6,6 +6,14 @@ use serde_json::{Serializer, ser::Formatter};
 struct Spaced;
 
 impl Formatter for Spaced {
+    fn write_number_str<W: ?Sized + io::Write>(
+        &mut self,
+        out: &mut W,
+        number: &str,
+    ) -> io::Result<()> {
+        Canonical.write_number_str(out, number)
+    }
+
     fn begin_array_value<W: ?Sized + io::Write>(
         &mut self,
         out: &mut W,
@@ -121,5 +129,19 @@ mod tests {
             encode(&value).unwrap(),
             r#"[{"name": "\u00c9t\u00e9 \ud83c\udf0c", "score": 42}]"#
         );
+    }
+
+    #[test]
+    fn spaced_json_canonicalizes_numbers_like_python_dumps() {
+        for raw in [
+            r#"{"speaks":26.50,"tiny":0.000010000,"big":1E16,"zero":-0,"integer_value":4e0}"#,
+            r#"{"tiny":1e-05,"zero":0,"speaks":26.5,"integer_value":4.0,"big":10000000000000000.0}"#,
+        ] {
+            let value: serde_json::Value = serde_json::from_str(raw).unwrap();
+            assert_eq!(
+                encode(&value).unwrap(),
+                r#"{"big": 1e+16, "integer_value": 4.0, "speaks": 26.5, "tiny": 1e-05, "zero": 0}"#
+            );
+        }
     }
 }

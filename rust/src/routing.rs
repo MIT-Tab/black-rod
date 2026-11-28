@@ -120,7 +120,9 @@ fn scheduler_routes() -> Router<AppState> {
     Router::new()
         .route(
             "/core/admin/scheduling/",
-            get(scheduling::dashboard).post(scheduling::dashboard),
+            get(scheduling::dashboard)
+                .post(scheduling::dashboard)
+                .layer(axum::extract::DefaultBodyLimit::disable()),
         )
         .route(
             "/core/admin/scheduling/workspace-data/",
