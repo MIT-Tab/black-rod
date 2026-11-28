@@ -327,6 +327,9 @@ def fixture_cases(django):
     cases.extend(Case(path) for path in [
         "/core/schools/autocomplete?q=har",
         "/core/schools/autocomplete?q=7",
+        "/core/schools/autocomplete?page=last",
+        "/core/schools/autocomplete?q=har&page=last",
+        "/core/schools/autocomplete?q=zzznosuchschool&page=last",
         "/core/schools/autocomplete/claim?q=har",
         "/core/schools/autocomplete?forward=%5Bbad",
         "/core/teams/autocomplete?q=Harv&page=2",

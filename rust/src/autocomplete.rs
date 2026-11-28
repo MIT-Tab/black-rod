@@ -132,8 +132,8 @@ async fn lookup(
     remote: Option<bool>,
     forwarded: &Value,
     query: &str,
-    page: i64,
-) -> Result<Option<Value>, ApiError> {
+    page: Option<i64>,
+) -> Result<Option<(Value, bool)>, ApiError> {
     let pool = &state.pool;
     let (projection, source, order, columns) = resource.fields();
     let mut restriction = Vec::new();
@@ -190,7 +190,8 @@ async fn lookup(
     let query = if whole_words { query.trim() } else { query };
     if whole_words && !query.is_empty() && query.bytes().all(|byte| byte.is_ascii_digit()) {
         let Ok(value) = query.parse::<i64>() else {
-            return Ok(Some(json!({"results":[],"pagination":{"more":false}})));
+            return Ok((page.unwrap_or(1) == 1)
+                .then(|| (json!({"results":[],"pagination":{"more":false}}), true)));
         };
         id = Some(value);
         restriction.push("x.id = $1".into());
@@ -250,14 +251,23 @@ async fn lookup(
         restriction.push(format!("x.school_id = ${args}"));
     }
     let limit = args + 1;
-    let offset = args + 2;
     let clause = if restriction.is_empty() {
         String::new()
     } else {
         format!(" WHERE {}", restriction.join(" AND "))
     };
+    let (count, total, offset) = if page.is_none() {
+        (
+            format!("WITH matches AS (SELECT COUNT(*) AS total FROM {source}{clause}) "),
+            ", (SELECT total FROM matches) AS matched",
+            "(SELECT CASE WHEN total = 0 THEN 0 ELSE ((total - 1) / 10) * 10 END FROM matches)"
+                .to_owned(),
+        )
+    } else {
+        (String::new(), "", format!("${}", args + 2))
+    };
     let sql = format!(
-        "SELECT CAST(x.id AS BIGINT) AS id, {projection} FROM {source}{clause} ORDER BY {order} LIMIT ${limit} OFFSET ${offset}"
+        "{count}SELECT CAST(x.id AS BIGINT) AS id, {projection}{total} FROM {source}{clause} ORDER BY {order} LIMIT ${limit} OFFSET {offset}"
     );
     let mut statement = sqlx::query(AssertSqlSafe(sql));
     if let Some(id) = id {
@@ -272,11 +282,21 @@ async fn lookup(
     if let Some(school) = school {
         statement = statement.bind(school);
     }
-    let offset = (page - 1).saturating_mul(10);
-    let rows = statement.bind(11_i64).bind(offset).fetch_all(pool).await?;
-    if rows.is_empty() && page > 1 {
+    let mut statement = statement.bind(11_i64);
+    if let Some(page) = page {
+        statement = statement.bind((page - 1).saturating_mul(10));
+    }
+    let rows = statement.fetch_all(pool).await?;
+    if rows.is_empty() && page.is_some_and(|page| page > 1) {
         return Ok(None);
     }
+    let first = if let Some(page) = page {
+        page == 1
+    } else if let Some(row) = rows.first() {
+        row.try_get::<i64, _>("matched")? <= 10
+    } else {
+        true
+    };
     let more = rows.len() > 10;
     let mut entries = Vec::new();
     for row in rows.iter().take(10) {
@@ -376,7 +396,10 @@ async fn lookup(
         };
         entries.push(json!({"id":id.to_string(), "text":label, "selected_text":label}));
     }
-    Ok(Some(json!({"results":entries, "pagination":{"more":more}})))
+    Ok(Some((
+        json!({"results":entries, "pagination":{"more":more}}),
+        first,
+    )))
 }
 
 pub(crate) async fn endpoint(
@@ -436,13 +459,12 @@ pub(crate) async fn endpoint(
     };
     let page = get("page");
     let page = if page.is_empty() {
-        1
+        Some(1)
     } else if page == "last" {
-        // Select2 sends numeric pages. Invalid page markers use Django's 404 response.
-        return StatusCode::NOT_FOUND.into_response();
+        None
     } else {
         match page.parse::<i64>().ok().filter(|page| *page > 0) {
-            Some(page) => page,
+            Some(page) => Some(page),
             None => return StatusCode::NOT_FOUND.into_response(),
         }
     };
@@ -457,10 +479,10 @@ pub(crate) async fn endpoint(
     )
     .await
     {
-        Ok(Some(mut value)) => {
+        Ok(Some((mut value, first))) => {
             let query = get("q");
             if can_create
-                && page == 1
+                && first
                 && !query.is_empty()
                 && let Some(results) = value["results"].as_array_mut()
                 && !results.iter().any(|entry| {

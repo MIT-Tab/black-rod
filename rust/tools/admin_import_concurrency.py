@@ -27,7 +27,7 @@ from reference import application
 from datetime import date
 from django.contrib.auth.models import Permission
 from django.contrib.sessions.backends.db import SessionStore
-from core.models import Debater, School, Team, TeamResult, Tournament, User
+from core.models import Debater, DebaterAlias, ImportedRoundMetadata, Motion, Round, School, Team, TeamResult, Tournament, User
 
 user = User.objects.create_superuser(username="admin_import_fixture")
 session = SessionStore()
@@ -51,6 +51,14 @@ admin_scope = [staff_session.session_key, school.pk, temporary_school.pk, tempor
 tournament = Tournament.objects.create(host=school, season="2026", date=date(2026, 11, 13))
 team = Team.objects.create(name="Admin import fixture team")
 award = TeamResult.objects.create(tournament=tournament, team=team, place=1)
+opponent = Team.objects.create(name="Admin import fixture opponent")
+round = Round.objects.create(gov=team, opp=opponent, tournament=tournament, import_key="AdminAliasSummaryFixture")
+aliases = [DebaterAlias.objects.create(debater=temporary_debater, source_name=name, normalized_name=name.lower())
+           for name in ("Zulu Speaker", "Alpha Speaker", "Opposition Speaker")]
+ImportedRoundMetadata.objects.create(round=round, gov_1_alias=aliases[0], gov_2_alias=aliases[1], opp_2_alias=aliases[2])
+for length in (100, 101):
+    prefix = f"AdminMotionFixture{length} "
+    Motion.objects.create(text=prefix.ljust(length, "é"), date_set=date(2026, 11, 13))
 deletions = []
 for side in ("Django", "Rust"):
     source = School.objects.create(name=f"{side} concurrent deletion source")
@@ -340,6 +348,27 @@ def validate_admin_filter_redirects(servers, session, control):
                 assert (location.path, dict(parse_qsl(location.query))) == (path, query_data), (server.name, submit, location)
 
 
+def validate_admin_listing_values(servers, session):
+    for server in servers:
+        root = f"http://{HOST}:{server.port}/admin/core"
+        with requests.Session() as client:
+            client.cookies.set("sessionid", session)
+
+            def listing(model, query):
+                response = client.get(f"{root}/{model}/", params={"q": query}, timeout=30)
+                response.raise_for_status()
+                return BeautifulSoup(response.content, "html.parser")
+
+            row = listing("importedroundmetadata", "AdminAliasSummaryFixture").select_one("#result_list tbody tr")
+            assert row.select_one(".field-gov_alias_summary").get_text(strip=True) == "Zulu Speaker, Alpha Speaker", server.name
+            assert row.select_one(".field-opp_alias_summary").get_text(strip=True) == "Opposition Speaker", server.name
+            for length in (100, 101):
+                prefix = f"AdminMotionFixture{length} "
+                text = prefix.ljust(length, "é")
+                title = listing("motion", prefix.strip()).select_one(".field-short_text").get_text(strip=True)
+                assert title == (text if length == 100 else text[:97] + "..."), server.name
+
+
 def validate_concurrent_deletion(servers, session, deletions, control, writer):
     for server, (source, destination, debater) in zip(servers, deletions):
         path = f"http://{HOST}:{server.port}/core/schools/{source}/delete"
@@ -410,6 +439,7 @@ def main():
                 control.autocommit = True
                 validate_admin_scope((django, rust), admin_scope)
                 validate_admin_filter_redirects((django, rust), session, control)
+                validate_admin_listing_values((django, rust), session)
                 validate_import_cells(django, rust, session, tournament, award, control)
                 validate_import_debater_seasons(django, rust, session, control)
                 validate_admin_integer_fields(django, rust, session, tournament, control)

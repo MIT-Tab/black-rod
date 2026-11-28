@@ -164,6 +164,25 @@ pub(super) fn projection(source: &mut Source, name: &str) -> String {
             WHERE td.team_id={team} AND NOT(d.temporary OR d.synthetic) ORDER BY d.id
         ) names)");
     }
+    if matches!(name, "gov_alias_summary" | "opp_alias_summary")
+        && source.model.slug() == "importedroundmetadata"
+    {
+        let side = if name == "gov_alias_summary" {
+            "gov"
+        } else {
+            "opp"
+        };
+        let (first, _) = source
+            .resolve(&format!("{side}_1_alias__source_name"))
+            .expect("imported round alias");
+        let (second, _) = source
+            .resolve(&format!("{side}_2_alias__source_name"))
+            .expect("imported round alias");
+        return format!(
+            "CASE WHEN {first} IS NULL THEN {second} WHEN {second} IS NULL THEN {first}
+                       ELSE {first} || ', ' || {second} END"
+        );
+    }
     let expanded = match name {
         "debater_name" => "debater",
         "team_name" => "team",
@@ -181,7 +200,13 @@ pub(super) fn projection(source: &mut Source, name: &str) -> String {
         "user_email" => "user__email",
         name => name,
     };
+    let short_motion = name == "short_text" && source.model.slug() == "motion";
     if let Some((expr, field)) = source.resolve(expanded) {
+        if short_motion {
+            return format!(
+                "CASE WHEN LENGTH({expr}) > 100 THEN SUBSTR({expr}, 1, 97) || '...' ELSE {expr} END"
+            );
+        }
         if (field.kind == "ForeignKey" || field.kind == "OneToOneField")
             && let Some((app, model)) = field
                 .related
