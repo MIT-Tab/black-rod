@@ -189,6 +189,7 @@ def assert_directories(driver, django, rust):
         "/core/schools/",
         "/core/schools/?name__icontains=harv&sort=-name",
         "/core/debaters/?first_name__icontains=an&status=1&sort=last_name&page=2",
+        "/core/debaters/?sort=status&sort=-id",
         "/core/teams/?name__icontains=Yale&sort=name",
         "/core/schedules/?season=2025",
         "/core/videos/?tournament__season=2025&sort=-id",
@@ -199,11 +200,12 @@ def assert_directories(driver, django, rust):
         "/core/tournaments/?season=2025&name__icontains=harvard&sort=-points",
         "/core/tournaments/?season=2025&points_min=15.5&num_teams_max=75&sort=date",
         "/core/tournaments/?per_page=260&sort=-date",
+        "/core/debaters/?per_page=1001&sort=id",
         "/core/schools/7?season=2025",
         "/stats/",
     ]
     for path in paths:
-        limit = 261 if "per_page=260" in path else 24
+        limit = 1002 if "per_page=1001" in path else (261 if "per_page=260" in path else 24)
         expected = directory_state(driver, django, path, limit)
         candidate = directory_state(driver, rust, path, limit)
         for key in expected:
@@ -4037,6 +4039,24 @@ def assert_mittab_bundle_upload(driver, django, rust, fixture):
         response = submit(rust, broken)
         assert response["error"] == f"Round 'prelim-2' {field} must be an integer.", response
         assert snapshot() == before
+    new_identity = {"id": 5, "name": "Malformed Identity Fixture", "school_id": 8}
+    new_round = {**fixture_round, "import_key": "prelim-2", "round_number": 2,
+                 "gov": {**fixture_round["gov"], "debater_ids": [5, 2]}}
+    for person, school, label in (
+        ({**new_identity, "apda_id": "not an id"}, {"id": 8}, "Mit-Tab debater APDA ID"),
+        (new_identity, {"id": 8, "apda_id": "not an id"}, "Mit-Tab school APDA ID"),
+        ({**new_identity, "school_id": "not an id"}, {"id": 8}, "Mit-Tab bundle school ID"),
+    ):
+        broken = {**reference, "debaters": [*reference["debaters"], person],
+                  "schools": [{"name": "Malformed Identity School", **school}],
+                  "rounds": [{**fixture_round, "victor": 2}, new_round]}
+        for server in (django, rust):
+            rejected = submit(server, broken)
+            assert rejected["error"] == f"{label} must be an integer.", (server.name, rejected)
+            assert snapshot() == before
+            with sqlite3.connect(f"{db.as_uri()}?mode=ro", uri=True) as database:
+                assert database.execute("SELECT COUNT(*) FROM core_debater WHERE first_name='Malformed'").fetchone() == (0,)
+                assert database.execute("SELECT COUNT(*) FROM core_school WHERE name='Malformed Identity School'").fetchone() == (0,)
     skipped = {**reference, "rounds": [{**fixture_round, "opp": {}}]}
     answer = submit(rust, skipped)
     assert "Skipped 1 round with incomplete rosters." in answer["message"] and snapshot() == before, answer

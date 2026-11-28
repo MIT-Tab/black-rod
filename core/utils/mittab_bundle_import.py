@@ -16,6 +16,15 @@ class _IncompleteRosterError(MittabBundleImportError):
     pass
 
 
+def _optional_id(value, label):
+    if value in (None, ""):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise MittabBundleImportError(f"{label} must be an integer.") from exc
+
+
 @dataclass(frozen=True)
 class LoadedMittabBundle:
     document: dict
@@ -277,9 +286,9 @@ class _MittabBundleImporter:
         if debater_payload is None:
             raise MittabBundleImportError(f"Unknown bundle debater id: {bundle_debater_id}.")
 
-        apda_id = debater_payload.get("apda_id")
-        if apda_id not in (None, ""):
-            existing = Debater.all_objects.filter(pk=int(apda_id)).first()
+        apda_id = _optional_id(debater_payload.get("apda_id"), "Mit-Tab debater APDA ID")
+        if apda_id is not None:
+            existing = Debater.all_objects.filter(pk=apda_id).first()
             if existing is not None:
                 return existing
 
@@ -303,18 +312,18 @@ class _MittabBundleImporter:
         )
 
     def _resolve_debater_school(self, debater_payload):
-        school_id = debater_payload.get("school_id")
-        if school_id in (None, ""):
+        school_id = _optional_id(debater_payload.get("school_id"), "Mit-Tab bundle school ID")
+        if school_id is None:
             return None
-        school_payload = self.schools_by_id.get(int(school_id))
+        school_payload = self.schools_by_id.get(school_id)
         if school_payload is None:
             raise MittabBundleImportError(f"Unknown bundle school id: {school_id}.")
         return self._resolve_school_payload(school_payload)
 
     def _resolve_school_payload(self, school_payload):
-        apda_id = school_payload.get("apda_id")
-        if apda_id not in (None, ""):
-            existing = School.all_objects.filter(pk=int(apda_id)).first()
+        apda_id = _optional_id(school_payload.get("apda_id"), "Mit-Tab school APDA ID")
+        if apda_id is not None:
+            existing = School.all_objects.filter(pk=apda_id).first()
             if existing is not None:
                 return existing
 

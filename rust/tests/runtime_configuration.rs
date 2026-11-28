@@ -52,6 +52,8 @@ async fn commands_load_release_configuration_from_another_working_directory() {
             .env_remove("DOT_ENV_FILE")
             .env("ENV", "development")
             .env("BLACK_ROD_BIND", "127.0.0.1:0")
+            .env("BLACK_ROD_DATABASE_POOL_SIZE", "2")
+            .env("BLACK_ROD_DATABASE_ACQUIRE_TIMEOUT_SECONDS", "3")
             .env("LIVE_MITTAB_DIRECTORY_URL", "")
             .env("BLACK_ROD_FIXTURE_SUFFIX", "must-not-expand")
             .args(["export_generated_codes", "--output", filename]);

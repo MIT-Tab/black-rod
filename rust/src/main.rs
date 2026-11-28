@@ -105,8 +105,12 @@ async fn run(root: Option<PathBuf>) -> Result<(), Box<dyn std::error::Error>> {
         return Err("Set BLACK_ROD_TRUSTED_PROXY_IP to the immediate reverse proxy's address, or set BLACK_ROD_DIRECT_CONNECTIONS=1 for direct requests.".into());
     }
     let database = database_url(production)?;
+    let pool_size = environment::positive_number("BLACK_ROD_DATABASE_POOL_SIZE", 8)?;
+    let acquire_timeout =
+        environment::positive_number("BLACK_ROD_DATABASE_ACQUIRE_TIMEOUT_SECONDS", 30)?;
     let pool = AnyPoolOptions::new()
-        .max_connections(8)
+        .max_connections(pool_size)
+        .acquire_timeout(Duration::from_secs(u64::from(acquire_timeout)))
         .after_connect(|connection, _| {
             Box::pin(async move {
                 if connection.backend_name() == "PostgreSQL" {

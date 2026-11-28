@@ -419,12 +419,12 @@ impl Kind {
         }
     }
 
-    fn projection(self, order_by: &str) -> &'static str {
+    fn projection(self, order_by: &[&str]) -> &'static str {
         match self {
             Self::Standing(_) => unreachable!(),
             Self::Schools => "CAST(x.id AS BIGINT) AS id, x.name,
                    CAST(CASE WHEN x.included_in_oty THEN 1 ELSE 0 END AS BIGINT) AS included",
-            Self::Teams if order_by.trim_start_matches('-') == "debaters_display" => "CAST(x.id AS BIGINT) AS id, x.name,
+            Self::Teams if order_by.iter().any(|field| field.trim_start_matches('-') == "debaters_display") => "CAST(x.id AS BIGINT) AS id, x.name,
                 (SELECT MIN(LOWER(d.last_name)) FROM core_team_debaters td JOIN core_debater d ON d.id = td.debater_id WHERE td.team_id = x.id) AS first_last,
                 (SELECT MIN(LOWER(d.first_name)) FROM core_team_debaters td JOIN core_debater d ON d.id = td.debater_id WHERE td.team_id = x.id) AS first_first,
                 (SELECT MAX(LOWER(d.last_name)) FROM core_team_debaters td JOIN core_debater d ON d.id = td.debater_id WHERE td.team_id = x.id) AS second_last,
@@ -801,36 +801,38 @@ async fn rows(
     pool: &AnyPool,
     kind: Kind,
     filters: &Filters,
-    order_by: &str,
+    order_by: &[&str],
     offset: i64,
     limit: i64,
     raw: &[QueryEntry<'_>],
 ) -> Result<Vec<RowCells>, ApiError> {
-    let order = kind
-        .columns()
+    let ordering = order_by
         .iter()
-        .find(|field| !field.order.is_empty() && field.name == order_by.trim_start_matches('-'))
-        .map(|field| {
-            field
+        .filter_map(|order| {
+            let (field, direction) = order
+                .strip_prefix('-')
+                .map_or((*order, ""), |field| (field, " DESC"));
+            kind.columns()
+                .iter()
+                .find(|column| column.name == field && !column.order.is_empty())
+                .map(|column| (column, direction))
+        })
+        .flat_map(|(column, direction)| {
+            column
                 .order
                 .split(", ")
-                .map(|column| {
-                    if order_by.starts_with('-') {
-                        format!("{column} DESC")
-                    } else {
-                        column.to_owned()
-                    }
-                })
-                .collect::<Vec<_>>()
-                .join(", ")
+                .map(move |field| format!("{field}{direction}"))
         })
-        .unwrap_or_else(|| {
-            filters
-                .default_order
-                .as_deref()
-                .unwrap_or(kind.initial_order())
-                .to_owned()
-        });
+        .collect::<Vec<_>>();
+    let order = if ordering.is_empty() {
+        filters
+            .default_order
+            .as_deref()
+            .unwrap_or(kind.initial_order())
+            .to_owned()
+    } else {
+        ordering.join(", ")
+    };
     let projection = match kind {
         Kind::Standing(standing) => std::borrow::Cow::Owned(standing.projection()),
         _ => std::borrow::Cow::Borrowed(kind.projection(order_by)),
@@ -1123,7 +1125,10 @@ pub(crate) async fn page(
         .map(|(key, value)| (key.as_ref(), value.as_ref()))
         .collect();
     let param = |key| query.get(key).copied().unwrap_or_default();
-    let order_by = param("sort");
+    let order_by: Vec<_> = raw
+        .iter()
+        .filter_map(|(key, value)| (key == "sort" && !value.is_empty()).then_some(value.as_ref()))
+        .collect();
     if matches!(kind, Kind::Standing(_)) && param("season").is_empty() {
         return (
             StatusCode::FOUND,
@@ -1165,7 +1170,7 @@ pub(crate) async fn page(
         } else {
             ""
         };
-        match crate::outreach::rows(&state.pool, &filters, judge, region, order_by).await {
+        match crate::outreach::rows(&state.pool, &filters, judge, region, &order_by).await {
             Ok(rows) => Some(rows),
             Err(error) => {
                 eprintln!("Outreach lookup failed: {error:?}");
@@ -1193,9 +1198,8 @@ pub(crate) async fn page(
         .parse::<i64>()
         .ok()
         .filter(|n| *n > 0)
-        .unwrap_or(25)
-        .min(1000);
-    let total = ((count + per_page - 1) / per_page).max(1);
+        .unwrap_or(25);
+    let total = count.saturating_sub(1) / per_page + 1;
     let page = param("page")
         .parse::<i64>()
         .ok()
@@ -1213,7 +1217,7 @@ pub(crate) async fn page(
             &state.pool,
             kind,
             &filters,
-            order_by,
+            &order_by,
             offset,
             per_page,
             &raw,
@@ -1514,17 +1518,19 @@ pub(crate) async fn page(
         fields.push(input("name__icontains", "Name contains", false, Vec::new()));
     }
     let displayed_order = if order_by.is_empty() && matches!(kind, Kind::Outreach { .. }) {
-        "latest_year"
+        &["latest_year"][..]
     } else {
-        order_by
+        &order_by
     };
     let columns = kind
         .columns()
         .iter()
         .map(|field| {
-            let desc = displayed_order.starts_with('-')
-                && displayed_order.trim_start_matches('-') == field.name;
-            let asc = displayed_order == field.name;
+            let active = displayed_order
+                .iter()
+                .find(|order| order.strip_prefix('-').unwrap_or(order) == field.name);
+            let desc = active.is_some_and(|order| order.starts_with('-'));
+            let asc = active.is_some() && !desc;
             let next_order = if asc {
                 format!("-{}", field.name)
             } else {

@@ -167,19 +167,17 @@ pub(super) async fn store(
         None
     };
     let (hidden_teams, hidden_speakers) = hidden(&mut tx, event).await?;
-    let mut teams = BTreeSet::new();
     let mut speakers = [BTreeSet::new(), BTreeSet::new()];
-    let old=sqlx::query("SELECT CAST(id AS BIGINT) AS id,CAST(team_id AS BIGINT) AS team FROM core_teamresult WHERE tournament_id=$1")
+    let old=sqlx::query_as::<_, (i64, i64)>("SELECT CAST(id AS BIGINT),CAST(team_id AS BIGINT) FROM core_teamresult WHERE tournament_id=$1")
         .bind(event).fetch_all(&mut *tx).await?;
-    for row in old {
-        teams.insert(row.try_get("team")?);
-        delete_relations::delete(&mut tx, "core_teamresult", row.try_get("id")?)
-            .await
-            .map_err(|error| match error {
-                delete_relations::DeleteError::Database(error) => Error::from(error),
-                _ => invalid("Could not replace prior team results."),
-            })?;
-    }
+    let mut teams: BTreeSet<_> = old.iter().map(|(_, team)| *team).collect();
+    let prior_results: Vec<_> = old.into_iter().map(|(id, _)| id).collect();
+    delete_relations::delete_many(&mut tx, "core_teamresult", &prior_results)
+        .await
+        .map_err(|error| match error {
+            delete_relations::DeleteError::Database(error) => Error::from(error),
+            _ => invalid("Could not replace prior team results."),
+        })?;
     for row in sqlx::query(
         "SELECT CAST(debater_id AS BIGINT) AS person,CAST(type_of_place AS BIGINT) AS kind
         FROM core_speakerresult WHERE tournament_id=$1",

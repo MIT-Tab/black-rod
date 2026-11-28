@@ -3,7 +3,7 @@ use serde_json::{Map, Value, json};
 use sqlx::{AnyConnection, Row};
 use unicode_casefold::UnicodeCaseFold;
 
-use super::{Error, as_id, invalid, text};
+use super::{Error, invalid, text};
 use crate::{agent::journal::TABLES, claims};
 
 pub(super) fn now() -> String {
@@ -16,6 +16,15 @@ fn split(name: &str) -> Result<(&str, String), Error> {
         .next()
         .ok_or_else(|| invalid("Encountered a blank participant name in the Mit-Tab bundle."))?;
     Ok((first, words.collect::<Vec<_>>().join(" ")))
+}
+
+pub(super) fn optional_id(value: &Value, label: &str) -> Result<Option<i64>, Error> {
+    if value.is_null() || value.as_str() == Some("") {
+        return Ok(None);
+    }
+    crate::django_int(value)
+        .map(Some)
+        .ok_or_else(|| invalid(format!("{label} must be an integer.")))
 }
 
 #[derive(Clone)]
@@ -54,7 +63,7 @@ async fn exact(conn: &mut AnyConnection, name: &str, tournament: i64) -> Result<
 }
 
 async fn school(conn: &mut AnyConnection, payload: &Value) -> Result<Option<i64>, Error> {
-    if let Some(apda) = as_id(&payload["apda_id"])
+    if let Some(apda) = optional_id(&payload["apda_id"], "Mit-Tab school APDA ID")?
         && let Some(id) =
             sqlx::query_scalar::<_, i64>("SELECT CAST(id AS BIGINT) FROM core_school WHERE id=$1")
                 .bind(apda)
@@ -125,7 +134,7 @@ pub(super) async fn competitor(
     school_payload: Result<Option<&Value>, Error>,
     season: i32,
 ) -> Result<Person, Error> {
-    if let Some(apda) = as_id(&payload["apda_id"])
+    if let Some(apda) = optional_id(&payload["apda_id"], "Mit-Tab debater APDA ID")?
         && let Some(name) = sqlx::query_scalar::<_, String>(
             "SELECT TRIM(first_name || ' ' || last_name) FROM core_debater WHERE id=$1",
         )

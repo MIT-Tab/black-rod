@@ -241,6 +241,49 @@ call_command("redo_rankings")
     print("Django and Rust rankings commands wait for the same PostgreSQL season lock as result saves")
 
 
+def check_large_result_replacement(seed, postgres, session, event, runtimes):
+    expected = None
+    for name, binary in runtimes.items():
+        compare.RUST_BIN = binary
+        with fixture_database(seed, seed, postgres):
+            target = os.environ["BLACK_ROD_PARITY_POSTGRES_URL"]
+            with closing(psycopg2.connect(target)) as db, db.cursor() as cursor:
+                cursor.execute("""
+                    INSERT INTO core_teamresult
+                        (tournament_id,team_id,type_of_place,place,ghost_points,counts_for_points)
+                    SELECT %s,id,1,ROW_NUMBER() OVER(ORDER BY id),FALSE,FALSE
+                    FROM (SELECT id FROM core_team WHERE name LIKE 'Bulk team %%' ORDER BY id LIMIT 240) AS teams
+                    RETURNING id,team_id
+                """, (event,))
+                prior = dict(cursor.fetchall())
+                assert len(prior) == 240
+                team = min(prior.values())
+                cursor.execute("SELECT debater_id FROM core_team_debaters WHERE team_id=%s ORDER BY debater_id", (team,))
+                members = [row[0] for row in cursor.fetchall()]
+                cursor.execute("""
+                    INSERT INTO core_teamresult_hidden_from_debaters (teamresult_id,debater_id)
+                    SELECT result.id,MIN(m.debater_id) FROM core_teamresult result
+                    JOIN core_team_debaters m ON m.team_id=result.team_id
+                    WHERE result.tournament_id=%s GROUP BY result.id
+                """, (event,))
+                assert cursor.rowcount == 240
+                db.commit()
+                with compare.servers(seed) as (django, rust):
+                    elapsed = request_save(django if name == "Django" else rust, session, event, members)
+                cursor.execute("""
+                    SELECT r.id,r.team_id,r.place,h.debater_id FROM core_teamresult r
+                    LEFT JOIN core_teamresult_hidden_from_debaters h ON h.teamresult_id=r.id
+                    WHERE r.tournament_id=%s
+                """, (event,))
+                rows = cursor.fetchall()
+                assert len(rows) == 1 and rows[0][0] not in prior, (name, rows)
+                result = rows[0][1:]
+                assert result == (team, 1, members[0]), (name, result)
+                assert expected is None or result == expected
+                expected = result
+                print(f"{name} replaced 240 prior results and preserved the retained visibility in {elapsed:.2f} ms")
+
+
 def main():
     parser = ArgumentParser(description=__doc__)
     parser.add_argument("--samples", type=int, default=1)
@@ -281,6 +324,7 @@ def main():
                                 timings.append(request_save(django if label == "Django" else rust, session, event))
                             documents[label] = snapshot(db)
                             print(label, "median ms", round(median(timings[1:]), 2), flush=True)
+            check_large_result_replacement(seed, benchmark_source, session, event, runtimes)
             compare.RUST_BIN = default_binary
             check_concurrent_rebuilds(seed, benchmark_source, session, parallel)
             check_ranking_maintenance(seed, benchmark_source)

@@ -110,6 +110,22 @@ pub(super) fn load(path: &Path) -> io::Result<()> {
     })
 }
 
+pub(super) fn positive_number(name: &str, default: u32) -> io::Result<u32> {
+    let Some(value) = env::var_os(name) else {
+        return Ok(default);
+    };
+    value
+        .to_str()
+        .and_then(|value| value.parse::<std::num::NonZeroU32>().ok())
+        .map(std::num::NonZeroU32::get)
+        .ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("{name} must be a positive integer."),
+            )
+        })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

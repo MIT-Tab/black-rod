@@ -37,6 +37,8 @@ Cargo forbids unsafe code in this package. Axum and Tower own routing and HTTP t
 
 The `adotenv` Python dialect reads the existing `.env` file. The startup loader uses Django's `${NAME}` interpolation and preserves literal dollar signs and backslashes in unquoted credentials. Process variables take precedence over file values.
 
+The SQLx pool defaults to eight connections and a 30-second checkout timeout. Set `BLACK_ROD_DATABASE_POOL_SIZE` and `BLACK_ROD_DATABASE_ACQUIRE_TIMEOUT_SECONDS` to change those values.
+
 The session module loads existing Django sessions and applies permissions. Its signing adapter uses Ring for HMAC, flate2 for Django's compressed payloads, and Serde for decoding. The password verifier uses Ring, Argon2, bcrypt, and scrypt for the formats stored by Django. Successful verification upgrades legacy password hashes to Django-compatible PBKDF2. Route registration, request middleware, and Django template translation live in separate modules.
 
 ## Parity tests
@@ -77,6 +79,8 @@ BLACK_ROD_PARITY_POSTGRES_URL=postgres://black_rod@127.0.0.1:5432/black_rod_pari
 The measurements below were captured before batching team rosters and tournament data on the Rust debater profile. This run used PostgreSQL 17.12 and the 60,693-object checked-in fixture on an arm64 Mac with 10 CPU cores and 32 GiB RAM. Django ran with one Gunicorn worker and eight threads. Rust ran in release mode with eight Tokio worker threads. Warm tests sent 1,200 requests with 12 concurrent clients and both application caches enabled. Cache-disabled tests sent 30 requests with one client and both application caches bypassed. The database stayed running across cases. The RSS figures are the sampled sum of the application process tree and exclude the database and load client. Peak RSS can include shared pages in both Django processes.
 
 A PostgreSQL results-save benchmark rebuilt a synthetic current season with 620 participants. Median save time over five measured requests was 305.59 ms in Django, 208.45 ms in Rust before batching, and 135.44 ms in Rust with batching. All three produced equivalent qualification, COTY, and participation records. Run `"$scripts/br" venv/bin/python rust/tools/qualification_rebuild_parity.py --samples 5` with a disposable local PostgreSQL fixture to reproduce it. Supply an earlier executable with `--prior-rust` to include that version.
+
+The same harness checks replacement of 240 existing team results. One local run measured 2.15 seconds for Django and 0.232 seconds for Rust. Both kept the retained result's hidden-profile setting and removed the other results and their visibility links.
 
 The tournament directory benchmark checks the rendered table before timing 260 tournaments per request. It uses the same server harness with application caches disabled. One local PostgreSQL 16.16 run produced the following results. RSS is the sampled peak for the application process tree.
 

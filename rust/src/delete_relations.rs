@@ -148,15 +148,26 @@ pub(crate) async fn plan(
     root: &'static str,
     id: i64,
 ) -> Result<Deletion, DeleteError> {
-    let lock = format!("UPDATE {root} SET id=id WHERE id=$1");
-    let selected = sqlx::query(AssertSqlSafe(lock))
-        .bind(id)
-        .execute(&mut *conn)
-        .await?;
-    if selected.rows_affected() == 0 {
-        return Err(DeleteError::Absent);
+    plan_many(conn, root, &[id]).await
+}
+
+async fn plan_many(
+    conn: &mut AnyConnection,
+    root: &'static str,
+    ids: &[i64],
+) -> Result<Deletion, DeleteError> {
+    for chunk in ids.chunks(200) {
+        let marks = placeholders(chunk.len());
+        let lock = format!("UPDATE {root} SET id=id WHERE id IN ({marks})");
+        let mut query = sqlx::query(AssertSqlSafe(lock));
+        for id in chunk {
+            query = query.bind(id);
+        }
+        if query.execute(&mut *conn).await?.rows_affected() != chunk.len() as u64 {
+            return Err(DeleteError::Absent);
+        }
     }
-    collect(conn, root, id, false).await
+    collect(conn, root, ids, false).await
 }
 
 pub(crate) async fn preview(
@@ -172,25 +183,27 @@ pub(crate) async fn preview(
     if exists.is_none() {
         return Err(DeleteError::Absent);
     }
-    collect(conn, root, id, true).await
+    collect(conn, root, &[id], true).await
 }
 
 async fn collect(
     conn: &mut AnyConnection,
     root: &'static str,
-    id: i64,
+    ids: &[i64],
     preview: bool,
 ) -> Result<Deletion, DeleteError> {
     let mut deletion = Deletion {
         root,
-        selected: BTreeMap::from([(root, BTreeSet::from([id]))]),
+        selected: BTreeMap::from([(root, ids.iter().copied().collect())]),
         nulls: BTreeMap::new(),
         display: DeleteDisplay::default(),
     };
     if preview {
-        deletion.display.link(None, root, id);
+        for id in ids {
+            deletion.display.link(None, root, *id);
+        }
     }
-    collect_edges(conn, &mut deletion, root, &[id], preview).await?;
+    collect_edges(conn, &mut deletion, root, ids, preview).await?;
     Ok(deletion)
 }
 
@@ -315,4 +328,16 @@ pub(crate) async fn delete(
     id: i64,
 ) -> Result<(), DeleteError> {
     plan(conn, root, id).await?.apply(conn).await
+}
+
+/// Apply the same rules to unique roots in batches inside the caller's transaction.
+pub(crate) async fn delete_many(
+    conn: &mut AnyConnection,
+    root: &'static str,
+    ids: &[i64],
+) -> Result<(), DeleteError> {
+    if ids.is_empty() {
+        return Ok(());
+    }
+    plan_many(conn, root, ids).await?.apply(conn).await
 }

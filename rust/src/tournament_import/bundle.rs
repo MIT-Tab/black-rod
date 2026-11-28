@@ -150,14 +150,16 @@ impl Importer<'_> {
                     .competitors
                     .get(&bundle_id)
                     .ok_or_else(|| invalid(format!("Unknown bundle debater id: {bundle_id}.")))?;
-                let school = as_id(&payload["school_id"])
-                    .map(|id| {
-                        self.schools
-                            .get(&id)
-                            .copied()
-                            .ok_or_else(|| invalid(format!("Unknown bundle school id: {id}.")))
-                    })
-                    .transpose();
+                let school =
+                    identity::optional_id(&payload["school_id"], "Mit-Tab bundle school ID")
+                        .and_then(|id| {
+                            id.map(|id| {
+                                self.schools.get(&id).copied().ok_or_else(|| {
+                                    invalid(format!("Unknown bundle school id: {id}."))
+                                })
+                            })
+                            .transpose()
+                        });
                 let person =
                     identity::competitor(conn, self.tournament, payload, school, self.season)
                         .await?;

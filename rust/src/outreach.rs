@@ -129,7 +129,7 @@ pub(crate) async fn rows(
     filters: &Filters,
     judge: bool,
     region: &str,
-    order: &str,
+    ordering: &[&str],
 ) -> Result<Vec<RowCells>, ApiError> {
     let opt = if judge {
         "x.status=2 AND x.dino_judge_contact_opt_in"
@@ -197,8 +197,11 @@ pub(crate) async fn rows(
             .then_with(|| a.person.last.cmp(&b.person.last))
             .then_with(|| a.person.first.cmp(&b.person.first))
     });
-    let key = order.trim_start_matches('-');
-    if matches!(key, "id" | "first_name" | "last_name" | "latest_year") {
+    for order in ordering.iter().rev() {
+        let key = order.strip_prefix('-').unwrap_or(order);
+        if !matches!(key, "id" | "first_name" | "last_name" | "latest_year") {
+            continue;
+        }
         entries.sort_by(|a, b| {
             let cmp = match key {
                 "id" => a.person.id.cmp(&b.person.id),
