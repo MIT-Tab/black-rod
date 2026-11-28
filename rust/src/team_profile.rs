@@ -534,18 +534,20 @@ pub(crate) async fn render_page(
     use axum::{http::header, response::Html};
     use minijinja::context;
 
-    let exists = sqlx::query_scalar::<_, i64>(
-        "SELECT CAST(id AS BIGINT) FROM core_team WHERE id = $1 AND NOT synthetic",
-    )
-    .bind(id)
-    .fetch_optional(&state.pool)
-    .await;
-    match exists {
-        Ok(Some(_)) => (),
-        Ok(None) => return StatusCode::NOT_FOUND.into_response(),
-        Err(error) => {
-            let _ = ApiError::from(error);
-            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+    if editing.is_none() {
+        let exists = sqlx::query_scalar::<_, i64>(
+            "SELECT CAST(id AS BIGINT) FROM core_team WHERE id = $1 AND NOT synthetic",
+        )
+        .bind(id)
+        .fetch_optional(&state.pool)
+        .await;
+        match exists {
+            Ok(Some(_)) => (),
+            Ok(None) => return StatusCode::NOT_FOUND.into_response(),
+            Err(error) => {
+                let _ = ApiError::from(error);
+                return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+            }
         }
     }
     let data = load(state, id, "", None, "").await;

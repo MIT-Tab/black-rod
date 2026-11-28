@@ -113,7 +113,7 @@ pub(super) fn validation(fields: &Fields, attributes: [&str; 4]) -> Errors {
 
 pub(super) async fn new_hash(password: &str) -> Result<String, ApiError> {
     let bytes = password.as_bytes().to_owned();
-    tokio::task::spawn_blocking(move || password::encode(&bytes))
+    password::run_blocking(move || password::encode(&bytes))
         .await
         .map_err(|_| ApiError::Serialization)?
         .map_err(|_| ApiError::Serialization)
@@ -185,7 +185,7 @@ async fn change_page(state: &AppState, request: Request) -> Result<Response, Api
                 errors.insert("oldpassword", vec!["This field is required.".to_owned()]);
             } else {
                 let current = compare_against.clone();
-                let verified = tokio::task::spawn_blocking(move || {
+                let verified = password::run_blocking(move || {
                     password::verify_and_upgrade(&provided, Some(&current))
                 })
                 .await

@@ -136,14 +136,15 @@ impl Profile {
         }
         if !self.text["email"].is_empty() {
             let raw = &self.text["email"];
-            let valid = raw.rsplit_once('@').is_some_and(|(user, domain)| {
-                !user.is_empty() && (domain.contains('.') || domain == "localhost")
+            let allowed_domain = raw.rsplit_once('@').is_some_and(|(_, domain)| {
+                domain.contains('.')
+                    || domain == "localhost"
+                    || domain
+                        .strip_prefix('[')
+                        .and_then(|value| value.strip_suffix(']'))
+                        .is_some_and(|value| value.parse::<std::net::IpAddr>().is_ok())
             });
-            if !valid
-                || raw.chars().count() > 254
-                || raw.chars().any(char::is_whitespace)
-                || raw.contains('\0')
-            {
+            if !allowed_domain || raw.chars().count() > 254 || !crate::account::email_valid(raw) {
                 errors.insert("email", vec!["Enter a valid email address."]);
             }
         }

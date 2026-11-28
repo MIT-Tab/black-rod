@@ -614,19 +614,35 @@ def assert_video_editor(driver, django, rust, fixture):
     from base64 import b64encode
     from io import BytesIO
     pixels = BytesIO()
-    Image.new("RGB", (2, 2), (53, 92, 127)).save(pixels, "PNG")
-    uploaded = driver.execute_async_script("""
-        const [data, done] = arguments;
-        const bytes = Uint8Array.from(atob(data), char => char.charCodeAt(0));
-        const body = new FormData();
-        body.set("files", new File([bytes], "fixture.png"));
-        body.set("csrfmiddlewaretoken", document.querySelector("[name=csrfmiddlewaretoken]").value);
-        fetch("/summernote/upload_attachment/", {method:"POST",body}).then(async response => {
-            done([response.status, await response.json()]);
-        }, () => done([0]));
-    """, b64encode(pixels.getvalue()).decode())
-    assert uploaded[0] == 200 and uploaded[1]["files"][0]["size"] == len(pixels.getvalue()), uploaded
+    Image.new("RGB", (500, 500), (53, 92, 127)).save(pixels, "PNG", compress_level=0)
+    size = len(pixels.getvalue())
+    assert size < 1024 * 1024 < size * 2 and size * 3 > 2 * 1024 * 1024
+    for root in (django_root, rust_root):
+        driver.get(root + create)
+        uploaded = driver.execute_async_script("""
+            const [data, done] = arguments;
+            const bytes = Uint8Array.from(atob(data), char => char.charCodeAt(0));
+            const body = new FormData();
+            for (let index = 0; index < 3; index += 1) {
+                body.append("files", new File([bytes], `fixture-${index}.png`));
+            }
+            body.set("csrfmiddlewaretoken", document.querySelector("[name=csrfmiddlewaretoken]").value);
+            fetch("/summernote/upload_attachment/", {method:"POST",body}).then(async response => {
+                done([response.status, await response.json()]);
+            }, () => done([0]));
+        """, b64encode(pixels.getvalue()).decode())
+        assert uploaded[0] == 200 and [file["size"] for file in uploaded[1]["files"]] == [size] * 3, uploaded
     attachment = uploaded[1]["files"][0]["url"]
+    wait.until(lambda browser: len(browser.find_elements("css selector", ".note-editor .note-editable")) == 2)
+    from selenium.webdriver.support.expected_conditions import alert_is_present
+
+    driver.execute_script("""
+        const callback = $("#id_case").data("summernote").options.callbacks.onImageUpload;
+        setTimeout(() => callback([new File(["not a PNG"], "invalid.png")]), 50);
+    """)
+    alert = wait.until(alert_is_present())
+    assert "Upload a valid image." in alert.text
+    alert.accept()
     served = driver.execute_async_script("""
         const [path, done] = arguments;
         fetch(path).then(response => done([response.status,response.headers.get("content-type")]), () => done([0]));
@@ -1261,13 +1277,18 @@ def assert_claims(driver, django, rust, fixture):
         assert left == right, (left, right)
         if index == 0:
             edit = f"/core/debater/{debater}/edit-profile/"
-            result = post(rust_root, edit, {
+            fields = {
                 "first_name": "Parity", "last_name": "Profile", "email": "profile@example.test",
                 "first_season": "2024", "latest_season": "2025", "status": "2",
                 "paradigm": "https://docs.google.com/document/d/fixture",
                 "elo_manual_opt": "opt_out", "dino_to_contact_opt_in": "on",
                 "dino_judge_contact_opt_in": "on", "region": "west",
-            })
+            }
+            for root in (django_root, rust_root):
+                invalid = post(root, edit, {**fields, "email": "a@@example.org"})
+                assert invalid["status"] == 200 and invalid["path"] == edit, invalid
+                assert "Enter a valid email address." in invalid["text"]
+            result = post(rust_root, edit, fields)
             assert result["status"] == 200 and result["path"] == f"/core/debaters/{debater}", result
             driver.get(f"{django_root}{edit}")
             assert driver.find_element("id", "id_last_name").get_attribute("value") == "Profile"
@@ -1425,6 +1446,25 @@ def assert_entities(driver, django, rust, fixture):
     assert updated[:2] == [200, team], updated[:2]
     driver.get(f"{django_root}{team}/edit")
     assert driver.find_element("id", "id_short_name").get_attribute("value") == fields[0][1]
+    with sqlite3.connect(database) as connection:
+        synthetic = connection.execute(
+            "INSERT INTO core_team (name,short_name,synthetic) VALUES ('Synthetic team fixture','Synthetic edit',1)"
+        ).lastrowid
+        connection.executemany(
+            "INSERT INTO core_team_debaters (team_id,debater_id) VALUES (?,?)",
+            [(synthetic, person) for person in member_ids],
+        )
+    path = f"/core/teams/{synthetic}"
+    for root in (django_root, rust_root):
+        driver.get(root + path + "/edit")
+        assert driver.find_element("id", "id_short_name").get_attribute("value") == "Synthetic edit"
+        invalid = submit(root, path + "/edit", fields + [["debaters", member_ids[0]]])
+        assert invalid[0] == 200 and "All teams must have 2 debaters" in invalid[2], invalid[:2]
+        status = driver.execute_async_script("""
+            const [path, done] = arguments;
+            fetch(path).then(response => done(response.status));
+        """, path)
+        assert status == 404
     driver.delete_all_cookies()
 
 
@@ -3537,6 +3577,52 @@ print(json.dumps((event.pk, team.pk, historical.pk, temp_person.pk, temp_school.
                               (historical,)).fetchall() == [(person,)]
             assert db.execute("SELECT 1 FROM core_coty WHERE school_id=? AND season='2024'",
                               (school,)).fetchone() is None
+    code = """
+from django import setup
+setup()
+from django.conf import settings
+from datetime import date
+from core.models import Debater, School, Team, TeamResult, Tournament, TOTY
+import json
+
+season = int(settings.CURRENT_SEASON)
+left = School.objects.create(name="Award correction left school")
+right = School.objects.create(name="Award correction right school")
+people = [
+    Debater.objects.create(first_name=name, school=school)
+    for name, school in [("Left correction fixture", left), ("Right correction fixture", right)]
+]
+past = Tournament.objects.create(host=left, season=str(season - 1), date=date(season - 1, 11, 5),
+    manual_name="Retained award fixture", num_teams=16)
+pairs = []
+for past_place, server in enumerate(("Django", "Rust"), 1):
+    event = Tournament.objects.create(host=left, season=str(season), date=date(season, 11, 5),
+        manual_name=f"Removed awards {server} fixture", num_teams=16)
+    assignments = []
+    for index in range(3):
+        team = Team.objects.create(name=f"{server} award correction fixture {index}")
+        if index != 1:
+            team.debaters.add(*people)
+        TeamResult.objects.create(tournament=event, team=team, place=index + 1)
+        TOTY.objects.create(team=team, season=str(season), place=index + 1, points=5)
+        assignments.append(team.pk)
+        if index == 2:
+            TeamResult.objects.create(tournament=past, team=team, place=past_place)
+    pairs.append([event.pk, assignments])
+print(json.dumps(pairs))
+"""
+    seeded = subprocess.check_output([str(ROOT / "venv/bin/python"), "-c", code], text=True)
+    corrections = json.loads(seeded.splitlines()[-1])
+    with sqlite3.connect(f"{database.as_uri()}?mode=ro", uri=True) as db:
+        for server, (correction, assignments) in zip((django, rust), corrections):
+            driver.get(f"http://{HOST}:{server.port}/core/tournaments/data_entry?tournament={correction}")
+            count = int(driver.find_element("id", "id_varsity_teams-TOTAL_FORMS").get_attribute("value"))
+            saved = send({f"varsity_teams-{index}-DELETE": "on" for index in range(count)})
+            assert saved["redirected"], (server.name, saved)
+            assert not db.execute("SELECT 1 FROM core_teamresult WHERE tournament_id=?", (correction,)).fetchall()
+            awards = db.execute("SELECT team_id FROM core_toty WHERE team_id IN (?,?,?)", assignments).fetchall()
+            assert awards == [(assignments[2],)], (server.name, awards)
+
     driver.delete_all_cookies()
 
 

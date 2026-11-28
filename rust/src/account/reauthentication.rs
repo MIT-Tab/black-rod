@@ -40,7 +40,7 @@ async fn page(state: &AppState, request: Request) -> Result<Response, ApiError> 
         } else {
             let entered = provided.as_bytes().to_owned();
             let compare = stored.clone();
-            let verified = tokio::task::spawn_blocking(move || {
+            let verified = password::run_blocking(move || {
                 password::verify_and_upgrade(&entered, Some(&compare))
             })
             .await

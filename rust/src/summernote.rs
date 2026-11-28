@@ -18,6 +18,8 @@ use crate::{AppState, login, web};
 
 const FOLDER: &str = "django-summernote";
 const FILE_LIMIT: usize = 1024 * 1024;
+const FILE_COUNT_LIMIT: usize = 100;
+pub(crate) const REQUEST_LIMIT: usize = (FILE_COUNT_LIMIT + 1) * FILE_LIMIT;
 static IMAGE_VALIDATORS: Semaphore = Semaphore::const_new(2);
 
 fn media_root() -> PathBuf {
@@ -86,6 +88,12 @@ async fn read_uploads(state: &AppState, request: Request) -> Result<Vec<Upload>,
                 .collect::<String>();
             if name.is_empty() {
                 continue;
+            }
+            if files.len() == FILE_COUNT_LIMIT {
+                return Err(Box::new(error(
+                    StatusCode::BAD_REQUEST,
+                    "Too many files were requested",
+                )));
             }
             let bytes = field
                 .bytes()

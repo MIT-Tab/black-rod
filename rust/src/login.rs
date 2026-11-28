@@ -343,7 +343,7 @@ pub(crate) async fn authenticate(
         })
         .collect::<Result<Vec<_>, sqlx::Error>>()?;
     let password = password.as_bytes().to_owned();
-    tokio::task::spawn_blocking(move || {
+    password::run_blocking(move || {
         if candidates.is_empty() {
             password::verify_and_upgrade(&password, None);
         }

@@ -285,11 +285,11 @@ pub(super) enum Award {
 }
 
 impl Award {
-    fn binding(self) -> (&'static str, &'static str, &'static str) {
+    fn binding(self) -> (&'static str, &'static str, &'static str, &'static str) {
         match self {
-            Self::Team => ("core.TOTY", "core_toty", "team_id"),
-            Self::Speaker => ("core.SOTY", "core_soty", "debater_id"),
-            Self::Novice => ("core.NOTY", "core_noty", "debater_id"),
+            Self::Team => ("core.TOTY", "core_toty", "team_id", "core_teamresult"),
+            Self::Speaker => ("core.SOTY", "core_soty", "debater_id", "core_speakerresult"),
+            Self::Novice => ("core.NOTY", "core_noty", "debater_id", "core_speakerresult"),
         }
     }
 }
@@ -366,11 +366,22 @@ pub(super) async fn awards(
     kind: Award,
     ids: &BTreeSet<i64>,
 ) -> Result<(), ApiError> {
-    if matches!(kind, Award::Novice) && year(season).is_none_or(|value| value > 2020) {
-        return Ok(());
+    let (_, table, owner, source) = kind.binding();
+    if !ids.is_empty() {
+        let affected = ids.iter().map(i64::to_string).collect::<Vec<_>>().join(",");
+        let delete = format!(
+            "DELETE FROM {table} WHERE season=$1 AND {owner} IN ({affected})
+             AND NOT EXISTS (SELECT 1 FROM {source} result WHERE result.{owner}={table}.{owner})"
+        );
+        sqlx::query(AssertSqlSafe(delete))
+            .bind(season)
+            .execute(&mut *conn)
+            .await?;
     }
-    write_awards(conn, season, kind, ids).await?;
-    rank(conn, kind.binding().1, season).await
+    if !matches!(kind, Award::Novice) || year(season).is_some_and(|value| value <= 2020) {
+        write_awards(conn, season, kind, ids).await?;
+    }
+    rank(conn, table, season).await
 }
 
 async fn write_awards(
@@ -379,25 +390,13 @@ async fn write_awards(
     kind: Award,
     ids: &BTreeSet<i64>,
 ) -> Result<(), ApiError> {
-    let (label, table, owner) = kind.binding();
+    let (label, table, owner, source) = kind.binding();
     let team = matches!(kind, Award::Team);
     let novice = matches!(kind, Award::Novice);
-    let (source, column, reaff, old, new) = if team {
-        (
-            "core_teamresult",
-            "team_id",
-            "core_totyreaff",
-            "old_team_id",
-            "new_team_id",
-        )
+    let (reaff, old, new) = if team {
+        ("core_totyreaff", "old_team_id", "new_team_id")
     } else {
-        (
-            "core_speakerresult",
-            "debater_id",
-            "core_reaff",
-            "old_debater_id",
-            "new_debater_id",
-        )
+        ("core_reaff", "old_debater_id", "new_debater_id")
     };
     let filters = match kind {
         Award::Team => "t.toty AND r.type_of_place=1 AND r.counts_for_points",
@@ -414,7 +413,7 @@ async fn write_awards(
         CAST(t.num_novice_debaters AS BIGINT) AS novices,CAST(r.place AS BIGINT) AS place,
         CAST(CASE WHEN {extra} THEN 1 ELSE 0 END AS BIGINT) AS detail
         FROM {source} r JOIN core_tournament t ON t.id=r.tournament_id WHERE t.season=$1
-        AND (r.{column}=$2 OR r.{column}=$3) AND {filters} ORDER BY r.id"
+        AND (r.{owner}=$2 OR r.{owner}=$3) AND {filters} ORDER BY r.id"
     );
     for &id in ids {
         let (included, school) = if team {

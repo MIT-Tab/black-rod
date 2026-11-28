@@ -220,7 +220,7 @@ async fn verify_old(
         errors.insert("old_password", vec!["This field is required.".into()]);
     } else {
         let original = person.hash.clone();
-        let valid = tokio::task::spawn_blocking(move || {
+        let valid = password::run_blocking(move || {
             password::verify_and_upgrade(provided.as_bytes(), Some(&original)).is_some()
         })
         .await

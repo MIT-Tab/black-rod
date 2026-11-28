@@ -64,21 +64,29 @@ async function initRichTextEditors() {
         onBlur: synchronize,
         onBlurCodeview: synchronize,
         onImageUpload: async (files) => {
-          const form = new FormData();
-          form.set(
-            "csrfmiddlewaretoken",
-            field.form.elements.csrfmiddlewaretoken.value,
-          );
-          Array.from(files).forEach((file) => form.append("files", file));
-          const response = await fetch("/summernote/upload_attachment/", {
-            method: "POST",
-            body: form,
-          });
-          const data = await response.json();
-          if (!response.ok) throw new Error(data.message);
-          data.files.forEach((file) =>
-            editor.summernote("insertImage", file.url),
-          );
+          const errorMessage = "Got an error while uploading images.";
+          try {
+            const form = new FormData();
+            form.set(
+              "csrfmiddlewaretoken",
+              field.form.elements.csrfmiddlewaretoken.value,
+            );
+            Array.from(files).forEach((file) => form.append("files", file));
+            const response = await fetch("/summernote/upload_attachment/", {
+              method: "POST",
+              body: form,
+            });
+            const data = await response.json();
+            if (!response.ok) {
+              window.alert(data.message || errorMessage);
+              return;
+            }
+            data.files.forEach((file) =>
+              editor.summernote("insertImage", file.url),
+            );
+          } catch {
+            window.alert(errorMessage);
+          }
         },
       },
     });

@@ -127,8 +127,8 @@ WSGI_APPLICATION = "apda.wsgi.application"
 
 # Database
 # https://docs.djangoproject.com/en/1.11/ref/settings/#databases
-DEFAULT_SEASON = '2026'
-CURRENT_SEASON = '2026'
+CURRENT_SEASON = str(int(os.environ.get("BLACK_ROD_CURRENT_SEASON", "2026")))
+DEFAULT_SEASON = CURRENT_SEASON
 GM_BIPOC_AUTOQUAL_START_SEASON = 2025
 ENABLE_DEBATER_PARTNER_PIE_CHART = False
 ENABLE_DEBATER_PROFILE_TAB_CARDS = False
@@ -443,7 +443,7 @@ SUMMERNOTE_CONFIG = {
 
 # Season Settings
 OLDEST = 2004
-LATEST = 2026
+LATEST = int(CURRENT_SEASON)
 
 
 SEASONS = tuple(

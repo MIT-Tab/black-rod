@@ -105,7 +105,7 @@ pub(super) async fn change(
                     errors.insert("old_password", vec!["This field is required.".to_owned()]);
                 } else {
                     let existing = stored.to_owned();
-                    let matches = tokio::task::spawn_blocking(move || {
+                    let matches = password::run_blocking(move || {
                         password::verify_and_upgrade(&value, Some(&existing))
                     })
                     .await

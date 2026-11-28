@@ -4,9 +4,25 @@ use argon2::{Argon2, PasswordHash, PasswordVerifier};
 use base64::{Engine, engine::general_purpose::STANDARD};
 use ring::{digest, pbkdf2};
 use subtle::ConstantTimeEq;
+use tokio::{sync::Semaphore, task::JoinError};
 
 const ITERATIONS: NonZeroU32 = NonZeroU32::new(1_000_000).unwrap();
 const SALT: &[u8] = b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+static PASSWORD_WORKERS: Semaphore = Semaphore::const_new(4);
+
+pub(crate) async fn run_blocking<T: Send + 'static>(
+    operation: impl FnOnce() -> T + Send + 'static,
+) -> Result<T, JoinError> {
+    let permit = PASSWORD_WORKERS
+        .acquire()
+        .await
+        .expect("password workers stay open");
+    tokio::task::spawn_blocking(move || {
+        let _permit = permit;
+        operation()
+    })
+    .await
+}
 
 pub(crate) fn encode(password: &[u8]) -> Result<String, ring::error::Unspecified> {
     let salt = crate::session::random_token(SALT, 22)?;

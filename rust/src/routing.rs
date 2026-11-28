@@ -594,7 +594,9 @@ pub fn app(state: AppState) -> Router {
         .route("/summernote/editor/{id}/", get(summernote::editor))
         .route(
             "/summernote/upload_attachment/",
-            get(summernote::upload).post(summernote::upload),
+            get(summernote::upload).post(summernote::upload).layer(
+                axum::extract::DefaultBodyLimit::max(summernote::REQUEST_LIMIT),
+            ),
         )
         .route(
             "/django-summernote/{day}/{name}",

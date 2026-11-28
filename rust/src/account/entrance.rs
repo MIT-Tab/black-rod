@@ -219,7 +219,7 @@ async fn sign_in(
         .transpose()?;
     let compare = stored.clone();
     let candidate = password.as_bytes().to_owned();
-    let verified = tokio::task::spawn_blocking(move || {
+    let verified = password::run_blocking(move || {
         password::verify_and_upgrade(&candidate, compare.as_deref())
     })
     .await
