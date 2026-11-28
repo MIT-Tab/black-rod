@@ -164,6 +164,8 @@ print(json.dumps([visible.id, temporary.id, synthetic.id]))
                         .then(body => done(body.results.map(item => item.id)));
                 """, path)
                 assert [str(value) for value in ids] == ([str(ident)] if expected else []), server.name
+    with sqlite3.connect(Path(os.environ["BR_STATE"]) / "dev.sqlite3") as db:
+        db.execute("DELETE FROM core_debater WHERE id IN (?, ?, ?)", (visible, temporary, synthetic))
     driver.delete_all_cookies()
 
 
@@ -666,8 +668,36 @@ def assert_random_video(driver, django, rust, fixture):
 
 
 def assert_recent_results(driver, django, rust):
+    code = """
+from django import setup
+setup()
+from django.conf import settings
+from django.utils import timezone
+from core.models import Debater, School, Team, TeamResult, Tournament
+
+school = School.objects.create(name="Widget visibility fixture school")
+visible = Debater.objects.create(first_name="Visible widget member", school=school)
+temporary = Debater.all_objects.create(first_name="Temporary widget member", school=school, temporary=True)
+synthetic = Debater.all_objects.create(first_name="Synthetic widget member", school=school, synthetic=True)
+event = Tournament.objects.create(host=school, season=str(settings.CURRENT_SEASON),
+    date=timezone.localdate(), num_teams=16, manual_name="Widget visibility fixture tournament")
+winner = Team.objects.create(name="Widget roster fixture")
+winner.debaters.add(visible, temporary)
+finalist = Team.objects.create(name="Widget fallback team label")
+finalist.debaters.add(temporary, synthetic)
+for place, team in [(1, winner), (2, finalist)]:
+    TeamResult.objects.create(tournament=event, team=team, type_of_place=Debater.VARSITY, place=place,
+                              counts_for_points=False)
+"""
+    subprocess.run([str(ROOT / "venv/bin/python"), "-c", code], check=True)
     cards = []
     for server in (django, rust):
+        if address := os.environ.get("BLACK_ROD_PARITY_MEMCACHED_ADDR"):
+            host, port = address.rsplit(":", 1)
+            assert host == HOST
+            with socket.create_connection((host, int(port)), timeout=2) as client:
+                client.sendall(b"delete :1:recent_results_widget_html\r\n")
+                assert client.recv(128).strip() in (b"DELETED", b"NOT_FOUND")
         path = "/core/widgets/recent-results/"
         conn = server.connect()
         try:
@@ -685,6 +715,15 @@ def assert_recent_results(driver, django, rust):
             ]);
         """))
     assert cards[0] and cards[0] == cards[1], f"Recent results differed: {cards[0]!r} vs {cards[1]!r}"
+    widget = next(card for card, _ in cards[0] if "Widget visibility fixture tournament" in card)
+    assert "Visible widget member" in widget and "Widget fallback team label" in widget
+    assert "Temporary widget member" not in widget and "Synthetic widget member" not in widget
+    subprocess.run([str(ROOT / "venv/bin/python"), "-c", """
+from django import setup
+setup()
+from core.models import Debater
+Debater.all_objects.filter(first_name__in=["Temporary widget member", "Synthetic widget member"]).delete()
+"""], check=True)
 
 
 def assert_motion_progress(driver, django, rust, fixture):
@@ -2331,6 +2370,8 @@ print(json.dumps([a, b, team.pk, resource.pk, one.pk, two.pk, synthetic.pk]))
         assert ids("/admin/core/round/?" + urlencode({"q": "Rosterlookup"})) == [exact]
         assert ids("/admin/core/round/?" + urlencode({"q": exact})) == [exact]
         assert ids("/admin/core/round/?" + urlencode({"q": partial})) == [partial]
+        assert set(ids("/admin/core/round/?" + urlencode({"id__in": f"{exact},{partial}"}))) == {exact, partial}
+        assert ids("/admin/core/resource/?" + urlencode({"title__icontains": "REQUIRED AUTHORS"})) == [resource]
         assert ids("/admin/core/resource/?" + urlencode({"q": "Rosterlookup Alpha"})) == [resource]
         assert ids("/admin/core/resource/?" + urlencode({"q": "Alpha Beta"})) == []
         query = urlencode({"app_label": "core", "model_name": "round", "field_name": "gov",
@@ -2454,6 +2495,8 @@ print(json.dumps([record.pk, allowed.pk, unavailable.pk, score.pk, str(settings.
         rejected(credentials, {"name": expired_name, "expires_at_0": "2000-01-01",
                                "expires_at_1": "00:00:00"}, "Expiration must be in the future.")
         assert read("SELECT id FROM core_agentcredential WHERE name=?", expired_name) is None
+    with sqlite3.connect(db) as connection:
+        connection.execute("DELETE FROM core_debater WHERE id=?", (unavailable,))
     driver.delete_all_cookies()
 
 
@@ -2528,7 +2571,17 @@ School.objects.create(name="Unselected control school")
 
     credentials = "/admin/core/agentcredential/?can_write__exact=1"
     select_all(credentials, "revoke_credentials")
-    schools = "/admin/core/school/?q=Pagination+parity+school&included_in_oty__exact=1"
+    schools = "/admin/core/school/?name__icontains=PaGiNaTiOn+parity+school&included_in_oty__exact=1"
+    driver.get(root + schools)
+    for path in ("/admin/core/school/", "/admin/core/school/export/"):
+        rejected = driver.execute_async_script("""
+            const [path, done] = arguments;
+            const body = new URLSearchParams({action: 'delete_selected', select_across: '1', file_format:'0',
+                csrfmiddlewaretoken: document.querySelector('input[name=csrfmiddlewaretoken]').value});
+            fetch(path + '?name__unsupported=Pagination', {method:'POST', body})
+                .then(response => done(response.status));
+        """, path)
+        assert rejected == 400
     select_all(schools, "delete_selected")
     assert len(driver.find_elements("css selector", 'input[name="_selected_action"]')) == 101
     previous = driver.find_element("tag name", "html")
@@ -2668,7 +2721,8 @@ print(school.id)
     existing = int(result.splitlines()[-1])
     credential = django_session()
     root = f"http://{HOST}:{rust.port}"
-    query = "?" + urlencode({"q":'"Disposable Échange"', "included_in_oty__exact": 1})
+    query = "?" + urlencode({"q":'"Disposable Échange"', "included_in_oty__exact": 1,
+                             "name__icontains": "Disposable", "id__in": f"{existing},777777777"})
     route = "/admin/core/school/"
     formats = ("csv","xls","xlsx","tsv","ods","json","yaml","html")
     exports = {}
@@ -3642,8 +3696,12 @@ print(target.pk)
             body.set(`schools-${schools}-server_name`, 'School fallback parity');
             body.set(`schools-${schools}-included_in_oty`, 'True');
             fetch(location.pathname + location.search, {method:'POST', body})
-                .then(async response => done({status:response.status,path:new URL(response.url).pathname,
-                    text:(await response.text()).slice(0,160)}), () => done({status:0}));
+                .then(async response => {
+                    const page = new DOMParser().parseFromString(await response.text(), 'text/html');
+                    const errors = [...page.querySelectorAll('.invalid-feedback, .errorlist, [role="alert"]')]
+                        .map(element => element.textContent.trim()).filter(Boolean);
+                    done({status:response.status,path:new URL(response.url).pathname,errors});
+                }, () => done({status:0}));
         """, str(mapped_school))
     finally:
         provider.import_payload["debater_counts"]["teams"] = original_teams

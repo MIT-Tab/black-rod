@@ -1,7 +1,7 @@
 mod signing;
 
 use axum::http::{HeaderMap, header};
-use chrono::{Duration, Utc};
+use chrono::{DateTime, Duration, Utc};
 use ring::{
     hmac,
     rand::{SecureRandom, SystemRandom},
@@ -95,6 +95,30 @@ fn encode(session: &Value, secret: &[u8]) -> String {
 
 type SessionValues = std::collections::BTreeMap<String, Box<RawValue>>;
 
+fn password_expiry(values: &SessionValues, now: DateTime<Utc>) -> (DateTime<Utc>, Option<u32>) {
+    let policy = values
+        .get("_session_expiry")
+        .and_then(|value| serde_json::from_str::<Value>(value.get()).ok())
+        .unwrap_or(Value::Null);
+    let duration = policy.as_i64();
+    let deadline = policy
+        .as_str()
+        .and_then(|value| DateTime::parse_from_rfc3339(value).ok())
+        .map(|value| value.to_utc())
+        .or_else(|| {
+            duration
+                .filter(|seconds| *seconds != 0)
+                .and_then(Duration::try_seconds)
+                .and_then(|duration| now.checked_add_signed(duration))
+        })
+        .unwrap_or_else(|| now + Duration::seconds(i64::from(crate::login::SESSION_AGE)));
+    let age = (duration != Some(0)).then(|| {
+        let seconds = deadline.signed_duration_since(now).num_seconds();
+        seconds.clamp(0, i64::from(u32::MAX)) as u32
+    });
+    (deadline, age)
+}
+
 fn encode_values(values: &SessionValues, secret: &[u8]) -> Result<String, sqlx::Error> {
     let serialized =
         serde_json::to_string(values).map_err(|error| sqlx::Error::Protocol(error.to_string()))?;
@@ -155,32 +179,40 @@ impl StoredSession {
         conn: &mut AnyConnection,
         secret: &[u8],
         password_hash: &str,
-    ) -> Result<(String, bool), sqlx::Error> {
+    ) -> Result<(String, Option<u32>), sqlx::Error> {
         let id = random_token(b"abcdefghijklmnopqrstuvwxyz0123456789", 32)
             .map_err(|_| sqlx::Error::Protocol("Unable to generate a session key".into()))?;
         let digest = hmac::sign(&key(AUTH_SALT, secret), password_hash.as_bytes());
         let auth = serde_json::value::to_raw_value(&hex::encode(digest))
             .map_err(|error| sqlx::Error::Protocol(error.to_string()))?;
         self.values.insert("_auth_user_hash".to_owned(), auth);
-        let remember = self
-            .values
-            .get("_session_expiry")
-            .is_none_or(|value| value.get() != "0");
+        let (deadline, age) = password_expiry(&self.values, Utc::now());
+        let sqlite = conn.backend_name() == "SQLite";
+        let expiry = if sqlite {
+            deadline.format("%Y-%m-%d %H:%M:%S%.6f").to_string()
+        } else {
+            deadline.to_rfc3339()
+        };
         let data = encode_values(&self.values, secret)?;
-        let changed = sqlx::query(
-            "UPDATE django_session SET session_key=$1,session_data=$2
-            WHERE session_key=$3 AND session_data=$4 AND expire_date>CURRENT_TIMESTAMP",
-        )
-        .bind(&id)
-        .bind(data)
-        .bind(self.id)
-        .bind(self.original)
-        .execute(conn)
-        .await?;
+        let query = if sqlite {
+            "UPDATE django_session SET session_key=$1,session_data=$2,expire_date=$3
+             WHERE session_key=$4 AND session_data=$5 AND expire_date>CURRENT_TIMESTAMP"
+        } else {
+            "UPDATE django_session SET session_key=$1,session_data=$2,expire_date=CAST($3 AS TIMESTAMPTZ)
+             WHERE session_key=$4 AND session_data=$5 AND expire_date>CURRENT_TIMESTAMP"
+        };
+        let changed = sqlx::query(query)
+            .bind(&id)
+            .bind(data)
+            .bind(expiry)
+            .bind(self.id)
+            .bind(self.original)
+            .execute(conn)
+            .await?;
         if changed.rows_affected() != 1 {
             return Err(sqlx::Error::RowNotFound);
         }
-        Ok((id, remember))
+        Ok((id, age))
     }
 
     pub(crate) async fn save(self, pool: &AnyPool, secret: &[u8]) -> Result<bool, sqlx::Error> {
@@ -658,8 +690,7 @@ mod tests {
         assert!(decode(&altered, b"local-rust-session-test").is_none());
     }
 
-    #[tokio::test]
-    async fn consuming_oauth_preserves_django_session_fields() {
+    async fn session_fixture() -> AnyPool {
         sqlx::any::install_default_drivers();
         let pool = sqlx::any::AnyPoolOptions::new()
             .max_connections(1)
@@ -668,6 +699,80 @@ mod tests {
             .unwrap();
         sqlx::query("CREATE TABLE django_session (session_key TEXT PRIMARY KEY, session_data TEXT, expire_date TEXT)")
             .execute(&pool).await.unwrap();
+        pool
+    }
+
+    #[tokio::test]
+    async fn rotating_password_applies_the_session_expiry_policy() {
+        let pool = session_fixture().await;
+        let secret = b"disposable-password-expiry-key";
+        let now = Utc::now();
+        let absolute = now + Duration::hours(1);
+        let default = i64::from(crate::login::SESSION_AGE);
+        let short = now + Duration::minutes(2);
+        let cases = [
+            (Value::Null, default, true),
+            (json!(0), default, false),
+            (json!(3600), 3600, true),
+            (json!(absolute.to_rfc3339()), 3600, true),
+        ];
+        for (index, (policy, seconds, persistent)) in cases.into_iter().enumerate() {
+            let old = format!("fixture{index}");
+            let body = encode(&json!({"_session_expiry": policy}), secret);
+            sqlx::query("INSERT INTO django_session VALUES ($1, $2, $3)")
+                .bind(&old)
+                .bind(body)
+                .bind(short.format("%Y-%m-%d %H:%M:%S%.6f").to_string())
+                .execute(&pool)
+                .await
+                .unwrap();
+            let mut headers = HeaderMap::new();
+            headers.insert(header::COOKIE, format!("sessionid={old}").parse().unwrap());
+            let session = StoredSession::read(&pool, &headers, secret)
+                .await
+                .unwrap()
+                .unwrap();
+            let (new, age) = session
+                .rotate_password(
+                    &mut pool.acquire().await.unwrap(),
+                    secret,
+                    "new fixture hash",
+                )
+                .await
+                .unwrap();
+            assert_ne!(new, old);
+            let age = age.map(i64::from);
+            if persistent {
+                assert!((seconds - 2..=seconds).contains(&age.unwrap()));
+            } else {
+                assert_eq!(age, None);
+            }
+            let expiry: String =
+                sqlx::query_scalar("SELECT expire_date FROM django_session WHERE session_key=$1")
+                    .bind(new)
+                    .fetch_one(&pool)
+                    .await
+                    .unwrap();
+            let expiry = chrono::NaiveDateTime::parse_from_str(&expiry, "%Y-%m-%d %H:%M:%S%.f")
+                .unwrap()
+                .and_utc();
+            let elapsed = expiry.signed_duration_since(now).num_seconds();
+            assert!((seconds - 1..=seconds + 2).contains(&elapsed));
+            if policy.is_string() {
+                assert_eq!(expiry.timestamp_micros(), absolute.timestamp_micros());
+            }
+            assert!(
+                StoredSession::read(&pool, &headers, secret)
+                    .await
+                    .unwrap()
+                    .is_none()
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn consuming_oauth_preserves_django_session_fields() {
+        let pool = session_fixture().await;
         let secret = b"disposable-oauth-test-key";
         let number = "340282366920938463463374607431768211455";
         let payload = format!(

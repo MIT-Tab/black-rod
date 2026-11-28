@@ -46,7 +46,7 @@ const TOURNAMENTS: &str = "
     SELECT CAST(id AS BIGINT) AS id, name, CAST(date AS TEXT) AS date,
         CAST(num_teams AS BIGINT) AS num_teams, CAST(winner AS BIGINT) AS winner,
         CAST(finalist AS BIGINT) AS finalist
-    FROM selection WHERE (selected_priority = 2 AND position <= 3)
+    FROM selection WHERE (selected_priority = 2 AND priority = 2 AND position <= 3)
         OR (selected_priority <> 2 AND day_rank = 1)
     ORDER BY date DESC, CASE WHEN selected_priority <> 2 THEN name END
 ";
@@ -54,7 +54,8 @@ const TEAM: &str = "
     SELECT t.name AS team_name, CAST(d.id AS BIGINT) AS debater_id, d.first_name, d.last_name,
         CAST(s.id AS BIGINT) AS school_id, s.name AS school
     FROM core_team t LEFT JOIN core_team_debaters m ON m.team_id = t.id
-    LEFT JOIN core_debater d ON d.id = m.debater_id LEFT JOIN core_school s ON s.id = d.school_id
+    LEFT JOIN core_debater d ON d.id = m.debater_id AND NOT (d.temporary OR d.synthetic)
+    LEFT JOIN core_school s ON s.id = d.school_id
     WHERE t.id = $1 ORDER BY d.id
 ";
 const SPEAKERS: &str = "

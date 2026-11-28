@@ -1,4 +1,5 @@
 mod dates;
+pub(super) mod filters;
 
 use std::{
     borrow::Cow,
@@ -20,6 +21,7 @@ use super::{
     schema::{self, Field, Model, schema},
 };
 use crate::{ApiError, flash, login};
+use filters::Filter;
 
 pub(super) type Parameters = BTreeMap<String, String>;
 
@@ -714,128 +716,18 @@ pub(super) fn ordering_sql(source: &mut Source, ordering: &[String]) -> String {
     expressions.join(",")
 }
 
-pub(super) fn conditions(
-    source: &mut Source,
-    model: &Model,
-    params: &Parameters,
-    values: &mut Vec<String>,
-) -> String {
-    let search = params.get("q").map_or("", String::as_str);
-    let mut where_parts = Vec::new();
-    if model.slug() == "school" {
-        where_parts.push("NOT t0.temporary".to_owned());
-    }
-    where_parts.extend(search_condition(model, search, values));
-    if model.slug() == "motion"
-        && let Some(limit) = dates::limit(params, values)
-    {
-        where_parts.push(limit);
-    }
-    if model.slug() == "teamresult" {
-        let present = "EXISTS (SELECT 1 FROM core_teamresult_hidden_from_debaters m WHERE m.teamresult_id=t0.id)";
-        match params.get("profile_visibility").map(String::as_str) {
-            Some("hidden") => where_parts.push(present.to_owned()),
-            Some("visible") => where_parts.push(format!("NOT {present}")),
-            _ => (),
-        }
-    }
-    for (parameter, value) in params {
-        if matches!(
-            parameter.as_str(),
-            "q" | "p" | "o" | "all" | "_popup" | "_to_field" | "_facets"
-        ) {
-            continue;
-        }
-        let (path, look_up) = parameter.rsplit_once("__").unwrap_or((parameter, "exact"));
-        let path = if matches!(look_up, "exact" | "isnull" | "id" | "gte" | "lt") {
-            path
-        } else {
-            parameter
-        };
-        let local = model
-            .fields
-            .get(path)
-            .is_some_and(|field| field.column.is_some());
-        let allowed = local
-            || model
-                .filter
-                .iter()
-                .any(|filter| path == filter || path.starts_with(&format!("{filter}__")));
-        if !allowed {
-            continue;
-        }
-        let root = path.split("__").next().unwrap_or(path);
-        if let Some([table, from, to]) = model
-            .fields
-            .get(root)
-            .and_then(|field| field.through.as_ref())
-        {
-            let condition = format!("member.{from}=t0.id");
-            if look_up == "isnull" {
-                let negated = if value == "True" { "NOT " } else { "" };
-                where_parts.push(format!(
-                    "{negated}EXISTS (SELECT 1 FROM {table} member WHERE {condition})"
-                ));
-            } else {
-                let parameter = add_values(values, value);
-                where_parts.push(format!(
-                    "EXISTS (SELECT 1 FROM {table} member WHERE {condition} AND CAST(member.{to} AS TEXT)={parameter})"
-                ));
-            }
-        } else if let Some((column, field)) = source.resolve(path) {
-            if look_up == "isnull" {
-                where_parts.push(format!(
-                    "{column} IS {}NULL",
-                    if matches!(value.as_str(), "True" | "1") {
-                        ""
-                    } else {
-                        "NOT "
-                    }
-                ));
-            } else if matches!(look_up, "gte" | "lt")
-                && matches!(field.kind.as_str(), "DateField" | "DateTimeField")
-            {
-                let date = value
-                    .get(..10)
-                    .filter(|value| chrono::NaiveDate::parse_from_str(value, "%Y-%m-%d").is_ok());
-                if let Some(date) = date {
-                    let placeholder = add_values(values, date);
-                    let comparison = if look_up == "gte" { ">=" } else { "<" };
-                    where_parts.push(format!(
-                        "SUBSTR(CAST({column} AS TEXT),1,10){comparison}{placeholder}"
-                    ));
-                }
-            } else if field.kind == "BooleanField" {
-                where_parts.push(format!(
-                    "{column} {}",
-                    if matches!(value.as_str(), "True" | "1") {
-                        ""
-                    } else {
-                        "IS FALSE"
-                    }
-                ));
-            } else {
-                let placeholder = add_values(values, value);
-                where_parts.push(format!("CAST({column} AS TEXT)={placeholder}"));
-            }
-        }
-    }
-    if where_parts.is_empty() {
-        String::new()
-    } else {
-        format!(" WHERE {}", where_parts.join(" AND "))
-    }
-}
-
 async fn get_list(
     admin: &AdminRequest<'_>,
     model: &'static Model,
     params: &Parameters,
+    filter: Filter<'_>,
 ) -> Result<Value, ApiError> {
-    let mut source = Source::new(model);
-    let mut values = Vec::new();
+    let Filter {
+        mut source,
+        condition,
+        values,
+    } = filter;
     let search = params.get("q").map_or("", String::as_str);
-    let condition = conditions(&mut source, model, params, &mut values);
     let actions = model
         .actions
         .iter()
@@ -1384,6 +1276,7 @@ async fn save_speaker_visibility(
     admin: &AdminRequest<'_>,
     model: &Model,
     params: &Parameters,
+    filter: &Filter<'_>,
     fields: &HashMap<String, String>,
 ) -> Result<Response, ApiError> {
     if !admin.viewer.allows(model, "change") || params.contains_key("_popup") {
@@ -1398,15 +1291,13 @@ async fn save_speaker_visibility(
     let mut tx = admin.state.pool.begin().await?;
     let mut changed = 0;
     let actor = admin.viewer.user.id.ok_or(ApiError::Serialization)?;
-    let mut source = Source::new(model);
-    let mut fields_to_bind = Vec::new();
-    let condition = conditions(&mut source, model, params, &mut fields_to_bind);
     let query = format!(
-        "SELECT CAST(t0.id AS BIGINT) FROM {}{condition}",
-        source.sql()
+        "SELECT CAST(t0.id AS BIGINT) FROM {}{}",
+        filter.source.sql(),
+        filter.condition,
     );
     let mut valid_query = sqlx::query_scalar::<_, i64>(AssertSqlSafe(query));
-    for value in &fields_to_bind {
+    for value in &filter.values {
         valid_query = valid_query.bind(value);
     }
     let valid = valid_query
@@ -1468,12 +1359,7 @@ async fn save_speaker_visibility(
     Ok(response)
 }
 
-fn action_scope(
-    model: &Model,
-    params: &Parameters,
-    data: &[u8],
-    across: bool,
-) -> (String, Vec<String>) {
+fn action_scope(filter: &Filter<'_>, data: &[u8], across: bool) -> String {
     let ids = url::form_urlencoded::parse(data)
         .filter_map(|(name, id)| {
             (name == "_selected_action")
@@ -1481,9 +1367,6 @@ fn action_scope(
                 .flatten()
         })
         .collect::<Vec<_>>();
-    let mut source = Source::new(model);
-    let mut bind = Vec::new();
-    let conditions = conditions(&mut source, model, params, &mut bind);
     let restriction = if across {
         String::new()
     } else {
@@ -1491,20 +1374,20 @@ fn action_scope(
         let ids = if ids.is_empty() { "NULL" } else { &ids };
         format!(
             "{} t0.id IN ({ids})",
-            if conditions.is_empty() {
+            if filter.condition.is_empty() {
                 "WHERE"
             } else {
                 "AND"
             }
         )
     };
-    (format!("{}{conditions} {restriction}", source.sql()), bind)
+    format!("{}{} {restriction}", filter.source.sql(), filter.condition)
 }
 
 async fn merge_topics(
     admin: &AdminRequest<'_>,
     model: &'static Model,
-    params: &Parameters,
+    filter: &Filter<'_>,
     data: &[u8],
     across: bool,
 ) -> Result<Response, ApiError> {
@@ -1512,11 +1395,11 @@ async fn merge_topics(
         return Ok(StatusCode::FORBIDDEN.into_response());
     }
     let motion = model.slug() == "motiontopic";
-    let (scope, bind) = action_scope(model, params, data, across);
+    let scope = action_scope(filter, data, across);
     let sql = format!("SELECT CAST(t0.id AS BIGINT),t0.name FROM {scope} ORDER BY t0.name");
     let mut tx = admin.state.pool.begin().await?;
     let mut query = sqlx::query_as::<_, (i64, String)>(AssertSqlSafe(sql));
-    for value in &bind {
+    for value in &filter.values {
         query = query.bind(value);
     }
     let topics = query.fetch_all(&mut *tx).await?;
@@ -1611,6 +1494,10 @@ pub(super) async fn page(
     let params = url::form_urlencoded::parse(admin.uri.query().unwrap_or_default().as_bytes())
         .into_owned()
         .collect();
+    let sqlite = admin.state.pool.connect_options().database_url.scheme() == "sqlite";
+    let Some(filter) = Filter::new(model, &params, sqlite) else {
+        return Ok(StatusCode::BAD_REQUEST.into_response());
+    };
     if method == Method::POST {
         let Ok(data) = to_bytes(body, 2_621_440).await else {
             return Ok(StatusCode::PAYLOAD_TOO_LARGE.into_response());
@@ -1627,7 +1514,7 @@ pub(super) async fn page(
             return Ok(login::csrf_failure());
         }
         if model.slug() == "speakerresult" && values.contains_key("_save") {
-            return save_speaker_visibility(admin, model, &params, &values).await;
+            return save_speaker_visibility(admin, model, &params, &filter, &values).await;
         }
         let across = values
             .get("select_across")
@@ -1640,10 +1527,10 @@ pub(super) async fn page(
                 return Ok(StatusCode::FORBIDDEN.into_response());
             }
             let confirmed = values.contains_key("post");
-            let (scope, bind) = action_scope(model, &params, &data, across && !confirmed);
+            let scope = action_scope(&filter, &data, across && !confirmed);
             let sql = format!("SELECT DISTINCT CAST(t0.id AS BIGINT) FROM {scope} ORDER BY 1");
             let mut query = sqlx::query_scalar::<_, i64>(AssertSqlSafe(sql));
-            for value in bind {
+            for value in &filter.values {
                 query = query.bind(value);
             }
             let ids = query.fetch_all(&admin.state.pool).await?;
@@ -1654,7 +1541,7 @@ pub(super) async fn page(
                 .get("action")
                 .is_some_and(|action| action == "merge_topics")
         {
-            return merge_topics(admin, model, &params, &data, across).await;
+            return merge_topics(admin, model, &filter, &data, across).await;
         }
         if model.slug() == "agentcredential"
             && values
@@ -1664,13 +1551,13 @@ pub(super) async fn page(
             if !admin.viewer.allows(model, "change") {
                 return Ok(StatusCode::FORBIDDEN.into_response());
             }
-            let (scope, bind) = action_scope(model, &params, &data, across);
+            let scope = action_scope(&filter, &data, across);
             let statement = format!(
                 "UPDATE core_agentcredential SET revoked_at=CURRENT_TIMESTAMP
                  WHERE revoked_at IS NULL AND id IN (SELECT t0.id FROM {scope})"
             );
             let mut query = sqlx::query(AssertSqlSafe(statement));
-            for value in bind {
+            for value in &filter.values {
                 query = query.bind(value);
             }
             query.execute(&admin.state.pool).await?;
@@ -1683,7 +1570,7 @@ pub(super) async fn page(
             ));
         }
     }
-    let context = get_list(admin, model, &params).await?;
+    let context = get_list(admin, model, &params, filter).await?;
     admin.view("site_admin/change_list.html", context)
 }
 

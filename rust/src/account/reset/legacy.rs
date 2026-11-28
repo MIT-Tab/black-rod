@@ -97,15 +97,8 @@ fn view(
     Ok(response)
 }
 
-fn session_cookie(response: &mut Response, key: &str, visit: &Visit, keep: bool) {
-    login::set_cookie(
-        response,
-        "sessionid",
-        key,
-        keep.then_some(login::SESSION_AGE),
-        visit.secure(),
-        true,
-    );
+fn session_cookie(response: &mut Response, key: &str, visit: &Visit, age: Option<u32>) {
+    login::set_cookie(response, "sessionid", key, age, visit.secure(), true);
 }
 
 async fn reset(
@@ -264,10 +257,10 @@ async fn change(
             if !set_password(&mut tx, &person, &hash).await? {
                 return Ok(StatusCode::CONFLICT.into_response());
             }
-            let (id, remember) = session.rotate_password(&mut tx, secret, &hash).await?;
+            let (id, age) = session.rotate_password(&mut tx, secret, &hash).await?;
             tx.commit().await?;
             let mut response = redirect(CHANGE_DONE);
-            session_cookie(&mut response, &id, visit, remember);
+            session_cookie(&mut response, &id, visit, age);
             return Ok(response);
         }
     }
@@ -358,7 +351,7 @@ async fn confirm(
         } else {
             let key =
                 session::create_anonymous(&state.pool, secret, &json!({TOKEN_KEY:token})).await?;
-            session_cookie(&mut response, &key, visit, true);
+            session_cookie(&mut response, &key, visit, Some(login::SESSION_AGE));
         }
         return Ok(response);
     }

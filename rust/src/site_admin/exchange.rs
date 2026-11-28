@@ -12,7 +12,7 @@ use sqlx::{AssertSqlSafe, Row};
 
 use super::{
     AdminRequest, cap_first,
-    listing::{self, Parameters, Source},
+    listing::{self, Parameters, filters::Filter},
     schema::{Exchange, Field, Model, schema},
 };
 use crate::{ApiError, login};
@@ -92,6 +92,8 @@ async fn export_rows(
     admin: &AdminRequest<'_>,
     model: &Model,
     exchange: &Exchange,
+    query: &Parameters,
+    filter: Filter<'_>,
 ) -> Result<Vec<Vec<Json>>, ApiError> {
     let resource = exchange.resource(model)?;
     let fields = exchange
@@ -99,13 +101,11 @@ async fn export_rows(
         .iter()
         .map(|name| resource.fields.get(name).ok_or(ApiError::Serialization))
         .collect::<Result<Vec<_>, _>>()?;
-    let query: Parameters =
-        url::form_urlencoded::parse(admin.uri.query().unwrap_or_default().as_bytes())
-            .into_owned()
-            .collect();
-    let mut source = Source::new(model);
-    let mut values = Vec::new();
-    let condition = listing::conditions(&mut source, model, &query, &mut values);
+    let Filter {
+        mut source,
+        condition,
+        values,
+    } = filter;
     let offset = usize::from(!model.actions.is_empty());
     let order = query
         .get("o")
@@ -186,6 +186,13 @@ pub(super) async fn export_page(
     let Some(exchange) = &model.exchange else {
         return Ok(StatusCode::NOT_FOUND.into_response());
     };
+    let query = url::form_urlencoded::parse(admin.uri.query().unwrap_or_default().as_bytes())
+        .into_owned()
+        .collect();
+    let sqlite = admin.state.pool.connect_options().database_url.scheme() == "sqlite";
+    let Some(filter) = Filter::new(model, &query, sqlite) else {
+        return Ok(StatusCode::BAD_REQUEST.into_response());
+    };
     let mut error = None;
     if method == Method::POST {
         let Ok(data) = to_bytes(body, 128 * 1024).await else {
@@ -208,7 +215,7 @@ pub(super) async fn export_page(
             .ok()
             .and_then(|index| exchange.export_formats.get(index))
         {
-            let rows = export_rows(admin, model, exchange).await?;
+            let rows = export_rows(admin, model, exchange, &query, filter).await?;
             let extension = format.clone();
             let headers = exchange.headers.clone();
             let written =

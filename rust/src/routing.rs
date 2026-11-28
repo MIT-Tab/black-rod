@@ -65,7 +65,10 @@ fn api_routes() -> Router<AppState> {
             get(replay::handle).options(replay::through_options),
         )
         .route("/.well-known/ai-plugin.json", get(discovery::manifest))
-        .route("/.well-known/openapi.json", get(discovery::schema))
+        .route(
+            "/.well-known/openapi.json",
+            axum::routing::any(discovery::schema),
+        )
 }
 
 pub(crate) fn local_api(state: AppState) -> Router {

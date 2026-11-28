@@ -4,7 +4,7 @@ use axum::{
     Json,
     body::{Body, to_bytes},
     extract::{OriginalUri, State},
-    http::{HeaderMap, Request, StatusCode, header},
+    http::{HeaderMap, HeaderValue, Method, Request, StatusCode, header},
     response::{Html, IntoResponse, Response},
 };
 use minijinja::context;
@@ -12,12 +12,13 @@ use serde_json::{Value, json};
 use tower::ServiceExt;
 
 use crate::{
-    AppState,
+    AppState, drf,
     routing::{local_api, public_api_path},
     web,
 };
 
 const SCHEMA: &str = include_str!("../assets/openapi.json");
+const SCHEMA_MEDIA_TYPE: &str = "application/vnd.oai.openapi+json";
 const DOC: &str = include_str!("../assets/llms.txt");
 const EXAMPLE: &str = "Example: /llm?endpoint=/api/standings";
 
@@ -55,10 +56,10 @@ pub(crate) async fn manifest(State(state): State<AppState>, headers: HeaderMap) 
     .into_response()
 }
 
-pub(crate) async fn schema(State(state): State<AppState>, headers: HeaderMap) -> Response {
+fn schema_document(state: &AppState, headers: &HeaderMap) -> Response {
     static DOCUMENT: LazyLock<Value> =
         LazyLock::new(|| serde_json::from_str(SCHEMA).expect("valid checked-in OpenAPI schema"));
-    let Some(origin) = state.origin(&headers) else {
+    let Some(origin) = state.origin(headers) else {
         return StatusCode::BAD_REQUEST.into_response();
     };
     let host = origin
@@ -67,15 +68,77 @@ pub(crate) async fn schema(State(state): State<AppState>, headers: HeaderMap) ->
         .unwrap_or_default();
     let mut document = DOCUMENT.clone();
     document["servers"] = json!([{"url": format!("https://{host}")}]);
-    (
-        [
-            (header::CONTENT_TYPE, "application/vnd.oai.openapi+json"),
-            (header::VARY, "Cookie"),
-            (header::ALLOW, "GET, HEAD, OPTIONS"),
-        ],
-        document.to_string(),
-    )
-        .into_response()
+    Json(document).into_response()
+}
+
+fn accepts_schema(headers: &HeaderMap) -> bool {
+    !headers.contains_key(header::ACCEPT)
+        || headers
+            .get_all(header::ACCEPT)
+            .iter()
+            .filter_map(|value| value.to_str().ok())
+            .flat_map(|value| value.split(','))
+            .filter_map(|value| value.split(';').next())
+            .any(|value| {
+                [SCHEMA_MEDIA_TYPE, "application/*", "*/*"]
+                    .iter()
+                    .any(|media| value.trim().eq_ignore_ascii_case(media))
+            })
+}
+
+pub(crate) async fn schema(
+    State(state): State<AppState>,
+    OriginalUri(uri): OriginalUri,
+    method: Method,
+    headers: HeaderMap,
+) -> Response {
+    let format = url::form_urlencoded::parse(uri.query().unwrap_or_default().as_bytes())
+        .filter(|(name, _)| name == "format")
+        .last()
+        .map(|(_, format)| format);
+    let error = |status, detail| (status, Json(json!({"detail": detail}))).into_response();
+    let mut response = if format.is_some_and(|format| !matches!(format.as_ref(), "" | "json")) {
+        error(StatusCode::NOT_FOUND, "Not found.".to_owned())
+    } else if !accepts_schema(&headers) {
+        error(
+            StatusCode::NOT_ACCEPTABLE,
+            "Could not satisfy the request Accept header.".to_owned(),
+        )
+    } else {
+        let mut response = match drf::public_user(&state, &headers).await {
+            Err(response) => response,
+            Ok(_) => match method {
+                Method::HEAD | Method::GET => schema_document(&state, &headers),
+                Method::OPTIONS => Json(json!({
+                    "name": "Plugin Schema",
+                    "description": "Return the OpenAPI schema in JSON with stable server metadata.",
+                    "renders": [SCHEMA_MEDIA_TYPE],
+                    "parses": ["application/json", "application/x-www-form-urlencoded", "multipart/form-data"],
+                }))
+                .into_response(),
+                _ => error(
+                    StatusCode::METHOD_NOT_ALLOWED,
+                    format!("Method \"{method}\" not allowed."),
+                ),
+            },
+        };
+        response
+            .headers_mut()
+            .insert(header::VARY, HeaderValue::from_static("Cookie"));
+        response
+    };
+    response.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static(SCHEMA_MEDIA_TYPE),
+    );
+    response.headers_mut().insert(
+        header::ALLOW,
+        HeaderValue::from_static("GET, HEAD, OPTIONS"),
+    );
+    if method == Method::HEAD {
+        *response.body_mut() = Body::empty();
+    }
+    response
 }
 
 fn proxy_result(

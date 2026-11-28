@@ -229,21 +229,14 @@ async fn change_page(state: &AppState, request: Request) -> Result<Response, Api
             if changed.rows_affected() != 1 {
                 return Ok(StatusCode::CONFLICT.into_response());
             }
-            let (key, remember) = session.rotate_password(&mut tx, secret, &hash).await?;
+            let (key, age) = session.rotate_password(&mut tx, secret, &hash).await?;
             tx.commit().await?;
             let mut response = redirect(if visit.next.is_empty() {
                 CHANGE
             } else {
                 &visit.next
             });
-            login::set_cookie(
-                &mut response,
-                "sessionid",
-                &key,
-                remember.then_some(login::SESSION_AGE),
-                visit.secure(),
-                true,
-            );
+            login::set_cookie(&mut response, "sessionid", &key, age, visit.secure(), true);
             let notice = if setting {
                 "Password successfully set."
             } else {

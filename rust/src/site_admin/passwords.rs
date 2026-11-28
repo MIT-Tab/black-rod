@@ -242,15 +242,8 @@ async fn store(
         redirect(DONE)
     };
     if let Some(session) = session {
-        let (key, remember) = session.rotate_password(&mut tx, secret, hash).await?;
-        login::set_cookie(
-            &mut response,
-            "sessionid",
-            &key,
-            remember.then_some(login::SESSION_AGE),
-            admin.secure(),
-            true,
-        );
+        let (key, age) = session.rotate_password(&mut tx, secret, hash).await?;
+        login::set_cookie(&mut response, "sessionid", &key, age, admin.secure(), true);
     }
     tx.commit().await?;
     Ok(response)

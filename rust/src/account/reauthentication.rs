@@ -77,17 +77,9 @@ async fn page(state: &AppState, request: Request) -> Result<Response, ApiError> 
                     if changed.rows_affected() != 1 {
                         return Ok(StatusCode::CONFLICT.into_response());
                     }
-                    let (key, remember) =
-                        current.rotate_password(&mut tx, secret, &upgrade).await?;
+                    let (key, age) = current.rotate_password(&mut tx, secret, &upgrade).await?;
                     tx.commit().await?;
-                    login::set_cookie(
-                        &mut response,
-                        "sessionid",
-                        &key,
-                        remember.then_some(login::SESSION_AGE),
-                        visit.secure(),
-                        true,
-                    );
+                    login::set_cookie(&mut response, "sessionid", &key, age, visit.secure(), true);
                 } else if !current.save(&state.pool, secret).await? {
                     return Ok(StatusCode::CONFLICT.into_response());
                 }

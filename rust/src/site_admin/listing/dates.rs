@@ -1,33 +1,14 @@
 use std::collections::BTreeSet;
 
-use chrono::{Datelike, Months, NaiveDate};
+use chrono::{Datelike, NaiveDate};
 use minijinja::{Value, context};
 use sqlx::AssertSqlSafe;
 
-use super::{AdminRequest, ApiError, Parameters, add_values, query_string};
+use super::{AdminRequest, ApiError, Parameters, query_string};
 
 const YEAR: &str = "date_set__year";
 const MONTH: &str = "date_set__month";
 const DAY: &str = "date_set__day";
-
-pub(super) fn limit(params: &Parameters, values: &mut Vec<String>) -> Option<String> {
-    let year = params.get(YEAR)?.parse::<i32>().ok()?;
-    let month = params.get(MONTH).and_then(|month| month.parse().ok());
-    let day = params.get(DAY).and_then(|day| day.parse().ok());
-    let start = NaiveDate::from_ymd_opt(year, month.unwrap_or(1), day.unwrap_or(1))?;
-    let end = if day.is_some() {
-        start.succ_opt()
-    } else if month.is_some() {
-        start.checked_add_months(Months::new(1))
-    } else {
-        start.checked_add_months(Months::new(12))
-    }?;
-    let from = add_values(values, &start.to_string());
-    let through = add_values(values, &end.to_string());
-    Some(format!(
-        "CAST(t0.date_set AS TEXT)>={from} AND CAST(t0.date_set AS TEXT)<{through}"
-    ))
-}
 
 pub(super) async fn navigation(
     admin: &AdminRequest<'_>,

@@ -52,6 +52,17 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     if production_web && secret.as_deref().is_none_or(|key| key.trim().is_empty()) {
         return Err("Set SECRET_KEY before serving production requests.".into());
     }
+    let season = match env::var("BLACK_ROD_CURRENT_SEASON") {
+        Ok(season) => season
+            .parse::<i32>()
+            .map_err(|_| "Set BLACK_ROD_CURRENT_SEASON to the tournament season's start year.")?,
+        Err(_) if production => {
+            return Err(
+                "Set BLACK_ROD_CURRENT_SEASON before starting the production runtime.".into(),
+            );
+        }
+        Err(_) => 2026,
+    };
     let enabled = |name| {
         env::var(name)
             .is_ok_and(|value| matches!(value.to_ascii_lowercase().as_str(), "1" | "true" | "yes"))
@@ -86,12 +97,11 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         })
         .connect(&database)
         .await?;
-    let season = env::var("BLACK_ROD_CURRENT_SEASON").unwrap_or_else(|_| "2026".into());
     let cache_lifetime = env::var("BLACK_ROD_CACHE_TTL_SECONDS")
         .map(|value| value.parse())
         .unwrap_or(Ok(300))?;
     let mut state =
-        AppState::with_cache_lifetime(pool, season.parse()?, Duration::from_secs(cache_lifetime));
+        AppState::with_cache_lifetime(pool, season, Duration::from_secs(cache_lifetime));
     state = state.with_debater_profile_features(
         enabled("ENABLE_DEBATER_PROFILE_TAB_CARDS"),
         enabled("ENABLE_DEBATER_PARTNER_PIE_CHART"),
