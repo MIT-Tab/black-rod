@@ -144,8 +144,10 @@ def exercise(django, rust, fixture):
     )
 
     event = run(django, f"records/tournaments/{fixture['tournament']}/")
-    numeric = {**prepare([{"op": "update", "resource": "tournaments", "id": event["id"],
-                           "revision": event["revision"], "data": {"num_teams": 32.0}}]), "dry_run": True}
+    numeric = {**prepare([{"op": "update", "resource": "tournaments", "id": float(event["id"]),
+                           "revision": event["revision"], "data": {
+                               "num_teams": 32.0, "host_id": float(event["host_id"]), "qual": 1.0,
+                           }}]), "dry_run": True}
     normalized = run(django, "batches/", payload=numeric)
     for representation in ("32.0", "3.2e1", "32.75"):
         payload = json.dumps(numeric).replace('"num_teams": 32.0', f'"num_teams": {representation}')

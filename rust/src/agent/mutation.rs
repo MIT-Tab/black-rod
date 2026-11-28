@@ -48,10 +48,7 @@ fn resolve(input: &Value, refs: &BTreeMap<String, i64>) -> Result<Value, Failure
 }
 
 pub(super) fn positive_id(value: &Value) -> Option<i64> {
-    value
-        .as_i64()
-        .or_else(|| value.as_str()?.parse().ok())
-        .filter(|id| *id > 0)
+    crate::django_int(value).filter(|id| *id > 0)
 }
 
 async fn exists(conn: &mut AnyConnection, table: &str, id: i64) -> Result<bool, ApiError> {
@@ -133,15 +130,25 @@ async fn validate(
                 .ok_or_else(|| invalid(format!("{{'{name}': ['Enter a whole number.']}}")))?;
             json!(value)
         }
-        "BooleanField" => match raw.as_str() {
-            "true" | "True" | "1" | "t" => json!(true),
-            "false" | "False" | "0" | "f" => json!(false),
-            _ => {
-                return Err(invalid(format!(
-                    "{{'{name}': ['Value must be either True or False.']}}"
-                )));
-            }
-        },
+        "BooleanField" => {
+            let value = match &data {
+                Value::Bool(value) => Some(*value),
+                Value::Number(number) => match number.as_f64() {
+                    Some(0.0) => Some(false),
+                    Some(1.0) => Some(true),
+                    _ => None,
+                },
+                Value::String(value) => match value.as_str() {
+                    "True" | "1" | "t" => Some(true),
+                    "False" | "0" | "f" => Some(false),
+                    _ => None,
+                },
+                _ => None,
+            };
+            json!(value.ok_or_else(|| invalid(format!(
+                "{{'{name}': ['Value must be either True or False.']}}"
+            )))?)
+        }
         "DecimalField" => {
             let number = crate::decimal::validate(&raw, field.max_digits, field.scale)
                 .map_err(|message| invalid(format!("{{'{name}': ['{message}']}}")))?;
