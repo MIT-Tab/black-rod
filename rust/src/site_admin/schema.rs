@@ -242,6 +242,43 @@ impl Exchange {
 }
 
 impl Model {
+    pub(super) fn excludes_temporary(&self) -> bool {
+        self.key == "core.school"
+    }
+
+    pub(super) async fn visible_record(
+        &self,
+        conn: &mut sqlx::AnyConnection,
+        id: i64,
+    ) -> Result<serde_json::Value, crate::ApiError> {
+        let record = self.storage.get(conn, id).await?;
+        if self.excludes_temporary() && record["temporary"].as_bool() == Some(true) {
+            Ok(serde_json::Value::Null)
+        } else {
+            Ok(record)
+        }
+    }
+
+    pub(super) async fn lock_visible_school(
+        &self,
+        conn: &mut sqlx::AnyConnection,
+        id: i64,
+    ) -> Result<bool, crate::ApiError> {
+        if !self.excludes_temporary() {
+            return Ok(true);
+        }
+        let statement = if conn.backend_name() == "PostgreSQL" {
+            "SELECT CAST(id AS BIGINT) FROM core_school WHERE id=$1 AND NOT temporary FOR UPDATE"
+        } else {
+            "UPDATE core_school SET id=id WHERE id=$1 AND NOT temporary RETURNING CAST(id AS BIGINT)"
+        };
+        Ok(sqlx::query_scalar::<_, i64>(statement)
+            .bind(id)
+            .fetch_optional(conn)
+            .await?
+            .is_some())
+    }
+
     pub(super) fn list_media(&self) -> &Media {
         if !crate::web::debug_assets()
             && let Some(media) = &self.production_list_media

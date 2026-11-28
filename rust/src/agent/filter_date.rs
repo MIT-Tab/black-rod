@@ -1,16 +1,24 @@
 use std::sync::LazyLock;
 
 use chrono::{
-    DateTime, Datelike, FixedOffset, NaiveDate, NaiveDateTime, NaiveTime, SecondsFormat, Timelike,
-    Utc,
+    DateTime, Datelike, NaiveDate, NaiveDateTime, NaiveTime, SecondsFormat, TimeDelta, Utc,
 };
 use regex::Regex;
 
 static DATE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^[0-9]{4}-[0-9]{1,2}-[0-9]{1,2}$").unwrap());
+static ISO_DATETIME: LazyLock<Regex> = LazyLock::new(|| {
+    // Python 3.10's fromisoformat accepts a single separator and reduced time precision.
+    Regex::new(concat!(
+        r"^([0-9]{4}-[0-9]{2}-[0-9]{2})(?s:.)([0-9]{2})",
+        r"(?::([0-9]{2})(?::([0-9]{2})(?:\.([0-9]{3}(?:[0-9]{3})?))?)?)?",
+        r"([+-][0-9]{2}:[0-9]{2}(?::[0-9]{2}(?:\.[0-9]{6})?)?)?$",
+    ))
+    .unwrap()
+});
 static DATETIME: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(concat!(
-        r"^([0-9]{4}-[0-9]{1,2}-[0-9]{1,2})[T ]([0-9]{1,2}:[0-9]{1,2})",
+        r"^([0-9]{4}-[0-9]{1,2}-[0-9]{1,2})[T ]([0-9]{1,2}):([0-9]{1,2})",
         r"(?::([0-9]{1,2})(?:[.,]([0-9]{1,6})[0-9]{0,6})?)?",
         r"\s*(Z|[+-][0-9]{2}(?::?[0-9]{2})?)?$",
     ))
@@ -40,23 +48,39 @@ pub(super) fn date(raw: &str) -> Result<String, String> {
     }
 }
 
-fn offset(raw: &str) -> Option<FixedOffset> {
+fn micros(raw: &str) -> Option<u32> {
+    Some(raw.parse::<u32>().ok()? * 10_u32.pow(6_usize.checked_sub(raw.len())? as u32))
+}
+
+fn offset(raw: &str) -> Option<TimeDelta> {
     if raw == "Z" {
-        return FixedOffset::east_opt(0);
+        return Some(TimeDelta::zero());
     }
-    let hour = raw[1..3].parse::<i32>().ok()?;
-    let minute = raw[3..].trim_start_matches(':');
-    let minute = if minute.is_empty() {
-        0
-    } else {
-        minute.parse::<i32>().ok()?
-    };
-    let seconds = (hour * 60 + minute) * 60;
-    if raw.starts_with('-') {
-        FixedOffset::west_opt(seconds)
-    } else {
-        FixedOffset::east_opt(seconds)
+    let hour = raw[1..3].parse::<i64>().ok()?;
+    let mut remainder = raw[3..].trim_start_matches(':').split(':');
+    let minute = remainder
+        .next()
+        .filter(|s| !s.is_empty())
+        .unwrap_or("0")
+        .parse::<i64>()
+        .ok()?;
+    let second = remainder.next().unwrap_or("0");
+    let (second, fraction) = second.split_once('.').unwrap_or((second, "0"));
+    let seconds = (hour * 60 + minute) * 60 + second.parse::<i64>().ok()?;
+    if seconds >= 86_400 {
+        return None;
     }
+    let total = 1_000_000 * seconds
+        + if seconds == 0 {
+            0
+        } else {
+            i64::from(micros(fraction)?)
+        };
+    Some(TimeDelta::microseconds(if raw.starts_with('-') {
+        -total
+    } else {
+        total
+    }))
 }
 
 fn parse_datetime(raw: &str) -> Result<DateTime<Utc>, String> {
@@ -66,7 +90,10 @@ fn parse_datetime(raw: &str) -> Result<DateTime<Utc>, String> {
             .map(|date| date.and_time(NaiveTime::MIN).and_utc())
             .ok_or_else(|| invalid_date(raw));
     }
-    let Some(parts) = DATETIME.captures(trimmed) else {
+    let Some(parts) = ISO_DATETIME
+        .captures(raw)
+        .or_else(|| DATETIME.captures(trimmed))
+    else {
         return Err(format!(
             "['“{raw}” value has an invalid format. It must be in YYYY-MM-DD HH:MM[:ss[.uuuuuu]][TZ] format.']"
         ));
@@ -74,25 +101,17 @@ fn parse_datetime(raw: &str) -> Result<DateTime<Utc>, String> {
 
     let parsed = (|| {
         let date = calendar_date(&parts[1])?;
-        let seconds = parts.get(3).map_or("0", |value| value.as_str());
-        let fraction = parts.get(4).map_or("0", |value| value.as_str());
-        let time = NaiveTime::parse_from_str(
-            &format!("{}:{seconds}.{fraction}", &parts[2]),
-            "%H:%M:%S%.f",
-        )
-        .ok()?;
-        if time.nanosecond() >= 1_000_000_000 {
-            return None;
-        }
+        let part = |index| parts.get(index).map_or("0", |value| value.as_str());
+        let time = NaiveTime::from_hms_micro_opt(
+            part(2).parse().ok()?,
+            part(3).parse().ok()?,
+            part(4).parse().ok()?,
+            micros(part(5))?,
+        )?;
         let local = NaiveDateTime::new(date, time);
-        match parts.get(5) {
+        match parts.get(6) {
             None => Some(local.and_utc()),
-            Some(value) => Some(
-                local
-                    .and_local_timezone(offset(value.as_str())?)
-                    .single()?
-                    .to_utc(),
-            ),
+            Some(value) => Some(local.checked_sub_signed(offset(value.as_str())?)?.and_utc()),
         }
     })();
     parsed.ok_or_else(|| format!(

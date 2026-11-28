@@ -104,6 +104,8 @@ def exercise(django, rust, fixture):
         ("tournaments", {"date": "2035-10-1"}, fixture["tournament"]),
         ("tournaments", {"date__in": "2035-10-1,2034-10-01"}, fixture["tournament"]),
         ("aliases", {"created_at": "2025-10-01T08:00:00.000001Z"}, fixture["synthetic_alias"]),
+        ("aliases", {"created_at": "2025-10-01x08:00:00.000001"}, fixture["synthetic_alias"]),
+        ("aliases", {"created_at": "2025-10-01T07-01:00:00.000001"}, fixture["synthetic_alias"]),
         ("aliases", {"created_at__in": "2025-10-01 01:00:00.000001-07:00,2026-09-01"},
          fixture["synthetic_alias"]),
         ("tournaments", {"date": "bad-date"}, None),
@@ -118,6 +120,9 @@ def exercise(django, rust, fixture):
         assert reference == run(rust, path, expected=status), path
         if expected_id is not None:
             assert expected_id in {row["id"] for row in reference["results"]}, path
+
+    reduced = "records/aliases/?" + urlencode({"created_at": "2025-10-01T08"})
+    assert run(django, reduced) == run(rust, reduced), reduced
 
     # Preserve the exact stored creation timestamp during an unrelated edit and its undo.
     alias_id = fixture["synthetic_alias"]

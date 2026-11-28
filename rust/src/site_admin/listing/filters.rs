@@ -220,7 +220,7 @@ impl<'a> Filter<'a> {
         let mut source = Source::new(model);
         let mut values = Vec::new();
         let mut conditions = Vec::new();
-        if model.slug() == "school" {
+        if model.excludes_temporary() {
             conditions.push("NOT t0.temporary".to_owned());
         }
         if let Some(search) = params

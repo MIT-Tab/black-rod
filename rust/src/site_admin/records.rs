@@ -87,6 +87,13 @@ pub(super) async fn history(
     model: &Model,
     id: i64,
 ) -> Result<Response, ApiError> {
+    if model
+        .visible_record(&mut *admin.state.pool.acquire().await?, id)
+        .await?
+        .is_null()
+    {
+        return Ok(admin.missing_record(model, id));
+    }
     if !admin.viewer.read(model) {
         return Ok(StatusCode::FORBIDDEN.into_response());
     }
@@ -163,6 +170,13 @@ pub(super) async fn delete_entry(
     } else {
         (false, false)
     };
+    if model
+        .visible_record(&mut *admin.state.pool.acquire().await?, id)
+        .await?
+        .is_null()
+    {
+        return Ok(admin.missing_record(model, id));
+    }
     delete(admin, model, &[id], false, confirmed, popup).await
 }
 
@@ -265,6 +279,12 @@ pub(super) async fn delete(
     let mut tree = Vec::new();
     let mut seen = BTreeSet::new();
     for &id in ids {
+        if confirmed && !model.lock_visible_school(&mut tx, id).await? {
+            if bulk {
+                continue;
+            }
+            return Ok(admin.missing_record(model, id));
+        }
         let preview = match delete_relations::preview(&mut tx, &model.table, id).await {
             Ok(plan) => plan,
             Err(DeleteError::Absent) => continue,
@@ -348,7 +368,17 @@ pub(super) async fn delete(
             return admin
                 .popup_response(serde_json::json!({"action":"delete","value":first.to_string()}));
         }
-        let mut response = redirect(&model.url());
+        let location = if bulk {
+            admin
+                .uri
+                .path_and_query()
+                .map_or_else(|| model.url(), |url| url.to_string())
+        } else if admin.viewer.allows(model, "change") {
+            admin.preserved_url(model.url(), true)
+        } else {
+            "/admin/".to_owned()
+        };
+        let mut response = redirect(&location);
         if let Some(secret) = admin.state.secret.as_deref() {
             let message = if bulk {
                 format!("Successfully deleted {count} {}.", model.plural)

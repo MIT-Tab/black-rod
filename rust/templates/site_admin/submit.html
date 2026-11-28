@@ -2,6 +2,6 @@
                 {% if save %}<input type="submit" value="Save" class="default" name="_save">{% endif %}
                 {% if save and can_add and not is_popup %}<input type="submit" value="Save and add another" name="_addanother">{% endif %}
                 {% if save and can_view and not is_popup %}<input type="submit" value="{% if can_change %}Save and continue editing{% else %}Save and view{% endif %}" name="_continue">{% endif %}
-                {% if not save %}<a href="{{ model_url }}" class="closelink">Close</a>{% endif %}
-                {% if can_delete and not add and not is_popup %}<a href="{{ object_url }}delete/" class="deletelink">Delete</a>{% endif %}
+                {% if not save %}<a href="{{ close_url }}" class="closelink">Close</a>{% endif %}
+                {% if can_delete and not add and not is_popup %}<a href="{{ delete_url }}" class="deletelink">Delete</a>{% endif %}
             </div>

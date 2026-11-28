@@ -44,7 +44,7 @@ pub(super) async fn endpoint(admin: &AdminRequest<'_>) -> Result<Response, ApiEr
     let mut conditions: Vec<_> = search_condition(model, input("term"), &mut values)
         .into_iter()
         .collect();
-    if model.slug() == "school" {
+    if model.excludes_temporary() {
         conditions.push("NOT t0.temporary".to_owned());
     }
     let mut order = Vec::new();

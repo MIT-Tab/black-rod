@@ -168,6 +168,58 @@ struct AdminRequest<'a> {
 }
 
 impl AdminRequest<'_> {
+    fn preserved_url(&self, path: String, changelist: bool) -> String {
+        let query = self.uri.query().unwrap_or_default();
+        let Some((_, preserved)) = url::form_urlencoded::parse(query.as_bytes())
+            .filter(|(key, _)| key == "_changelist_filters")
+            .last()
+            .filter(|(_, value)| !value.is_empty())
+        else {
+            return path;
+        };
+        let mut encoded = url::form_urlencoded::Serializer::new(String::new());
+        if changelist {
+            let mut pairs = Vec::new();
+            for (key, value) in url::form_urlencoded::parse(preserved.as_bytes())
+                .filter(|(_, value)| !value.is_empty())
+            {
+                if let Some((_, existing)) = pairs.iter_mut().find(|(name, _)| *name == key) {
+                    *existing = value;
+                } else {
+                    pairs.push((key, value));
+                }
+            }
+            encoded.extend_pairs(pairs);
+        } else {
+            encoded.append_pair("_changelist_filters", &preserved);
+        }
+        let query = encoded.finish();
+        if query.is_empty() {
+            path
+        } else {
+            format!("{path}?{query}")
+        }
+    }
+
+    fn missing_record(&self, model: &Model, id: i64) -> Response {
+        let mut response = redirect(HOME);
+        if let Some(secret) = self.state.secret.as_deref() {
+            let message = format!(
+                "{} with ID “{id}” doesn’t exist. Perhaps it was deleted?",
+                model.singular
+            );
+            flash::push(
+                &mut response,
+                self.headers,
+                secret,
+                30,
+                &message,
+                self.secure(),
+            );
+        }
+        response
+    }
+
     fn origin(&self) -> Option<String> {
         self.state.origin(self.headers)
     }

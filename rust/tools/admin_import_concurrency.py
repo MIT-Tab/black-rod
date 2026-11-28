@@ -10,7 +10,7 @@ from pathlib import Path
 import subprocess
 from tempfile import TemporaryDirectory
 from time import monotonic, sleep
-from urllib.parse import urljoin
+from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit
 
 from bs4 import BeautifulSoup
 from openpyxl import Workbook
@@ -25,6 +25,7 @@ import json
 from reference import application
 
 from datetime import date
+from django.contrib.auth.models import Permission
 from django.contrib.sessions.backends.db import SessionStore
 from core.models import Debater, School, Team, TeamResult, Tournament, User
 
@@ -35,6 +36,18 @@ session["_auth_user_backend"] = "django.contrib.auth.backends.ModelBackend"
 session["_auth_user_hash"] = user.get_session_auth_hash()
 session.save()
 school = School.objects.create(name="Admin import relationship fixture")
+temporary_school = School.all_objects.create(name="Pending school fixture", temporary=True)
+temporary_debater = Debater.all_objects.create(first_name="Pending", last_name="Debater", temporary=True)
+staff = User.objects.create(username="admin_import_staff_fixture", is_staff=True)
+staff.user_permissions.add(*Permission.objects.filter(
+    content_type__app_label="core", codename__in=["view_school", "change_school", "delete_school", "view_debater"],
+))
+staff_session = SessionStore()
+staff_session["_auth_user_id"] = str(staff.pk)
+staff_session["_auth_user_backend"] = "django.contrib.auth.backends.ModelBackend"
+staff_session["_auth_user_hash"] = staff.get_session_auth_hash()
+staff_session.save()
+admin_scope = [staff_session.session_key, school.pk, temporary_school.pk, temporary_debater.pk]
 tournament = Tournament.objects.create(host=school, season="2026", date=date(2026, 11, 13))
 team = Team.objects.create(name="Admin import fixture team")
 award = TeamResult.objects.create(tournament=tournament, team=team, place=1)
@@ -51,7 +64,7 @@ for side in ("Django", "Rust"):
     linked_team = Team.objects.create(name=f"{side} cleanup fixture")
     linked_team.debaters.add(keeper)
     dupes.append([keeper.pk, candidate.pk, linked_team.pk])
-print(json.dumps([session.session_key, tournament.pk, award.pk, deletions, dupes]))
+print(json.dumps([session.session_key, tournament.pk, award.pk, deletions, dupes, admin_scope]))
 """
 IMPORT = "/admin/core/school/import/"
 AUTO_NAME = "Automatic sequence fixture"
@@ -279,6 +292,54 @@ def validate_admin_integer_fields(django, rust, session, tournament, db):
     print("PostgreSQL admin forms validate integer bounds and normalize valid inputs")
 
 
+def validate_admin_scope(servers, scope):
+    session, school, temporary_school, temporary_debater = scope
+    for server in servers:
+        root = f"http://{HOST}:{server.port}/admin/core"
+        with requests.Session() as client:
+            client.cookies.set("sessionid", session)
+            for action in ("change", "delete", "history"):
+                available = client.get(f"{root}/school/{school}/{action}/", allow_redirects=False, timeout=30)
+                assert available.status_code == 200, (server.name, action, available.status_code)
+                unavailable = client.get(f"{root}/school/{temporary_school}/{action}/", allow_redirects=False, timeout=30)
+                assert (unavailable.status_code, unavailable.headers.get("Location")) == (302, "/admin/"), (
+                    server.name, action, unavailable.status_code,
+                )
+            debater = client.get(f"{root}/debater/{temporary_debater}/change/", allow_redirects=False, timeout=30)
+            assert debater.status_code == 200, (server.name, debater.status_code)
+
+
+def validate_admin_filter_redirects(servers, session, control):
+    model = "/admin/core/school/"
+    filters = {"q": "Fixture café", "included_in_oty__exact": "1", "p": "2", "o": "-1"}
+    preserved = {"_changelist_filters": urlencode(filters)}
+    for server in servers:
+        root = f"http://{HOST}:{server.port}"
+        name = f"{server.name} filtered-return fixture"
+        school = insert_school(control, name)
+        change = f"{model}{school}/change/"
+        url = f"{root}{change}?{urlencode(preserved)}"
+        with requests.Session() as client:
+            client.cookies.set("sessionid", session)
+            page = BeautifulSoup(client.get(url, timeout=30).content, "html.parser")
+            token = page.select_one('input[name="csrfmiddlewaretoken"]')["value"]
+            for selector, action in ((".historylink", "history"), (".deletelink", "delete")):
+                link = urlsplit(page.select_one(selector)["href"])
+                assert (link.path, dict(parse_qsl(link.query))) == (f"{model}{school}/{action}/", preserved), server.name
+            for submit, path, query_data in (
+                ("_save", model, filters),
+                ("_continue", change, preserved),
+                ("_addanother", f"{model}add/", preserved),
+            ):
+                result = client.post(url, data={
+                    "csrfmiddlewaretoken": token, "name": name, "short_name": name,
+                    "included_in_oty": "on", submit: "1",
+                }, allow_redirects=False, timeout=30)
+                assert result.status_code == 302, (server.name, submit, result.status_code)
+                location = urlsplit(result.headers["Location"])
+                assert (location.path, dict(parse_qsl(location.query))) == (path, query_data), (server.name, submit, location)
+
+
 def validate_concurrent_deletion(servers, session, deletions, control, writer):
     for server, (source, destination, debater) in zip(servers, deletions):
         path = f"http://{HOST}:{server.port}/core/schools/{source}/delete"
@@ -340,13 +401,15 @@ def main():
             env = {**os.environ, "SECRET_KEY": "disposable-local-parity-key",
                    "PYTHONPATH": f"{Path(__file__).resolve().parent}{os.pathsep}{os.environ['PYTHONPATH']}"}
             data = subprocess.check_output([str(ROOT / "venv/bin/python"), "-c", SEED], env=env, text=True)
-            session, tournament, award, deletions, dupes = json.loads(data.splitlines()[-1])
+            session, tournament, award, deletions, dupes, admin_scope = json.loads(data.splitlines()[-1])
             clone = os.environ["BLACK_ROD_PARITY_POSTGRES_URL"]
             with servers(database) as (django, rust), requests.Session() as client, closing(
                 psycopg2.connect(clone)
             ) as control, closing(psycopg2.connect(clone)) as writer:
                 client.cookies.set("sessionid", session)
                 control.autocommit = True
+                validate_admin_scope((django, rust), admin_scope)
+                validate_admin_filter_redirects((django, rust), session, control)
                 validate_import_cells(django, rust, session, tournament, award, control)
                 validate_import_debater_seasons(django, rust, session, control)
                 validate_admin_integer_fields(django, rust, session, tournament, control)

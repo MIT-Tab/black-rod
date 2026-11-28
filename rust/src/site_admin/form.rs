@@ -702,6 +702,9 @@ async fn render_form(
     };
     let url = model.url();
     let object_url = id.map(|id| format!("{url}{id}/")).unwrap_or_default();
+    let history_url = admin.preserved_url(format!("{object_url}history/"), false);
+    let delete_url = admin.preserved_url(format!("{object_url}delete/"), false);
+    let close_url = admin.preserved_url(url.clone(), true);
     let site_object = if let Some(id) = id.filter(|_| {
         matches!(
             model.slug(),
@@ -723,7 +726,8 @@ async fn render_form(
         title=>format!("{} {}",if adding{"Add"}else if admin.viewer.allows(model,"change"){"Change"}else{"View"},model.singular),
         subtitle=>id.map(|_|&original), original,
         plural=>cap_first(&model.plural), app_label=>model.app(),app_name=>&app.name,app_url=>app.url(),
-        model_name=>model.slug(),model_url=>url,object_url, fieldsets,inlines,save_on_top=>model.save_on_top,add=>adding,errors,
+        model_name=>model.slug(),model_url=>url,history_url,delete_url,close_url,
+        fieldsets,inlines,save_on_top=>model.save_on_top,add=>adding,errors,
         css=>&form.media().css, js=>&form.media().js, multipart=>model.key=="django_summernote.attachment",
         add_user=>adding && model.slug()=="user", can_view=>admin.viewer.read(model),
         can_add=>admin.viewer.allows(model,"add"),can_change=>admin.viewer.allows(model,"change"),
@@ -925,6 +929,11 @@ async fn save(
         return Ok(Some(redirect(&model.url())));
     }
     let mut tx = admin.state.pool.begin().await?;
+    if let Some(id) = id
+        && !model.lock_visible_school(&mut tx, id).await?
+    {
+        return Ok(Some(admin.missing_record(model, id)));
+    }
     let mut was_grid_hidden = false;
     let hide_from_grid =
         model.key == "core.debater" && checkbox_posted(values, "immaculate_hidden");
@@ -1065,11 +1074,13 @@ async fn save(
     }
     let model_url = model.url();
     let location = if values.contains_key("_continue") {
-        format!("{model_url}{record}/change/")
+        admin.preserved_url(format!("{model_url}{record}/change/"), false)
     } else if values.contains_key("_addanother") {
-        format!("{model_url}add/")
+        admin.preserved_url(format!("{model_url}add/"), false)
+    } else if admin.viewer.read(model) {
+        admin.preserved_url(model_url, true)
     } else {
-        model_url.clone()
+        "/admin/".to_owned()
     };
     let mut response = redirect(&location);
     if let Some(secret) = admin.state.secret.as_deref() {
@@ -1104,33 +1115,20 @@ pub(super) async fn page(
         };
         return Ok(status.into_response());
     }
-    if id.is_none() && !admin.viewer.allows(model, "add")
-        || id.is_some() && !admin.viewer.read(model)
-    {
+    let allowed = match (id, request.method()) {
+        (None, _) => admin.viewer.allows(model, "add"),
+        (Some(_), &Method::POST) => admin.viewer.allows(model, "change"),
+        (Some(_), _) => admin.viewer.read(model),
+    };
+    if !allowed {
         return Ok(StatusCode::FORBIDDEN.into_response());
     }
     let loaded = if let Some(id) = id {
         let entry = model
-            .storage
-            .get(&mut *admin.state.pool.acquire().await?, id)
+            .visible_record(&mut *admin.state.pool.acquire().await?, id)
             .await?;
         if entry.is_null() {
-            let mut response = redirect("/admin/");
-            if let Some(secret) = admin.state.secret.as_deref() {
-                let message = format!(
-                    "{} with ID “{id}” doesn’t exist. Perhaps it was deleted?",
-                    cap_first(&model.singular)
-                );
-                flash::push(
-                    &mut response,
-                    admin.headers,
-                    secret,
-                    30,
-                    &message,
-                    admin.secure(),
-                );
-            }
-            return Ok(response);
+            return Ok(admin.missing_record(model, id));
         }
         entry
     } else {
@@ -1138,9 +1136,6 @@ pub(super) async fn page(
     };
     if *request.method() != Method::POST {
         return render_form(admin, model, id, &loaded, None, &Errors::new()).await;
-    }
-    if id.is_some() && !admin.viewer.allows(model, "change") {
-        return Ok(StatusCode::FORBIDDEN.into_response());
     }
     let (mut parsed, uploaded) = if model.key == "django_summernote.attachment" {
         match attachment_form(request).await {
