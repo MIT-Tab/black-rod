@@ -58,18 +58,18 @@ jobs:
           git diff --exit-code -- rust/schema/
       - name: Match the Django URL inventory
         run: .agents/skills/black-rod-task/scripts/br venv/bin/python rust/tools/route_parity.py
-      - name: Compare HTTP responses on SQLite
-        run: .agents/skills/black-rod-task/scripts/br venv/bin/python rust/tools/compare.py
-      - name: Compare reversible Agent corrections on SQLite
-        run: .agents/skills/black-rod-task/scripts/br venv/bin/python rust/tools/agent_write_parity.py
       - uses: actions/setup-node@v4
         with:
           node-version-file: '.nvmrc'
           cache: npm
-      - name: Build frontend assets for page comparisons
+      - name: Build frontend assets for parity checks
         run: |
           npm ci
           npm run build
+      - name: Compare HTTP responses on SQLite
+        run: .agents/skills/black-rod-task/scripts/br venv/bin/python rust/tools/compare.py
+      - name: Compare reversible Agent corrections on SQLite
+        run: .agents/skills/black-rod-task/scripts/br venv/bin/python rust/tools/agent_write_parity.py
       - name: Compare standings recomputation on disposable SQLite databases
         run: .agents/skills/black-rod-task/scripts/br venv/bin/python rust/tools/rankings_parity.py
       - name: Compare maintenance commands on disposable SQLite databases
