@@ -1871,6 +1871,39 @@ def assert_entities(driver, django, rust, fixture):
     assert updated[:2] == [200, team], updated[:2]
     driver.get(f"{django_root}{team}/edit")
     assert driver.find_element("id", "id_short_name").get_attribute("value") == fields[0][1]
+
+    roster = subprocess.check_output([str(ROOT / "venv/bin/python"), "-c", """
+from django import setup
+setup()
+from core.models import Debater, Team
+import json
+from sys import argv
+team = Team.objects.create(name="Historical team edit fixture", short_name="Original")
+hidden = [Debater.all_objects.create(first_name="Archived roster fixture", **{flag: True}).id
+          for flag in ("synthetic", "temporary")]
+team.debaters.through.objects.bulk_create([
+    team.debaters.through(team_id=team.id, debater_id=member) for member in [*map(int, argv[1:]), *hidden]
+])
+removed = Debater.objects.create(first_name="Visible roster replacement fixture")
+print(json.dumps((team.id, hidden, removed.id)))
+""", *map(str, member_ids)], text=True)
+    edited_team, hidden, removed = json.loads(roster.splitlines()[-1])
+    historical = f"/core/teams/{edited_team}"
+    for root in (django_root, rust_root):
+        with sqlite3.connect(database) as connection:
+            connection.execute("INSERT INTO core_team_debaters (team_id,debater_id) VALUES (?,?)",
+                               (edited_team, removed))
+        driver.get(root + historical + "/edit")
+        selected = driver.execute_script("""
+            return Array.from(document.getElementById('id_debaters').selectedOptions, value => Number(value.value));
+        """)
+        assert set(selected) == {*member_ids, removed}, (root, selected)
+        saved = submit(root, historical + "/edit", fields + [["debaters", member] for member in member_ids])
+        assert saved[:2] == [200, historical], saved[:2]
+        with sqlite3.connect(f"{database.as_uri()}?mode=ro", uri=True) as connection:
+            links = connection.execute("SELECT debater_id FROM core_team_debaters WHERE team_id=?",
+                                       (edited_team,)).fetchall()
+            assert {row[0] for row in links} == {*member_ids, *hidden}, (root, links)
     with sqlite3.connect(database) as connection:
         synthetic = connection.execute(
             "INSERT INTO core_team (name,short_name,synthetic) VALUES ('Synthetic team fixture','Synthetic edit',1)"

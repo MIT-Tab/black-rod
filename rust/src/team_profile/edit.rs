@@ -117,11 +117,10 @@ async fn view(state: &AppState, request: Request, id: i64) -> Result<Response, A
             .fetch_all(&mut *tx)
             .await?;
             for person in current.iter().filter(|person| !people.contains_key(person)) {
-                sqlx::query("DELETE FROM core_team_debaters WHERE team_id=$1 AND debater_id=$2")
-                    .bind(id)
-                    .bind(person)
-                    .execute(&mut *tx)
-                    .await?;
+                // The edit form can change only the roster members it can display.
+                sqlx::query("DELETE FROM core_team_debaters WHERE team_id=$1 AND debater_id=$2
+                    AND EXISTS (SELECT 1 FROM core_debater d WHERE d.id=$2 AND NOT d.synthetic AND NOT d.temporary)")
+                    .bind(id).bind(person).execute(&mut *tx).await?;
             }
             for person in people.keys().filter(|person| !current.contains(person)) {
                 sqlx::query("INSERT INTO core_team_debaters (team_id,debater_id) VALUES ($1,$2) ON CONFLICT DO NOTHING")
@@ -138,7 +137,8 @@ async fn view(state: &AppState, request: Request, id: i64) -> Result<Response, A
     } else {
         for row in sqlx::query(
             "SELECT CAST(d.id AS BIGINT) AS id, TRIM(d.first_name || ' ' || d.last_name) AS name
-            FROM core_debater d JOIN core_team_debaters m ON m.debater_id=d.id WHERE m.team_id=$1",
+            FROM core_debater d JOIN core_team_debaters m ON m.debater_id=d.id
+            WHERE m.team_id=$1 AND NOT d.synthetic AND NOT d.temporary",
         )
         .bind(id)
         .fetch_all(&state.pool)
