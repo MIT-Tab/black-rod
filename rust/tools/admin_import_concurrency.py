@@ -40,7 +40,8 @@ temporary_school = School.all_objects.create(name="Pending school fixture", temp
 temporary_debater = Debater.all_objects.create(first_name="Pending", last_name="Debater", temporary=True)
 staff = User.objects.create(username="admin_import_staff_fixture", is_staff=True)
 staff.user_permissions.add(*Permission.objects.filter(
-    content_type__app_label="core", codename__in=["view_school", "change_school", "delete_school", "view_debater"],
+    content_type__app_label="core", codename__in=["view_school", "change_school", "delete_school", "view_debater",
+                                             "view_soty", "add_soty", "change_soty"],
 ))
 staff_session = SessionStore()
 staff_session["_auth_user_id"] = str(staff.pk)
@@ -315,6 +316,19 @@ def validate_admin_scope(servers, scope):
                 )
             debater = client.get(f"{root}/debater/{temporary_debater}/change/", allow_redirects=False, timeout=30)
             assert debater.status_code == 200, (server.name, debater.status_code)
+            school_list = BeautifulSoup(client.get(f"{root}/school/", timeout=30).content, "html.parser")
+            assert school_list.select_one(".import_link") is None and school_list.select_one(".export_link") is not None
+            assert client.get(f"{root}/school/import/", timeout=30).status_code == 403, server.name
+            token = school_list.select_one('input[name="csrfmiddlewaretoken"]')["value"]
+            response = client.post(f"{root}/school/process_import/", data={"csrfmiddlewaretoken": token}, timeout=30)
+            assert response.status_code == 403, (server.name, response.status_code)
+            assert client.get(f"{root}/school/export/", timeout=30).status_code == 200, server.name
+            assert client.get(f"{root}/debater/import/", timeout=30).status_code == 403, server.name
+            assert client.get(f"{root}/debater/export/", timeout=30).status_code == 200, server.name
+            assert client.get(f"{root}/tournament/export/", timeout=30).status_code == 403, server.name
+            for action in ("import", "export"):
+                response = client.get(f"{root}/soty/{action}/", timeout=30)
+                assert response.status_code == 403, (server.name, action, response.status_code)
 
 
 def validate_admin_filter_redirects(servers, session, control):

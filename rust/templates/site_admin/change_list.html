@@ -22,7 +22,8 @@
 {% block content %}
 <div id="content-main">
     <ul class="object-tools">
-        {% if import_export %}<li><a href="{{ model_url }}import/" class="import_link">Import</a></li><li><a href="{{ export_link }}" class="export_link">Export</a></li>{% endif %}
+        {% if can_import %}<li><a href="{{ model_url }}import/" class="import_link">Import</a></li>{% endif %}
+        {% if can_export %}<li><a href="{{ export_link }}" class="export_link">Export</a></li>{% endif %}
         {% if add_link %}<li><a href="{{ add_link }}" class="addlink">Add {{ singular }}</a></li>{% endif %}
     </ul>
     <div class="module{% if filters %} filtered{% endif %}" id="changelist">

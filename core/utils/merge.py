@@ -1,5 +1,5 @@
 from django.conf import settings
-from django.db import IntegrityError, transaction
+from django.db import IntegrityError
 from django.db.models import Q
 from django.utils import timezone
 
@@ -29,6 +29,7 @@ from core.models import (
 )
 
 from core.utils.qualifications import coty_bonus_quals, sync_manual_autoquals
+from core.utils.rankings import standings_write_lock
 
 
 class MergeError(Exception):
@@ -199,7 +200,7 @@ def merge_debaters(primary, secondary):
     seasons.update(secondary.online_qual.values_list("season", flat=True))
 
     seasons = {str(season) for season in seasons if season}
-    with transaction.atomic():
+    with standings_write_lock(*seasons):
         _merge_speaker_results(primary, secondary)
         _merge_round_stats(primary, secondary)
         _merge_debater_aliases(primary, secondary)

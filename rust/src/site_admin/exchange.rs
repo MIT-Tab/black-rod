@@ -188,6 +188,28 @@ async fn export_rows(
         .collect()
 }
 
+pub(super) fn can_import(admin: &AdminRequest<'_>, model: &Model) -> bool {
+    model.import_export
+        && model
+            .exchange
+            .as_ref()
+            .and_then(|exchange| exchange.resource(model).ok())
+            .is_some_and(|resource| {
+                [model, resource].iter().all(|model| {
+                    admin.viewer.allows(model, "add") && admin.viewer.allows(model, "change")
+                })
+            })
+}
+
+pub(super) fn can_export(admin: &AdminRequest<'_>, model: &Model) -> bool {
+    model.import_export
+        && model
+            .exchange
+            .as_ref()
+            .and_then(|exchange| exchange.resource(model).ok())
+            .is_some_and(|resource| admin.viewer.read(model) && admin.viewer.read(resource))
+}
+
 pub(super) async fn export_page(
     admin: &AdminRequest<'_>,
     model: &Model,
@@ -197,6 +219,9 @@ pub(super) async fn export_page(
     let Some(exchange) = &model.exchange else {
         return Ok(StatusCode::NOT_FOUND.into_response());
     };
+    if !can_export(admin, model) {
+        return Ok(StatusCode::FORBIDDEN.into_response());
+    }
     let query = url::form_urlencoded::parse(admin.uri.query().unwrap_or_default().as_bytes())
         .into_owned()
         .collect();

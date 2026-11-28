@@ -709,6 +709,9 @@ pub(in crate::site_admin) async fn preview(
     let Some(exchange) = &model.exchange else {
         return Ok(StatusCode::NOT_FOUND.into_response());
     };
+    if !super::can_import(admin, model) {
+        return Ok(StatusCode::FORBIDDEN.into_response());
+    }
     let standard = common(model, exchange, true);
     if request.method() != Method::POST {
         return admin.view("site_admin/exchange.html", standard);
@@ -796,6 +799,9 @@ pub(in crate::site_admin) async fn confirm(
     };
     if method != Method::POST {
         return Ok(StatusCode::METHOD_NOT_ALLOWED.into_response());
+    }
+    if !super::can_import(admin, model) {
+        return Ok(StatusCode::FORBIDDEN.into_response());
     }
     let fields = match login::parse_form(admin.headers, body, 128 * 1024).await {
         Ok(fields) => fields,

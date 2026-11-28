@@ -11,7 +11,7 @@ use super::{
     },
     rankings, rewrite,
 };
-use crate::{ApiError, claims};
+use crate::{ApiError, claims, tournament_import::results::standings::lock_season};
 
 type Fields = Map<String, Value>;
 
@@ -501,6 +501,9 @@ pub(super) async fn merge(
     .fetch_all(&mut *conn)
     .await?;
     let seasons = relatives(conn, primary, secondary).await?;
+    for season in &seasons {
+        lock_season(conn, season).await?;
+    }
     rewrite(
         conn,
         journal,

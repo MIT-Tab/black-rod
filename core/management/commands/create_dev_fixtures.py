@@ -7,14 +7,24 @@ from django.core.serializers.json import DjangoJSONEncoder
 from django.contrib.auth.models import Permission, Group
 from django.contrib.contenttypes.models import ContentType
 from taggit.models import Tag, TaggedItem
-from core.models import (
-    User, Video
-)
+from core.models import Resource, User, Video
 
 FAKE_PW = "pbkdf2_sha256$260000$fake$fakehashfordev"
 # Tag assignment natural keys are incomplete or nonunique. Preserve the row
 # identity while keeping natural foreign keys for the tag names.
 FIXTURE_EXPLICIT_PKS = {"taggit.taggeditem", "core.taggedmotion", "core.taggedresource"}
+
+
+def _redact_restricted_fields(item):
+    model, fields = item["model"], item["fields"]
+    if model == "core.resource" and fields["viewing_permission"] == Resource.REQUIRES_LOGIN:
+        key = item["pk"]
+        fields.update(title=f"Restricted resource {key}", content_link=f"https://example.invalid/resources/{key}",
+                      description="", usage_permissions="")
+    elif model == "core.schedulerworkspace":
+        fields.update(schools_csv="", dates_csv="", schools_filename="", dates_filename="", settings={})
+    elif model == "core.schedulingrun":
+        fields.update(output_text="", error_text="", settings_snapshot={}, result={})
 
 
 class Command(BaseCommand):
@@ -76,6 +86,7 @@ class Command(BaseCommand):
                     item["pk"] = obj.pk
                 if item["model"] == "core.debater" and item["fields"].get("email"):
                     item["fields"]["email"] = f"debater-{item['pk']}@example.invalid"
+                _redact_restricted_fields(item)
             data = json.dumps(payload, ensure_ascii=False, cls=DjangoJSONEncoder)
         except Exception as e:
             self.stdout.write(self.style.ERROR(f"Error serializing data: {e}"))

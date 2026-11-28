@@ -5,7 +5,7 @@ from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 from django.db.models import Count
 from django.utils.html import format_html
-from import_export.admin import ImportExportModelAdmin
+from import_export.admin import ImportExportModelAdmin as BaseImportExportModelAdmin
 from taggit.models import Tag, TaggedItem
 
 from core import agent_admin  # noqa: F401  # pylint: disable=unused-import
@@ -78,6 +78,21 @@ from core.resources import (
 from core.utils.debater_aliases import load_linked_debater_ids
 
 # Register your models here.
+
+
+class ImportExportModelAdmin(BaseImportExportModelAdmin):
+    def _resource_permissions(self, request, resource, actions):
+        opts = resource._meta.model._meta
+        return tuple(request.user.has_perm(f"{opts.app_label}.{action}_{opts.model_name}") for action in actions)
+
+    def has_import_permission(self, request):
+        # A bulk file can both add and update records, including in a different resource model.
+        return (self.has_add_permission(request) and self.has_change_permission(request)
+                and all(self._resource_permissions(request, self.get_import_resource_class(), ("add", "change"))))
+
+    def has_export_permission(self, request):
+        return (self.has_view_or_change_permission(request)
+                and any(self._resource_permissions(request, self.get_export_resource_class(), ("view", "change"))))
 
 
 @admin.register(School)

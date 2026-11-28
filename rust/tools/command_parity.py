@@ -44,23 +44,40 @@ def snapshot(path, table, columns):
 def seed_fixture_tags(database):
     script = """
 import json
-from core.models import Motion, Resource
+from core.models import Motion, Resource, SchedulerWorkspace, SchedulingRun
 from core.models.tags import MotionTopic, ResourceTag
 
 motion = Motion.objects.create(text="Sparse fixture motion")
 resource = Resource.objects.create(title="Sparse fixture resource", content_link="https://example.test/resource")
+restricted = Resource.objects.create(
+    title="private-fixture-sentinel", content_link="https://example.test/private-fixture-sentinel",
+    description="private-fixture-sentinel", usage_permissions="private-fixture-sentinel",
+    viewing_permission=Resource.REQUIRES_LOGIN,
+)
+workspace = SchedulerWorkspace.objects.create(
+    name="export-privacy-fixture", schools_csv="private-fixture-sentinel", dates_csv="private-fixture-sentinel",
+    schools_filename="private-fixture-sentinel.csv", dates_filename="private-fixture-sentinel.csv",
+    settings={"value": "private-fixture-sentinel"},
+)
+run = SchedulingRun.objects.create(
+    workspace=workspace, output_text="private-fixture-sentinel", error_text="private-fixture-sentinel",
+    settings_snapshot={"value": "private-fixture-sentinel"}, result={"value": "private-fixture-sentinel"},
+)
 for index, tag_id in enumerate((901001, 902507)):
     topic = MotionTopic.objects.create(pk=tag_id, name=f"Fixture motion topic {index}")
     label = ResourceTag.objects.create(pk=tag_id + 10, name=f"Fixture resource tag {index}")
     motion.tags.add(topic)
     resource.tags.add(label)
-print(json.dumps([motion.pk, resource.pk]))
+print(json.dumps([motion.pk, resource.pk, restricted.pk, workspace.pk, run.pk]))
 """
     return json.loads(run("shell", database, "django", "--verbosity", "0", "-c", script).splitlines()[-1])
 
 
 def verify_fixture_tag_roundtrip(document, ids, parent):
-    motion, resource = ids
+    motion, resource, restricted, workspace, run_id = ids
+    assert "private-fixture-sentinel" not in json.dumps(document)
+    for model, key in (("core.resource", restricted), ("core.schedulerworkspace", workspace), ("core.schedulingrun", run_id)):
+        assert any(row["model"] == model and row["pk"] == key for row in document)
     prefix = "Fixture "
     selected = [
         row for row in document
