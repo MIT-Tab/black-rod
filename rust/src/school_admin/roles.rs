@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use axum::{
     Json,
     extract::{OriginalUri, Request, State},
@@ -272,19 +274,34 @@ pub(crate) async fn action(State(state): State<AppState>, request: Request) -> R
     save(&state, request).await.unwrap_or_else(failed)
 }
 
-pub(super) async fn admins(conn: &mut AnyConnection, school: i64) -> Result<Vec<Value>, ApiError> {
-    let query =
-        format!("{ADMIN} WHERE a.school_id=$1 ORDER BY a.\"primary\" DESC,LOWER(u.username)");
-    let rows = sqlx::query(sqlx::AssertSqlSafe(query))
-        .bind(school)
-        .fetch_all(conn)
-        .await?;
-    rows.iter().map(|row| Ok(json!({
-        "id":row.try_get::<i64,_>("id")?, "user_id":row.try_get::<i64,_>("user_id")?,
-        "user":{"id":row.try_get::<i64,_>("user_id")?, "username":row.try_get::<&str,_>("username")?,
-            "email":row.try_get::<&str,_>("email")?},
-        "primary":row.try_get::<i64,_>("primary")?!=0,
-    }))).collect()
+pub(super) async fn admins(
+    conn: &mut AnyConnection,
+    schools: &[i64],
+) -> Result<HashMap<i64, Vec<Value>>, ApiError> {
+    let mut admins: HashMap<i64, Vec<Value>> = HashMap::new();
+    for group in schools.chunks(200) {
+        let placeholders = super::school_parameters(group.len(), 1);
+        let statement = format!(
+            "{ADMIN} WHERE a.school_id IN ({placeholders}) ORDER BY a.\"primary\" DESC,LOWER(u.username)"
+        );
+        let mut query = sqlx::query(sqlx::AssertSqlSafe(statement));
+        for school in group {
+            query = query.bind(school);
+        }
+        for row in query.fetch_all(&mut *conn).await? {
+            let user = row.try_get::<i64, _>("user_id")?;
+            admins
+                .entry(row.try_get("school_id")?)
+                .or_default()
+                .push(json!({
+                    "id":row.try_get::<i64,_>("id")?, "user_id":user,
+                    "user":{"id":user, "username":row.try_get::<&str,_>("username")?,
+                        "email":row.try_get::<&str,_>("email")?},
+                    "primary":row.try_get::<i64,_>("primary")?!=0,
+                }));
+        }
+    }
+    Ok(admins)
 }
 
 async fn lookup(

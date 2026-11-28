@@ -1,6 +1,6 @@
 # Black Rod Rust runtime
 
-Run the Rust service from the repository root against an existing Black Rod database. For local development, `dev-up` creates and loads the isolated SQLite fixture and starts Rust with webpack watching the frontend assets. The Rust server uses the existing table names and reads the schema directly. It has no startup migration.
+Run the Rust service from the repository root against an existing Black Rod database. For local development, `dev-up` creates and loads the isolated SQLite fixture and starts Rust with webpack watching the frontend assets. Restart the dev server after changing Rust code or server-rendered templates. The Rust server uses the existing table names and reads the schema directly. It has no startup migration.
 
 ```sh
 scripts=.agents/skills/black-rod-task/scripts

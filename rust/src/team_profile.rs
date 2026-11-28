@@ -525,7 +525,7 @@ pub(crate) async fn page(
     headers: HeaderMap,
 ) -> Response {
     let Some(id) = id.parse::<i64>().ok().filter(|_| is_django_integer(&id)) else {
-        return StatusCode::NOT_FOUND.into_response();
+        return crate::routing::missing_route(&uri);
     };
     render_page(&state, id, &uri, &headers, None).await
 }

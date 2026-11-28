@@ -247,6 +247,8 @@ def fixture_cases(django):
         Case("/api/debaters/7/detail?limit=2"),
         Case("/core/my-profile?source=legacy"),
         Case("/core/claim-debater/request"),
+        Case("/core/tournaments/import?next=results%20export"),
+        Case("/core/debaters/partnership-paths?season=2025"),
         Case("/api/schools/all"), Case(f"/api/debaters/{school}?q=t"),
         Case("/api/schedule"), Case("/api/standings"), Case("/api/oty-guide"), Case("/llm/oty-guide"),
         Case("/api/schools/", "POST"), Case("/api/schools/", "PUT"),

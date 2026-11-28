@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 pub(crate) mod debater;
 pub(crate) mod roles;
 
@@ -8,7 +10,7 @@ use axum::{
 };
 use minijinja::context;
 use serde_json::{Value, json};
-use sqlx::{AnyConnection, Row};
+use sqlx::{AnyConnection, AssertSqlSafe, Row};
 
 use crate::{ApiError, AppState, login, session, team_profile::read_transaction, web};
 
@@ -18,33 +20,42 @@ const MANAGED: &str = "SELECT CAST(s.id AS BIGINT) AS id,s.name
 const ALL_SCHOOLS: &str = "SELECT CAST(s.id AS BIGINT) AS id,s.name,
     (SELECT COUNT(*) FROM core_debater d WHERE d.school_id=s.id AND d.latest_season >= $1) AS active
     FROM core_school s WHERE NOT s.temporary ORDER BY active DESC,s.name LIMIT 15 OFFSET $2";
-const ROSTER: &str =
-    "SELECT CAST(d.id AS BIGINT) AS id,d.first_name,d.last_name,d.first_season,d.latest_season,
-    CAST(d.status AS BIGINT) AS status FROM core_debater d
-    WHERE d.school_id=$1 AND d.latest_season >= $2 AND NOT d.synthetic AND NOT d.temporary
+const ROSTER: &str = "SELECT CAST(d.school_id AS BIGINT) AS school_id,CAST(d.id AS BIGINT) AS id,
+    d.first_name,d.last_name,d.first_season,d.latest_season,CAST(d.status AS BIGINT) AS status
+    FROM core_debater d WHERE d.latest_season >= $1 AND NOT d.synthetic AND NOT d.temporary
+    AND d.school_id IN ({schools})
     ORDER BY d.latest_season DESC,d.last_name,d.first_name";
 
-async fn roster(
+fn school_parameters(count: usize, first: usize) -> String {
+    (first..first + count)
+        .map(|index| format!("${index}"))
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
+async fn rosters(
     conn: &mut AnyConnection,
-    school: i64,
+    schools: &[i64],
     after: &str,
-) -> Result<Vec<Value>, ApiError> {
-    let rows = sqlx::query(ROSTER)
-        .bind(school)
-        .bind(after)
-        .fetch_all(conn)
-        .await?;
-    rows.iter()
-        .map(|row| {
-            Ok(json!({
+) -> Result<HashMap<i64, Vec<Value>>, ApiError> {
+    let mut rosters: HashMap<i64, Vec<Value>> = HashMap::new();
+    for group in schools.chunks(200) {
+        let statement = ROSTER.replace("{schools}", &school_parameters(group.len(), 2));
+        let mut query = sqlx::query(AssertSqlSafe(statement)).bind(after);
+        for school in group {
+            query = query.bind(school);
+        }
+        for row in query.fetch_all(&mut *conn).await? {
+            rosters.entry(row.try_get("school_id")?).or_default().push(json!({
                 "id":row.try_get::<i64,_>("id")?,"first_name":row.try_get::<&str,_>("first_name")?,
                 "last_name":row.try_get::<&str,_>("last_name")?,
                 "first_season":row.try_get::<Option<&str>,_>("first_season")?.unwrap_or("None"),
                 "latest_season":row.try_get::<Option<&str>,_>("latest_season")?.unwrap_or("None"),
                 "status":row.try_get::<i64,_>("status")?,
-            }))
-        })
-        .collect()
+            }));
+        }
+    }
+    Ok(rosters)
 }
 
 async fn page(state: &AppState, uri: &Uri, headers: &HeaderMap) -> Result<Response, ApiError> {
@@ -74,13 +85,18 @@ async fn page(state: &AppState, uri: &Uri, headers: &HeaderMap) -> Result<Respon
             .bind((number - 1) * 15)
             .fetch_all(&mut *tx)
             .await?;
+        let ids = rows
+            .iter()
+            .map(|row| row.try_get("id"))
+            .collect::<Result<Vec<i64>, _>>()?;
+        let mut admins = roles::admins(&mut tx, &ids).await?;
         let mut school_data = Vec::new();
         for record in rows {
             let id: i64 = record.try_get("id")?;
             school_data.push(json!({
                 "school":{"id":id,"name":record.try_get::<&str,_>("name")?},
                 "active_debater_count":record.try_get::<i64,_>("active")?,
-                "admins":roles::admins(&mut tx,id).await?,
+                "admins":admins.remove(&id).unwrap_or_default(),
             }));
         }
         (
@@ -95,20 +111,35 @@ async fn page(state: &AppState, uri: &Uri, headers: &HeaderMap) -> Result<Respon
             .bind(user.id)
             .fetch_all(&mut *tx)
             .await?;
+        let ids = rows
+            .iter()
+            .map(|row| row.try_get("id"))
+            .collect::<Result<Vec<i64>, _>>()?;
+        let mut administrators = roles::admins(&mut tx, &ids).await?;
+        let mut rosters = rosters(&mut tx, &ids, &after).await?;
         let mut schools = Vec::new();
         for record in rows {
             let id: i64 = record.try_get("id")?;
-            let admins = roles::admins(&mut tx, id).await?;
+            let admins = administrators.remove(&id).unwrap_or_default();
             let current = admins
                 .iter()
                 .find(|admin| admin["user_id"].as_i64() == user.id)
                 .cloned();
-            let role = roles::role(&mut tx, &user, id)
-                .await?
-                .map(roles::Role::name);
+            let role = if user.is_superuser {
+                Some(roles::Role::Superuser)
+            } else {
+                current.as_ref().map(|admin| {
+                    if admin["primary"] == true {
+                        roles::Role::Primary
+                    } else {
+                        roles::Role::Admin
+                    }
+                })
+            }
+            .map(roles::Role::name);
             schools.push(json!({
                 "id":id,"name":record.try_get::<&str,_>("name")?,"admins":admins,
-                "current":current,"role":role,"roster":roster(&mut tx,id,&after).await?,
+                "current":current,"role":role,"roster":rosters.remove(&id).unwrap_or_default(),
             }));
         }
         (

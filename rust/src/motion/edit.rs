@@ -13,7 +13,7 @@ use crate::{
     ApiError, AppState, autocomplete, flash, is_django_integer, login, session, tag_filter, web,
 };
 
-use super::{DETAIL, TOPICS};
+use super::{DETAIL, topics};
 
 #[derive(Default, Serialize)]
 struct Fields {
@@ -36,10 +36,7 @@ impl Fields {
             return Ok(None);
         };
         let tournament_id = row.try_get::<Option<i64>, _>("tournament_id")?;
-        let tags = sqlx::query_scalar::<_, String>(TOPICS)
-            .bind(id)
-            .fetch_all(pool)
-            .await?;
+        let tags = topics(pool, id).await?;
         Ok(Some(Self {
             text: row.try_get("text")?,
             background_slide: row.try_get("background_slide")?,

@@ -8,7 +8,7 @@ use axum::{
 };
 use minijinja::context;
 use serde_json::json;
-use sqlx::{AnyConnection, AssertSqlSafe, Row};
+use sqlx::{AnyConnection, AnyPool, AssertSqlSafe, Row};
 
 use crate::{ApiError, AppState, is_django_integer, login, session, web};
 
@@ -19,16 +19,15 @@ const DETAIL: &str = "
           WHERE s.motion_id = m.id AND s.user_id = CAST($2 AS BIGINT)) AS motion_status
     FROM core_motion m LEFT JOIN core_tournament t ON t.id = m.tournament_id WHERE m.id = $1
 ";
-const TOPICS: &str = "
-    SELECT CAST(m.content_object_id AS BIGINT) AS motion, t.name
-    FROM core_motiontopic t JOIN core_taggedmotion m ON m.tag_id = t.id
-    WHERE m.content_object_id IN ({ids}) ORDER BY m.id
-";
-
 pub(crate) async fn topics_for(
     connection: &mut AnyConnection,
     motions: &[i64],
 ) -> Result<HashMap<i64, Vec<String>>, ApiError> {
+    const TOPICS: &str = "
+    SELECT CAST(m.content_object_id AS BIGINT) AS motion, t.name
+    FROM core_motiontopic t JOIN core_taggedmotion m ON m.tag_id = t.id
+    WHERE m.content_object_id IN ({ids}) ORDER BY m.id
+";
     let mut topics = HashMap::<i64, Vec<String>>::new();
     for group in motions.chunks(200) {
         let placeholders = (1..=group.len())
@@ -50,6 +49,14 @@ pub(crate) async fn topics_for(
     Ok(topics)
 }
 
+async fn topics(pool: &AnyPool, id: i64) -> Result<Vec<String>, ApiError> {
+    let mut connection = pool.acquire().await?;
+    Ok(topics_for(&mut connection, &[id])
+        .await?
+        .remove(&id)
+        .unwrap_or_default())
+}
+
 pub(crate) async fn detail(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -57,7 +64,7 @@ pub(crate) async fn detail(
     headers: HeaderMap,
 ) -> Response {
     let Some(id) = id.parse::<i64>().ok().filter(|_| is_django_integer(&id)) else {
-        return StatusCode::NOT_FOUND.into_response();
+        return crate::routing::missing_route(&uri);
     };
     let Ok(user) = session::user(&state.pool, &headers, state.secret.as_deref()).await else {
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
@@ -75,14 +82,9 @@ pub(crate) async fn detail(
             return StatusCode::INTERNAL_SERVER_ERROR.into_response();
         }
     };
-    let Ok(mut connection) = state.pool.acquire().await else {
+    let Ok(tags) = topics(&state.pool, id).await else {
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     };
-    let Ok(mut topics) = topics_for(&mut connection, &[id]).await else {
-        return StatusCode::INTERNAL_SERVER_ERROR.into_response();
-    };
-    let tags = topics.remove(&id).unwrap_or_default();
-    drop(connection);
     let tournament = row.get::<Option<i64>, _>("tournament_id").map(|id| {
         json!({
             "url": format!("/core/tournaments/{id}"), "name": row.get::<&str, _>("tournament_name")

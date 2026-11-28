@@ -1124,7 +1124,10 @@ pub(crate) fn render(name: &str, bindings: minijinja::Value) -> Result<String, S
             environment
                 .get_template(name)
                 .and_then(|template| template.render(template_numbers(bindings)))
-                .map_err(|error| error.to_string())
+                .map_err(|error| {
+                    crate::diagnostics::remember_template(error.kind());
+                    error.to_string()
+                })
         })
 }
 

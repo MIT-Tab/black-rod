@@ -255,15 +255,20 @@ pub(super) async fn report_server_errors(
         .extensions()
         .get::<axum::extract::MatchedPath>()
         .cloned();
-    let response = next.run(request).await;
-    if response.status().is_server_error() {
+    if !sentry::Hub::current()
+        .client()
+        .is_some_and(|client| client.is_enabled())
+    {
+        return next.run(request).await;
+    }
+    let method = request.method().clone();
+    let (response, cause) = crate::diagnostics::with_cause(next.run(request)).await;
+    let status = response.status();
+    if status.is_server_error() {
         let route = route
             .as_ref()
             .map_or("Unmatched route", |route| route.as_str());
-        sentry::capture_message(
-            &format!("HTTP {} in {route}", response.status().as_u16()),
-            sentry::Level::Error,
-        );
+        sentry::capture_event(crate::diagnostics::event(route, &method, status, cause));
     }
     response
 }
@@ -327,6 +332,10 @@ static SLASH_ROUTES: LazyLock<regex::RegexSet> = LazyLock::new(|| {
 });
 
 pub(super) async fn append_slash(OriginalUri(uri): OriginalUri) -> Response {
+    missing_route(&uri)
+}
+
+pub(crate) fn missing_route(uri: &Uri) -> Response {
     let path = uri.path();
     if path.ends_with('/') {
         return StatusCode::NOT_FOUND.into_response();
@@ -335,7 +344,7 @@ pub(super) async fn append_slash(OriginalUri(uri): OriginalUri) -> Response {
     if path != "/admin" && !SLASH_ROUTES.is_match(&format!("{decoded}/")) {
         return StatusCode::NOT_FOUND.into_response();
     }
-    slash_redirect(&uri)
+    slash_redirect(uri)
 }
 
 pub(crate) fn slash_redirect(uri: &Uri) -> Response {

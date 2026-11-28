@@ -732,7 +732,7 @@ pub(crate) async fn page(
         .ok()
         .filter(|_| is_django_integer(&raw_id))
     else {
-        return StatusCode::NOT_FOUND.into_response();
+        return crate::routing::missing_route(&uri);
     };
     render_page(&state, id, &uri, &headers, None).await
 }

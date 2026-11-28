@@ -9,6 +9,7 @@ mod claims;
 mod debater_profile;
 mod decimal;
 mod delete_relations;
+mod diagnostics;
 mod directory;
 mod discovery;
 mod django_date;
@@ -502,6 +503,7 @@ enum ApiError {
 
 impl From<sqlx::Error> for ApiError {
     fn from(error: sqlx::Error) -> Self {
+        diagnostics::remember_database(&error);
         eprintln!("API query failed: {error}");
         Self::Database
     }
@@ -509,6 +511,7 @@ impl From<sqlx::Error> for ApiError {
 
 impl From<serde_json::Error> for ApiError {
     fn from(error: serde_json::Error) -> Self {
+        diagnostics::remember_json(&error);
         eprintln!("API response encoding failed: {error}");
         Self::Serialization
     }

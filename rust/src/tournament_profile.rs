@@ -378,7 +378,7 @@ pub(crate) async fn page(
 ) -> Response {
     use axum::{http::header, response::Html};
     let Some(id) = id.parse::<i64>().ok().filter(|_| is_django_integer(&id)) else {
-        return StatusCode::NOT_FOUND.into_response();
+        return crate::routing::missing_route(&uri);
     };
     let Ok(user) = session::user(&state.pool, &headers, state.secret.as_deref()).await else {
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
