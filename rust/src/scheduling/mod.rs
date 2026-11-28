@@ -536,8 +536,12 @@ impl Form {
                         .chars()
                         .take(255)
                         .collect();
-                    let value = field.text().await.map_err(|error| error.status())?;
-                    let value = value.trim_start_matches('\u{feff}').to_owned();
+                    let bytes = field.bytes().await.map_err(|error| error.status())?;
+                    let Ok(value) = std::str::from_utf8(&bytes) else {
+                        form.add_error(&name, "Upload a UTF-8 encoded CSV file.");
+                        continue;
+                    };
+                    let value = value.strip_prefix('\u{feff}').unwrap_or(value).to_owned();
                     if value.is_empty() {
                         form.add_error(&name, "The submitted file is empty.");
                     } else {

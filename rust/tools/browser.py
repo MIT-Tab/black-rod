@@ -18,7 +18,7 @@ import sqlite3
 import subprocess
 from tempfile import TemporaryDirectory
 from threading import Thread
-from urllib.parse import parse_qs, urlencode, urlsplit
+from urllib.parse import parse_qsl, parse_qs, urlencode, urlsplit
 from urllib.request import urlopen
 
 from PIL import Image, ImageChops
@@ -1547,7 +1547,8 @@ def assert_admin_facets(driver, django, rust):
 from datetime import date
 from django import setup
 setup()
-from core.models import Debater, Motion, School, SpeakerResult, Tournament
+from core.models import Debater, Motion, Round, School, SpeakerResult, Team, Tournament
+import json
 school = School.objects.create(name="Facet browser fixture school")
 tournament = Tournament.objects.create(host=school, season="2042", date=date(2042, 9, 1))
 for index, (division, hidden) in enumerate(((1, True), (1, False), (0, False)), start=1):
@@ -1557,8 +1558,20 @@ for index, (division, hidden) in enumerate(((1, True), (1, False), (0, False)), 
 tagged = Motion.objects.create(text="FacetBrowserSample with date", date_set=date(2026, 1, 1))
 tagged.tags.add("Facet browser topic")
 Motion.objects.create(text="FacetBrowserSample without date")
+gov = Team.objects.create(name="Repeated Admin Filter Fixture Gov")
+opp = Team.objects.create(name="Repeated Admin Filter Fixture Opp")
+rounds = []
+for index, (stage, division) in enumerate(
+    (("prelim", "varsity"), ("outround", "varsity"), ("prelim", "novice")), start=1
+):
+    battle = Round.objects.create(tournament=tournament, gov=gov, opp=opp,
+                                  round_number=index, stage=stage, division=division)
+    rounds.append(battle.pk)
+print(json.dumps(rounds))
 """
-    subprocess.run([str(ROOT / "venv/bin/python"), "-c", seed], check=True, capture_output=True)
+    rounds = json.loads(subprocess.check_output(
+        [str(ROOT / "venv/bin/python"), "-c", seed], text=True
+    ).splitlines()[-1])
     session = django_session()
     cases = (
         ("/admin/core/speakerresult/?tournament__season=2042&hidden_from_profile__exact=1", {
@@ -1586,6 +1599,19 @@ Motion.objects.create(text="FacetBrowserSample without date")
             """)
             for title, labels in expected.items():
                 assert labels <= set(filters.get(title, [])), (server.name, title, labels, filters)
+        driver.get(origin + "/admin/core/round/?" + urlencode([
+            ("division__exact", "varsity"), ("q", "Repeated Admin Filter Fixture"),
+            ("stage__exact", "prelim"), ("stage__exact", "outround"),
+        ]))
+        expected_ids = set(map(str, rounds[:2]))
+        for _ in range(2):
+            inputs = driver.find_elements("css selector", 'input[name="_selected_action"]')
+            assert {choice.get_attribute("value") for choice in inputs} == expected_ids, server.name
+            stages = [value for key, value in parse_qsl(urlsplit(driver.current_url).query)
+                      if key == "stage__exact"]
+            assert stages == ["prelim", "outround"], (server.name, driver.current_url)
+            if "Show counts" in driver.find_element("id", "changelist-filter").text:
+                driver.find_element("link text", "Show counts").click()
     driver.delete_all_cookies()
 
 
@@ -1615,7 +1641,8 @@ def assert_scheduling(driver, django, rust, fixture):
                 form.set("action", "upload_csv");
                 form.set("workspace_version", document.querySelector("[name=workspace_version]").value);
                 for (const [name, content] of Object.entries(body)) {
-                    form.set(name + "_csv", new File([content], name + ".csv"));
+                    const fileBody = Array.isArray(content) ? Uint8Array.from(content) : content;
+                    form.set(name + "_csv", new File([fileBody], name + ".csv"));
                 }
                 options.body = form;
             } else if (method === "POST") {
@@ -1637,6 +1664,10 @@ def assert_scheduling(driver, django, rust, fixture):
     assert expected == actual, (expected, actual)
     assert actual[0] == 200 and actual[1]["workspace"]["summary"]["scenario_count"] == 2, actual
     workspace = actual[1]["workspace"]
+    invalid_csv = list(schools.encode().replace(b"University", b"Universit\xe9"))
+    status, html = call(root[1], "", "POST", {"schools": invalid_csv})
+    assert status == 200 and "Upload a UTF-8 encoded CSV file." in html
+    assert call(root[1], "workspace-data/") == [200, {"success": True, "workspace": workspace}]
     run = {"workspace_version": workspace["version"] - 1, "status": "completed"}
     expected, actual = [call(server, "save-browser-run/", "POST", run) for server in root]
     assert expected == actual and actual[0] == 409, (expected, actual)

@@ -226,17 +226,78 @@ const GENERATION: &str = ":1:black-rod:search-index:generation:v2";
 
 #[derive(Clone, Copy, Hash, PartialEq, Eq)]
 pub(crate) enum SearchGeneration {
-    Local,
+    Local(uuid::Uuid),
     Shared(uuid::Uuid),
     CacheUnavailable(i64),
 }
 
+pub(crate) fn database_marker(pool: &sqlx::AnyPool) -> Option<String> {
+    let options = pool.connect_options();
+    let url = &options.database_url;
+    if url.scheme() == "sqlite" && url.path() == ":memory:" {
+        return None;
+    }
+    let identity = format!(
+        "{}\0{}\0{}\0{}",
+        url.scheme(),
+        url.host_str().unwrap_or_default(),
+        url.port().unwrap_or_default(),
+        url.path()
+    );
+    let hash = ring::digest::digest(&ring::digest::SHA256, identity.as_bytes());
+    Some(format!("search-{}.version", hex::encode(hash)))
+}
+
+async fn write_local_marker(path: std::path::PathBuf) -> std::io::Result<()> {
+    use std::io::Write;
+    tokio::task::spawn_blocking(move || {
+        let parent = path
+            .parent()
+            .filter(|path| !path.as_os_str().is_empty())
+            .unwrap_or_else(|| std::path::Path::new("."));
+        std::fs::create_dir_all(parent)?;
+        let mut marker = tempfile::NamedTempFile::new_in(parent)?;
+        marker.write_all(uuid::Uuid::new_v4().as_bytes())?;
+        marker.persist(path)?;
+        Ok(())
+    })
+    .await
+    .map_err(std::io::Error::other)?
+}
+
+fn local_path(state: &AppState) -> Option<std::path::PathBuf> {
+    state
+        .search_marker
+        .as_ref()
+        .map(|name| state.release_root.join("tmp").join(name.as_ref()))
+        .map(|path| std::env::var_os("BLACK_ROD_SEARCH_GENERATION_FILE").map_or(path, Into::into))
+}
+
+async fn local_generation(state: &AppState) -> Option<uuid::Uuid> {
+    let Some(path) = local_path(state) else {
+        return Some(uuid::Uuid::nil());
+    };
+    match tokio::fs::read(path).await {
+        Ok(bytes) => uuid::Uuid::from_slice(&bytes).ok(),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Some(uuid::Uuid::nil()),
+        Err(_) => None,
+    }
+}
+
 pub(crate) async fn invalidate(state: &AppState) -> bool {
     state.search.invalidate_all();
-    if let Some(cache) = &state.memcached
-        && !cache.advance_generation(GENERATION).await
+    if let Some(cache) = &state.memcached {
+        if !cache.advance_generation(GENERATION).await {
+            eprintln!("Could not invalidate the shared search index");
+            return false;
+        }
+    } else if let Some(path) = local_path(state)
+        && let Err(error) = write_local_marker(path).await
     {
-        eprintln!("Could not invalidate the shared search index");
+        eprintln!(
+            "Could not update the local search index generation: {}",
+            error.kind()
+        );
         return false;
     }
     true
@@ -255,12 +316,10 @@ async fn cached_index(state: &AppState) -> Result<Arc<SearchIndex>, Arc<ApiError
         Some(cache) => cache
             .generation(GENERATION)
             .await
-            .map(SearchGeneration::Shared)
-            .unwrap_or_else(|| {
-                SearchGeneration::CacheUnavailable(chrono::Utc::now().timestamp() / 60)
-            }),
-        None => SearchGeneration::Local,
-    };
+            .map(SearchGeneration::Shared),
+        None => local_generation(state).await.map(SearchGeneration::Local),
+    }
+    .unwrap_or_else(|| SearchGeneration::CacheUnavailable(chrono::Utc::now().timestamp() / 60));
     state
         .search
         .try_get_with(generation, async {

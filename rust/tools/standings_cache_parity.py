@@ -5,12 +5,13 @@ import os
 from pathlib import Path
 import subprocess
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 from bs4 import BeautifulSoup
 from pymemcache.client.base import Client
 
 from agent_write_parity import fixture_database
-from compare import Case, HOST, ROOT, request, servers
+from compare import Case, HOST, ROOT, RUST_BIN, available_port, request, servers, start_server
 
 GENERATION = ":1:black-rod:rust:standings-generation:v1"
 SEARCH = ":1:black-rod:search-index:generation:v2"
@@ -63,6 +64,34 @@ def search_match(server, debater, query):
     return BeautifulSoup(body, "html.parser").select_one(f'a[href="/core/debaters/{debater}"]')
 
 
+def check_local_reindex(database, debater, env):
+    port = available_port()
+    runtime = {
+        "BLACK_ROD_BIND": f"{HOST}:{port}", "BLACK_ROD_RELEASE_ROOT": str(database.parent),
+        "BLACK_ROD_DATABASE_URL": os.environ.get(
+            "BLACK_ROD_PARITY_POSTGRES_URL", f"sqlite:{database.as_posix()}?mode=ro"
+        ),
+        "DOT_ENV_FILE": os.devnull, "LIVE_MITTAB_DIRECTORY_URL": "",
+    }
+    rename = """
+from reference import application
+from core.models import Debater
+from sys import argv
+Debater.objects.filter(pk=int(argv[1])).update(first_name="Reindexed")
+"""
+    with patch.dict(os.environ):
+        os.environ.pop("BLACK_ROD_MEMCACHED_ADDR", None)
+        os.environ.pop("BLACK_ROD_SEARCH_GENERATION_FILE", None)
+        with start_server("Rust local search", [str(RUST_BIN)], port, runtime) as rust:
+            assert search_match(rust, debater, "Aftercache")
+            subprocess.run([str(ROOT / "venv/bin/python"), "-c", rename, str(debater)], env=env, check=True)
+            assert not search_match(rust, debater, "Reindexed")
+            subprocess.run([str(RUST_BIN), "reindex_haystack"], env={**os.environ, **runtime},
+                           check=True, capture_output=True)
+            assert search_match(rust, debater, "Reindexed")
+            assert not search_match(rust, debater, "Aftercache")
+
+
 def main():
     seed = Path(os.environ["BR_STATE"]) / "dev.sqlite3"
     postgres = os.environ.get("BLACK_ROD_PARITY_POSTGRES_URL")
@@ -98,7 +127,8 @@ def main():
                 assert cache.get(SEARCH) != search_before
                 assert search_match(rust, debater, "Aftercache")
                 assert not search_match(rust, debater, "Beforecache")
-    print("Committed Django edits refresh warmed Rust standings and search; rollback preserves both generations")
+            check_local_reindex(database, debater, env)
+    print("Committed Django edits refresh shared caches, and local reindex refreshes a running Rust server")
 
 
 if __name__ == "__main__":

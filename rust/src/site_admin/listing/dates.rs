@@ -31,7 +31,7 @@ pub(super) async fn navigation(
         .filter_map(|value| NaiveDate::parse_from_str(&value, "%Y-%m-%d").ok())
         .collect::<Vec<_>>();
     let mut query = params.clone();
-    query.retain(|key, _| key != "p" && !key.starts_with("date_set__"));
+    query.retain(|key| key != "p" && !key.starts_with("date_set__"));
     let link = |year: Option<i32>, month: Option<u32>, day: Option<u32>| {
         let mut next = query.clone();
         for (name, value) in [

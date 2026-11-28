@@ -24,16 +24,18 @@ from core.models.tournament_autoqual import TournamentAutoQual
 
 
 @contextmanager
-def standings_write_lock(season):
-    """Serialize result writes that recompute the same season on PostgreSQL."""
-    if connection.vendor == "postgresql":
-        with connection.cursor() as cursor:
-            # Match the Rust standings writer during a staged cutover.
-            cursor.execute(
-                "SELECT pg_advisory_xact_lock(hashtext('black-rod standings'), hashtext(%s))",
-                (str(season),),
-            )
-    yield
+def standings_write_lock(*seasons):
+    """Serialize standings writes for each affected season on PostgreSQL."""
+    with transaction.atomic():
+        if connection.vendor == "postgresql":
+            with connection.cursor() as cursor:
+                # Take multiple season locks in the same order across writers.
+                for season in sorted({str(value) for value in seasons}):
+                    cursor.execute(
+                        "SELECT pg_advisory_xact_lock(hashtext('black-rod standings'), hashtext(%s))",
+                        (season,),
+                    )
+        yield
 
 
 def _school_included_in_oty(debater):
@@ -636,7 +638,6 @@ def rebuild_import_qualifications(season=settings.CURRENT_SEASON):
     This also removes stale qualifications after corrections or deleted results.
     """
     from collections import defaultdict  # pylint: disable=import-outside-toplevel
-    from django.db import transaction  # pylint: disable=import-outside-toplevel
     from django.db.models import Prefetch  # pylint: disable=import-outside-toplevel
 
     season = str(season)

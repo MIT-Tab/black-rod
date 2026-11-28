@@ -229,7 +229,7 @@ impl<'a> Filter<'a> {
         {
             conditions.push(search);
         }
-        for (parameter, value) in params {
+        for (parameter, alternatives) in params.grouped() {
             if matches!(
                 parameter.as_str(),
                 "q" | "p" | "o" | "all" | "_popup" | "_to_field" | "_facets" | "e"
@@ -238,7 +238,7 @@ impl<'a> Filter<'a> {
             }
             if model.slug() == "teamresult" && parameter == "profile_visibility" {
                 let present = "EXISTS (SELECT 1 FROM core_teamresult_hidden_from_debaters m WHERE m.teamresult_id=t0.id)";
-                conditions.push(match value.as_str() {
+                conditions.push(match alternatives.last()?.as_str() {
                     "hidden" => present.to_owned(),
                     "visible" => format!("NOT {present}"),
                     _ => return None,
@@ -250,34 +250,42 @@ impl<'a> Filter<'a> {
                 return None;
             }
             let path = allowed_path(model, path)?;
-            if let Some(field) = model.fields.get(path)
-                && let Some([table, from, to]) = field.through.as_ref()
-            {
-                let mut owner = format!(r#"member."{from}"=t0.id"#);
-                if field.generic_through.unwrap_or_default() {
-                    let app = add_values(&mut values, model.app());
-                    let name = add_values(&mut values, model.slug());
-                    owner.push_str(&format!(" AND member.content_type_id=(SELECT id FROM django_content_type WHERE app_label={app} AND model={name})"));
-                }
-                let exists = format!("SELECT 1 FROM {table} member WHERE {owner}");
-                let expression = if kind == "isnull" {
-                    let negated = if boolean(value)? { "NOT " } else { "" };
-                    format!("{negated}EXISTS ({exists})")
+            let mut group = Vec::with_capacity(alternatives.len());
+            for value in alternatives {
+                if let Some(field) = model.fields.get(path)
+                    && let Some([table, from, to]) = field.through.as_ref()
+                {
+                    let mut owner = format!(r#"member."{from}"=t0.id"#);
+                    if field.generic_through.unwrap_or_default() {
+                        let app = add_values(&mut values, model.app());
+                        let name = add_values(&mut values, model.slug());
+                        owner.push_str(&format!(" AND member.content_type_id=(SELECT id FROM django_content_type WHERE app_label={app} AND model={name})"));
+                    }
+                    let exists = format!("SELECT 1 FROM {table} member WHERE {owner}");
+                    let expression = if kind == "isnull" {
+                        let negated = if boolean(value)? { "NOT " } else { "" };
+                        format!("{negated}EXISTS ({exists})")
+                    } else {
+                        let test = predicate(
+                            &format!(r#"member."{to}""#),
+                            field,
+                            kind,
+                            value,
+                            sqlite,
+                            &mut values,
+                        )?;
+                        format!("EXISTS ({exists} AND {test})")
+                    };
+                    group.push(expression);
                 } else {
-                    let test = predicate(
-                        &format!(r#"member."{to}""#),
-                        field,
-                        kind,
-                        value,
-                        sqlite,
-                        &mut values,
-                    )?;
-                    format!("EXISTS ({exists} AND {test})")
-                };
-                conditions.push(expression);
+                    let (column, field) = source.resolve(path)?;
+                    group.push(predicate(&column, field, kind, value, sqlite, &mut values)?);
+                }
+            }
+            if group.len() == 1 {
+                conditions.extend(group);
             } else {
-                let (column, field) = source.resolve(path)?;
-                conditions.push(predicate(&column, field, kind, value, sqlite, &mut values)?);
+                conditions.push(format!("({})", group.join(" OR ")));
             }
         }
         let condition = if conditions.is_empty() {

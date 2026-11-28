@@ -38,6 +38,7 @@ from core.models import (
 from core.utils.rankings import (
     rebuild_coty_related_rankings,
     redo_rankings,
+    standings_write_lock,
     update_noty,
     update_soty,
     update_toty,
@@ -572,7 +573,8 @@ class RankingsRecomputeView(UserPassesTestMixin, TemplateView):
                 "noty": lambda: self._update_noty_rankings(season),
             }
             if ranking_type in ranking_funcs:
-                ranking_funcs[ranking_type]()
+                with standings_write_lock(season):
+                    ranking_funcs[ranking_type]()
                 return JsonResponse(
                     {
                         "success": True,

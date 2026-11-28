@@ -611,9 +611,10 @@ def cached_live_standings(season=None):
 def _refresh(season):
     fresh_key = f"{CACHE_KEY}:{season}"
     try:
-        result = _compute_live_standings(season)
-        _cache_set(fresh_key, result, CACHE_SECONDS)
-        _cache_set(f"{fresh_key}:stale", result, STALE_SECONDS)
+        if cache.get(fresh_key) is None:
+            result = _compute_live_standings(season)
+            _cache_set(fresh_key, result, CACHE_SECONDS)
+            _cache_set(f"{fresh_key}:stale", result, STALE_SECONDS)
     except Exception:  # pylint: disable=broad-except
         LOGGER.exception("Background live standings refresh failed")
     finally:
@@ -642,14 +643,19 @@ def build_live_standings(season=None):
         return cached
 
     stale = cache.get(stale_key)
-    if not cache.add(lock_key, 1, LOCK_SECONDS) and stale is not None:
+    locked = cache.add(lock_key, 1, LOCK_SECONDS)
+    if not locked and stale is not None:
         # Someone else is refreshing; serve the previous standings.
         return stale
 
     try:
+        if locked and (cached := cache.get(fresh_key)) is not None:
+            return cached
         result = _compute_live_standings(season)
+        if locked:
+            _cache_set(fresh_key, result, CACHE_SECONDS)
+            _cache_set(stale_key, result, STALE_SECONDS)
+        return result
     finally:
-        cache.delete(lock_key)
-    _cache_set(fresh_key, result, CACHE_SECONDS)
-    _cache_set(stale_key, result, STALE_SECONDS)
-    return result
+        if locked:
+            cache.delete(lock_key)

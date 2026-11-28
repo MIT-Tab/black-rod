@@ -205,25 +205,40 @@ def check_ranking_maintenance(seed, postgres):
         env = {**os.environ, "BLACK_ROD_DATABASE_URL": target, "BLACK_ROD_CURRENT_SEASON": "2026"}
         with closing(psycopg2.connect(target)) as db, db.cursor() as cursor:
             cursor.execute(f"SELECT pg_advisory_xact_lock({LOCK_KEYS})")
-            process = subprocess.Popen([str(compare.RUST_BIN), "redo_rankings"], env=env, text=True,
-                                       stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            commands = (
+                [str(compare.RUST_BIN), "redo_rankings"],
+                [str(compare.ROOT / "venv/bin/python"), "-c", """
+import sys
+sys.path.insert(0, "rust/tools")
+from reference import application
+from django.core.management import call_command
+call_command("redo_rankings")
+"""],
+            )
+            processes = [subprocess.Popen(command, env=env, text=True,
+                         stdout=subprocess.PIPE, stderr=subprocess.PIPE) for command in commands]
             try:
                 try:
                     deadline = perf_counter() + 15
-                    while not season_lock_waiters(cursor):
-                        assert process.poll() is None, "Rankings maintenance bypassed the season lock"
+                    while season_lock_waiters(cursor) != len(processes):
+                        assert all(process.poll() is None for process in processes), (
+                            "A rankings command bypassed the season lock"
+                        )
                         if perf_counter() >= deadline:
-                            raise AssertionError("Rankings maintenance did not take the season transaction lock")
+                            raise AssertionError("Both rankings commands did not take the season lock")
                         sleep(0.025)
                 finally:
                     db.commit()
-                _, error = process.communicate(timeout=30)
-                assert process.returncode == 0, error
+                for process in processes:
+                    _, error = process.communicate(timeout=30)
+                    assert process.returncode == 0, error
             finally:
-                if process.poll() is None:
-                    process.kill()
-                    process.communicate()
-    print("Rankings maintenance waits for the same PostgreSQL season transaction lock as result saves")
+                for process in processes:
+                    if process.poll() is None:
+                        process.kill()
+                        process.communicate()
+
+    print("Django and Rust rankings commands wait for the same PostgreSQL season lock as result saves")
 
 
 def main():

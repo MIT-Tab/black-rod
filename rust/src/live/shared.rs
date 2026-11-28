@@ -56,11 +56,19 @@ async fn refresh(
     key: &str,
     lock_held: bool,
 ) -> Result<Arc<Payload>, ApiError> {
+    if lock_held && let Some(found) = load(cache, key).await {
+        cache.delete_raw(&format!("{key}:lock")).await;
+        return Ok(found);
+    }
     let result = live.rebuild(state, season).await;
     if lock_held {
-        cache.delete_raw(&format!("{key}:lock")).await;
+        publish_and_unlock(cache, key, result.as_deref().ok()).await;
     }
-    if let Ok(payload) = &result
+    result
+}
+
+async fn publish_and_unlock(cache: &Memcached, key: &str, payload: Option<&Payload>) {
+    if let Some(payload) = payload
         && let Ok(bytes) = serialize(payload)
     {
         cache
@@ -76,7 +84,7 @@ async fn refresh(
             )
             .await;
     }
-    result
+    cache.delete_raw(&format!("{key}:lock")).await;
 }
 
 pub(super) async fn active(
@@ -140,4 +148,46 @@ pub(super) async fn invalidate(cache: &Memcached, season: i32) {
     let key = key(season);
     let stale = format!("{key}:stale");
     tokio::join!(cache.delete_raw(&key), cache.delete_raw(&stale));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::{
+        io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader},
+        net::TcpListener,
+    };
+
+    #[tokio::test]
+    async fn live_refresh_releases_the_lock_after_both_publications() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let cache = Memcached::new(listener.local_addr().unwrap());
+        let server = tokio::spawn(async move {
+            for key in ["test-live", "test-live:stale"] {
+                let (stream, _) = listener.accept().await.unwrap();
+                let mut stream = BufReader::new(stream);
+                let mut header = String::new();
+                stream.read_line(&mut header).await.unwrap();
+                let fields: Vec<_> = header.split_ascii_whitespace().collect();
+                assert_eq!(&fields[..3], &["set", key, "1"]);
+                let size = fields[4].parse::<usize>().unwrap();
+                let mut body = vec![0; size + 2];
+                stream.read_exact(&mut body).await.unwrap();
+                stream.get_mut().write_all(b"STORED\r\n").await.unwrap();
+            }
+            let (stream, _) = listener.accept().await.unwrap();
+            let mut stream = BufReader::new(stream);
+            let mut line = String::new();
+            stream.read_line(&mut line).await.unwrap();
+            assert_eq!(line, "delete test-live:lock\r\n");
+            stream.get_mut().write_all(b"DELETED\r\n").await.unwrap();
+        });
+        let payload = Payload {
+            season: "2025".to_owned(),
+            boards: serde_json::json!({}),
+            active_sources: Vec::new(),
+        };
+        publish_and_unlock(&cache, "test-live", Some(&payload)).await;
+        server.await.unwrap();
+    }
 }

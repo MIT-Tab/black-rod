@@ -1,4 +1,4 @@
-"""Check that overlapping email edits preserve one consistent account identity."""
+"""Check account and session consistency across overlapping writes and mail failure."""
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
 import json
@@ -22,14 +22,19 @@ from django.contrib.sessions.backends.db import SessionStore
 from core.models import User
 import json
 
-user = User.objects.create_user(username="email-write-parity-fixture", email="primary@example.test")
+user = User.objects.create_user(username="email-write-parity-fixture", email="primary@example.test",
+                                password="fixture-locked-login-password")
 EmailAddress.objects.create(user=user, email=user.email, primary=True, verified=True)
 EmailAddress.objects.create(user=user, email="alternate@example.test", verified=True)
 session = SessionStore()
 session.update({"_auth_user_id": str(user.pk), "_auth_user_backend": "django.contrib.auth.backends.ModelBackend",
                 "_auth_user_hash": user.get_session_auth_hash()})
 session.save()
-print(json.dumps([user.id, session.session_key]))
+anonymous = SessionStore()
+anonymous["fixture_marker"] = "before"
+anonymous.save()
+print(json.dumps([user.id, session.session_key, anonymous.session_key,
+                  anonymous.encode({"fixture_marker": "after"})]))
 """
 
 PRIMARY = "primary@example.test"
@@ -86,6 +91,52 @@ def exercise(server, user, session, control, observer):
                 control.commit()
 
 
+def login_during_session_update(server, user, anonymous, refreshed, env, control, observer):
+    url = f"http://{HOST}:{server.port}/accounts/login/"
+    with requests.Session() as client, control.cursor() as db, observer.cursor() as monitoring, ThreadPoolExecutor(
+        max_workers=1
+    ) as workers:
+        client.cookies.set("sessionid", anonymous)
+        form = BeautifulSoup(client.get(url, timeout=15).content, "html.parser")
+        csrf = form.select_one('input[name=csrfmiddlewaretoken]')["value"]
+        db.execute("SELECT id FROM core_user WHERE id=%s FOR UPDATE", (user,))
+        pending = workers.submit(client.post, url, timeout=20, allow_redirects=False, data={
+            "csrfmiddlewaretoken": csrf, "login": "email-write-parity-fixture",
+            "password": "fixture-locked-login-password",
+        })
+        try:
+            deadline = monotonic() + 10
+            while monotonic() < deadline:
+                monitoring.execute("""
+                    SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE datname=current_database()
+                        AND wait_event_type='Lock' AND query LIKE 'UPDATE core_user SET last_login%')
+                """)
+                if monitoring.fetchone()[0]:
+                    break
+                assert not pending.done(), "Login bypassed the locked account"
+                sleep(0.025)
+            else:
+                raise AssertionError("Login did not reach its account update")
+            db.execute("UPDATE django_session SET session_data=%s WHERE session_key=%s",
+                       (refreshed, anonymous))
+        finally:
+            control.commit()
+        result = pending.result(timeout=20)
+        assert result.status_code == 302, result.status_code
+        key = result.cookies["sessionid"]
+        assert key != anonymous
+        subprocess.run([str(ROOT / "venv/bin/python"), "-c", """
+from reference import application
+from django.contrib.sessions.backends.db import SessionStore
+from sys import argv
+session = SessionStore(argv[1])
+data = session.load()
+assert data["fixture_marker"] == "after"
+assert data["_auth_user_id"] == argv[3]
+assert not session.exists(argv[2])
+""", key, anonymous, str(user)], env=env, check=True, capture_output=True)
+
+
 def signup_when_mail_is_unavailable(database):
     port = available_port()
     root = f"http://{HOST}:{port}"
@@ -123,14 +174,15 @@ def main():
             env = {**os.environ, "BR_STATE": folder, "SECRET_KEY": "disposable-local-parity-key",
                    "PYTHONPATH": f"{Path(__file__).resolve().parent}{os.pathsep}{os.environ['PYTHONPATH']}"}
             output = subprocess.check_output([str(ROOT / "venv/bin/python"), "-c", SEED], text=True, env=env)
-            user, session = json.loads(output.splitlines()[-1])
+            user, session, anonymous, refreshed = json.loads(output.splitlines()[-1])
             with servers(database) as (_, rust), closing(psycopg2.connect(target)) as control, closing(
                 psycopg2.connect(target)
             ) as observer:
                 observer.autocommit = True
                 exercise(rust, user, session, control, observer)
+                login_during_session_update(rust, user, anonymous, refreshed, env, control, observer)
             signup_when_mail_is_unavailable(target)
-    print("Overlapping PostgreSQL email edits preserve the primary address, and signup survives mail failure")
+    print("Concurrent account edits preserve email and session state, and signup survives mail failure")
 
 
 if __name__ == "__main__":

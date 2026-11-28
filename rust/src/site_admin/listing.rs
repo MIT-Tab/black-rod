@@ -1,12 +1,10 @@
 mod dates;
 mod facets;
 pub(super) mod filters;
+mod parameters;
+pub(super) use parameters::Parameters;
 
-use std::{
-    borrow::Cow,
-    collections::{BTreeMap, HashMap},
-    sync::LazyLock,
-};
+use std::{borrow::Cow, collections::HashMap, sync::LazyLock};
 
 use axum::{
     body::Body,
@@ -23,8 +21,6 @@ use super::{
 };
 use crate::{ApiError, flash, login};
 use filters::Filter;
-
-pub(super) type Parameters = BTreeMap<String, String>;
 
 fn link(params: &Parameters, name: &str, value: Option<&str>) -> String {
     let mut params = params.clone();
@@ -44,7 +40,7 @@ fn query_string(params: &Parameters) -> String {
     format!(
         "?{}",
         url::form_urlencoded::Serializer::new(String::new())
-            .extend_pairs(params)
+            .extend_pairs(params.iter())
             .finish()
             .replace('*', "%2A")
             .replace("%7E", "~")
@@ -895,12 +891,7 @@ async fn get_list(
         Value::UNDEFINED
     };
     let mut clear = params.clone();
-    clear.retain(|name, _| {
-        matches!(
-            name.as_str(),
-            "q" | "o" | "_popup" | "_to_field" | "_facets"
-        )
-    });
+    clear.retain(|name| matches!(name, "q" | "o" | "_popup" | "_to_field" | "_facets"));
     let clear_filters = clear.len() != params.len()
         && params
             .keys()
@@ -922,7 +913,7 @@ async fn get_list(
 
 fn with_preserved_filters(url: String, params: &Parameters) -> String {
     let clean = url::form_urlencoded::Serializer::new(String::new())
-        .extend_pairs(params)
+        .extend_pairs(params.iter())
         .finish();
     if clean.is_empty() {
         url
@@ -1038,18 +1029,18 @@ async fn filters(
                 if !rows.is_empty() {
                     let exact = format!("{filter}__id__exact");
                     let null = format!("{filter}__isnull");
-                    let active = params.get(&exact);
+                    let active = params.values_for(&exact);
                     let empty = params.contains_key(&null);
                     let mut clean = params.clone();
                     clean.remove(&exact);
                     clean.remove(&null);
                     let counts = facets::grouped(admin, model, filter, &clean).await?;
                     let mut links = vec![
-                        context! {label=>"All",url=>link(&clean,&exact,None),selected=>active.is_none()&&!empty},
+                        context! {label=>"All",url=>link(&clean,&exact,None),selected=>active.is_empty()&&!empty},
                     ];
                     links.extend(rows.iter().map(|(id,label)| {
                         let label = facets::label(label, &counts, Some(id));
-                        context!{label,url=>link(&clean,&exact,Some(id)),selected=>active==Some(id)}
+                        context!{label,url=>link(&clean,&exact,Some(id)),selected=>active.contains(id)}
                     }));
                     links.push(context! {
                         label=>facets::label("-", &counts, None),url=>link(&clean,&null,Some("True")),selected=>empty
@@ -1071,7 +1062,10 @@ async fn filters(
         } else {
             filter.to_owned()
         };
-        let active = params.get(&exact).or_else(|| params.get(filter));
+        let mut active = params.values_for(&exact);
+        if active.is_empty() {
+            active = params.values_for(filter);
+        }
         let mut cleared = params.clone();
         let null_key = format!("{filter}__isnull");
         let empty = params.contains_key(&null_key);
@@ -1085,11 +1079,11 @@ async fn filters(
         }
         let counts = facets::grouped(admin, model, filter, &cleared).await?;
         let mut choices = vec![
-            context! {label=>"All",url=>link(&cleared,&exact,None),selected=>active.is_none()&&!empty},
+            context! {label=>"All",url=>link(&cleared,&exact,None),selected=>active.is_empty()&&!empty},
         ];
         if field.kind == "BooleanField" {
             for (value, label) in [("1", "Yes"), ("0", "No")] {
-                choices.push(context!{label=>facets::label(label,&counts,Some(value)),url=>link(&cleared,&exact,Some(value)),selected=>active.is_some_and(|active|active==value)&&!empty});
+                choices.push(context!{label=>facets::label(label,&counts,Some(value)),url=>link(&cleared,&exact,Some(value)),selected=>active.last().is_some_and(|active|active==value)&&!empty});
             }
             if field.null {
                 choices.push(context! {label=>facets::label("Unknown",&counts,None),url=>link(&cleared,&null_key,Some("True")),selected=>empty});
@@ -1100,7 +1094,7 @@ async fn filters(
                     .as_str()
                     .map(str::to_owned)
                     .unwrap_or_else(|| key.to_string());
-                choices.push(context!{label=>facets::label(label,&counts,Some(&value)),url=>link(&cleared,&exact,Some(&value)),selected=>active==Some(&value)});
+                choices.push(context!{label=>facets::label(label,&counts,Some(&value)),url=>link(&cleared,&exact,Some(&value)),selected=>active.contains(&value)});
             }
         } else if matches!(field.kind.as_str(), "ForeignKey" | "OneToOneField") {
             if let Some(target) = field
@@ -1125,7 +1119,7 @@ async fn filters(
                     .fetch_all(&admin.state.pool)
                     .await?
                 {
-                    choices.push(context!{label=>facets::label(&label,&counts,Some(&value)),url=>link(&cleared,&exact,Some(&value)),selected=>active==Some(&value)});
+                    choices.push(context!{label=>facets::label(&label,&counts,Some(&value)),url=>link(&cleared,&exact,Some(&value)),selected=>active.contains(&value)});
                 }
             }
             if field.related.as_deref() == Some("contenttypes.contenttype") {
@@ -1141,7 +1135,7 @@ async fn filters(
                         .get(&key)
                         .cloned()
                         .unwrap_or_else(|| format!("{app} | {slug}"));
-                    choices.push(context!{label=>facets::label(&label,&counts,Some(&id)),url=>link(&cleared,&exact,Some(&id)),selected=>active==Some(&id)});
+                    choices.push(context!{label=>facets::label(&label,&counts,Some(&id)),url=>link(&cleared,&exact,Some(&id)),selected=>active.contains(&id)});
                 }
             }
             if choices.len() + usize::from(field.null) <= 2 {
@@ -1189,7 +1183,7 @@ async fn filters(
                 let value: &str = row.try_get("value")?;
                 let label: Option<&str> = row.try_get("label")?;
                 let label = label.unwrap_or("-");
-                choices.push(context!{label=>facets::label(label,&counts,Some(value)),url=>link(&cleared,&exact,Some(value)),selected=>active.is_some_and(|active|active==value)});
+                choices.push(context!{label=>facets::label(label,&counts,Some(value)),url=>link(&cleared,&exact,Some(value)),selected=>active.iter().any(|active|active==value)});
             }
         }
         if choices.len() > 1 || matches!(filter.as_str(), "provider" | "app__provider") {
@@ -1272,7 +1266,7 @@ async fn date_filters(
         .map(|(name, value)| (name.clone(), value.clone()))
         .collect::<Parameters>();
     let mut clean = params.clone();
-    clean.retain(|name, _| !name.starts_with(&prefix) && name != "p");
+    clean.retain(|name| !name.starts_with(&prefix) && name != "p");
     let mut choices = vec![("Any date", Parameters::new())];
     for (label, start, end) in [
         ("Today", today, tomorrow),
@@ -1301,7 +1295,7 @@ async fn date_filters(
         .map(|(index, (label, options))| {
             let selected = active == options;
             let mut query = clean.clone();
-            query.extend(options);
+            query.merge(options);
             let label = counts.as_ref().map_or_else(
                 || label.to_owned(),
                 |counts| format!("{label} ({})", counts[index]),

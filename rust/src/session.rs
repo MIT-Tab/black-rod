@@ -11,7 +11,7 @@ use ring::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json, value::RawValue};
-use sqlx::{AnyConnection, AnyPool, Row};
+use sqlx::{Any, AnyConnection, AnyPool, Executor, Row};
 
 use signing::{MAX_SESSION_SIZE, decode_signed_bytes};
 pub(crate) use signing::{
@@ -168,12 +168,27 @@ impl StoredSession {
         headers: &HeaderMap,
         secret: &[u8],
     ) -> Result<Option<Self>, sqlx::Error> {
+        Self::read_from(pool, headers, secret, false).await
+    }
+
+    async fn read_from<'a>(
+        db: impl Executor<'a, Database = Any>,
+        headers: &HeaderMap,
+        secret: &[u8],
+        lock: bool,
+    ) -> Result<Option<Self>, sqlx::Error> {
         let Some(id) = session_id(headers) else {
             return Ok(None);
         };
-        let original = sqlx::query_scalar::<_, String>(
-            "SELECT session_data FROM django_session WHERE session_key = $1 AND expire_date > CURRENT_TIMESTAMP"
-        ).bind(id).fetch_optional(pool).await?;
+        let query = if lock {
+            "SELECT session_data FROM django_session WHERE session_key=$1 AND expire_date>CURRENT_TIMESTAMP FOR UPDATE"
+        } else {
+            "SELECT session_data FROM django_session WHERE session_key=$1 AND expire_date>CURRENT_TIMESTAMP"
+        };
+        let original = sqlx::query_scalar::<_, String>(query)
+            .bind(id)
+            .fetch_optional(db)
+            .await?;
         let Some(original) = original else {
             return Ok(None);
         };
@@ -481,7 +496,14 @@ pub(crate) async fn create(
     remember: bool,
     backend: &str,
 ) -> Result<String, sqlx::Error> {
-    let mut old = StoredSession::read(pool, headers, secret).await?;
+    let mut tx = pool.begin().await?;
+    let current = sqlx::query("UPDATE core_user SET last_login = CURRENT_TIMESTAMP WHERE id = $1 AND is_active AND password = $2")
+        .bind(id).bind(password_hash).execute(&mut *tx).await?;
+    if current.rows_affected() != 1 {
+        return Err(sqlx::Error::RowNotFound);
+    }
+    let sqlite = tx.backend_name() == "SQLite";
+    let mut old = StoredSession::read_from(&mut *tx, headers, secret, !sqlite).await?;
     let user_id = id.to_string();
     let auth_key = key(AUTH_SALT, secret);
     let keep_key = old.as_ref().is_some_and(|session| {
@@ -532,7 +554,6 @@ pub(crate) async fn create(
     let mut expiry = (now + Duration::days(30))
         .format("%Y-%m-%d %H:%M:%S%.6f")
         .to_string();
-    let sqlite = pool.connect_options().database_url.scheme() == "sqlite";
     if !sqlite {
         expiry.push_str("+00");
     }
@@ -541,20 +562,13 @@ pub(crate) async fn create(
     } else {
         "INSERT INTO django_session (session_key, session_data, expire_date) VALUES ($1, $2, CAST($3 AS TIMESTAMPTZ))"
     };
-    let mut tx = pool.begin().await?;
-    let current = sqlx::query("UPDATE core_user SET last_login = CURRENT_TIMESTAMP WHERE id = $1 AND is_active AND password = $2")
-        .bind(id).bind(password_hash).execute(&mut *tx).await?;
-    if current.rows_affected() != 1 {
-        return Err(sqlx::Error::RowNotFound);
-    }
     if let Some(previous) = old {
-        let changed = sqlx::query(
-            "DELETE FROM django_session WHERE session_key=$1 AND session_data=$2 AND expire_date>CURRENT_TIMESTAMP",
-        )
-        .bind(previous.id)
-        .bind(previous.original)
-        .execute(&mut *tx)
-        .await?;
+        let changed =
+            sqlx::query("DELETE FROM django_session WHERE session_key=$1 AND session_data=$2")
+                .bind(previous.id)
+                .bind(previous.original)
+                .execute(&mut *tx)
+                .await?;
         if changed.rows_affected() != 1 {
             return Err(sqlx::Error::RowNotFound);
         }
