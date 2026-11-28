@@ -275,6 +275,8 @@ def fixture_cases(django):
         Case("/robots.txt"), Case("/robots.txt", "HEAD"), Case("/llms.txt"),
         Case("/core/videos/tags/Caf%C3%A9%20Debate"),
         Case("/core/videos/tags/Tagged%20%22Debate%22"),
+        Case("/core/videos/tags/Caf%C3%A9%20Debate", "OPTIONS"),
+        Case("/core/resources/tags/Caf%C3%A9%20Debate", "OPTIONS"),
         Case("/.well-known/ai-plugin.json"),
         Case("/.well-known/openapi.json", accept="application/vnd.oai.openapi+json"),
         Case("/.well-known/openapi.json", accept="APPLICATION/VND.OAI.OPENAPI+JSON"),

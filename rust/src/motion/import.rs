@@ -1,6 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
-    io::{Cursor, Read},
+    io::{Cursor, Read, Seek},
     sync::LazyLock,
 };
 
@@ -45,10 +45,10 @@ struct ImportRow {
     errors: Vec<String>,
 }
 
-pub(crate) fn worksheet_index(data: &[u8]) -> usize {
+pub(crate) fn worksheet_index(input: impl Read + Seek) -> usize {
     static ACTIVE: LazyLock<Regex> =
         LazyLock::new(|| Regex::new(r#"\bactiveTab\s*=\s*["'](\d+)["']"#).unwrap());
-    let Ok(mut workbook) = ZipArchive::new(Cursor::new(data)) else {
+    let Ok(mut workbook) = ZipArchive::new(input) else {
         return 0;
     };
     let Ok(mut reader) = workbook.by_name("xl/workbook.xml") else {
@@ -121,7 +121,7 @@ fn spreadsheet(bytes: &[u8], path: &str) -> Result<SpreadsheetRows, String> {
         "xlsx" => {
             let mut workbook = Xlsx::new(Cursor::new(bytes)).map_err(|error| error.to_string())?;
             let range = workbook
-                .worksheet_range_at(worksheet_index(bytes))
+                .worksheet_range_at(worksheet_index(Cursor::new(bytes)))
                 .ok_or("The spreadsheet is empty.")?
                 .map_err(|error| error.to_string())?;
             let mut rows = Vec::new();

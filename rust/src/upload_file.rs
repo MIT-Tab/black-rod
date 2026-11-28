@@ -32,12 +32,22 @@ impl UploadFile {
         self,
         parse: impl FnOnce(&[u8]) -> T + Send + 'static,
     ) -> io::Result<T> {
-        tokio::task::spawn_blocking(move || {
-            let mut file = self.file;
-            file.rewind()?;
+        self.parse_reader(move |mut file| {
             let mut contents = Vec::new();
             file.read_to_end(&mut contents)?;
             Ok(parse(&contents))
+        })
+        .await
+    }
+
+    pub(crate) async fn parse_reader<T: Send + 'static>(
+        self,
+        parse: impl FnOnce(std::fs::File) -> io::Result<T> + Send + 'static,
+    ) -> io::Result<T> {
+        tokio::task::spawn_blocking(move || {
+            let mut file = self.file;
+            file.rewind()?;
+            parse(file)
         })
         .await
         .map_err(io::Error::other)?

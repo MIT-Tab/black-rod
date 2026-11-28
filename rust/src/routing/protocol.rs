@@ -8,6 +8,14 @@ use axum::{
 
 use crate::{AppState, agent, drf, is_django_integer, json_error, private_api, web};
 
+pub(super) async fn read_options() -> impl IntoResponse {
+    [
+        (header::ALLOW, "GET, HEAD, OPTIONS"),
+        (header::CONTENT_TYPE, "text/html; charset=utf-8"),
+        (header::CONTENT_LENGTH, "0"),
+    ]
+}
+
 fn numeric_path_segment(value: &str) -> bool {
     percent_encoding::percent_decode_str(value)
         .decode_utf8()

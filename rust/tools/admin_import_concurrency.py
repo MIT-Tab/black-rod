@@ -174,6 +174,17 @@ def exercise(client, root, control, writer):
     assert insert_school(control, "Writer after the mixed import fixture") > explicit + 2
 
 
+def upload(client, root, path, file, contents, format_index):
+    url = root + path
+    document = BeautifulSoup(client.get(url, timeout=30).content, "html.parser")
+    response = client.post(url, data={
+        "csrfmiddlewaretoken": document.select_one("input[name=csrfmiddlewaretoken]")["value"],
+        "input_format": format_index,
+    }, files={"import_file": (file, contents)}, timeout=30)
+    assert response.status_code == 200
+    return BeautifulSoup(response.content, "html.parser")
+
+
 def validate_import_cells(django, rust, session, tournament, award, control):
     attempts = [
         ("/admin/core/tournament/import/", f"id,date\n{tournament},2026-10-05 or 2026-10-06\n"),
@@ -181,16 +192,6 @@ def validate_import_cells(django, rust, session, tournament, award, control):
         ("/admin/core/teamresult/import/", f"id,tournament\n{award},{tournament}.7\n"),
         ("/admin/core/teamresult/import/", f"id,tournament\n{award},999999999\n"),
     ]
-
-    def upload(client, root, path, file, contents, format_index):
-        url = root + path
-        document = BeautifulSoup(client.get(url, timeout=30).content, "html.parser")
-        response = client.post(url, data={
-            "csrfmiddlewaretoken": document.select_one("input[name=csrfmiddlewaretoken]")["value"],
-            "input_format": format_index,
-        }, files={"import_file": (file, contents)}, timeout=30)
-        assert response.status_code == 200
-        return BeautifulSoup(response.content, "html.parser")
 
     for server in (django, rust):
         root = f"http://{HOST}:{server.port}"
@@ -219,6 +220,31 @@ def validate_import_cells(django, rust, session, tournament, award, control):
                 })
                 confirm(client, draft)
                 assert str(query(control, "SELECT date FROM core_tournament WHERE id=%s", tournament)) == "2026-10-05"
+
+
+def validate_import_debater_seasons(django, rust, session, control):
+    path = "/admin/core/debater/import/"
+    first_year = query(control, "SELECT first_season FROM core_debater WHERE first_name='Moving' AND last_name='Fixture' LIMIT 1")
+    assert first_year is not None
+    for server in (django, rust):
+        root = f"http://{HOST}:{server.port}"
+        explicit_id = query(control, "SELECT MAX(id) + 100 FROM core_debater")
+        surname = f"ImportSeason{server.name}"
+        contents = f"id,first_name,last_name\n{explicit_id},Historical,{surname}\n,Automatic,{surname}\n"
+        with requests.Session() as client:
+            client.cookies.set("sessionid", session)
+            page = upload(client, root, path, "debaters.csv", contents, "0")
+            field = page.select_one('input[name="import_file_name"]')
+            assert field is not None, (server.name, page.select_one("#content").get_text(" ", strip=True))
+            assert query(control, "SELECT COUNT(*) FROM core_debater WHERE last_name=%s", surname) == 0
+            form = field.find_parent("form")
+            confirm(client, (urljoin(root + path, form["action"]), {
+                item["name"]: item.get("value", "") for item in form.select('input[type="hidden"][name]')
+            }))
+        assert query(control, """SELECT ARRAY[first_season, latest_season] FROM core_debater
+            WHERE id=%s AND first_name='Historical' AND last_name=%s""", explicit_id, surname) == [None, None], server.name
+        assert query(control, """SELECT ARRAY[first_season, latest_season] FROM core_debater
+            WHERE first_name='Automatic' AND last_name=%s""", surname) == [first_year, first_year], server.name
 
 
 def validate_admin_integer_fields(django, rust, session, tournament, db):
@@ -322,6 +348,7 @@ def main():
                 client.cookies.set("sessionid", session)
                 control.autocommit = True
                 validate_import_cells(django, rust, session, tournament, award, control)
+                validate_import_debater_seasons(django, rust, session, control)
                 validate_admin_integer_fields(django, rust, session, tournament, control)
                 exercise(client, f"http://{HOST}:{rust.port}", control, writer)
                 validate_concurrent_deletion((django, rust), session, deletions, control, writer)

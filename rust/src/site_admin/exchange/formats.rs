@@ -1,4 +1,4 @@
-use std::io::{Cursor, Write};
+use std::io::{BufRead, BufReader, Cursor, Read, Seek, Write};
 
 use calamine::{Data, DataType, Ods, Range, Reader, Xls, Xlsx};
 use scraper::{Html, Selector};
@@ -30,19 +30,23 @@ pub(super) fn text(value: &Value) -> String {
     }
 }
 
-fn csv(kind: &str, bytes: &[u8]) -> Result<Rows, String> {
-    let bytes = bytes.strip_prefix(&[239, 187, 191]).unwrap_or(bytes);
-    csv::ReaderBuilder::new()
+fn csv(kind: &str, mut input: impl BufRead) -> Result<Vec<Map<String, Value>>, String> {
+    if input
+        .fill_buf()
+        .map_err(|error| error.to_string())?
+        .starts_with(&[239, 187, 191])
+    {
+        input.consume(3);
+    }
+    let mut reader = csv::ReaderBuilder::new()
         .delimiter(if kind == "csv" { b',' } else { b'\t' })
         .has_headers(false)
-        .from_reader(bytes)
-        .records()
-        .map(|record| {
-            record
-                .map(|row| row.iter().map(|cell| json!(cell)).collect())
-                .map_err(|error| error.to_string())
-        })
-        .collect()
+        .from_reader(input);
+    mapped_rows(reader.records().map(|record| {
+        record
+            .map(|row| row.iter().map(|cell| json!(cell)).collect())
+            .map_err(|error| error.to_string())
+    }))
 }
 
 fn spreadsheet(range: Range<Data>) -> Rows {
@@ -125,35 +129,54 @@ fn map_rows(input: Value) -> Result<Vec<Map<String, Value>>, String> {
         .collect()
 }
 
-pub(super) fn read(kind: &str, bytes: &[u8]) -> Result<Vec<Map<String, Value>>, String> {
+pub(super) fn read(
+    kind: &str,
+    mut input: impl Read + Seek,
+) -> Result<Vec<Map<String, Value>>, String> {
     let rows = match kind {
-        "csv" | "tsv" => csv(kind, bytes)?,
-        "html" => html(bytes)?,
+        "csv" | "tsv" => return csv(kind, BufReader::new(input)),
+        "html" => {
+            let mut bytes = Vec::new();
+            input
+                .read_to_end(&mut bytes)
+                .map_err(|error| error.to_string())?;
+            html(&bytes)?
+        }
         "json" => {
-            return map_rows(serde_json::from_slice(bytes).map_err(|error| error.to_string())?);
+            return map_rows(
+                serde_json::from_reader(BufReader::new(input))
+                    .map_err(|error| error.to_string())?,
+            );
         }
         "yaml" => {
-            let content = std::str::from_utf8(bytes).map_err(|error| error.to_string())?;
-            let yaml = yaml_rust2::YamlLoader::load_from_str(content)
+            let mut content = String::new();
+            input
+                .read_to_string(&mut content)
+                .map_err(|error| error.to_string())?;
+            let yaml = yaml_rust2::YamlLoader::load_from_str(&content)
                 .map_err(|error| error.to_string())?;
             return map_rows(yaml.first().map_or(Value::Null, yaml_value));
         }
         "xls" => spreadsheet(
-            Xls::new(Cursor::new(bytes))
+            Xls::new(BufReader::new(input))
                 .map_err(|error| error.to_string())?
                 .worksheet_range_at(0)
                 .ok_or("The workbook has no sheets.")?
                 .map_err(|error| error.to_string())?,
         ),
-        "xlsx" => spreadsheet(
-            Xlsx::new(Cursor::new(bytes))
-                .map_err(|error| error.to_string())?
-                .worksheet_range_at(crate::motion::import::worksheet_index(bytes))
-                .ok_or("The workbook has no sheets.")?
-                .map_err(|error| error.to_string())?,
-        ),
+        "xlsx" => {
+            let index = crate::motion::import::worksheet_index(&mut input);
+            input.rewind().map_err(|error| error.to_string())?;
+            spreadsheet(
+                Xlsx::new(BufReader::new(input))
+                    .map_err(|error| error.to_string())?
+                    .worksheet_range_at(index)
+                    .ok_or("The workbook has no sheets.")?
+                    .map_err(|error| error.to_string())?,
+            )
+        }
         "ods" => spreadsheet(
-            Ods::new(Cursor::new(bytes))
+            Ods::new(BufReader::new(input))
                 .map_err(|error| error.to_string())?
                 .worksheet_range_at(0)
                 .ok_or("The workbook has no sheets.")?
@@ -161,14 +184,20 @@ pub(super) fn read(kind: &str, bytes: &[u8]) -> Result<Vec<Map<String, Value>>, 
         ),
         _ => return Err("Select a valid format.".to_owned()),
     };
-    let mut rows = rows.into_iter();
+    mapped_rows(rows.into_iter().map(Ok))
+}
+
+fn mapped_rows(
+    mut rows: impl Iterator<Item = Result<Vec<Value>, String>>,
+) -> Result<Vec<Map<String, Value>>, String> {
     let headers = rows
         .next()
-        .ok_or("The file has no rows.")?
+        .ok_or("The file has no rows.")??
         .iter()
         .map(text)
         .collect::<Vec<_>>();
     rows.map(|row| {
+        let row = row?;
         if row.len() > headers.len() {
             return Err("A data row has more cells than the header.".to_owned());
         }
@@ -372,8 +401,8 @@ mod tests {
         for format in ["csv", "xls", "xlsx", "tsv", "ods", "json", "yaml", "html"] {
             let data = write(format, &headers, &rows)
                 .unwrap_or_else(|error| panic!("{format} export: {error}"));
-            let observed =
-                read(format, &data).unwrap_or_else(|error| panic!("{format} import: {error}"));
+            let observed = read(format, Cursor::new(&data))
+                .unwrap_or_else(|error| panic!("{format} import: {error}"));
             let observed = observed
                 .iter()
                 .map(|row| {
@@ -394,11 +423,11 @@ mod tests {
     #[test]
     fn imports_preserve_blank_values_and_reject_oversized_rows() {
         let input = b"id,name,included_in_oty\r\n1,First School,1\r\n,New School,0\r\n";
-        let parsed = read("csv", input).unwrap();
+        let parsed = read("csv", Cursor::new(input)).unwrap();
         assert_eq!(parsed[0]["id"], json!("1"));
         assert_eq!(parsed[1]["id"], json!(""));
         assert_eq!(parsed[1]["included_in_oty"], json!("0"));
-        assert!(read("tsv", b"id\tname\n1\tSchool\tUnexpected").is_err());
-        assert!(read("json", b"{}").is_err());
+        assert!(read("tsv", Cursor::new(b"id\tname\n1\tSchool\tUnexpected")).is_err());
+        assert!(read("json", Cursor::new(b"{}")).is_err());
     }
 }

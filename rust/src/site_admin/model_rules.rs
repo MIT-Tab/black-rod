@@ -21,7 +21,7 @@ pub(super) async fn before_save(
         let last = crate::claims::edit::sanitize_name(text("last_name"), "");
         columns.insert("first_name".to_owned(), json!(first));
         columns.insert("last_name".to_owned(), json!(last));
-        if id.is_none() {
+        if id.is_none_or(|id| id == 0) {
             for name in ["first_season", "latest_season"] {
                 if columns
                     .get(name)

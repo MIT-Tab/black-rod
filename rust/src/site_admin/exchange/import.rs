@@ -28,6 +28,7 @@ use crate::{
 };
 
 const TTL: Duration = Duration::from_secs(3600);
+static IMPORT_SLOT: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(1);
 
 #[derive(Deserialize, Serialize)]
 struct Pending {
@@ -413,7 +414,8 @@ async fn apply_row(
     {
         columns.insert("id".to_owned(), json!(id));
     }
-    model_rules::before_save(conn, model, current_season, existing, &mut columns).await?;
+    // IDs reserved by the allocator are still unset when Django runs its model hooks.
+    model_rules::before_save(conn, model, current_season, requested, &mut columns).await?;
     let id = match model.storage.write(conn, &columns, existing).await {
         Ok(id) => id,
         Err(ApiError::Constraint) => return Ok(Err(
@@ -601,7 +603,9 @@ async fn process(
                 } else {
                     result.updated += 1
                 }
-                result.records.push(record);
+                if !confirming {
+                    result.records.push(record);
+                }
             }
             Err(message) => {
                 savepoint.rollback().await?;
@@ -736,8 +740,13 @@ pub(in crate::site_admin) async fn preview(
     let error = choice.is_none().then_some("This field is required.");
     if let (Some(format), Some((name, file)), None) = (choice, upload.file, file_error) {
         let parse = exchange.import_formats[format].clone();
-        let rows = file
-            .parse(move |bytes| formats::read(&parse, bytes))
+        // Limit concurrent in-memory datasets while allowing uploads to spool to disk.
+        let permit = IMPORT_SLOT
+            .acquire()
+            .await
+            .map_err(|_| ApiError::Serialization)?;
+        let (rows, permit) = file
+            .parse_reader(move |file| Ok((formats::read(&parse, file), permit)))
             .await
             .map_err(|_| ApiError::Serialization)?;
         let rows = match rows {
@@ -764,9 +773,10 @@ pub(in crate::site_admin) async fn preview(
             format,
             rows,
         };
-        let token = tokio::task::spawn_blocking(move || write_file(&pending))
+        let (token, _permit) = tokio::task::spawn_blocking(move || (write_file(&pending), permit))
             .await
-            .map_err(|_| ApiError::Serialization)??;
+            .map_err(|_| ApiError::Serialization)?;
+        let token = token?;
         return admin.view("site_admin/exchange.html",context!{preview=>result.records,token,original_file_name=>name,selected=>format,..standard});
     }
     admin.view(
@@ -805,7 +815,11 @@ pub(in crate::site_admin) async fn confirm(
     let Some(path) = location(&token) else {
         return Ok(StatusCode::BAD_REQUEST.into_response());
     };
-    let pending = tokio::task::spawn_blocking(move || load_file(&token))
+    let permit = IMPORT_SLOT
+        .acquire()
+        .await
+        .map_err(|_| ApiError::Serialization)?;
+    let (pending, _permit) = tokio::task::spawn_blocking(move || (load_file(&token), permit))
         .await
         .map_err(|_| ApiError::Serialization)?;
     let verified = pending.filter(|pending| {

@@ -619,7 +619,10 @@ pub fn app(state: AppState) -> Router {
         .route("/core/videos/{video}", get(video::detail))
         .route("/core/resources/", get(directory::page))
         .route("/core/resources/my-resources", get(directory::page))
-        .route("/core/resources/tags/{slug}", get(resource::tag))
+        .route(
+            "/core/resources/tags/{slug}",
+            get(resource::tag).options(protocol::read_options),
+        )
         .route("/core/resources/{resource}", get(resource::detail))
         .route(
             "/core/resources/create",
@@ -635,7 +638,10 @@ pub fn app(state: AppState) -> Router {
                 .post(resource::edit::endpoint)
                 .delete(resource::edit::endpoint),
         )
-        .route("/core/videos/tags/{name}", get(video::tag))
+        .route(
+            "/core/videos/tags/{name}",
+            get(video::tag).options(protocol::read_options),
+        )
         .route("/DOTY", get(doty::page))
         .route("/core/toty", get(directory::page))
         .route("/core/soty", get(directory::page))
