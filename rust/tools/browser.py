@@ -1849,6 +1849,66 @@ School.objects.filter(pk=school).delete()
     driver.delete_all_cookies()
 
 
+def assert_http_delete_methods(driver, django, rust):
+    code = """
+from datetime import date
+from django import setup
+setup()
+from core.models import Debater, Resource, School, Team, Tournament, User, Video
+import json
+
+routes = {}
+owner = User.objects.get(username="tab")
+for runtime in ("Django", "Rust"):
+    host = School.objects.create(name=f"{runtime} HTTP delete host")
+    disposable_school = School.objects.create(name=f"{runtime} HTTP delete school")
+    debater = Debater.objects.create(first_name=f"{runtime} disposable", school=host)
+    participant = Debater.objects.create(first_name=f"{runtime} participant", school=host)
+    team = Team.objects.create(name=f"{runtime} HTTP delete team")
+    tournament = Tournament.objects.create(host=host, season="2026", date=date(2026, 10, 3))
+    video = Video.objects.create(
+        tournament=tournament, pm=participant, lo=participant, mg=participant, mo=participant,
+        link="https://fixture.example.test/video",
+    )
+    resource = Resource.objects.create(
+        title=f"{runtime} HTTP delete resource", content_link="https://fixture.example.test/",
+        created_by=owner,
+    )
+    resource.authors.add(participant)
+    routes[runtime] = dict(schools=disposable_school.pk, debaters=debater.pk, teams=team.pk,
+                           tournaments=tournament.pk, videos=video.pk, resources=resource.pk)
+print(json.dumps(routes))
+"""
+    seeded = subprocess.check_output([str(ROOT / "venv/bin/python"), "-c", code], text=True)
+    routes = json.loads(seeded.splitlines()[-1])
+    session = django_session()
+    for server in (django, rust):
+        origin = f"http://{HOST}:{server.port}"
+        driver.get(origin + "/robots.txt")
+        driver.delete_all_cookies()
+        driver.add_cookie({"name": "sessionid", "value": session})
+        for collection in ("schools", "debaters", "teams", "videos", "resources", "tournaments"):
+            path = f"/core/{collection}/{routes[server.name][collection]}/delete"
+            driver.get(origin + path)
+            token = driver.find_element("name", "csrfmiddlewaretoken").get_attribute("value")
+            cookies = f"sessionid={session}; csrftoken={driver.get_cookie('csrftoken')['value']}"
+            with closing(server.connect()) as client:
+                client.request("DELETE", path, headers={"Cookie": cookies})
+                response = client.getresponse()
+                assert response.status == 403, (server.name, collection, response.status)
+                response.read()
+                client.request("DELETE", path, headers={"Cookie": cookies, "X-CSRFToken": token})
+                response = client.getresponse()
+                assert response.status == 302, (server.name, collection, response.status)
+                assert response.getheader("location") == f"/core/{collection}/"
+                response.read()
+                client.request("GET", path, headers={"Cookie": cookies})
+                response = client.getresponse()
+                assert response.status == 404, (server.name, collection, response.status)
+                response.read()
+    driver.delete_all_cookies()
+
+
 def assert_entities(driver, django, rust, fixture):
     rust_root = f"http://{HOST}:{rust.port}"
     django_root = f"http://{HOST}:{django.port}"
@@ -5493,7 +5553,7 @@ def assert_live_standings(driver, django, rust):
     assert host == HOST
     with socket.create_connection((host, int(port)), timeout=2) as client:
         stream = client.makefile("rwb")
-        for suffix in ("", ":stale", ":lock"):
+        for suffix in ("", ":stale", ":lock", ":generation"):
             stream.write(f"delete :1:live-standings:v4:2026{suffix}\r\n".encode())
             stream.flush()
             assert stream.readline().strip() in (b"DELETED", b"NOT_FOUND")
@@ -5576,6 +5636,7 @@ def browser_checks(database, options, output):
         assert_tournament_audit_writes(driver, django, rust, fixture)
         assert_generated_codes(driver, django, rust, fixture)
         assert_entities(driver, django, rust, fixture)
+        assert_http_delete_methods(driver, django, rust)
         assert_tab_card_score_columns(driver, django, rust)
         assert_school_admin(driver, django, rust, fixture)
         assert_merge_requests(driver, django, rust, fixture)

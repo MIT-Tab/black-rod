@@ -45,10 +45,20 @@ fn pbkdf2_match(password: &[u8], encoded: &str, algorithm: pbkdf2::Algorithm) ->
     let count = fields.next()?.parse::<NonZeroU32>().ok()?;
     let salt = fields.next()?;
     let expected = STANDARD.decode(fields.next()?).ok()?;
-    if fields.next().is_some() || count.get() > 10_000_000 {
+    let sha256 = algorithm == pbkdf2::PBKDF2_HMAC_SHA256;
+    let length = if sha256 { 32 } else { 20 };
+    if fields.next().is_some() || count.get() > 10_000_000 || expected.len() != length {
         return None;
     }
-    Some(pbkdf2::verify(algorithm, count, salt.as_bytes(), password, &expected).is_ok())
+    let valid = pbkdf2::verify(algorithm, count, salt.as_bytes(), password, &expected).is_ok();
+    if !valid
+        && sha256
+        && let Some(extra) = NonZeroU32::new(ITERATIONS.get().saturating_sub(count.get()))
+    {
+        // Match Django's harden_runtime for an outdated default hasher.
+        pbkdf2::derive(algorithm, extra, salt.as_bytes(), password, &mut [0; 32]);
+    }
+    Some(valid)
 }
 
 fn scrypt_match(password: &[u8], encoded: &str) -> Option<bool> {
@@ -129,6 +139,26 @@ mod tests {
             assert_eq!(check(b"incorrect", original), Some(false), "{original}");
         }
     }
+    #[test]
+    fn rejects_truncated_pbkdf2_hashes() {
+        let mut expected = [0; 32];
+        let count = NonZeroU32::new(1).unwrap();
+        pbkdf2::derive(
+            pbkdf2::PBKDF2_HMAC_SHA256,
+            count,
+            b"fixture",
+            b"password",
+            &mut expected,
+        );
+        let full = format!("pbkdf2_sha256$1$fixture${}", STANDARD.encode(expected));
+        let partial = format!(
+            "pbkdf2_sha256$1$fixture${}",
+            STANDARD.encode(&expected[..1])
+        );
+        assert_eq!(check(b"password", &full), Some(true));
+        assert_eq!(check(b"password", &partial), None);
+    }
+
     #[test]
     fn rejects_hashes_outside_djangos_configured_hashers() {
         assert_eq!(

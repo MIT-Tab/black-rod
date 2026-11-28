@@ -347,6 +347,12 @@ async fn save(
 
 async fn page(state: &AppState, request: Request, action: Action) -> Result<Response, ApiError> {
     let uri = request.uri().clone();
+    if request.method() == Method::DELETE
+        && let Some(response) =
+            crate::entity_delete::reject_missing_header_csrf(state, request.headers())
+    {
+        return Ok(response);
+    }
     let user = session::user(&state.pool, request.headers(), state.secret.as_deref()).await?;
     if !user.is_authenticated {
         return Ok(login::redirect_to_login(&uri));
@@ -440,14 +446,14 @@ async fn page(state: &AppState, request: Request, action: Action) -> Result<Resp
         if !matches!(action, Action::Delete(_)) {
             (fields, errors) = Fields::submitted(&state.pool, &user, &owned, &body).await?;
         }
-        if errors.is_empty() {
-            return Ok(match save(&state.pool, action, &user, &fields).await? {
-                Write::Saved(id) => redirect(&url(id)),
-                Write::Deleted => redirect(LIST),
-                Write::Missing => StatusCode::NOT_FOUND.into_response(),
-                Write::Denied => web::permission_denied(state, &user, &uri),
-            });
-        }
+    }
+    if matches!(parts.method, Method::POST | Method::DELETE) && errors.is_empty() {
+        return Ok(match save(&state.pool, action, &user, &fields).await? {
+            Write::Saved(id) => redirect(&url(id)),
+            Write::Deleted => redirect(LIST),
+            Write::Missing => StatusCode::NOT_FOUND.into_response(),
+            Write::Denied => web::permission_denied(state, &user, &uri),
+        });
     }
     let Ok((csrf, token)) = login::csrf_tokens(&parts.headers) else {
         return Ok(StatusCode::INTERNAL_SERVER_ERROR.into_response());

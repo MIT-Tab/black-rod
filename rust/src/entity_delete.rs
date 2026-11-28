@@ -1,6 +1,6 @@
 use axum::{
     extract::{Request, State},
-    http::{Method, StatusCode, Uri, header},
+    http::{HeaderMap, Method, StatusCode, Uri, header},
     response::{Html, IntoResponse, Response},
 };
 use minijinja::context;
@@ -60,6 +60,17 @@ fn parse(uri: &Uri) -> Option<(&'static Entity, i64)> {
     Some((entity, id.parse().ok()?))
 }
 
+pub(crate) fn reject_missing_header_csrf(
+    state: &AppState,
+    headers: &HeaderMap,
+) -> Option<Response> {
+    match state.origin(headers) {
+        None => Some(StatusCode::BAD_REQUEST.into_response()),
+        Some(origin) if !login::csrf_valid(headers, None, &origin) => Some(login::csrf_failure()),
+        Some(_) => None,
+    }
+}
+
 async fn page(
     state: &AppState,
     request: Request,
@@ -67,6 +78,11 @@ async fn page(
     id: i64,
 ) -> Result<Response, ApiError> {
     let uri = request.uri().clone();
+    if request.method() == Method::DELETE
+        && let Some(response) = reject_missing_header_csrf(state, request.headers())
+    {
+        return Ok(response);
+    }
     let user = session::user(&state.pool, request.headers(), state.secret.as_deref()).await?;
     if !user.is_authenticated {
         return Ok(login::redirect_to_login(&uri));
@@ -100,6 +116,8 @@ async fn page(
         ) {
             return Ok(login::csrf_failure());
         }
+    }
+    if matches!(parts.method, Method::POST | Method::DELETE) {
         let mut tx = state.pool.begin().await?;
         match delete_relations::delete(&mut tx, entity.model, id).await {
             Ok(()) => {

@@ -18,7 +18,7 @@ import psycopg2
 import requests
 
 from agent_write_parity import fixture_database
-from compare import HOST, ROOT, servers
+from compare import HOST, ROOT, RUST_BIN, servers
 
 SEED = """
 import json
@@ -44,7 +44,14 @@ for side in ("Django", "Rust"):
     destination = School.objects.create(name=f"{side} concurrent deletion destination")
     debater = Debater.objects.create(first_name="Moving", last_name="Fixture", school=source)
     deletions.append([source.pk, destination.pk, debater.pk])
-print(json.dumps([session.session_key, tournament.pk, award.pk, deletions]))
+dupes = []
+for side in ("Django", "Rust"):
+    keeper = Debater.objects.create(first_name="Cleanup", last_name=side, school=school)
+    candidate = Debater.objects.create(first_name="Cleanup", last_name=side, school=school)
+    linked_team = Team.objects.create(name=f"{side} cleanup fixture")
+    linked_team.debaters.add(keeper)
+    dupes.append([keeper.pk, candidate.pk, linked_team.pk])
+print(json.dumps([session.session_key, tournament.pk, award.pk, deletions, dupes]))
 """
 IMPORT = "/admin/core/school/import/"
 AUTO_NAME = "Automatic sequence fixture"
@@ -269,6 +276,34 @@ def validate_concurrent_deletion(servers, session, deletions, control, writer):
             assert not query(control, "SELECT EXISTS (SELECT 1 FROM core_school WHERE id=%s)", source), server.name
 
 
+def validate_cleanup_during_import(env, clone, dupes, control, writer):
+    django = [str(ROOT / "venv/bin/python"), "-c",
+              "from reference import application; from django.core.management import call_command; "
+              "import sys; call_command('clean_duplicate_debaters', *sys.argv[1:])"]
+    rust = [str(RUST_BIN), "clean_duplicate_debaters"]
+    command_env = {**env, "BLACK_ROD_DATABASE_URL": clone, "BLACK_ROD_PARITY_POSTGRES_URL": clone,
+                   "DOT_ENV_FILE": os.devnull, "LIVE_MITTAB_DIRECTORY_URL": ""}
+    for command, (minimum, candidate, team) in zip((rust, django), reversed(dupes)):
+        query(writer, "SELECT id FROM core_debater WHERE id=%s FOR UPDATE", candidate)
+        query(writer, "INSERT INTO core_team_debaters (team_id,debater_id) VALUES (%s,%s)", team, candidate)
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            cleanup = pool.submit(
+                subprocess.run, [*command, "--min-id", str(minimum), "--confirm"],
+                env=command_env, capture_output=True, text=True, timeout=25,
+            )
+            try:
+                wait_for_lock(control, """
+                    SELECT EXISTS (SELECT 1 FROM pg_stat_activity
+                    WHERE datname=current_database() AND wait_event_type='Lock' AND query ILIKE %s)
+                """, "%core_debater%")
+            finally:
+                writer.commit()
+            result = cleanup.result()
+        assert result.returncode == 0, result.stderr
+        assert query(control, "SELECT EXISTS(SELECT 1 FROM core_team_debaters WHERE team_id=%s AND debater_id=%s)",
+                     team, candidate), "Cleanup discarded a newly linked debater"
+
+
 def main():
     postgres = os.environ["BLACK_ROD_PARITY_POSTGRES_URL"]
     seed = Path(os.environ["BR_STATE"]) / "dev.sqlite3"
@@ -279,7 +314,7 @@ def main():
             env = {**os.environ, "SECRET_KEY": "disposable-local-parity-key",
                    "PYTHONPATH": f"{Path(__file__).resolve().parent}{os.pathsep}{os.environ['PYTHONPATH']}"}
             data = subprocess.check_output([str(ROOT / "venv/bin/python"), "-c", SEED], env=env, text=True)
-            session, tournament, award, deletions = json.loads(data.splitlines()[-1])
+            session, tournament, award, deletions, dupes = json.loads(data.splitlines()[-1])
             clone = os.environ["BLACK_ROD_PARITY_POSTGRES_URL"]
             with servers(database) as (django, rust), requests.Session() as client, closing(
                 psycopg2.connect(clone)
@@ -290,8 +325,9 @@ def main():
                 validate_admin_integer_fields(django, rust, session, tournament, control)
                 exercise(client, f"http://{HOST}:{rust.port}", control, writer)
                 validate_concurrent_deletion((django, rust), session, deletions, control, writer)
+                validate_cleanup_during_import(env, clone, dupes, control, writer)
     print("PostgreSQL admin imports validate complete dates and foreign keys, and advance IDs safely")
-    print("School deletion preserves a concurrently updated debater affiliation")
+    print("School deletion and duplicate cleanup preserve concurrent affiliations and memberships")
 
 
 if __name__ == "__main__":

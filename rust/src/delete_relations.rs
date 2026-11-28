@@ -162,14 +162,26 @@ async fn plan_many(
     root: &'static str,
     ids: &[i64],
 ) -> Result<Deletion, DeleteError> {
+    let postgres = conn.backend_name() == "PostgreSQL";
     for chunk in ids.chunks(200) {
         let marks = placeholders(chunk.len());
-        let lock = format!("UPDATE {root} SET id=id WHERE id IN ({marks})");
+        let lock = if postgres {
+            format!(
+                "SELECT CAST(id AS BIGINT) FROM {root} WHERE id IN ({marks}) ORDER BY id FOR UPDATE"
+            )
+        } else {
+            format!("UPDATE {root} SET id=id WHERE id IN ({marks})")
+        };
         let mut query = sqlx::query(AssertSqlSafe(lock));
         for id in chunk {
             query = query.bind(id);
         }
-        if query.execute(&mut *conn).await?.rows_affected() != chunk.len() as u64 {
+        let locked = if postgres {
+            query.fetch_all(&mut *conn).await?.len() as u64
+        } else {
+            query.execute(&mut *conn).await?.rows_affected()
+        };
+        if locked != chunk.len() as u64 {
             return Err(DeleteError::Absent);
         }
     }

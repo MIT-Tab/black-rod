@@ -36,11 +36,17 @@ const MARKER_LIMITS: [usize; 3] = [5, 6, 5];
 mod shared;
 pub(crate) mod snapshots;
 
+#[derive(Default)]
+struct LocalSnapshot {
+    generation: u64,
+    value: Option<(Instant, Arc<Payload>)>,
+}
+
 pub struct Live {
     directory: Option<String>,
     sources: Vec<String>,
     client: Client,
-    last: RwLock<Option<(Instant, Arc<Payload>)>>,
+    last: RwLock<LocalSnapshot>,
     refreshing: Arc<Mutex<()>>,
 }
 
@@ -61,12 +67,14 @@ impl Live {
         self.last
             .read()
             .ok()?
+            .value
             .as_ref()
             .filter(|(time, _)| time.elapsed() < age)
             .map(|(_, payload)| payload.clone())
     }
 
     async fn rebuild(&self, state: &AppState, season: i32) -> Result<Arc<Payload>, ApiError> {
+        let generation = self.last.read().ok().map(|snapshot| snapshot.generation);
         let pool = &state.pool;
         let mut boards = base_boards(pool, season).await?;
         let mut coty = base_coty(pool, season).await?;
@@ -95,8 +103,9 @@ impl Live {
         });
         if state.memcached.is_none()
             && let Ok(mut last) = self.last.write()
+            && generation == Some(last.generation)
         {
-            *last = Some((Instant::now(), payload.clone()));
+            last.value = Some((Instant::now(), payload.clone()));
         }
         Ok(payload)
     }
@@ -977,7 +986,8 @@ pub(crate) async fn invalidate(state: &AppState, season: i32) {
         && state.current_season == season
         && let Ok(mut value) = live.last.write()
     {
-        *value = None;
+        value.generation = value.generation.wrapping_add(1);
+        value.value = None;
     }
     if let Some(cache) = &state.memcached {
         shared::invalidate(cache, season).await;

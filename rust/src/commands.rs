@@ -323,6 +323,20 @@ impl AppState {
             }
             match delete_relations::plan(&mut tx, "core_debater", id).await {
                 Ok(plan) => {
+                    // The profile may have acquired results while the command waited for its lock.
+                    let linked = sqlx::query_scalar::<_, i64>(
+                        "SELECT CAST(CASE WHEN EXISTS(
+                            SELECT 1 FROM core_team_debaters WHERE debater_id=$1
+                        ) OR EXISTS(
+                            SELECT 1 FROM core_speakerresult WHERE debater_id=$1
+                        ) THEN 1 ELSE 0 END AS BIGINT)",
+                    )
+                    .bind(id)
+                    .fetch_one(&mut *tx)
+                    .await?;
+                    if linked != 0 {
+                        continue;
+                    }
                     deleted += plan.removed().count();
                     plan.apply(&mut tx).await.map_err(deletion_failure)?;
                 }

@@ -326,6 +326,12 @@ async fn save(pool: &AnyPool, action: Action, fields: &Fields) -> Result<Option<
 
 async fn view(state: &AppState, request: Request, action: Action) -> Result<Response, ApiError> {
     let uri = request.uri().clone();
+    if request.method() == Method::DELETE
+        && let Some(response) =
+            crate::entity_delete::reject_missing_header_csrf(state, request.headers())
+    {
+        return Ok(response);
+    }
     let user = session::user(&state.pool, request.headers(), state.secret.as_deref()).await?;
     if !user.is_authenticated {
         return Ok(login::redirect_to_login(&uri));
@@ -373,19 +379,19 @@ async fn view(state: &AppState, request: Request, action: Action) -> Result<Resp
         if !matches!(action, Action::Delete(_)) {
             (fields, errors) = Fields::submitted(&state.pool, &body).await?;
         }
-        if errors.is_empty() {
-            return Ok(match save(&state.pool, action, &fields).await? {
-                None => StatusCode::NOT_FOUND.into_response(),
-                Some(id) => {
-                    let location = if matches!(action, Action::Delete(_)) {
-                        DIRECTORY.to_owned()
-                    } else {
-                        format!("{DIRECTORY}{id}")
-                    };
-                    (StatusCode::FOUND, [(header::LOCATION, location)]).into_response()
-                }
-            });
-        }
+    }
+    if matches!(parts.method, Method::POST | Method::DELETE) && errors.is_empty() {
+        return Ok(match save(&state.pool, action, &fields).await? {
+            None => StatusCode::NOT_FOUND.into_response(),
+            Some(id) => {
+                let location = if matches!(action, Action::Delete(_)) {
+                    DIRECTORY.to_owned()
+                } else {
+                    format!("{DIRECTORY}{id}")
+                };
+                (StatusCode::FOUND, [(header::LOCATION, location)]).into_response()
+            }
+        });
     }
     let Ok((csrf, token)) = login::csrf_tokens(&parts.headers) else {
         return Ok(StatusCode::INTERNAL_SERVER_ERROR.into_response());

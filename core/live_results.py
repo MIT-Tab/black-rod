@@ -2,6 +2,7 @@ from concurrent.futures import ThreadPoolExecutor, wait
 from datetime import date, timedelta
 import logging
 import threading
+from uuid import uuid4
 
 import requests
 from django.conf import settings
@@ -592,6 +593,18 @@ def _cache_set(key, value, timeout):
         LOGGER.exception("Could not cache live standings under %s", key)
 
 
+def _active_cache_key(season):
+    key = f"{CACHE_KEY}:{season}"
+    marker = f"{key}:generation"
+    generation = cache.get(marker)
+    if generation is None:
+        proposed = uuid4().bytes
+        generation = proposed if cache.add(marker, proposed, None) else cache.get(marker)
+    if isinstance(generation, bytes) and len(generation) == 16:
+        return f"{key}:{generation.hex()}"
+    return None
+
+
 def cached_live_standings(season=None):
     """Return the last computed live standings without waiting on a refresh.
 
@@ -599,17 +612,18 @@ def cached_live_standings(season=None):
     like the index can advertise live results without visitors loading /live.
     """
     season = str(season or settings.CURRENT_SEASON)
-    fresh_key = f"{CACHE_KEY}:{season}"
+    fresh_key = _active_cache_key(season)
+    if fresh_key is None:
+        return None
     cached = cache.get(fresh_key)
     if cached is not None:
         return cached
     if cache.add(f"{fresh_key}:lock", 1, LOCK_SECONDS):
-        _start_refresh(season)
+        _start_refresh(season, fresh_key)
     return cache.get(f"{fresh_key}:stale")
 
 
-def _refresh(season):
-    fresh_key = f"{CACHE_KEY}:{season}"
+def _refresh(season, fresh_key):
     try:
         if cache.get(fresh_key) is None:
             result = _compute_live_standings(season)
@@ -622,19 +636,26 @@ def _refresh(season):
         close_old_connections()
 
 
-def _start_refresh(season):
-    threading.Thread(target=_refresh, args=(season,), daemon=True).start()
+def _start_refresh(season, fresh_key):
+    threading.Thread(target=_refresh, args=(season, fresh_key), daemon=True).start()
 
 
 def invalidate_live_standings(season):
     """Drop cached live standings once reviewed results change."""
-    fresh_key = f"{CACHE_KEY}:{season}"
-    cache.delete_many([fresh_key, f"{fresh_key}:stale"])
+    key = f"{CACHE_KEY}:{season}"
+    previous = _active_cache_key(season)
+    cache.set(f"{key}:generation", uuid4().bytes, None)
+    keys = [key, f"{key}:stale"]
+    if previous is not None:
+        keys.extend((previous, f"{previous}:stale"))
+    cache.delete_many(keys)
 
 
 def build_live_standings(season=None):
     season = str(season or settings.CURRENT_SEASON)
-    fresh_key = f"{CACHE_KEY}:{season}"
+    fresh_key = _active_cache_key(season)
+    if fresh_key is None:
+        return _compute_live_standings(season)
     stale_key = f"{fresh_key}:stale"
     lock_key = f"{fresh_key}:lock"
 

@@ -14,6 +14,12 @@ fn key(season: i32) -> String {
     format!(":1:live-standings:v4:{season}")
 }
 
+async fn active_key(cache: &Memcached, season: i32) -> Option<String> {
+    let key = key(season);
+    let generation = cache.generation(&format!("{key}:generation")).await?;
+    Some(format!("{key}:{}", generation.simple()))
+}
+
 async fn load(cache: &Memcached, key: &str) -> Option<Arc<Payload>> {
     let (1, bytes) = cache.read_raw(key).await? else {
         return None;
@@ -93,7 +99,9 @@ pub(super) async fn active(
     season: i32,
     cache: &Memcached,
 ) -> Vec<String> {
-    let key = key(season);
+    let Some(key) = active_key(cache, season).await else {
+        return Vec::new();
+    };
     if let Some(found) = load(cache, &key).await {
         return found.active_sources.clone();
     }
@@ -121,7 +129,10 @@ pub(super) async fn data(
     season: i32,
     cache: &Memcached,
 ) -> Result<Arc<Payload>, ApiError> {
-    let key = key(season);
+    let Some(key) = active_key(cache, season).await else {
+        let _guard = live.refreshing.lock().await;
+        return live.rebuild(state, season).await;
+    };
     if let Some(found) = load(cache, &key).await {
         return Ok(found);
     }
@@ -147,7 +158,21 @@ pub(super) async fn data(
 pub(super) async fn invalidate(cache: &Memcached, season: i32) {
     let key = key(season);
     let stale = format!("{key}:stale");
-    tokio::join!(cache.delete_raw(&key), cache.delete_raw(&stale));
+    let generation = format!("{key}:generation");
+    let previous = active_key(cache, season).await;
+    // A refresh only writes to the generation it read before starting.
+    tokio::join!(
+        cache.advance_generation(&generation),
+        cache.invalidate_raw(&key),
+        cache.invalidate_raw(&stale),
+    );
+    if let Some(previous) = previous {
+        let stale = format!("{previous}:stale");
+        tokio::join!(
+            cache.invalidate_raw(&previous),
+            cache.invalidate_raw(&stale)
+        );
+    }
 }
 
 #[cfg(test)]

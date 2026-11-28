@@ -473,19 +473,27 @@ pub fn app(state: AppState) -> Router {
         )
         .route(
             "/core/schools/{school}/delete",
-            get(entity_delete::endpoint).post(entity_delete::endpoint),
+            get(entity_delete::endpoint)
+                .post(entity_delete::endpoint)
+                .delete(entity_delete::endpoint),
         )
         .route(
             "/core/debaters/{debater}/delete",
-            get(entity_delete::endpoint).post(entity_delete::endpoint),
+            get(entity_delete::endpoint)
+                .post(entity_delete::endpoint)
+                .delete(entity_delete::endpoint),
         )
         .route(
             "/core/teams/{team}/delete",
-            get(entity_delete::endpoint).post(entity_delete::endpoint),
+            get(entity_delete::endpoint)
+                .post(entity_delete::endpoint)
+                .delete(entity_delete::endpoint),
         )
         .route(
             "/core/tournaments/{tournament}/delete",
-            get(entity_delete::endpoint).post(entity_delete::endpoint),
+            get(entity_delete::endpoint)
+                .post(entity_delete::endpoint)
+                .delete(entity_delete::endpoint),
         )
         .route(
             "/core/schools/{school}/edit",
@@ -604,7 +612,9 @@ pub fn app(state: AppState) -> Router {
         )
         .route(
             "/core/videos/{video}/delete",
-            get(video::edit::endpoint).post(video::edit::endpoint),
+            get(video::edit::endpoint)
+                .post(video::edit::endpoint)
+                .delete(video::edit::endpoint),
         )
         .route("/core/videos/{video}", get(video::detail))
         .route("/core/resources/", get(directory::page))
@@ -621,7 +631,9 @@ pub fn app(state: AppState) -> Router {
         )
         .route(
             "/core/resources/{resource}/delete",
-            get(resource::edit::endpoint).post(resource::edit::endpoint),
+            get(resource::edit::endpoint)
+                .post(resource::edit::endpoint)
+                .delete(resource::edit::endpoint),
         )
         .route("/core/videos/tags/{name}", get(video::tag))
         .route("/DOTY", get(doty::page))

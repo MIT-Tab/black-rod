@@ -8,7 +8,7 @@ from django.test import Client, override_settings
 from django.test.utils import CaptureQueriesContext
 
 from core import live_results
-from core.live_results import CACHE_KEY, build_live_standings
+from core.live_results import build_live_standings
 from core.utils.rankings import redo_rankings
 from core.models import COTY, QUAL, TOTY, Debater, QualPoints, School, Team, Tournament
 from core.models.results.speaker import SpeakerResult
@@ -496,8 +496,9 @@ def test_concurrent_refresh_serves_stale_standings():
     cache.clear()
     with patch("core.live_results.fetch_live_sources", return_value=[_payload()]):
         first = build_live_standings()
-    cache.delete(f"{CACHE_KEY}:2026")
-    cache.add(f"{CACHE_KEY}:2026:lock", 1)
+    key = live_results._active_cache_key("2026")
+    cache.delete(key)
+    cache.add(f"{key}:lock", 1)
     with patch("core.live_results.fetch_live_sources") as fetch:
         assert build_live_standings() == first
     fetch.assert_not_called()
@@ -516,7 +517,7 @@ def test_index_hides_banner_without_live_results():
         response = Client().get("/")
 
     fetch.assert_not_called()
-    refresh.assert_called_once_with("2026")
+    refresh.assert_called_once_with("2026", live_results._active_cache_key("2026"))
     assert BANNER not in response.content
     assert b'href="/live"' in response.content
 
@@ -558,13 +559,35 @@ def test_reviewed_rankings_update_clears_live_standings_after_commit(django_capt
     with patch("core.live_results.fetch_live_sources", return_value=[_payload()]):
         build_live_standings()
 
+    key = live_results._active_cache_key("2026")
     with django_capture_on_commit_callbacks(execute=True):
         redo_rankings(TOTY.objects.filter(season="2026"), season="2026")
-        assert cache.get(f"{CACHE_KEY}:2026") is not None
-        assert cache.get(f"{CACHE_KEY}:2026:stale") is not None
+        assert cache.get(key) is not None
+        assert cache.get(f"{key}:stale") is not None
 
-    assert cache.get(f"{CACHE_KEY}:2026") is None
-    assert cache.get(f"{CACHE_KEY}:2026:stale") is None
+    assert live_results._active_cache_key("2026") != key
+    assert cache.get(key) is None
+    assert cache.get(f"{key}:stale") is None
+
+
+@pytest.mark.django_db
+def test_in_flight_refresh_cannot_publish_to_a_new_live_generation():
+    cache.clear()
+    old_key = live_results._active_cache_key("2026")
+    earlier = {"season": "2026", "boards": {}, "active_sources": ["Old fixture"]}
+    later = {"season": "2026", "boards": {}, "active_sources": ["New fixture"]}
+
+    def invalidate_during_refresh(_season):
+        live_results.invalidate_live_standings("2026")
+        return earlier
+
+    with patch("core.live_results._compute_live_standings", side_effect=invalidate_during_refresh):
+        live_results._refresh("2026", old_key)
+    assert cache.get(old_key) == earlier
+    with patch("core.live_results._compute_live_standings", return_value=later) as compute:
+        assert build_live_standings("2026") == later
+        assert live_results.cached_live_standings("2026") == later
+    compute.assert_called_once_with("2026")
 
 
 @pytest.mark.django_db
