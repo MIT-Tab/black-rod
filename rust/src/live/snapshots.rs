@@ -1,9 +1,9 @@
 use std::{
     collections::HashMap,
-    io::{self, Read},
+    io::{self, Write},
 };
 
-use flate2::read::ZlibDecoder;
+use flate2::write::ZlibDecoder;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio::task::JoinSet;
@@ -90,20 +90,20 @@ pub(crate) async fn cached_source(
     chunks: &[String],
 ) -> Option<Value> {
     let prefix = format!("mittab-import:{key}:");
-    let mut compressed = Vec::new();
-    for chunk in chunks {
-        if !chunk.starts_with(&prefix) {
-            return None;
-        }
-        let (0, data) = cache.read_raw(&format!(":1:{chunk}")).await? else {
-            return None;
-        };
-        compressed.extend_from_slice(&data);
+    if !chunks.iter().all(|chunk| chunk.starts_with(&prefix)) {
+        return None;
     }
+    let keys = chunks
+        .iter()
+        .map(|chunk| format!(":1:{chunk}"))
+        .collect::<Vec<_>>();
+    let compressed = cache.read_many_bytes(&keys).await.ok()?;
     tokio::task::spawn_blocking(move || {
-        let mut decoder = ZlibDecoder::new(compressed.as_slice());
-        let mut decoded = Vec::new();
-        decoder.read_to_end(&mut decoded).ok()?;
+        let mut decoder = ZlibDecoder::new(Vec::new());
+        for chunk in compressed {
+            decoder.write_all(&chunk).ok()?;
+        }
+        let decoded = decoder.finish().ok()?;
         serde_json::from_slice(&decoded).ok()
     })
     .await
@@ -112,8 +112,6 @@ pub(crate) async fn cached_source(
 
 #[cfg(test)]
 mod tests {
-    use std::{io::Write, time::Duration};
-
     use flate2::{Compression, write::ZlibEncoder};
     use serde_json::json;
     use tokio::{
@@ -123,8 +121,31 @@ mod tests {
 
     use super::*;
 
+    async fn serve_get(listener: &TcpListener, records: &[(String, u32, &[u8])]) {
+        let (connection, _) = listener.accept().await.unwrap();
+        let mut reader = BufReader::new(connection);
+        let mut command = String::new();
+        reader.read_line(&mut command).await.unwrap();
+        let requested = records
+            .iter()
+            .map(|(key, _, _)| key.as_str())
+            .collect::<Vec<_>>()
+            .join(" ");
+        assert_eq!(command, format!("get {requested}\r\n"));
+        let stream = reader.get_mut();
+        for (key, flags, data) in records.iter().rev() {
+            stream
+                .write_all(format!("VALUE {key} {flags} {}\r\n", data.len()).as_bytes())
+                .await
+                .unwrap();
+            stream.write_all(data).await.unwrap();
+            stream.write_all(b"\r\n").await.unwrap();
+        }
+        stream.write_all(b"END\r\n").await.unwrap();
+    }
+
     #[tokio::test]
-    async fn attempts_every_retained_snapshot_after_the_remote_fetch_budget() {
+    async fn fetches_all_retained_chunks_together_in_manifest_order() {
         let chunks: Vec<_> = (0..180)
             .map(|number| format!("mittab-import:fixture:generation:{number}"))
             .collect();
@@ -147,31 +168,21 @@ mod tests {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let cache = Memcached::new(listener.local_addr().unwrap());
         let fixture = tokio::spawn(async move {
-            let records = std::iter::once((INDEX.to_owned(), 1, index.as_slice())).chain(
-                chunks.iter().enumerate().map(|(part, key)| {
+            let indexed = chunks
+                .iter()
+                .enumerate()
+                .map(|(part, key)| {
                     let length = compressed.len();
-                    let data = &compressed
-                        [part * length / chunks.len()..(part + 1) * length / chunks.len()];
-                    (format!(":1:{key}"), 0, data)
-                }),
-            );
-            for (key, flags, data) in records {
-                let (connection, _) = listener.accept().await.unwrap();
-                let mut reader = BufReader::new(connection);
-                let mut command = String::new();
-                reader.read_line(&mut command).await.unwrap();
-                assert_eq!(command, format!("get {key}\r\n"));
-                if flags == 0 {
-                    tokio::time::sleep(Duration::from_millis(30)).await;
-                }
-                let stream = reader.get_mut();
-                stream
-                    .write_all(format!("VALUE {key} {flags} {}\r\n", data.len()).as_bytes())
-                    .await
-                    .unwrap();
-                stream.write_all(data).await.unwrap();
-                stream.write_all(b"\r\nEND\r\n").await.unwrap();
-            }
+                    (
+                        format!(":1:{key}"),
+                        0,
+                        &compressed
+                            [part * length / chunks.len()..(part + 1) * length / chunks.len()],
+                    )
+                })
+                .collect::<Vec<_>>();
+            serve_get(&listener, &[(INDEX.to_owned(), 1, index.as_slice())]).await;
+            serve_get(&listener, &indexed).await;
         });
         let result = missing(&cache, &HashMap::new()).await;
         assert_eq!(result["http://fixture.example"]["_cached_only"], true);
@@ -195,24 +206,23 @@ mod tests {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let cache = Memcached::new(listener.local_addr().unwrap());
         let fixture = tokio::spawn(async move {
-            for (key, flags, value) in [
-                (INDEX, 1, index.as_slice()),
-                (":1:mittab-import:fixture:generation:0", 0, &compressed[..5]),
-                (":1:mittab-import:fixture:generation:5", 0, &compressed[5..]),
-            ] {
-                let (connection, _) = listener.accept().await.unwrap();
-                let mut reader = BufReader::new(connection);
-                let mut command = String::new();
-                reader.read_line(&mut command).await.unwrap();
-                assert_eq!(command, format!("get {key}\r\n"));
-                let stream = reader.get_mut();
-                stream
-                    .write_all(format!("VALUE {key} {flags} {}\r\n", value.len()).as_bytes())
-                    .await
-                    .unwrap();
-                stream.write_all(value).await.unwrap();
-                stream.write_all(b"\r\nEND\r\n").await.unwrap();
-            }
+            serve_get(&listener, &[(INDEX.to_owned(), 1, index.as_slice())]).await;
+            serve_get(
+                &listener,
+                &[
+                    (
+                        ":1:mittab-import:fixture:generation:0".to_owned(),
+                        0,
+                        &compressed[..5],
+                    ),
+                    (
+                        ":1:mittab-import:fixture:generation:5".to_owned(),
+                        0,
+                        &compressed[5..],
+                    ),
+                ],
+            )
+            .await;
         });
         let result = missing(&cache, &HashMap::new()).await;
         assert_eq!(

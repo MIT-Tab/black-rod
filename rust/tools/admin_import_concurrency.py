@@ -81,11 +81,16 @@ def wait_for_lock(connection, sql, *args):
 
 
 def preview(client, root, name, school_id=None):
+    return preview_rows(client, root, [(school_id, name)])
+
+
+def preview_rows(client, root, rows):
     url = root + IMPORT
     form = BeautifulSoup(client.get(url, timeout=30).content, "html.parser")
     csrf = form.select_one("input[name=csrfmiddlewaretoken]")["value"]
-    row_id = "" if school_id is None else school_id
-    content = f"id,name,short_name,included_in_oty,temporary,synthetic\n{row_id},{name},Fixture,1,0,0\n"
+    content = "id,name,short_name,included_in_oty,temporary,synthetic\n"
+    for row_id, name in rows:
+        content += f"{'' if row_id is None else row_id},{name},Fixture,1,0,0\n"
     response = client.post(
         url,
         data={"csrfmiddlewaretoken": csrf, "input_format": "0"},
@@ -95,7 +100,7 @@ def preview(client, root, name, school_id=None):
     response.raise_for_status()
     markup = BeautifulSoup(response.content, "html.parser")
     confirm = markup.select_one('input[name="confirm"]')
-    assert confirm is not None, f"The preview for {name} did not render a confirmation form"
+    assert confirm is not None, f"The preview for {rows} did not render a confirmation form"
     form = confirm.find_parent("form")
     return urljoin(url, form["action"]), {item["name"]: item["value"] for item in form.select("input[name]")}
 
@@ -147,6 +152,19 @@ def exercise(client, root, control, writer):
     confirm(client, preview(client, root, "Explicit ID below reserved sequence", reserved - 2))
     assert sequence_value(control) == reserved
     assert insert_school(control, "Writer after the lower explicit ID fixture") > reserved
+
+
+    explicit = sequence_value(control) + 2
+    combine = [
+        (None, "Mixed import automatic before"), (explicit, "Mixed import explicit"),
+        (None, "Mixed import automatic after"),
+    ]
+    mixed = preview_rows(client, root, combine)
+    assert sequence_value(control) == explicit - 2, "Preview moved the database sequence"
+    confirm(client, mixed)
+    for assigned_id, name in ((explicit + 1, combine[0][1]), combine[1], (explicit + 2, combine[2][1])):
+        assert query(control, "SELECT id FROM core_school WHERE name=%s", name) == assigned_id
+    assert insert_school(control, "Writer after the mixed import fixture") > explicit + 2
 
 
 def validate_import_cells(django, rust, session, tournament, award, control):

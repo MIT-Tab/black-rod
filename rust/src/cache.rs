@@ -1,4 +1,5 @@
 use std::{
+    collections::HashMap,
     io,
     net::SocketAddr,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
@@ -184,6 +185,110 @@ impl Memcached {
         Ok(item.and_then(|item| Some((item.flags, item.data, item.version?))))
     }
 
+    pub(crate) async fn read_many_bytes(&self, keys: &[String]) -> io::Result<Vec<Vec<u8>>> {
+        if keys.is_empty() {
+            return Ok(Vec::new());
+        }
+        if !keys.iter().all(|key| valid_key(key)) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Invalid cache key",
+            ));
+        }
+        let mut values = HashMap::with_capacity(keys.len());
+        let mut reader = timeout(SERVICE_TIMEOUT, async {
+            let mut socket = TcpStream::connect(self.0).await?;
+            socket
+                .write_all(format!("get {}\r\n", keys.join(" ")).as_bytes())
+                .await?;
+            Ok::<_, io::Error>(BufReader::new(socket))
+        })
+        .await
+        .map_err(io::Error::other)??;
+        while let Some((key, item)) = timeout(SERVICE_TIMEOUT, Self::read_value(&mut reader, false))
+            .await
+            .map_err(io::Error::other)??
+        {
+            if item.flags != 0
+                || values.insert(key, item.data).is_some()
+                || values.len() > keys.len()
+            {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "Invalid cache response",
+                ));
+            }
+        }
+        keys.iter()
+            .map(|key| {
+                values
+                    .remove(key)
+                    .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "Missing cache entry"))
+            })
+            .collect()
+    }
+
+    async fn read_value(
+        reader: &mut BufReader<TcpStream>,
+        versioned: bool,
+    ) -> io::Result<Option<(String, CacheValue)>> {
+        let malformed = || io::Error::new(io::ErrorKind::InvalidData, "Invalid cache response");
+        let mut header = Vec::new();
+        (&mut *reader)
+            .take(300)
+            .read_until(b'\n', &mut header)
+            .await?;
+        if header == b"END\r\n" {
+            return Ok(None);
+        }
+        let line = std::str::from_utf8(&header)
+            .ok()
+            .and_then(|line| line.strip_suffix("\r\n"))
+            .ok_or_else(malformed)?;
+        let mut fields = line.split_ascii_whitespace();
+        if fields.next() != Some("VALUE") {
+            return Err(malformed());
+        }
+        let key = fields.next().ok_or_else(malformed)?.to_owned();
+        let flags = fields
+            .next()
+            .and_then(|flags| flags.parse::<u32>().ok())
+            .ok_or_else(malformed)?;
+        let length = fields
+            .next()
+            .and_then(|length| length.parse::<usize>().ok())
+            .filter(|length| *length <= MAX_VALUE)
+            .ok_or_else(malformed)?;
+        let version = if versioned {
+            Some(
+                fields
+                    .next()
+                    .and_then(|version| version.parse().ok())
+                    .ok_or_else(malformed)?,
+            )
+        } else {
+            None
+        };
+        if fields.next().is_some() {
+            return Err(malformed());
+        }
+        let mut data = vec![0; length];
+        reader.read_exact(&mut data).await?;
+        let mut terminator = [0; 2];
+        reader.read_exact(&mut terminator).await?;
+        if terminator != *b"\r\n" {
+            return Err(malformed());
+        }
+        Ok(Some((
+            key,
+            CacheValue {
+                flags,
+                data,
+                version,
+            },
+        )))
+    }
+
     async fn fetch_raw(&self, key: &str, versioned: bool) -> io::Result<Option<CacheValue>> {
         if !valid_key(key) {
             return Err(io::Error::new(
@@ -199,57 +304,16 @@ impl Memcached {
                 .get_mut()
                 .write_all(format!("{command} {key}\r\n").as_bytes())
                 .await?;
-            let mut header = Vec::new();
-            (&mut reader)
-                .take(300)
-                .read_until(b'\n', &mut header)
-                .await?;
-            if header == b"END\r\n" {
+            let Some((received, value)) = Self::read_value(&mut reader, versioned).await? else {
                 return Ok(None);
-            }
-            let malformed = || io::Error::new(io::ErrorKind::InvalidData, "Invalid cache response");
-            let line = std::str::from_utf8(&header)
-                .ok()
-                .and_then(|line| line.strip_suffix("\r\n"))
-                .ok_or_else(malformed)?;
-            let mut fields = line.split_ascii_whitespace();
-            if fields.next() != Some("VALUE") || fields.next() != Some(key) {
-                return Err(malformed());
-            }
-            let flags = fields
-                .next()
-                .and_then(|flags| flags.parse::<u32>().ok())
-                .ok_or_else(malformed)?;
-            let length = fields
-                .next()
-                .and_then(|length| length.parse::<usize>().ok())
-                .filter(|length| *length <= MAX_VALUE)
-                .ok_or_else(malformed)?;
-            let version = if versioned {
-                Some(
-                    fields
-                        .next()
-                        .and_then(|version| version.parse().ok())
-                        .ok_or_else(malformed)?,
-                )
-            } else {
-                None
             };
-            if fields.next().is_some() {
-                return Err(malformed());
+            if received != key || Self::read_value(&mut reader, versioned).await?.is_some() {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "Invalid cache response",
+                ));
             }
-            let mut bytes = vec![0; length];
-            reader.read_exact(&mut bytes).await?;
-            let mut terminator = [0; 7];
-            reader.read_exact(&mut terminator).await?;
-            if terminator != *b"\r\nEND\r\n" {
-                return Err(malformed());
-            }
-            Ok(Some(CacheValue {
-                flags,
-                data: bytes,
-                version,
-            }))
+            Ok(Some(value))
         })
         .await
         .map_err(io::Error::other)?

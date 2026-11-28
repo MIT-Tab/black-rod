@@ -341,6 +341,7 @@ async fn column_diff(
 struct ImportMode {
     actor: Option<i64>,
     workbook: bool,
+    assigned_id: Option<i64>,
 }
 
 async fn apply_row(
@@ -406,7 +407,10 @@ async fn apply_row(
         }
     }
     columns.remove("id");
-    if let Some(id) = requested.filter(|_| existing.is_none()) {
+    if let Some(id) = requested
+        .or(mode.assigned_id)
+        .filter(|_| existing.is_none())
+    {
         columns.insert("id".to_owned(), json!(id));
     }
     model_rules::before_save(conn, model, current_season, existing, &mut columns).await?;
@@ -504,9 +508,14 @@ async fn apply_row(
     Ok(Ok(PreviewRow { kind, cells }))
 }
 
-fn has_explicit_id(row: &Map<String, Value>) -> bool {
+fn explicit_id(row: &Map<String, Value>) -> Option<i64> {
+    let value = row.get("id")?;
+    number(value, &formats::text(value))
+}
+
+fn automatic_id(row: &Map<String, Value>) -> bool {
     row.get("id")
-        .is_some_and(|value| number(value, &formats::text(value)).is_some())
+        .is_some_and(|value| formats::text(value).trim().is_empty())
 }
 
 async fn process(
@@ -525,11 +534,14 @@ async fn process(
     let mode = ImportMode {
         actor: confirming.then_some(admin.viewer.user.id).flatten(),
         workbook: matches!(kind.as_str(), "xlsx" | "xls" | "ods"),
+        assigned_id: None,
     };
     let mut tx = admin.state.pool.begin().await?;
-    let sync_sequence =
-        confirming && tx.backend_name() == "PostgreSQL" && rows.iter().any(has_explicit_id);
-    if sync_sequence {
+    let postgres = tx.backend_name() == "PostgreSQL";
+    let explicit_max = rows.iter().filter_map(explicit_id).max();
+    let allocate_mixed_ids = postgres && explicit_max.is_some() && rows.iter().any(automatic_id);
+    let sync_sequence = confirming && postgres && explicit_max.is_some();
+    if sync_sequence || allocate_mixed_ids {
         // Ordinary INSERTs take a conflicting table lock before allocating an ID.
         let lock = format!(
             r#"LOCK TABLE "{}" IN SHARE ROW EXCLUSIVE MODE"#,
@@ -537,9 +549,34 @@ async fn process(
         );
         sqlx::query(AssertSqlSafe(lock)).execute(&mut *tx).await?;
     }
+    let mut reserved = if let Some(explicit_max) = explicit_max.filter(|_| allocate_mixed_ids) {
+        let query = format!(
+            r#"SELECT CAST(GREATEST(
+            COALESCE(MAX(id), 0), COALESCE(pg_sequence_last_value(pg_get_serial_sequence($1,'id')::regclass), 0),
+            $2) AS BIGINT) FROM "{}""#,
+            model.table
+        );
+        Some(
+            sqlx::query_scalar::<_, i64>(AssertSqlSafe(query))
+                .bind(&model.table)
+                .bind(explicit_max)
+                .fetch_one(&mut *tx)
+                .await?,
+        )
+    } else {
+        None
+    };
     let mut imported_explicit_id = false;
     let mut result = ResultRows::default();
     for (index, row) in rows.iter().enumerate() {
+        let assigned_id = if automatic_id(row)
+            && let Some(next) = &mut reserved
+        {
+            *next = next.checked_add(1).ok_or(ApiError::Constraint)?;
+            Some(*next)
+        } else {
+            None
+        };
         let mut savepoint = tx.begin().await?;
         match apply_row(
             &mut savepoint,
@@ -548,7 +585,10 @@ async fn process(
             exchange,
             admin.state.current_season,
             row,
-            mode,
+            ImportMode {
+                assigned_id,
+                ..mode
+            },
         )
         .await?
         {
@@ -556,7 +596,8 @@ async fn process(
                 savepoint.commit().await?;
                 if record.kind == "new" {
                     result.new += 1;
-                    imported_explicit_id |= sync_sequence && has_explicit_id(row);
+                    imported_explicit_id |=
+                        sync_sequence && (explicit_id(row).is_some() || assigned_id.is_some());
                 } else {
                     result.updated += 1
                 }
