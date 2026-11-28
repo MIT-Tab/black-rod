@@ -409,8 +409,10 @@ pub(crate) async fn redo_nine_point_rankings(
             CAST(CASE WHEN EXISTS(SELECT 1 FROM core_teamresult r WHERE r.team_id=t.id)
                  THEN 1 ELSE 0 END AS BIGINT)
          FROM core_team t JOIN core_team_debaters m ON m.team_id=t.id
-         WHERE EXISTS(SELECT 1 FROM core_qualpoints p WHERE p.debater_id=m.debater_id
-            AND p.season=$1 AND p.points=9)
+         JOIN core_debater d ON d.id=m.debater_id
+         WHERE NOT (d.temporary OR d.synthetic)
+           AND EXISTS(SELECT 1 FROM core_qualpoints p WHERE p.debater_id=d.id
+              AND p.season=$1 AND p.points=9)
          GROUP BY t.id,t.name ORDER BY MIN(m.id)",
     )
     .bind(season)

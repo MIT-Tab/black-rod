@@ -96,23 +96,38 @@ def verify_fixture_tag_roundtrip(document, ids, parent):
 
 
 
-def verify_late_commands(databases):
-    for args in (("--dry-run",), ()):
-        output = [run("shorten_names", path, engine, *args) for engine, path in databases.items()]
-        assert output[0] == output[1], "Short-name command output differs"
-    for table, fields in (
-        ("core_tournament", "id,name,short_name,toty,soty,qual,noty,online_qual_points,autoqual_bar"),
-        ("core_team", "id,name,short_name"),
-    ):
-        left, right = [snapshot(path, table, fields) for path in databases.values()]
-        assert left == right, f"Short-name command changed {table} differently"
+def verify_nine_point_rankings(databases):
+    cleanup_fixture = """
+from django.conf import settings
+from core.models import Debater, QualPoints, Round, Team, Tournament
+import json
 
-    for path in databases.values():
+tournament = Tournament.objects.order_by("id").first()
+opponent = Team.objects.create(name="Disposable qualifying opponent")
+rows = []
+for flags in ({"temporary": True}, {"synthetic": True}, {}):
+    person = Debater.all_objects.create(first_name="Disposable qualifying person", **flags)
+    QualPoints.objects.create(debater=person, season=settings.CURRENT_SEASON, points=9)
+    team = Team.objects.create(name="Disposable qualifying team")
+    team.debaters.add(person)
+    debate = Round.objects.create(tournament=tournament, gov=team, opp=opponent)
+    rows.append([team.id, debate.id, bool(flags)])
+print(json.dumps(rows))
+"""
+    cleanup_examples = {}
+    for engine, path in databases.items():
         with sqlite3.connect(path) as connection:
             connection.execute("INSERT INTO core_qualpoints (points,season,debater_id) VALUES (9,'2026',5270)")
             connection.execute("UPDATE core_debater SET email='private-registration@example.test' WHERE id=5270")
+        fixture = run("shell", path, "django", "--verbosity", "0", "-c", cleanup_fixture)
+        cleanup_examples[engine] = json.loads(fixture.splitlines()[-1])
     output = [run("redo_rankings", path, engine).splitlines() for engine, path in databases.items()]
     assert output[0] and Counter(output[0]) == Counter(output[1]), "Different teams recomputed"
+    for engine, path in databases.items():
+        with sqlite3.connect(path) as connection:
+            for team, debate, retained in cleanup_examples[engine]:
+                assert bool(connection.execute("SELECT 1 FROM core_team WHERE id=?", (team,)).fetchone()) == retained
+                assert bool(connection.execute("SELECT 1 FROM core_round WHERE id=?", (debate,)).fetchone()) == retained
     for table, fields in (
         ("core_qualpoints", "season,debater_id,points"),
         ("core_qual", "season,debater_id,qual_type,place,points,tournament_id"),
@@ -123,6 +138,19 @@ def verify_late_commands(databases):
     ):
         left, right = [Counter(snapshot(path, table, fields)) for path in databases.values()]
         assert left == right, f"Nine-point rankings changed {table} differently"
+
+
+def verify_late_commands(databases):
+    for args in (("--dry-run",), ()):
+        output = [run("shorten_names", path, engine, *args) for engine, path in databases.items()]
+        assert output[0] == output[1], "Short-name command output differs"
+    for table, fields in (
+        ("core_tournament", "id,name,short_name,toty,soty,qual,noty,online_qual_points,autoqual_bar"),
+        ("core_team", "id,name,short_name"),
+    ):
+        left, right = [snapshot(path, table, fields) for path in databases.values()]
+        assert left == right, f"Short-name command changed {table} differently"
+    verify_nine_point_rankings(databases)
 
     documents = []
     for engine, path in databases.items():
