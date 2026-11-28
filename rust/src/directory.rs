@@ -868,6 +868,15 @@ async fn rows(
     } else {
         HashMap::new()
     };
+    let mut motion_topics = if matches!(kind, Kind::Motions) {
+        let ids = result
+            .iter()
+            .map(|row| row.try_get("id"))
+            .collect::<Result<Vec<i64>, _>>()?;
+        crate::motion::topics_for(&mut connection, &ids).await?
+    } else {
+        HashMap::new()
+    };
     for row in result {
         let id: i64 = row.try_get("id")?;
         let url = format!("/core/{}/{id}", kind.title().to_ascii_lowercase());
@@ -963,11 +972,7 @@ async fn rows(
                     .and_then(|date| chrono::NaiveDate::parse_from_str(&date, "%Y-%m-%d").ok())
                     .map(|date| date.format("%m/%d/%Y").to_string())
                     .unwrap_or_else(|| "—".to_owned());
-                let topics = sqlx::query_scalar::<_, String>(crate::motion::TOPICS)
-                    .bind(id)
-                    .fetch_all(&mut *connection)
-                    .await?
-                    .join(", ");
+                let topics = motion_topics.remove(&id).unwrap_or_default().join(", ");
                 for text in [
                     date,
                     row.try_get::<Option<String>, _>("tournament")?

@@ -106,6 +106,7 @@ pub struct AppState {
     public_origin: Option<String>,
     trusted_proxy: Option<std::net::IpAddr>,
     allowed_hosts: Option<Arc<[String]>>,
+    pub(crate) release_root: Arc<Path>,
     guide_modified: Option<String>,
     public_json: Cache<(String, Endpoint), cache::CachedBody>,
     memcached: Option<cache::Memcached>,
@@ -133,11 +134,6 @@ impl AppState {
     }
 
     pub fn with_cache_lifetime(pool: AnyPool, current_season: i32, lifetime: Duration) -> Self {
-        let guide_modified = Path::new("api/content/oty_guide.md")
-            .metadata()
-            .and_then(|metadata| metadata.modified())
-            .ok()
-            .map(|time| DateTime::<Utc>::from(time).date_naive().to_string());
         Self {
             pool,
             secret: None,
@@ -153,7 +149,8 @@ impl AppState {
             public_origin: None,
             trusted_proxy: None,
             allowed_hosts: None,
-            guide_modified,
+            release_root: Arc::from(Path::new("")),
+            guide_modified: None,
             snapshots: Cache::builder()
                 .time_to_live(lifetime)
                 .max_capacity(12)
@@ -214,6 +211,18 @@ impl AppState {
             cache_lifetime: lifetime,
             import_cache: tournament_import::source::Cache::new(),
         }
+        .with_release_root(Path::new(""))
+    }
+
+    pub fn with_release_root(mut self, root: &Path) -> Self {
+        self.guide_modified = root
+            .join("api/content/oty_guide.md")
+            .metadata()
+            .and_then(|metadata| metadata.modified())
+            .ok()
+            .map(|time| DateTime::<Utc>::from(time).date_naive().to_string());
+        self.release_root = Arc::from(root);
+        self
     }
 
     pub fn with_debater_profile_features(mut self, tab_cards: bool, partner_chart: bool) -> Self {

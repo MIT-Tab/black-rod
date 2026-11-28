@@ -25,6 +25,12 @@ fn valid_key(key: &str) -> bool {
 #[derive(Clone)]
 pub(crate) struct Memcached(SocketAddr);
 
+struct CacheValue {
+    flags: u32,
+    data: Vec<u8>,
+    version: Option<u64>,
+}
+
 impl Memcached {
     pub(crate) fn new(address: SocketAddr) -> Self {
         Self(address)
@@ -101,6 +107,19 @@ impl Memcached {
 
     // Writers need to distinguish an absent key from an unavailable or invalid read.
     pub(crate) async fn read_raw_checked(&self, key: &str) -> io::Result<Option<(u32, Vec<u8>)>> {
+        let item = self.fetch_raw(key, false).await?;
+        Ok(item.map(|item| (item.flags, item.data)))
+    }
+
+    pub(crate) async fn read_versioned(
+        &self,
+        key: &str,
+    ) -> io::Result<Option<(u32, Vec<u8>, u64)>> {
+        let item = self.fetch_raw(key, true).await?;
+        Ok(item.and_then(|item| Some((item.flags, item.data, item.version?))))
+    }
+
+    async fn fetch_raw(&self, key: &str, versioned: bool) -> io::Result<Option<CacheValue>> {
         if !valid_key(key) {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
@@ -110,9 +129,10 @@ impl Memcached {
         timeout(SERVICE_TIMEOUT, async {
             let stream = TcpStream::connect(self.0).await?;
             let mut reader = BufReader::new(stream);
+            let command = if versioned { "gets" } else { "get" };
             reader
                 .get_mut()
-                .write_all(format!("get {key}\r\n").as_bytes())
+                .write_all(format!("{command} {key}\r\n").as_bytes())
                 .await?;
             let mut header = Vec::new();
             (&mut reader)
@@ -140,6 +160,19 @@ impl Memcached {
                 .and_then(|length| length.parse::<usize>().ok())
                 .filter(|length| *length <= MAX_VALUE)
                 .ok_or_else(malformed)?;
+            let version = if versioned {
+                Some(
+                    fields
+                        .next()
+                        .and_then(|version| version.parse().ok())
+                        .ok_or_else(malformed)?,
+                )
+            } else {
+                None
+            };
+            if fields.next().is_some() {
+                return Err(malformed());
+            }
             let mut bytes = vec![0; length];
             reader.read_exact(&mut bytes).await?;
             let mut terminator = [0; 7];
@@ -147,7 +180,11 @@ impl Memcached {
             if terminator != *b"\r\nEND\r\n" {
                 return Err(malformed());
             }
-            Ok(Some((flags, bytes)))
+            Ok(Some(CacheValue {
+                flags,
+                data: bytes,
+                version,
+            }))
         })
         .await
         .map_err(io::Error::other)?
@@ -246,6 +283,36 @@ impl Memcached {
             _ => Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 "Invalid cache write response",
+            )),
+        }
+    }
+
+    pub(crate) async fn compare_and_swap(
+        &self,
+        key: &str,
+        flags: u32,
+        body: &[u8],
+        seconds: u32,
+        version: Option<u64>,
+    ) -> io::Result<bool> {
+        let Some(version) = version else {
+            return self
+                .write_raw_checked(key, flags, body, seconds, false)
+                .await;
+        };
+        if !valid_key(key) || body.len() > MAX_VALUE {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Invalid cache item",
+            ));
+        }
+        let command = format!("cas {key} {flags} {seconds} {} {version}\r\n", body.len());
+        match self.reply(&command, Some(body)).await?.as_slice() {
+            b"STORED\r\n" => Ok(true),
+            b"EXISTS\r\n" | b"NOT_FOUND\r\n" => Ok(false),
+            _ => Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "Invalid cache CAS response",
             )),
         }
     }

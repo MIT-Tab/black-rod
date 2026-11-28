@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 pub(crate) mod import;
 use axum::{
     extract::{OriginalUri, Path, Request, State},
@@ -6,9 +8,9 @@ use axum::{
 };
 use minijinja::context;
 use serde_json::json;
-use sqlx::Row;
+use sqlx::{AnyConnection, AssertSqlSafe, Row};
 
-use crate::{AppState, is_django_integer, login, session, web};
+use crate::{ApiError, AppState, is_django_integer, login, session, web};
 
 const DETAIL: &str = "
     SELECT m.text, m.background_slide, CAST(m.date_set AS TEXT) AS date_set,
@@ -17,10 +19,36 @@ const DETAIL: &str = "
           WHERE s.motion_id = m.id AND s.user_id = CAST($2 AS BIGINT)) AS motion_status
     FROM core_motion m LEFT JOIN core_tournament t ON t.id = m.tournament_id WHERE m.id = $1
 ";
-pub(crate) const TOPICS: &str = "
-    SELECT t.name FROM core_motiontopic t JOIN core_taggedmotion m ON m.tag_id = t.id
-    WHERE m.content_object_id = $1
+const TOPICS: &str = "
+    SELECT CAST(m.content_object_id AS BIGINT) AS motion, t.name
+    FROM core_motiontopic t JOIN core_taggedmotion m ON m.tag_id = t.id
+    WHERE m.content_object_id IN ({ids}) ORDER BY m.id
 ";
+
+pub(crate) async fn topics_for(
+    connection: &mut AnyConnection,
+    motions: &[i64],
+) -> Result<HashMap<i64, Vec<String>>, ApiError> {
+    let mut topics = HashMap::<i64, Vec<String>>::new();
+    for group in motions.chunks(200) {
+        let placeholders = (1..=group.len())
+            .map(|index| format!("${index}"))
+            .collect::<Vec<_>>()
+            .join(",");
+        let statement = TOPICS.replace("{ids}", &placeholders);
+        let mut query = sqlx::query(AssertSqlSafe(statement));
+        for id in group {
+            query = query.bind(id);
+        }
+        for row in query.fetch_all(&mut *connection).await? {
+            topics
+                .entry(row.try_get("motion")?)
+                .or_default()
+                .push(row.try_get("name")?);
+        }
+    }
+    Ok(topics)
+}
 
 pub(crate) async fn detail(
     State(state): State<AppState>,
@@ -47,13 +75,14 @@ pub(crate) async fn detail(
             return StatusCode::INTERNAL_SERVER_ERROR.into_response();
         }
     };
-    let Ok(tags) = sqlx::query_scalar::<_, String>(TOPICS)
-        .bind(id)
-        .fetch_all(&state.pool)
-        .await
-    else {
+    let Ok(mut connection) = state.pool.acquire().await else {
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     };
+    let Ok(mut topics) = topics_for(&mut connection, &[id]).await else {
+        return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+    };
+    let tags = topics.remove(&id).unwrap_or_default();
+    drop(connection);
     let tournament = row.get::<Option<i64>, _>("tournament_id").map(|id| {
         json!({
             "url": format!("/core/tournaments/{id}"), "name": row.get::<&str, _>("tournament_name")

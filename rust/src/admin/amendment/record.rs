@@ -1,4 +1,7 @@
-use std::{io, path::PathBuf};
+use std::{
+    io,
+    path::{Path, PathBuf},
+};
 
 use chrono::{SecondsFormat, Utc};
 use serde_json::{Value, json};
@@ -10,25 +13,24 @@ pub(in crate::admin) fn enabled() -> bool {
     std::env::var("ENV").is_ok_and(|mode| mode.trim().eq_ignore_ascii_case("development"))
 }
 
-pub(in crate::admin) fn path() -> PathBuf {
+pub(in crate::admin) fn path(root: &Path) -> PathBuf {
     std::env::var("ROUND_AMENDMENTS_FILE")
         .ok()
         .map(|value| value.trim().to_owned())
         .filter(|value| !value.is_empty())
         .map(PathBuf::from)
-        .unwrap_or_else(|| {
-            std::env::current_dir()
-                .unwrap_or_default()
-                .join("apda/round-amendments.local.json")
-        })
+        .unwrap_or_else(|| root.join("apda/round-amendments.local.json"))
 }
 
-pub(in crate::admin) async fn append(action: &Value) -> Result<Option<PathBuf>, String> {
+pub(in crate::admin) async fn append(
+    root: &Path,
+    action: &Value,
+) -> Result<Option<PathBuf>, String> {
     if !enabled() {
         return Ok(None);
     }
     let _lock = WRITING.lock().await;
-    let path = path();
+    let path = path(root);
     let parent = path
         .parent()
         .filter(|dir| !dir.as_os_str().is_empty())

@@ -532,8 +532,9 @@ pub fn app(state: AppState) -> Router {
         )
         .nest_service(
             "/static",
-            tower_http::services::ServeDir::new("apda/assets")
-                .fallback(tower_http::services::ServeDir::new("rust/static/vendor")),
+            tower_http::services::ServeDir::new(state.release_root.join("apda/assets")).fallback(
+                tower_http::services::ServeDir::new(state.release_root.join("rust/static/vendor")),
+            ),
         )
         .route(
             "/core/resources/tags_no_create",

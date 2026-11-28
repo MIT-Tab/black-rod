@@ -175,7 +175,7 @@ pub(super) async fn apply(
         amendment::invalidate(state).await;
         let event = json!({"type":"resolve_synthetic","entity_type":input.kind,"synthetic_id":input.source,
             "target_id":input.target,"reason":input.reason});
-        if let Err(error) = amendment::record::append(&event).await {
+        if let Err(error) = amendment::record::append(&state.release_root, &event).await {
             warning = Some(format!(
                 "Synthetic entity resolved, but amendment recording failed: {error}"
             ));

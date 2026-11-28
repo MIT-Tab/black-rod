@@ -639,7 +639,7 @@ pub(crate) async fn page(State(state): State<AppState>, request: Request) -> Res
         }
         tx.rollback().await?;
         let bindings=context!{tournament,round_obj=>round_id,fields=>form.fields,rows=>form.slots,
-            errors=>Vec::<String>::new(),audit_detail_url=>detail_url(id),round_amendment_recording=>admin::recording_context()};
+            errors=>Vec::<String>::new(),audit_detail_url=>detail_url(id),round_amendment_recording=>admin::recording_context(&state)};
         Ok(render(&state,&user,&uri,&headers,"admin/tournament_round_ballot.html",bindings))
     }.await;
     result.unwrap_or_else(|error: Error| {
@@ -656,7 +656,7 @@ async fn notice_record(
     secure: bool,
     status: &str,
 ) {
-    let note = match record::append(action).await {
+    let note = match record::append(&state.release_root, action).await {
         Ok(Some(path)) => Some((
             20,
             format!(

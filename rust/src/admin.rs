@@ -38,9 +38,11 @@ pub(crate) async fn require(
     Ok(user)
 }
 
-pub(super) fn recording_context() -> minijinja::Value {
+pub(super) fn recording_context(state: &AppState) -> minijinja::Value {
     let enabled = amendment::record::enabled();
-    let path = amendment::record::path().to_string_lossy().into_owned();
+    let path = amendment::record::path(&state.release_root)
+        .to_string_lossy()
+        .into_owned();
     context! {enabled,path}
 }
 
@@ -75,7 +77,7 @@ async fn render_tools(
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     };
     let common = web::base_context(state, user, uri);
-    let bindings = context! {username, csrf=>token, round_amendment_errors=>errors, round_amendment_recording=>recording_context()};
+    let bindings = context! {username, csrf=>token, round_amendment_errors=>errors, round_amendment_recording=>recording_context(state)};
     let html = match web::render("admin/admin_tools.html", context! {..bindings,..common}) {
         Ok(html) => html,
         Err(reason) => {

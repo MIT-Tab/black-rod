@@ -105,7 +105,7 @@ pub(crate) async fn resolve(State(state): State<AppState>, request: Request) -> 
         Ok(action) => {
             amendment::invalidate(&state).await;
             let mut alerts = vec![(25, "Synthetic entity resolved successfully.".to_owned())];
-            match amendment::record::append(&action).await {
+            match amendment::record::append(&state.release_root, &action).await {
                 Ok(Some(path)) => alerts.push((
                     20,
                     format!("Recorded amendment action to {}.", path.display()),

@@ -329,7 +329,7 @@ async fn detail(state: &AppState, id: i64) -> Result<minijinja::Value, ApiError>
     let manual_round_count = round_rows.len() - imported_round_count;
     Ok(
         context! {tournament,audit_row,round_rows,import_rows,imported_round_count,manual_round_count,
-        add_round_url=>format!("{BASE}/{id}/round/new/"),round_amendment_recording=>super::recording_context()},
+        add_round_url=>format!("{BASE}/{id}/round/new/"),round_amendment_recording=>super::recording_context(state)},
     )
 }
 

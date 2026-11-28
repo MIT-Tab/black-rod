@@ -1,15 +1,19 @@
 """Verify daily limits on independent Rust workers sharing a fixture database."""
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
+from hashlib import sha256
 import json
 import os
 from pathlib import Path
 from socketserver import StreamRequestHandler, ThreadingTCPServer
 import subprocess
 from tempfile import TemporaryDirectory
-from threading import Thread
+from threading import Barrier, Thread
+from time import time
 
 from bs4 import BeautifulSoup
+from pymemcache.client.base import Client
+from pymemcache.serde import pickle_serde
 import requests
 
 from agent_write_parity import fixture_database
@@ -18,13 +22,16 @@ from compare import HOST, ROOT, RUST_BIN, available_port, start_server
 SEED = """
 from reference import application
 from django.contrib.sessions.backends.db import SessionStore
+from django.contrib.sites.models import Site
 from core.models import Debater, School, SchoolAdmin, User
 from uuid import uuid4
 import json
 
 # Use an isolated cache key even if another test shares this Memcached instance.
 user_id = 1_000_000_000 + uuid4().int % 1_000_000_000
-user = User.objects.create_user(id=user_id, username="daily-quota-fixture")
+username = f"daily-quota-{user_id}"
+User.objects.create_user(username=f"{username}-login", password="fixture-local-password")
+user = User.objects.create_user(id=user_id, username=username)
 school = School.objects.create(name="Daily quota fixture school", short_name="DQF")
 SchoolAdmin.objects.create(user=user, school=school, primary=True)
 debater_ids = [
@@ -35,7 +42,7 @@ session = SessionStore()
 session.update({"_auth_user_id": str(user.pk), "_auth_user_backend": "django.contrib.auth.backends.ModelBackend",
                 "_auth_user_hash": user.get_session_auth_hash()})
 session.save()
-print(json.dumps([school.id, debater_ids, session.session_key]))
+print(json.dumps([school.id, debater_ids, session.session_key, username, Site.objects.get(pk=1).domain]))
 """
 
 COUNTS = """
@@ -87,6 +94,7 @@ def worker(env, database, cache):
         ),
         "BLACK_ROD_BIND": f"{HOST}:{port}",
         "BLACK_ROD_MEMCACHED_ADDR": cache,
+        "BLACK_ROD_TRUSTED_PROXY_IP": HOST,
         "LIVE_MITTAB_DIRECTORY_URL": "",
     }) as server:
         yield f"http://{HOST}:{server.port}"
@@ -115,7 +123,51 @@ def forms(url, session, school):
     return add, submit
 
 
-def exercise(env, database, cache, school, debaters, session, counts):
+def check_login_limits(roots, cache, username, site):
+    path = "/accounts/login/"
+    suffix = sha256(username.encode()).hexdigest()[:8]
+    headers = {"X-Forwarded-For": f"2001:db8:{suffix[:4]}:{suffix[4:]}::1"}
+    credentials = []
+    for root in roots:
+        response = requests.get(root + path, timeout=15)
+        assert response.status_code == 200, response.status_code
+        token = BeautifulSoup(response.content, "html.parser").select_one('input[name=csrfmiddlewaretoken]')["value"]
+        credentials.append((root + path, response.cookies.get_dict(), token))
+
+    def post(number, identity, password, barrier):
+        url, cookies, token = credentials[number % len(credentials)]
+        barrier.wait(timeout=10)
+        return requests.post(url, cookies=cookies, headers=headers, timeout=20, allow_redirects=False, data={
+            "login": identity, "password": password, "csrfmiddlewaretoken": token,
+        })
+
+    def batch(identity, passwords):
+        barrier = Barrier(len(passwords))
+        with ThreadPoolExecutor(max_workers=len(passwords)) as pool:
+            tasks = [pool.submit(post, i, identity, password, barrier) for i, password in enumerate(passwords)]
+            return [task.result() for task in tasks]
+
+    host, _, port = cache.rpartition(":")
+    with closing(Client((host, int(port)), serde=pickle_serde, connect_timeout=2, timeout=2)) as backend:
+        def key(identity):
+            digest = sha256(f"{site}:{identity}".encode()).hexdigest()
+            return f":1:allauth:rl:login_failed:{digest}"
+
+        valid = f"{username}-login"
+        prior = time()
+        assert backend.set(key(valid), [prior], expire=300, noreply=False)
+        results = batch(valid, ["fixture-local-password", "unused-password", "unused-password", "unused-password"])
+        assert sorted(result.status_code for result in results) == [200] * 3 + [302]
+        remaining = backend.get(key(valid))
+        assert len(remaining) == 4 and prior in remaining, "Login rollback discarded another attempt"
+
+        unknown = f"{username}-unknown"
+        results = batch(unknown, ["unused-password"] * 6)
+        assert sum("Too many failed login attempts" in result.text for result in results) == 1
+        assert len(backend.get(key(unknown))) == 5, "Workers did not share the five-attempt limit"
+
+
+def exercise(env, database, cache, school, debaters, session, username, site, counts):
     with refusing_cache() as read_only:
         for failing in (f"{HOST}:{available_port()}", read_only):
             with worker(env, database, failing) as url:
@@ -135,6 +187,7 @@ def exercise(env, database, cache, school, debaters, session, counts):
             assert all("You have reached the daily limit" in response.text
                        for response in responses if response.status_code == 200)
         assert counts() == [5, 5]
+        check_login_limits([first, second], cache, username, site)
 
 
 def main():
@@ -153,10 +206,10 @@ def main():
                 ).splitlines()
                 return json.loads(lines[-1])
 
-            school, debaters, session = fixture_query(SEED)
-            exercise(env, database, cache, school, debaters, session,
+            school, debaters, session, username, site = fixture_query(SEED)
+            exercise(env, database, cache, school, debaters, session, username, site,
                      lambda: fixture_query(COUNTS, str(school)))
-    print("Shared write quotas survive cache failure and enforce the five-write limit across workers")
+    print("Shared write quotas withstand cache failure, and concurrent logins retain all attempts")
 
 
 if __name__ == "__main__":

@@ -1,15 +1,39 @@
-use std::{env, net::SocketAddr, path::Path, time::Duration};
+use std::{
+    env,
+    net::SocketAddr,
+    path::{Path, PathBuf},
+    time::Duration,
+};
 
 use black_rod::{AppState, COMMAND_HELP, Live, OAuth, PrivateTokens, app};
 use sqlx::any::{AnyPoolOptions, install_default_drivers};
 use tokio::net::TcpListener;
 
+fn release_root() -> std::io::Result<Option<PathBuf>> {
+    if let Some(path) = env::var_os("BLACK_ROD_RELEASE_ROOT") {
+        return PathBuf::from(path).canonicalize().map(Some);
+    }
+    let executable = env::current_exe()?.canonicalize()?;
+    let working_directory = env::current_dir()?;
+    Ok(executable
+        .ancestors()
+        .skip(1)
+        .chain([working_directory.as_path()])
+        .find(|root| root.join("apda/assets").is_dir() && root.join("rust/static/vendor").is_dir())
+        .map(Path::to_path_buf))
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let config = env::var_os("DOT_ENV_FILE").unwrap_or_else(|| ".env".into());
-    match dotenvy::from_path(config) {
-        Ok(()) => (),
-        Err(error) if error.not_found() => (),
-        Err(_) => return Err("Could not read the Black Rod environment file.".into()),
+    let root = release_root()?;
+    if let Some(config) = env::var_os("DOT_ENV_FILE")
+        .map(PathBuf::from)
+        .or_else(|| root.as_ref().map(|root| root.join(".env")))
+    {
+        match dotenvy::from_path(config) {
+            Ok(()) => (),
+            Err(error) if error.not_found() => (),
+            Err(_) => return Err("Could not read the Black Rod environment file.".into()),
+        }
     }
     let _monitoring = if env::var("ENV").as_deref() == Ok("production") {
         let dsn = env::var("SENTRY_DSN").unwrap_or_default();
@@ -32,10 +56,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()?
-        .block_on(run())
+        .block_on(run(root))
 }
 
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
+async fn run(root: Option<PathBuf>) -> Result<(), Box<dyn std::error::Error>> {
     let mut args = env::args().skip(1);
     let command = args.next().unwrap_or_else(|| "serve".into());
     let args = args.collect::<Vec<_>>();
@@ -102,6 +126,9 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or(Ok(300))?;
     let mut state =
         AppState::with_cache_lifetime(pool, season, Duration::from_secs(cache_lifetime));
+    if let Some(root) = &root {
+        state = state.with_release_root(root);
+    }
     state = state.with_debater_profile_features(
         enabled("ENABLE_DEBATER_PROFILE_TAB_CARDS"),
         enabled("ENABLE_DEBATER_PARTNER_PIE_CHART"),
@@ -125,13 +152,19 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     if let Some(secret) = secret {
         state = state.with_session_secret(secret);
     }
-    let stats = env::var("WEBPACK_STATS_FILE").unwrap_or_else(|_| "webpack-stats.json".into());
+    let stats = env::var_os("WEBPACK_STATS_FILE")
+        .map(PathBuf::from)
+        .or_else(|| root.as_ref().map(|root| root.join("webpack-stats.json")));
     if production_web {
-        state = state.with_production_webpack_stats(Path::new(&stats))?;
-    } else if enabled("BLACK_ROD_WATCH_WEBPACK") {
-        state = state.watch_webpack_stats(Path::new(&stats));
-    } else if Path::new(&stats).is_file() {
-        state = state.with_webpack_stats(Path::new(&stats))?;
+        let stats =
+            stats.ok_or("Set BLACK_ROD_RELEASE_ROOT or WEBPACK_STATS_FILE for this release.")?;
+        state = state.with_production_webpack_stats(&stats)?;
+    } else if let Some(stats) = stats {
+        if enabled("BLACK_ROD_WATCH_WEBPACK") {
+            state = state.watch_webpack_stats(&stats);
+        } else if stats.is_file() {
+            state = state.with_webpack_stats(&stats)?;
+        }
     }
     state = state.with_private_tokens(PrivateTokens::new(
         &env::var("FORUM_PROFILE_API_TOKEN").unwrap_or_default(),

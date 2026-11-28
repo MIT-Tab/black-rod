@@ -1,7 +1,8 @@
 use std::{
+    io,
     net::{IpAddr, Ipv6Addr, SocketAddr},
     sync::Arc,
-    time::Duration,
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use axum::{
@@ -11,7 +12,7 @@ use axum::{
 };
 use tokio::sync::Mutex;
 
-use crate::AppState;
+use crate::{AppState, cache::Memcached};
 
 pub(crate) type Limits = moka::future::Cache<String, Arc<Mutex<Vec<f64>>>>;
 const MAX_ATTEMPT_WINDOW: Duration = Duration::from_secs(300);
@@ -67,6 +68,56 @@ pub(super) struct Attempt {
     key: String,
     time: f64,
     ttl: u32,
+    shared: bool,
+}
+
+fn record_attempt(attempts: &mut Vec<f64>, now: f64, limit: usize, ttl: u32) -> Option<f64> {
+    attempts.retain(|recent| *recent > now - f64::from(ttl));
+    if attempts.len() >= limit {
+        return None;
+    }
+    let mut time = now;
+    while attempts.contains(&time) {
+        time = time.next_up();
+    }
+    attempts.insert(0, time);
+    Some(time)
+}
+
+async fn update_shared<T>(
+    cache: &Memcached,
+    key: &str,
+    local: &mut Vec<f64>,
+    ttl: u32,
+    mut update: impl FnMut(&mut Vec<f64>) -> Option<T>,
+) -> io::Result<Option<T>> {
+    const MAX_RETRIES: usize = 16;
+    for _ in 0..MAX_RETRIES {
+        let (mut attempts, version) = match cache.read_versioned(key).await? {
+            Some((1, data, version)) => (
+                serde_pickle::from_slice(&data, Default::default()).map_err(io::Error::other)?,
+                Some(version),
+            ),
+            None => (Vec::new(), None),
+            Some(_) => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "Invalid rate limit value",
+                ));
+            }
+        };
+        let Some(result) = update(&mut attempts) else {
+            *local = attempts;
+            return Ok(None);
+        };
+        let bytes =
+            serde_pickle::to_vec(&attempts, Default::default()).map_err(io::Error::other)?;
+        if cache.compare_and_swap(key, 1, &bytes, ttl, version).await? {
+            *local = attempts;
+            return Ok(Some(result));
+        }
+    }
+    Ok(None)
 }
 
 pub(super) async fn consume(
@@ -82,44 +133,50 @@ pub(super) async fn consume(
         .get_with(key.clone(), async { Arc::new(Mutex::new(Vec::new())) })
         .await;
     let mut local = cell.lock().await;
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs_f64();
     if let Some(cache) = &state.memcached
-        && let Some((1, data)) = cache.read_raw(&key).await
-        && let Ok(shared) = serde_pickle::from_slice::<Vec<f64>>(&data, Default::default())
+        && let Ok(result) = update_shared(cache, &key, &mut local, ttl, |attempts| {
+            record_attempt(attempts, now, limit, ttl)
+        })
+        .await
     {
-        *local = shared;
+        return result.map(|time| Attempt {
+            key,
+            time,
+            ttl,
+            shared: true,
+        });
     }
-    let time = chrono::Utc::now().timestamp_micros() as f64 / 1_000_000.0;
-    local.retain(|recent| *recent > time - f64::from(ttl));
-    if local.len() >= limit {
-        return None;
-    }
-    local.insert(0, time);
-    if let Some(cache) = &state.memcached
-        && let Ok(data) = serde_pickle::to_vec(&*local, Default::default())
-    {
-        let _ = cache.write_raw(&key, 1, &data, ttl, true).await;
-    }
-    Some(Attempt { key, time, ttl })
+    let time = record_attempt(&mut local, now, limit, ttl)?;
+    Some(Attempt {
+        key,
+        time,
+        ttl,
+        shared: false,
+    })
 }
 
 impl Attempt {
     pub(super) async fn rollback(self, state: &AppState) {
-        let Some(cell) = state.account_limits.get(&self.key).await else {
-            return;
-        };
+        let cell = state
+            .account_limits
+            .get_with(self.key.clone(), async { Arc::new(Mutex::new(Vec::new())) })
+            .await;
         let mut local = cell.lock().await;
-        if let Some(cache) = &state.memcached
-            && let Some((1, data)) = cache.read_raw(&self.key).await
-            && let Ok(shared) = serde_pickle::from_slice::<Vec<f64>>(&data, Default::default())
+        if self.shared
+            && let Some(cache) = &state.memcached
         {
-            *local = shared;
+            let _ = update_shared(cache, &self.key, &mut local, self.ttl, |attempts| {
+                let index = attempts.iter().position(|time| *time == self.time)?;
+                attempts.remove(index);
+                Some(())
+            })
+            .await;
         }
-        local.retain(|value| *value != self.time);
-        if let Some(cache) = &state.memcached
-            && let Ok(data) = serde_pickle::to_vec(&*local, Default::default())
-        {
-            let _ = cache.write_raw(&self.key, 1, &data, self.ttl, true).await;
-        }
+        local.retain(|time| *time != self.time);
     }
 }
 

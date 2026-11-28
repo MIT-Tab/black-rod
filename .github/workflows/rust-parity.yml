@@ -114,7 +114,7 @@ jobs:
           "$scripts/br" venv/bin/python rust/tools/qualification_rebuild_parity.py
           "$scripts/br" venv/bin/python rust/tools/admin_import_concurrency.py
           "$scripts/br" venv/bin/python rust/tools/account_write_parity.py
-      - name: Verify daily write limits across Rust workers on PostgreSQL
+      - name: Verify write quotas and account rate limits across Rust workers
         env:
           BLACK_ROD_PARITY_POSTGRES_URL: postgres://black_rod:fixture@127.0.0.1:5432/black_rod_parity
           BLACK_ROD_PARITY_MEMCACHED_ADDR: 127.0.0.1:11211

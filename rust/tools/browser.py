@@ -481,6 +481,7 @@ motion = Motion.objects.create(
     tournament=tournament, date_set=tournament.date,
 )
 motion.tags.add("Fixture topic")
+motion.tags.add("A second fixture topic")
 award = SpeakerResult.objects.filter(tournament=tournament, type_of_place=1, place=1).order_by("pk").first()
 result = {"tournament": tournament.pk, "debater": award.debater_id, "motion": motion.pk, "videos": [], "sessions": {},
     "authors": debaters, "users": {}, "role_school": School.objects.create(name="Disposable school role tests", short_name="Roles").pk}
@@ -899,6 +900,12 @@ def assert_motion_progress(driver, django, rust, fixture):
         driver.get(f"{root}/core/motions/random?text__icontains=zzz-nonexistent")
         assert driver.current_url == f"{root}/core/motions/?text__icontains=zzz-nonexistent&progress=exclude_done_ignore"
         assert driver.find_element("css selector", ".alert-info").text == "No motions match those filters."
+    motions = "/core/motions/?per_page=200"
+    expected = directory_state(driver, django, motions, limit=202)
+    actual = directory_state(driver, rust, motions, limit=202)
+    assert actual == expected, (expected["rows"][:3], actual["rows"][:3])
+    row = next(row for row in actual["rows"] if label in row)
+    assert "Fixture topic, A second fixture topic" in row, row
     driver.add_cookie({"name": "sessionid", "value": fixture["sessions"]["ordinary"]})
     for writer, reader, target, active in [(rust, django, "done", "btn-success"),
                                             (django, rust, "ignore", "btn-secondary"),
