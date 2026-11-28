@@ -24,13 +24,15 @@
                         <div id="div_id_username" class="form-group">
                             <label for="id_username" class=" requiredField">Username<span class="asteriskField">*</span></label>
                             <div>
-                                <input type="text" name="username" autofocus autocapitalize="none" autocomplete="username" maxlength="150" class="textinput textInput form-control" required id="id_username"{% if username %} value="{{ username }}"{% endif %}>
+                                <input type="text" name="username" autofocus autocapitalize="none" autocomplete="username" maxlength="150" class="textinput textInput form-control{% if username_error %} is-invalid{% endif %}" required{% if username_error %} aria-invalid="true"{% endif %} id="id_username"{% if username %} value="{{ username }}"{% endif %}>
+                                {% if username_error %}<p id="error_1_id_username" class="invalid-feedback"><strong>{{ username_error }}</strong></p>{% endif %}
                             </div>
                         </div>
                         <div id="div_id_password" class="form-group">
                             <label for="id_password" class=" requiredField">Password<span class="asteriskField">*</span></label>
                             <div>
-                                <input type="password" name="password" autocomplete="current-password" class="textinput textInput form-control" required id="id_password">
+                                <input type="password" name="password" autocomplete="current-password" class="textinput textInput form-control{% if password_error %} is-invalid{% endif %}" required{% if password_error %} aria-invalid="true"{% endif %} id="id_password">
+                                {% if password_error %}<p id="error_1_id_password" class="invalid-feedback"><strong>{{ password_error }}</strong></p>{% endif %}
                             </div>
                         </div>
                         <input class="btn btn-secondary" type="submit" value="Login">

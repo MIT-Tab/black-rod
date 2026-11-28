@@ -214,6 +214,8 @@ struct LoginPage<'a> {
     next: String,
     username: &'a str,
     error: &'a str,
+    username_error: Option<&'static str>,
+    password_error: Option<&'static str>,
     remember: bool,
 }
 
@@ -255,6 +257,8 @@ async fn page(state: &AppState, headers: &HeaderMap, https: bool, page: LoginPag
             username => page.username,
             remember => page.remember,
             error => page.error,
+            username_error => page.username_error,
+            password_error => page.password_error,
         },
     );
     let html = match html {
@@ -367,6 +371,8 @@ pub(crate) async fn view(State(state): State<AppState>, request: Request) -> Res
                 next,
                 username: "",
                 error: "",
+                username_error: None,
+                password_error: None,
                 remember: true,
             },
         )
@@ -392,14 +398,26 @@ pub(crate) async fn view(State(state): State<AppState>, request: Request) -> Res
     if state.secret.is_none() {
         return StatusCode::SERVICE_UNAVAILABLE.into_response();
     }
-    let normalized_username: String = field("username")
-        .unwrap_or_default()
-        .trim()
-        .nfkc()
-        .collect();
-    let username = normalized_username.as_str();
+    let supplied_username = field("username").unwrap_or_default();
+    let trimmed_username = supplied_username.trim();
+    let username = if trimmed_username.chars().count() > 150 {
+        trimmed_username.to_owned()
+    } else {
+        trimmed_username.nfkc().collect()
+    };
     let password = field("password").unwrap_or_default();
-    let verified = match authenticate(&state.pool, username, password).await {
+    let form = LoginPage {
+        next,
+        username: supplied_username,
+        error: "",
+        username_error: username.is_empty().then_some("This field is required."),
+        password_error: password.is_empty().then_some("This field is required."),
+        remember,
+    };
+    if form.username_error.is_some() || form.password_error.is_some() {
+        return page(&state, &headers, secure, form).await;
+    }
+    let verified = match authenticate(&state.pool, &username, password).await {
         Ok(verified) => verified,
         Err(error) => {
             eprintln!("Login verification failed: {error:?}");
@@ -412,15 +430,13 @@ pub(crate) async fn view(State(state): State<AppState>, request: Request) -> Res
             &headers,
             secure,
             LoginPage {
-                next,
-                username,
                 error: AUTH_ERROR,
-                remember,
+                ..form
             },
         )
         .await;
     };
-    finish_password_login(&state, &headers, secure, &next, remember, verified).await
+    finish_password_login(&state, &headers, secure, &form.next, remember, verified).await
 }
 
 pub(crate) struct VerifiedPassword {

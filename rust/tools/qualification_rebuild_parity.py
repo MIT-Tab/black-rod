@@ -23,7 +23,10 @@ SEED = """
 from reference import application
 from datetime import date
 from django.contrib.sessions.backends.db import SessionStore
-from core.models import Debater, QUAL, School, Team, TeamResult, Tournament, TournamentAutoQual, TOTY, TOTYReaff, User
+from core.models import (
+    Debater, QUAL, Reaff, School, SOTY, SpeakerResult, Team, TeamResult, Tournament, TournamentAutoQual,
+    TOTY, TOTYReaff, User,
+)
 import json
 
 host = School.objects.create(name="Large import fixture")
@@ -74,7 +77,29 @@ reaff_event = Tournament.objects.create(host=host, season="2026", date=date(2026
     manual_name="Reaffiliation result save fixture", num_teams=64)
 TeamResult.objects.create(tournament=reaff_event, team=former, place=1, counts_for_points=True)
 reaff = (reaff_event.id, members[0], former.id, unrelated.id)
-print(json.dumps((event.id, session.session_key, parallel, reaff)))
+incoming_event = Tournament.objects.create(host=host, season="2026", date=date(2026, 10, 24),
+    manual_name="Remove the final direct awards", num_teams=64)
+source_event = Tournament.objects.create(host=host, season="2026", date=date(2026, 10, 22),
+    manual_name="Results of the original reaffiliation owner", num_teams=64)
+Tournament.objects.filter(pk=source_event.pk).update(toty=True, soty=True)
+old, new = [
+    Debater.objects.create(first_name=f"Incoming {side}", last_name="Fixture", school=host)
+    for side in ("source", "destination")
+]
+old_team = Team.objects.create(name="Incoming source team")
+new_team = Team.objects.create(name="Incoming destination team")
+for team, person in ((old_team, old), (new_team, new)):
+    team.debaters.add(person, Debater.objects.create(first_name="Incoming partner", school=host))
+TeamResult.objects.create(tournament=source_event, team=old_team, place=1)
+TeamResult.objects.create(tournament=incoming_event, team=new_team, place=1)
+SpeakerResult.objects.create(tournament=source_event, debater=old, place=1)
+SpeakerResult.objects.create(tournament=incoming_event, debater=new, place=1)
+TOTYReaff.objects.create(old_team=old_team, new_team=new_team, season="2026", reaff_date=date(2026, 10, 23))
+Reaff.objects.create(old_debater=old, new_debater=new, season="2026", reaff_date=date(2026, 10, 23))
+TOTY.objects.create(team=new_team, season="2026", points=6)
+SOTY.objects.create(debater=new, season="2026", points=6)
+expiry_check = (incoming_event.pk, new_team.pk, new.pk)
+print(json.dumps((event.id, session.session_key, parallel, reaff, expiry_check)))
 """
 
 def request_save(server, session, event, members=None, gate=None):
@@ -199,6 +224,20 @@ def check_reaffiliation_precedence(seed, postgres, session, reaff):
     print("Incremental result saves preserve unrelated TOTY rankings for reaffiliated teams")
 
 
+def check_last_direct_awards(seed, postgres, session, expiry_check):
+    event, team, speaker = expiry_check
+    for name in ("Django", "Rust"):
+        with fixture_database(seed, seed, postgres):
+            with compare.servers(seed) as (django, rust):
+                request_save(django if name == "Django" else rust, session, event)
+            with closing(psycopg2.connect(os.environ["BLACK_ROD_PARITY_POSTGRES_URL"])) as db, db.cursor() as cursor:
+                cursor.execute("SELECT points FROM core_toty WHERE season='2026' AND team_id=%s", (team,))
+                assert cursor.fetchone() is None, (name, "Team award returned without a direct result")
+                cursor.execute("SELECT points FROM core_soty WHERE season='2026' AND debater_id=%s", (speaker,))
+                assert cursor.fetchone() is None, (name, "Speaker award returned without a direct result")
+    print("Reimport removes the final direct TOTY and SOTY awards for reaffiliated recipients")
+
+
 def check_ranking_maintenance(seed, postgres):
     with fixture_database(seed, seed, postgres):
         target = os.environ["BLACK_ROD_PARITY_POSTGRES_URL"]
@@ -309,7 +348,7 @@ def main():
                 "SECRET_KEY": "disposable-local-parity-key",
             }
             raw = subprocess.check_output([str(compare.ROOT / "venv/bin/python"), "-c", SEED], text=True, env=env)
-            event, session, parallel, reaff = json.loads(raw.splitlines()[-1])
+            event, session, parallel, reaff, expiry_check = json.loads(raw.splitlines()[-1])
             benchmark_source = os.environ["BLACK_ROD_PARITY_POSTGRES_URL"]
             for label, binary in runtimes.items():
                 compare.RUST_BIN = binary
@@ -329,6 +368,7 @@ def main():
             check_concurrent_rebuilds(seed, benchmark_source, session, parallel)
             check_ranking_maintenance(seed, benchmark_source)
             check_reaffiliation_precedence(seed, benchmark_source, session, reaff)
+            check_last_direct_awards(seed, benchmark_source, session, expiry_check)
     for label, contents in documents.items():
         for name, left, right in zip(("qual", "qualpoints", "onlinequal", "coty", "latest_season"),
                                      documents["Django"], contents):

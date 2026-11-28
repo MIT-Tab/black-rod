@@ -389,9 +389,17 @@ pub(super) async fn awards(
             .bind(season)
             .execute(&mut *conn)
             .await?;
-    }
-    if !matches!(kind, Award::Novice) || year(season).is_some_and(|value| value <= 2020) {
-        write_awards(conn, season, kind, ids).await?;
+        if !matches!(kind, Award::Novice) || year(season).is_some_and(|value| value <= 2020) {
+            let owners = format!(
+                "SELECT DISTINCT CAST({owner} AS BIGINT) FROM {source} WHERE {owner} IN ({affected})"
+            );
+            let active = sqlx::query_scalar::<_, i64>(AssertSqlSafe(owners))
+                .fetch_all(&mut *conn)
+                .await?
+                .into_iter()
+                .collect();
+            write_awards(conn, season, kind, &active).await?;
+        }
     }
     rank(conn, table, season).await
 }

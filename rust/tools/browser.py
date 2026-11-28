@@ -5476,6 +5476,29 @@ def assert_login_roundtrip(driver, rust, django):
             }).catch(() => done([0]));
         """)
         assert csrf_error == [403, "Request verification failed", "Reload the page and try again.", "/"], (server.name, csrf_error)
+        for username, password, messages in (
+            ("", "", ["This field is required.", "This field is required."]),
+            ("tab", "", [None, "This field is required."]),
+            ("", "fixture-password", ["This field is required.", None]),
+        ):
+            errors = driver.execute_async_script("""
+                const [username, password, done] = arguments;
+                const token = document.querySelector('[name=csrfmiddlewaretoken]').value;
+                const body = new URLSearchParams({username, password, csrfmiddlewaretoken: token});
+                fetch(location.href, {method: "POST", body}).then(async response => {
+                    const page = new DOMParser().parseFromString(await response.text(), "text/html");
+                    const errors = ["username", "password"].map(field => {
+                        const input = page.getElementById("id_" + field);
+                        const message = page.getElementById("error_1_id_" + field);
+                        return [message?.textContent.trim() ?? null, input.classList.contains("is-invalid"),
+                                input.getAttribute("aria-invalid")];
+                    });
+                    done([response.status, errors]);
+                }, () => done([0]));
+            """, username, password)
+            assert errors == [200, [[error, bool(error), "true" if error else None] for error in messages]], (
+                server.name, errors,
+            )
         response = driver.execute_async_script("""
             const done = arguments[0];
             const token = document.querySelector('[name=csrfmiddlewaretoken]').value;
