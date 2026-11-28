@@ -214,8 +214,16 @@ async fn card_data(
         .bind(only_tournament)
         .fetch_all(&mut *conn)
         .await?;
-    let endpoints = [people.first(), people.last()];
-    let ids = endpoints.map(|person| person.and_then(|person| person["id"].as_i64()));
+    // Django's first() and last() select by primary key. The display roster
+    // keeps its existing database order.
+    let by_id = people
+        .iter()
+        .filter_map(|person| person["id"].as_i64().map(|id| (id, person)));
+    let endpoints = [
+        by_id.clone().min_by_key(|(id, _)| *id),
+        by_id.max_by_key(|(id, _)| *id),
+    ];
+    let ids = endpoints.map(|entry| entry.map(|(id, _)| id));
     let mut scores = HashMap::new();
     if ids[0].is_some() && !round_rows.is_empty() {
         let rows = sqlx::query(STATS)
@@ -258,8 +266,7 @@ async fn card_data(
         let stats = endpoints
             .into_iter()
             .filter_map(|person| {
-                let entry = person.and_then(|person| {
-                    let id = person["id"].as_i64()?;
+                let entry = person.and_then(|(id, person)| {
                     let mut payload = scores.get(&(round_id, id))?.clone();
                     payload["debater"] = person.clone();
                     Some(payload)

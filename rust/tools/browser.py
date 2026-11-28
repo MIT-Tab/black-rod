@@ -625,6 +625,38 @@ Video.objects.create(tournament=event, round=Video.VF, permissions=Video.DEBATER
             assert json.loads(response.read())["team_tab_cards"], server.name
 
 
+def assert_team_tab_card_members(django, rust):
+    code = """
+from datetime import date
+from django import setup
+import json
+setup()
+from core.models import Debater, Round, RoundStats, School, Team, Tournament
+
+school = School.objects.create(name="Tab card roster order fixture")
+people = [Debater.objects.create(first_name=f"Card Member {index}", school=school) for index in range(3)]
+team = Team.objects.create(name="Unordered Card Roster")
+for index in (1, 2, 0):
+    Team.debaters.through.objects.create(team=team, debater=people[index])
+opponent = Team.objects.create(name="Card Order Opponent")
+event = Tournament.objects.create(host=school, date=date(2022, 9, 12), season="2022")
+round = Round.objects.create(tournament=event, gov=team, opp=opponent, round_number=1, victor=Round.GOV)
+RoundStats.objects.bulk_create([
+    RoundStats(round=round, debater=debater, speaks=str(25 + index), ranks="1", debater_role="PM")
+    for index, debater in enumerate(people)
+])
+print(json.dumps([team.pk, people[0].pk, people[-1].pk]))
+"""
+    result = subprocess.check_output([str(ROOT / "venv/bin/python"), "-c", code], text=True)
+    team, first, last = json.loads(result.splitlines()[-1])
+    case = Case(f"/api/teams/{team}/detail/")
+    for server in (django, rust):
+        status, _, body = request(server, case)
+        assert status == 200, (server.name, status)
+        stats = json.loads(body)["tournaments"][0]["tab_card"][0]["stats"]
+        assert [(row["debater"]["id"], row["speaks"]) for row in stats] == [(first, 25), (last, 27)], server.name
+
+
 def assert_video_editor(driver, django, rust, fixture):
     rust_root = f"http://{HOST}:{rust.port}"
     django_root = f"http://{HOST}:{django.port}"
@@ -3833,6 +3865,75 @@ def cached_import_keys(keys):
         return found
 
 
+def assert_import_snapshot_cache_resilience(driver, rust, provider, event, database):
+    remote = f"http://{HOST}:{provider.server_port}"
+    env = {
+        **os.environ,
+        "PYTHONPATH": f"{ROOT / 'rust/tools'}{os.pathsep}{os.environ['PYTHONPATH']}",
+        "SECRET_KEY": "disposable-local-parity-key",
+        "BLACK_ROD_DATABASE_URL": f"sqlite://{database}?mode=ro",
+        "BLACK_ROD_MEMCACHED_ADDR": os.environ["BLACK_ROD_PARITY_MEMCACHED_ADDR"],
+        "LIVE_MITTAB_DIRECTORY_URL": "http://127.0.0.1:1",
+        "LIVE_MITTAB_SOURCES": remote,
+    }
+    code = """
+from reference import application  # noqa: F401
+from core.import_sources import INDEX_KEY, source_key
+from django.core.cache import cache
+from django.utils.timezone import now
+import sys
+
+action, url = sys.argv[1:]
+if action == "lock":
+    assert cache.add(f"{INDEX_KEY}:lock", 1, timeout=30)
+elif action == "unlock":
+    cache.delete(f"{INDEX_KEY}:lock")
+else:
+    index = cache.get(INDEX_KEY)
+    row = index[source_key(url)]
+    if action == "mark_missing":
+        row["missing_since"] = now().timestamp() - 120
+        cache.set(INDEX_KEY, index, timeout=None)
+        for chunk in row["chunks"]:
+            assert cache.touch(chunk, timeout=300)
+    elif action == "verify":
+        assert row.get("missing_since") is None
+        assert all(cache.get(chunk) is not None for chunk in row["chunks"])
+    print(len(index))
+"""
+
+    def cache(action):
+        return subprocess.check_output([str(ROOT / "venv/bin/python"), "-c", code, action, remote],
+                                       text=True, env=env, stderr=subprocess.PIPE)
+
+    cache("lock")
+    original = provider.import_payload["debater_counts"]["teams"]
+    provider.import_payload["debater_counts"]["teams"] = 99
+    try:
+        query = urlencode({"tournament": event, "api_url": remote})
+        driver.get(f"http://{HOST}:{rust.port}/core/tournaments/data_entry?" + query)
+        assert "Another worker is updating the tournament cache" in driver.find_element("tag name", "body").text
+        assert "review" not in parse_qs(urlsplit(driver.current_url).query)
+    finally:
+        provider.import_payload["debater_counts"]["teams"] = original
+        cache("unlock")
+
+    payload = provider.import_payload
+    provider.import_payload = None
+    try:
+        django_refresh = [str(ROOT / "venv/bin/python"), "-c",
+                          "from reference import application; from django.core.management import call_command; "
+                          "call_command('cache_mittab_results')"]
+        rust_refresh = [str(RUST_BIN), "cache_mittab_results"]
+        for command in (django_refresh, rust_refresh):
+            retained = int(cache("mark_missing").splitlines()[-1])
+            result = subprocess.run(command, env=env, check=True, capture_output=True, text=True, timeout=30)
+            assert f"Retained {retained} tournament snapshots." in result.stdout, Path(command[0]).name
+            assert int(cache("verify").splitlines()[-1]) == retained
+    finally:
+        provider.import_payload = payload
+
+
 def assert_reviewed_tournament_import(driver, django, rust, fixture, provider):
     root = f"http://{HOST}:{rust.port}"
     sources = "/core/tournaments/import/"
@@ -3886,6 +3987,7 @@ print(target.pk)
         assert "Incoming" in reopened[1], reopened
         driver.get(rust_review)
         assert reopened == (imported_rows("schools", "name"), imported_rows("debaters", "first_name"))
+        assert_import_snapshot_cache_resilience(driver, rust, provider, event, db)
 
     for review_url in filter(None, (reference_review, rust_review)):
         driver.get(review_url)
@@ -4775,6 +4877,7 @@ def browser_checks(database, options, output):
             assert_search_reindex(driver, rust)
         assert_video_permissions(driver, django, rust, fixture)
         assert_api_basic_auth(django, rust, fixture)
+        assert_team_tab_card_members(django, rust)
         assert_video_editor(driver, django, rust, fixture)
         assert_random_video(driver, django, rust, fixture)
         assert_recent_results(driver, django, rust)

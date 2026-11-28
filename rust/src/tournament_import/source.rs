@@ -299,19 +299,15 @@ async fn fetch_payload(url: &str) -> Result<(String, Arc<Value>), Error> {
     Ok((url, Arc::new(payload)))
 }
 
-async fn fetch(state: &AppState, url: &str) -> Result<Arc<Value>, Error> {
-    let (url, payload) = fetch_payload(url).await?;
-    publish(state, &url, payload.clone()).await?;
-    Ok(payload)
-}
-
 pub(super) async fn fresh_or_cached(state: &AppState, url: &str) -> Result<Arc<Value>, Error> {
-    let id = key(url);
-    let cached = index(state).await.remove(&id);
-    match fetch(state, url).await {
-        Ok(value) => Ok(value),
+    match fetch_payload(url).await {
+        Ok((url, payload)) => {
+            publish(state, &url, payload.clone()).await?;
+            Ok(payload)
+        }
         Err(error) => {
-            let Some(row) = cached else {
+            let id = key(url);
+            let Some(row) = index(state).await.remove(&id) else {
                 return Err(error);
             };
             let value = if let Some(cache) = &state.memcached {
@@ -682,8 +678,9 @@ async fn refresh_presence(
     cache: &Memcached,
     active: &HashSet<String>,
     outcomes: &HashSet<String>,
+    confirmed: bool,
     now: f64,
-) -> Result<(), &'static str> {
+) -> Result<usize, &'static str> {
     let mut cached = snapshots::source_index(cache)
         .await
         .map_err(|_| "Could not read the tournament snapshot index")?;
@@ -697,7 +694,7 @@ async fn refresh_presence(
                 }
                 row.missing_since = None;
             }
-        } else if row.missing_since.is_none() && !outcomes.contains(&row.url) {
+        } else if confirmed && row.missing_since.is_none() && !outcomes.contains(&row.url) {
             row.missing_since = Some(now);
         }
     }
@@ -720,7 +717,7 @@ async fn refresh_presence(
         }
     }
     complete
-        .then_some(())
+        .then_some(cached.len())
         .ok_or("Could not update all retained snapshot lifetimes")
 }
 
@@ -776,22 +773,19 @@ pub(super) async fn refresh(state: &AppState) -> Result<usize, &'static str> {
     if !published {
         return Err("Could not publish all refreshed tournament snapshots");
     }
-    if !confirmed {
-        return Ok(outcomes.len());
-    }
     let now = Utc::now().timestamp() as f64;
     if let Some(cache) = &state.memcached {
         if !guard_index(cache).await {
             return Err("Could not lock the tournament snapshot index");
         }
-        let result = refresh_presence(cache, &active, &outcomes, now).await;
+        let result = refresh_presence(cache, &active, &outcomes, confirmed, now).await;
         cache.delete_raw(&format!("{INDEX}:lock")).await;
-        result?;
+        return result;
     } else {
         for (key, (mut row, value)) in state.import_cache.sources.iter() {
             if active.contains(&row.url) {
                 row.missing_since = None;
-            } else if row.missing_since.is_none() && !outcomes.contains(&row.url) {
+            } else if confirmed && row.missing_since.is_none() && !outcomes.contains(&row.url) {
                 row.missing_since = Some(now);
             }
             state
@@ -801,5 +795,5 @@ pub(super) async fn refresh(state: &AppState) -> Result<usize, &'static str> {
                 .await;
         }
     }
-    Ok(outcomes.len())
+    Ok(index(state).await.len())
 }
