@@ -133,15 +133,6 @@ fn base36(mut number: i64) -> String {
     String::from_utf8(result).expect("base-36 digits are ASCII")
 }
 
-pub(super) fn email_syntax(value: &str) -> bool {
-    !value.is_empty()
-        && value.chars().count() <= 320
-        && value.rsplit_once('@').is_some_and(|(_, host)| {
-            host.contains('.') || host == "localhost" || host.starts_with('[')
-        })
-        && value.parse::<lettre::Address>().is_ok()
-}
-
 async fn send_reset(
     state: &AppState,
     origin: &str,
@@ -241,7 +232,7 @@ async fn response(state: &AppState, request: Request) -> Result<Response, ApiErr
         email = fields.get("email").map_or("", String::as_str).trim();
         if email.is_empty() {
             errors.insert("email", vec!["This field is required.".to_owned()]);
-        } else if !email_syntax(email) {
+        } else if !super::entrance::email_valid(email) {
             errors.insert("email", vec!["Enter a valid email address.".to_owned()]);
         } else {
             let sent = email.to_lowercase();

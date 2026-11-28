@@ -116,11 +116,15 @@ pub(crate) fn csrf_valid(headers: &HeaderMap, token: Option<&str>, origin: &str)
     check_csrf(headers, token, origin).is_ok()
 }
 
-pub(crate) fn check_csrf(
-    headers: &HeaderMap,
-    token: Option<&str>,
-    origin: &str,
-) -> Result<(), String> {
+fn csrf_format_error(value: &str) -> &'static str {
+    if matches!(value.chars().count(), 32 | 64) {
+        "has invalid characters"
+    } else {
+        "has incorrect length"
+    }
+}
+
+pub(crate) fn csrf_request_secret(headers: &HeaderMap, origin: &str) -> Result<String, String> {
     if let Some(origin_header) = headers.get(header::ORIGIN) {
         if origin_header != origin {
             let value = origin_header.to_str().unwrap_or_default();
@@ -148,15 +152,16 @@ pub(crate) fn check_csrf(
             ));
         }
     }
-    let invalid = |value: &str| {
-        if matches!(value.chars().count(), 32 | 64) {
-            "has invalid characters"
-        } else {
-            "has incorrect length"
-        }
-    };
     let cookie = session::cookie(headers, "csrftoken").ok_or("CSRF cookie not set.")?;
-    let secret = unmask(cookie).ok_or_else(|| format!("CSRF cookie {}.", invalid(cookie)))?;
+    unmask(cookie).ok_or_else(|| format!("CSRF cookie {}.", csrf_format_error(cookie)))
+}
+
+pub(crate) fn check_csrf(
+    headers: &HeaderMap,
+    token: Option<&str>,
+    origin: &str,
+) -> Result<(), String> {
+    let secret = csrf_request_secret(headers, origin)?;
     let (provided, source) = match token.filter(|value| !value.is_empty()) {
         Some(token) => (token, "POST"),
         None => (
@@ -169,7 +174,7 @@ pub(crate) fn check_csrf(
         ),
     };
     let token = unmask(provided)
-        .ok_or_else(|| format!("CSRF token from {source} {}.", invalid(provided)))?;
+        .ok_or_else(|| format!("CSRF token from {source} {}.", csrf_format_error(provided)))?;
     if !bool::from(secret.as_bytes().ct_eq(token.as_bytes())) {
         return Err(format!("CSRF token from {source} incorrect."));
     }

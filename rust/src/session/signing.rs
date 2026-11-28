@@ -8,7 +8,7 @@ use flate2::{Compression, read::ZlibDecoder, write::ZlibEncoder};
 use ring::{digest, hmac};
 use serde_json::Value;
 
-pub(super) const MAX_SESSION_SIZE: u64 = 1024 * 1024;
+const MAX_SIGNED_PAYLOAD_SIZE: u64 = 1024 * 1024;
 
 pub(crate) fn key(salt: &[u8], secret: &[u8]) -> hmac::Key {
     let mut hash = digest::Context::new(&digest::SHA256);
@@ -18,24 +18,20 @@ pub(crate) fn key(salt: &[u8], secret: &[u8]) -> hmac::Key {
 }
 
 pub(crate) fn decode_signed(data: &str, secret: &[u8], salt: &[u8]) -> Option<Value> {
-    let bytes = decode_signed_bytes(data, secret, salt)?;
+    if data.len() as u64 > MAX_SIGNED_PAYLOAD_SIZE {
+        return None;
+    }
+    let (payload, _) = signed_payload(data, secret, salt)?;
+    let bytes = payload_bytes(payload, MAX_SIGNED_PAYLOAD_SIZE)?;
     serde_json::from_slice(&bytes).ok()
 }
 
-pub(super) fn decode_signed_bytes(data: &str, secret: &[u8], salt: &[u8]) -> Option<Vec<u8>> {
-    let (payload, _) = signed_payload(data, secret, salt, MAX_SESSION_SIZE as usize)?;
-    payload_bytes(payload, MAX_SESSION_SIZE)
+pub(super) fn decode_database_session(data: &str, secret: &[u8], salt: &[u8]) -> Option<Vec<u8>> {
+    let (payload, _) = signed_payload(data, secret, salt)?;
+    payload_bytes(payload, u64::MAX)
 }
 
-fn signed_payload<'a>(
-    data: &'a str,
-    secret: &[u8],
-    salt: &[u8],
-    max_signed_bytes: usize,
-) -> Option<(&'a str, &'a str)> {
-    if data.len() > max_signed_bytes {
-        return None;
-    }
+fn signed_payload<'a>(data: &'a str, secret: &[u8], salt: &[u8]) -> Option<(&'a str, &'a str)> {
     let (signed, signature) = data.rsplit_once(':')?;
     let signature = URL_SAFE_NO_PAD.decode(signature).ok()?;
     hmac::verify(&key(salt, secret), signed.as_bytes(), &signature).ok()?;
@@ -47,7 +43,7 @@ fn payload_bytes(payload: &str, max_bytes: u64) -> Option<Vec<u8>> {
         let compressed = URL_SAFE_NO_PAD.decode(payload).ok()?;
         let mut inflated = Vec::new();
         ZlibDecoder::new(compressed.as_slice())
-            .take(max_bytes + 1)
+            .take(max_bytes.saturating_add(1))
             .read_to_end(&mut inflated)
             .ok()?;
         inflated
@@ -110,8 +106,8 @@ pub(crate) fn decode_timed<T: serde::de::DeserializeOwned>(
         secret,
         salt,
         max_age,
-        MAX_SESSION_SIZE as usize,
-        MAX_SESSION_SIZE,
+        MAX_SIGNED_PAYLOAD_SIZE as usize,
+        MAX_SIGNED_PAYLOAD_SIZE,
     )
 }
 
@@ -123,7 +119,10 @@ pub(crate) fn decode_timed_with_limits<T: serde::de::DeserializeOwned>(
     max_signed_bytes: usize,
     max_payload_bytes: u64,
 ) -> Option<T> {
-    let (payload, timestamp) = signed_payload(signed, secret, salt, max_signed_bytes)?;
+    if signed.len() > max_signed_bytes {
+        return None;
+    }
+    let (payload, timestamp) = signed_payload(signed, secret, salt)?;
     let timestamp = timestamp.bytes().try_fold(0_i64, |acc, byte| {
         let digit = match byte {
             b'0'..=b'9' => byte - b'0',

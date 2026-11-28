@@ -683,15 +683,19 @@ async fn refresh_presence(
     let mut cached = snapshots::source_index(cache)
         .await
         .map_err(|_| "Could not read the tournament snapshot index")?;
+    let mut complete = true;
     for row in cached.values_mut() {
         if active.contains(&row.url) {
             if row.missing_since.is_some() {
+                let mut extended = true;
                 for key in &row.chunks {
-                    if !cache.touch_raw(&django_key(key), 0).await {
-                        return Err("Could not extend an active tournament snapshot");
-                    }
+                    // An evicted chunk has no lifetime to extend.
+                    extended &= cache.touch_raw(&django_key(key), 0).await.is_ok();
                 }
-                row.missing_since = None;
+                if extended {
+                    row.missing_since = None;
+                }
+                complete &= extended;
             }
         } else if confirmed && row.missing_since.is_none() && !outcomes.contains(&row.url) {
             row.missing_since = Some(now);
@@ -706,12 +710,11 @@ async fn refresh_presence(
         return Err("Could not save tournament snapshot retention");
     }
     // Shorten chunk lifetimes only after the index records when they disappeared.
-    let mut complete = true;
-    for row in cached.values() {
+    for row in cached.values().filter(|row| !active.contains(&row.url)) {
         if let Some(missing) = row.missing_since {
             let remaining = ((RETENTION + missing - now).ceil() as u32).clamp(1, RETENTION as u32);
             for key in &row.chunks {
-                complete &= cache.touch_raw(&django_key(key), remaining).await;
+                complete &= cache.touch_raw(&django_key(key), remaining).await.is_ok();
             }
         }
     }

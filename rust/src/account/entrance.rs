@@ -24,12 +24,8 @@ pub(super) fn query_next(value: &str) -> String {
 }
 
 pub(crate) fn email_valid(email: &str) -> bool {
-    email.chars().count() <= 320 && email.parse::<lettre::Address>().is_ok()
-}
-
-pub(crate) fn contact_email_valid(email: &str) -> bool {
-    email.chars().count() <= 254
-        && email_valid(email)
+    email.chars().count() <= 320
+        && email.parse::<lettre::Address>().is_ok()
         && email.rsplit_once('@').is_some_and(|(_, domain)| {
             domain.contains('.')
                 || domain == "localhost"
@@ -38,6 +34,10 @@ pub(crate) fn contact_email_valid(email: &str) -> bool {
                     .and_then(|value| value.strip_suffix(']'))
                     .is_some_and(|value| value.parse::<std::net::IpAddr>().is_ok())
         })
+}
+
+pub(crate) fn contact_email_valid(email: &str) -> bool {
+    email.chars().count() <= 254 && email_valid(email)
 }
 
 pub(crate) fn normal_username(value: &str) -> String {
@@ -95,7 +95,7 @@ async fn sign_up(
         );
     }
     if !email.is_empty() {
-        if !email_valid(email) || email.chars().count() > 254 {
+        if !contact_email_valid(email) {
             error(errors, "email", "Enter a valid email address.");
         } else if sqlx::query_scalar::<_, i64>(
             "SELECT CAST(CASE WHEN

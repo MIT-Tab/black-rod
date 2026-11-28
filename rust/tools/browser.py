@@ -1387,7 +1387,7 @@ import sys
 existing = SessionStore(sys.stdin.read()).load()
 stored = SessionStore()
 stored.update(existing)
-stored["fixture_payload"] = "x" * (800 * 1024)
+stored["fixture_payload"] = "x" * (1200 * 1024)
 stored.set_expiry(24 * 60 * 60)
 stored.save()
 Session.objects.filter(session_key=stored.session_key).update(expire_date=now() + timedelta(hours=1))
@@ -1434,7 +1434,7 @@ from django.contrib.sessions.backends.db import SessionStore
 import json
 import sys
 stored = SessionStore(sys.stdin.read()).load()
-assert stored["fixture_payload"] == "x" * (800 * 1024)
+assert stored["fixture_payload"] == "x" * (1200 * 1024)
 play = stored["immaculate_grid_practice"]
 board = play["board"]
 people = set()
@@ -2233,6 +2233,15 @@ User.objects.create_user(username="legacy_signup_fixture", email="legacy-signup@
         assert "A user is already registered with this email address." in driver.find_element(
             "tag name", "body"
         ).text
+        open_page(server, signup)
+        fill("username", "invalid_domain_signup")
+        fill("email", "signup@internal")
+        fill("password1", starting)
+        fill("password2", starting)
+        driver.execute_script("document.querySelector('form').noValidate = true")
+        submit()
+        assert "Enter a valid email address." in driver.find_element("tag name", "body").text
+
 
     driver.delete_all_cookies()
     open_page(rust, signup + "?next=/games/")
@@ -2244,6 +2253,13 @@ User.objects.create_user(username="legacy_signup_fixture", email="legacy-signup@
     assert urlsplit(driver.current_url).path == "/games/"
     open_page(django,email)
     assert "workflow-initial@example.test" in driver.find_element("tag name","body").text
+
+    for server in (django, rust):
+        open_page(server, email)
+        driver.find_element("id", "id_email").send_keys("change@internal")
+        driver.execute_script("document.getElementById('id_email').form.noValidate = true")
+        submit('button[name="action_add"]')
+        assert "Enter a valid email address." in driver.find_element("tag name", "body").text
 
     for sender,receiver,address in (
         (rust,django,"rust-confirmed@example.test"),
@@ -4398,6 +4414,7 @@ def cached_values(keys):
 
 def assert_import_snapshot_cache_resilience(driver, rust, provider, event, database):
     remote = f"http://{HOST}:{provider.server_port}"
+    alternate = "http://127.0.0.1:1"
     env = {
         **os.environ,
         "PYTHONPATH": f"{ROOT / 'rust/tools'}{os.pathsep}{os.environ['PYTHONPATH']}",
@@ -4405,7 +4422,7 @@ def assert_import_snapshot_cache_resilience(driver, rust, provider, event, datab
         "BLACK_ROD_DATABASE_URL": f"sqlite://{database}?mode=ro",
         "BLACK_ROD_MEMCACHED_ADDR": os.environ["BLACK_ROD_PARITY_MEMCACHED_ADDR"],
         "LIVE_MITTAB_DIRECTORY_URL": "http://127.0.0.1:1",
-        "LIVE_MITTAB_SOURCES": remote,
+        "LIVE_MITTAB_SOURCES": f"{remote},{alternate}",
     }
     code = """
 from reference import application  # noqa: F401
@@ -4414,7 +4431,7 @@ from django.core.cache import cache
 from django.utils.timezone import now
 import sys
 
-action, url = sys.argv[1:]
+action, url, alternate = sys.argv[1:]
 if action == "lock":
     assert cache.add(f"{INDEX_KEY}:lock", 1, timeout=30)
 elif action == "unlock":
@@ -4427,6 +4444,19 @@ else:
         cache.set(INDEX_KEY, index, timeout=None)
         for chunk in row["chunks"]:
             assert cache.touch(chunk, timeout=300)
+    elif action == "mark_evicted":
+        row["missing_since"] = now().timestamp() - 120
+        index[source_key(alternate)] = {
+            **row, "url": alternate, "name": "Evicted fixture", "chunks": ["fixture:evicted-snapshot"],
+        }
+        cache.set(INDEX_KEY, index, timeout=None)
+    elif action == "verify_evicted":
+        assert row.get("missing_since") is None
+        evicted = index.pop(source_key(alternate))
+        assert evicted.get("missing_since") is None
+        assert cache.get(evicted["chunks"][0]) is None
+        cache.set(INDEX_KEY, index, timeout=None)
+        index[source_key(alternate)] = evicted
     elif action == "verify":
         assert row.get("missing_since") is None
         assert all(cache.get(chunk) is not None for chunk in row["chunks"])
@@ -4434,7 +4464,7 @@ else:
 """
 
     def cache(action):
-        return subprocess.check_output([str(ROOT / "venv/bin/python"), "-c", code, action, remote],
+        return subprocess.check_output([str(ROOT / "venv/bin/python"), "-c", code, action, remote, alternate],
                                        text=True, env=env, stderr=subprocess.PIPE)
 
     cache("lock")
@@ -4461,6 +4491,11 @@ else:
             result = subprocess.run(command, env=env, check=True, capture_output=True, text=True, timeout=30)
             assert f"Retained {retained} tournament snapshots." in result.stdout, Path(command[0]).name
             assert int(cache("verify").splitlines()[-1]) == retained
+            retained = int(cache("mark_evicted").splitlines()[-1])
+            result = subprocess.run(command, env=env, capture_output=True, text=True, timeout=30)
+            assert result.returncode == 0, result.stderr
+            assert f"Retained {retained} tournament snapshots." in result.stdout
+            assert int(cache("verify_evicted").splitlines()[-1]) == retained
     finally:
         provider.import_payload = payload
 

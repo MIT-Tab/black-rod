@@ -13,13 +13,14 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json, value::RawValue};
 use sqlx::{Any, AnyConnection, AnyPool, Executor, Row};
 
-use signing::{MAX_SESSION_SIZE, decode_signed_bytes};
+use signing::decode_database_session;
 pub(crate) use signing::{
     decode_signed, decode_timed, decode_timed_with_limits, encode_compressed, encode_signed, key,
 };
 
 const SESSION_SALT: &[u8] = b"django.contrib.sessions.SessionStoresigner";
 const AUTH_SALT: &[u8] = b"django.contrib.auth.models.AbstractBaseUser.get_session_auth_hash";
+const INLINE_SESSION_BYTES: usize = 1024;
 
 #[derive(Clone, Serialize, Default)]
 pub(crate) struct User {
@@ -40,8 +41,24 @@ struct DjangoSession {
     _auth_user_hash: String,
 }
 
-fn decode(data: &str, secret: &[u8]) -> Option<Value> {
-    decode_signed(data, secret, SESSION_SALT)
+async fn decode_session<T: serde::de::DeserializeOwned + Send + 'static>(
+    data: String,
+    secret: &[u8],
+) -> Result<(String, Option<T>), sqlx::Error> {
+    let decode = |data: String, secret: &[u8]| {
+        let values = decode_database_session(&data, secret, SESSION_SALT)
+            .and_then(|bytes| serde_json::from_slice(&bytes).ok());
+        (data, values)
+    };
+    // Keep large authenticated database payloads off the async worker without imposing
+    // the payload limit used for cookies and signed form fields.
+    if data.len() > INLINE_SESSION_BYTES {
+        let secret = secret.to_vec();
+        return tokio::task::spawn_blocking(move || decode(data, &secret))
+            .await
+            .map_err(|error| sqlx::Error::Protocol(error.to_string()));
+    }
+    Ok(decode(data, secret))
 }
 
 pub(crate) fn cookie<'a>(headers: &'a HeaderMap, key: &str) -> Option<&'a str> {
@@ -89,17 +106,8 @@ pub(crate) fn random_token(
 }
 
 fn encode_session(serialized: &str, secret: &[u8]) -> Result<String, sqlx::Error> {
-    let payload = crate::django_json::ascii(serialized);
-    let too_large = || sqlx::Error::Protocol("Session data exceeds its storage limit".to_owned());
-    if payload.len() as u64 > MAX_SESSION_SIZE {
-        return Err(too_large());
-    }
-    let data = encode_compressed(&payload, secret, SESSION_SALT)
-        .map_err(|error| sqlx::Error::Protocol(error.to_string()))?;
-    if data.len() as u64 > MAX_SESSION_SIZE {
-        return Err(too_large());
-    }
-    Ok(data)
+    encode_compressed(&crate::django_json::ascii(serialized), secret, SESSION_SALT)
+        .map_err(|error| sqlx::Error::Protocol(error.to_string()))
 }
 
 type SessionValues = std::collections::BTreeMap<String, Box<RawValue>>;
@@ -128,9 +136,15 @@ fn session_expiry(values: &SessionValues, now: DateTime<Utc>) -> (DateTime<Utc>,
     (deadline, age)
 }
 
-fn encode_values(values: &SessionValues, secret: &[u8]) -> Result<String, sqlx::Error> {
+async fn encode_values(values: &SessionValues, secret: &[u8]) -> Result<String, sqlx::Error> {
     let serialized =
         serde_json::to_string(values).map_err(|error| sqlx::Error::Protocol(error.to_string()))?;
+    if serialized.len() > INLINE_SESSION_BYTES {
+        let secret = secret.to_vec();
+        return tokio::task::spawn_blocking(move || encode_session(&serialized, &secret))
+            .await
+            .map_err(|error| sqlx::Error::Protocol(error.to_string()))?;
+    }
     encode_session(&serialized, secret)
 }
 
@@ -192,8 +206,7 @@ impl StoredSession {
         let Some(original) = original else {
             return Ok(None);
         };
-        let values = decode_signed_bytes(&original, secret, SESSION_SALT)
-            .and_then(|bytes| serde_json::from_slice(&bytes).ok());
+        let (original, values) = decode_session(original, secret).await?;
         Ok(values.map(|values| Self {
             id: id.to_owned(),
             values,
@@ -235,7 +248,7 @@ impl StoredSession {
         } else {
             deadline.to_rfc3339()
         };
-        let data = encode_values(&self.values, secret)?;
+        let data = encode_values(&self.values, secret).await?;
         let query = if sqlite {
             "UPDATE django_session SET session_key=$1,session_data=$2,expire_date=$3
              WHERE session_key=$4 AND session_data=$5 AND expire_date>CURRENT_TIMESTAMP"
@@ -282,7 +295,7 @@ impl StoredSession {
                 age,
             }
         };
-        let updated = encode_values(&self.values, secret)?;
+        let updated = encode_values(&self.values, secret).await?;
         let sqlite = conn.backend_name() == "SQLite";
         let expiry = if sqlite {
             deadline.format("%Y-%m-%d %H:%M:%S%.6f").to_string()
@@ -550,7 +563,7 @@ pub(crate) async fn create(
         values.insert(field.to_owned(), raw);
     }
     let now = Utc::now();
-    let session_data = encode_values(&values, secret)?;
+    let session_data = encode_values(&values, secret).await?;
     let mut expiry = (now + Duration::days(30))
         .format("%Y-%m-%d %H:%M:%S%.6f")
         .to_string();
@@ -613,9 +626,7 @@ pub(crate) async fn user(
     else {
         return Ok(User::default());
     };
-    let Some(session) = decode(&session_data, secret)
-        .and_then(|data| serde_json::from_value::<DjangoSession>(data).ok())
-    else {
+    let (_, Some(session)) = decode_session::<DjangoSession>(session_data, secret).await? else {
         return Ok(User::default());
     };
     if !matches!(
@@ -735,14 +746,23 @@ mod tests {
     // Generated by Django's SessionStore with a disposable test key.
     const SIGNED: &str = ".eJyrVopPLC3JiC8tTi2Kz0xRslIyMVLSQRZMSkzOTs0DyaRkJeal5-sl5-eVFGUm6YGU6EFli_V881NSc5ygalEMyEgszgDqLk7MLchJ1QXzdJSS83MLilKLizOTclKBkhXDBCjVAgBiNo6L:1xWlUV:pj-or-6zN4ABXu7QagoNGYCAcKL19g8bM2Nf5dD9yu0";
 
-    #[test]
-    fn verifies_django_signature_before_deserialization() {
-        let session = decode(SIGNED, b"local-rust-session-test").expect("valid Django session");
-        assert_eq!(session["_auth_user_id"], "42");
-        assert!(decode(SIGNED, b"wrong-secret").is_none());
+    #[tokio::test]
+    async fn verifies_django_signature_before_deserialization() {
+        let (_, session) =
+            decode_session::<DjangoSession>(SIGNED.to_owned(), b"local-rust-session-test")
+                .await
+                .unwrap();
+        assert_eq!(session.unwrap()._auth_user_id, "42");
+        let (_, invalid) = decode_session::<DjangoSession>(SIGNED.to_owned(), b"wrong-secret")
+            .await
+            .unwrap();
+        assert!(invalid.is_none());
         let mut altered = SIGNED.to_owned();
         altered.push('x');
-        assert!(decode(&altered, b"local-rust-session-test").is_none());
+        let (_, invalid) = decode_session::<DjangoSession>(altered, b"local-rust-session-test")
+            .await
+            .unwrap();
+        assert!(invalid.is_none());
     }
 
     async fn session_fixture() -> AnyPool {
@@ -758,16 +778,17 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn refresh_keeps_large_sessions_readable_and_rejects_oversized_updates() {
+    async fn refresh_preserves_large_database_sessions() {
         let pool = session_fixture().await;
         let secret = b"disposable-session-refresh-key";
         let key = "refreshfixture";
-        let payload = "x".repeat(800 * 1024);
+        let payload = "x".repeat(1200 * 1024);
         let serialized = json!({"extra": payload, "_session_expiry": 3600}).to_string();
         let old_expiry = (Utc::now() + Duration::minutes(10))
             .format("%Y-%m-%d %H:%M:%S%.6f")
             .to_string();
-        let initial = encode_compressed(&serialized, secret, SESSION_SALT).unwrap();
+        let initial = encode_signed(&serialized, secret, SESSION_SALT);
+        assert!(initial.len() > 1024 * 1024);
         sqlx::query("INSERT INTO django_session VALUES ($1, $2, $3)")
             .bind(key)
             .bind(initial)
@@ -785,7 +806,7 @@ mod tests {
         let refreshed = stored.refresh(&pool, secret).await.unwrap().unwrap();
         assert_eq!(refreshed.id, key);
         assert_eq!(refreshed.age, Some(3600));
-        let mut stored = StoredSession::read(&pool, &headers, secret)
+        let stored = StoredSession::read(&pool, &headers, secret)
             .await
             .unwrap()
             .unwrap();
@@ -798,14 +819,6 @@ mod tests {
                 .await
                 .unwrap();
         assert!(expiry > old_expiry);
-
-        stored.set_string("board", &"y".repeat(300 * 1024)).unwrap();
-        assert!(stored.refresh(&pool, secret).await.is_err());
-        let stored = StoredSession::read(&pool, &headers, secret)
-            .await
-            .unwrap()
-            .unwrap();
-        assert_eq!(stored.string("board").as_deref(), Some("fixture"));
     }
 
     #[tokio::test]
@@ -935,7 +948,7 @@ mod tests {
             .unwrap();
         assert_eq!(stored.values["grid_seed"].get(), number);
         assert_eq!(stored.string("title").as_deref(), Some("Café"));
-        let bytes = decode_signed_bytes(&stored.original, secret, SESSION_SALT).unwrap();
+        let bytes = decode_database_session(&stored.original, secret, SESSION_SALT).unwrap();
         assert!(bytes.is_ascii());
         let states: Value =
             serde_json::from_str(stored.values["socialaccount_states"].get()).unwrap();

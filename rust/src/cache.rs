@@ -400,11 +400,25 @@ impl Memcached {
         }
     }
 
-    pub(crate) async fn touch_raw(&self, key: &str, seconds: u32) -> bool {
-        valid_key(key)
-            && self
-                .send(&format!("touch {key} {seconds}\r\n"), None, b"TOUCHED\r\n")
-                .await
+    pub(crate) async fn touch_raw(&self, key: &str, seconds: u32) -> io::Result<bool> {
+        if !valid_key(key) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Invalid cache key",
+            ));
+        }
+        match self
+            .reply(&format!("touch {key} {seconds}\r\n"), None)
+            .await?
+            .as_slice()
+        {
+            b"TOUCHED\r\n" => Ok(true),
+            b"NOT_FOUND\r\n" => Ok(false),
+            _ => Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "Invalid cache touch response",
+            )),
+        }
     }
 
     pub(crate) async fn get(&self, key: &str) -> Option<CachedBody> {

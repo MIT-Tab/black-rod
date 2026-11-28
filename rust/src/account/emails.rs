@@ -7,7 +7,7 @@ use minijinja::context;
 use serde::Serialize;
 use sqlx::{Any, AnyConnection, Executor, Row, any::AnyRow};
 
-use super::{Visit, entrance::email_valid, limits, mail, redirect, render, visit};
+use super::{Visit, entrance::contact_email_valid, limits, mail, redirect, render, visit};
 use crate::{
     ApiError, AppState, flash, login,
     session::{self, User},
@@ -308,7 +308,7 @@ async fn page(state: &AppState, request: Request) -> Result<Response, ApiError> 
             entered = input.to_owned();
             if email.is_empty() {
                 error = Some("This field is required.");
-            } else if !email_valid(&email) || email.chars().count() > 254 {
+            } else if !contact_email_valid(&email) {
                 error = Some("Enter a valid email address.");
             } else if list
                 .iter()

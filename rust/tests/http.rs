@@ -254,3 +254,62 @@ async fn append_slash_redirects_only_to_registered_routes() {
         }
     }
 }
+
+#[tokio::test]
+async fn reading_an_editor_upload_does_not_reserve_an_image_decoder() {
+    use axum::body::Bytes;
+    use tokio::{sync::mpsc, time::timeout};
+    use tokio_stream::wrappers::ReceiverStream;
+
+    const TOKEN: &str = "abcdefghijklmnopqrstuvwxyzABCDEF";
+    const PATH: &str = "/summernote/upload_attachment/";
+    const TYPE: &str = "multipart/form-data; boundary=editor-fixture";
+    let router = app(AppState::new(fixture().await, 2026));
+    let request = |body| {
+        Request::post(PATH)
+            .header(header::HOST, "localhost")
+            .header(header::CONTENT_TYPE, TYPE)
+            .header(header::COOKIE, format!("csrftoken={TOKEN}"))
+            .header("x-csrftoken", TOKEN)
+            .body(body)
+            .unwrap()
+    };
+    let prefix = "--editor-fixture\r\nContent-Disposition: form-data; name=\"files\"; filename=\"fixture.png\"\r\n\r\n";
+    let mut partial_uploads = Vec::new();
+    for _ in 0..2 {
+        let (sender, receiver) = mpsc::channel::<Result<Bytes, std::io::Error>>(1);
+        sender
+            .send(Ok(Bytes::from_static(prefix.as_bytes())))
+            .await
+            .unwrap();
+        let service = router.clone();
+        let incomplete = request(Body::from_stream(ReceiverStream::new(receiver)));
+        let task = tokio::spawn(service.oneshot(incomplete));
+        drop(
+            timeout(Duration::from_secs(5), sender.reserve())
+                .await
+                .unwrap()
+                .unwrap(),
+        );
+        partial_uploads.push((sender, task));
+    }
+
+    let body = Body::from(format!("{prefix}not an image\r\n--editor-fixture--\r\n"));
+    let rejected = timeout(Duration::from_secs(5), router.oneshot(request(body)))
+        .await
+        .expect("a complete upload should reach validation while other requests are still sending")
+        .unwrap();
+    assert_eq!(rejected.status(), StatusCode::BAD_REQUEST);
+    let contents = rejected.into_body().collect().await.unwrap().to_bytes();
+    let error: Value = serde_json::from_slice(&contents).unwrap();
+    assert!(
+        error["message"]
+            .as_str()
+            .unwrap()
+            .starts_with("Upload a valid image.")
+    );
+    for (sender, task) in partial_uploads {
+        task.abort();
+        drop(sender);
+    }
+}

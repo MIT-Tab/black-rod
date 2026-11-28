@@ -112,7 +112,7 @@ async fn reset(
         email = fields.get("email").map_or("", String::as_str).trim();
         if email.is_empty() {
             errors.insert("email", vec!["This field is required.".into()]);
-        } else if !email_syntax(email) {
+        } else if !crate::account::email_valid(email) {
             errors.insert("email", vec!["Enter a valid email address.".into()]);
         } else {
             send_mail(state, &visit.origin, email).await?;

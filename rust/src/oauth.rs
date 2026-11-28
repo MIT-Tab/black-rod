@@ -470,7 +470,7 @@ async fn signup_page(state: &AppState, request: Request) -> Result<Response, Api
         {
             username_error = Some("A user with that username already exists.");
         }
-        if !email.is_empty() && (!account::email_valid(&email) || email.chars().count() > 254) {
+        if !email.is_empty() && !account::contact_email_valid(&email) {
             email_error = Some("Enter a valid email address.");
         }
         if username_error.is_none() && email_error.is_none() {

@@ -2,6 +2,7 @@ use std::{
     fs::File,
     io::{BufReader, Seek},
     path::PathBuf,
+    time::Duration,
 };
 
 use axum::{
@@ -25,6 +26,7 @@ use crate::{AppState, login, web};
 const FOLDER: &str = "django-summernote";
 const FILE_LIMIT: usize = 1024 * 1024;
 const FILE_COUNT_LIMIT: usize = 100;
+const UPLOAD_READ_TIMEOUT: Duration = Duration::from_secs(120);
 pub(crate) const REQUEST_LIMIT: usize = (FILE_COUNT_LIMIT + 1) * FILE_LIMIT;
 static IMAGE_UPLOADS: Semaphore = Semaphore::const_new(2);
 
@@ -46,6 +48,12 @@ fn error(status: StatusCode, message: &str) -> Response {
     (status, Json(json!({"status":"false","message":message}))).into_response()
 }
 
+struct StagedUpload {
+    name: String,
+    file: File,
+    size: usize,
+}
+
 struct Upload {
     name: String,
     mime: &'static str,
@@ -60,7 +68,10 @@ fn read_error() -> Box<Response> {
     ))
 }
 
-async fn read_uploads(state: &AppState, request: Request) -> Result<Vec<Upload>, Box<Response>> {
+async fn read_uploads(
+    state: &AppState,
+    request: Request,
+) -> Result<Vec<StagedUpload>, Box<Response>> {
     let headers = request.headers().clone();
     let origin = state.origin(&headers).unwrap_or_default();
     let multipart = headers
@@ -72,6 +83,9 @@ async fn read_uploads(state: &AppState, request: Request) -> Result<Vec<Upload>,
             return Err(Box::new(login::csrf_failure()));
         }
         return Ok(Vec::new());
+    }
+    if login::csrf_request_secret(&headers, &origin).is_err() {
+        return Err(Box::new(login::csrf_failure()));
     }
     let mut multipart = Multipart::from_request(request, &())
         .await
@@ -136,19 +150,26 @@ async fn read_uploads(state: &AppState, request: Request) -> Result<Vec<Upload>,
                 file.write_all(&chunk).await.map_err(|_| read_error())?;
             }
             file.flush().await.map_err(|_| read_error())?;
-            files.push((name, file.into_std().await, size));
+            files.push(StagedUpload {
+                name,
+                file: file.into_std().await,
+                size,
+            });
         }
     }
     if !login::csrf_valid(&headers, csrf.as_deref(), &origin) {
         return Err(Box::new(login::csrf_failure()));
     }
-    if files.is_empty() {
-        return Ok(Vec::new());
-    }
+    Ok(files)
+}
+
+async fn validate_uploads(files: Vec<StagedUpload>) -> Result<Vec<Upload>, Box<Response>> {
+    let permit = IMAGE_UPLOADS.acquire().await.map_err(|_| read_error())?;
     tokio::task::spawn_blocking(move || {
+        let _permit = permit;
         files
             .into_iter()
-            .map(|(name, mut file, size)| {
+            .map(|StagedUpload { name, mut file, size }| {
                 file.rewind().map_err(|_| read_error())?;
                 let mime = ImageReader::new(BufReader::new(&mut file))
                     .with_guessed_format()
@@ -303,16 +324,24 @@ pub(crate) async fn upload(State(state): State<AppState>, request: Request) -> R
             "Only POST method is allowed",
         ));
     }
-    let Ok(_permit) = IMAGE_UPLOADS.acquire().await else {
-        return *read_error();
-    };
-    let files = match read_uploads(&state, request).await {
+    let staged =
+        match tokio::time::timeout(UPLOAD_READ_TIMEOUT, read_uploads(&state, request)).await {
+            Ok(Ok(files)) => files,
+            Ok(Err(response)) => return same_origin(*response),
+            Err(_) => {
+                return same_origin(error(
+                    StatusCode::REQUEST_TIMEOUT,
+                    "Attachment upload timed out",
+                ));
+            }
+        };
+    if staged.is_empty() {
+        return same_origin(error(StatusCode::BAD_REQUEST, "No files were requested"));
+    }
+    let files = match validate_uploads(staged).await {
         Ok(files) => files,
         Err(response) => return same_origin(*response),
     };
-    if files.is_empty() {
-        return same_origin(error(StatusCode::BAD_REQUEST, "No files were requested"));
-    }
     let mut saved = Vec::new();
     match write_files(&state, files, &mut saved).await {
         Ok(files) => same_origin(Json(json!({"files":files})).into_response()),

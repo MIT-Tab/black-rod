@@ -123,21 +123,20 @@ async fn debater(
     }
     let first = claims::edit::sanitize_name(&fields["first_name"], "Removed");
     let last = claims::edit::sanitize_name(&fields["last_name"], "");
-    let (empty_region, normalized_region) = if state.pool.connect_options().database_url.scheme()
-        == "sqlite"
-    {
-        (
-            "'[]'",
-            "CASE WHEN json_type(region)='text' THEN CASE WHEN json_extract(region,'$')=''
+    let (empty_region, normalized_region) =
+        if state.pool.connect_options().database_url.scheme() == "sqlite" {
+            (
+                "'[]'",
+                "CASE WHEN json_type(region)='text' THEN CASE WHEN json_extract(region,'$')=''
             THEN '[]' ELSE json_array(json_extract(region,'$')) END ELSE region END",
-        )
-    } else {
-        (
+            )
+        } else {
+            (
             "CAST('[]' AS JSONB)",
             "CASE WHEN jsonb_typeof(region)='string' THEN CASE WHEN region=CAST('\"\"' AS JSONB)
             THEN CAST('[]' AS JSONB) ELSE jsonb_build_array(region) END ELSE region END",
         )
-    };
+        };
     let id = if let Some(id) = debater_id {
         let query = format!(
             "UPDATE core_debater SET first_name=$1,last_name=$2,school_id=$3,alias_group_id=$4,
