@@ -20,7 +20,7 @@ use super::{
     super::{form, model_rules, redirect},
     AdminRequest, ApiError, Exchange, Field, Model, common, formats, login,
 };
-use crate::flash;
+use crate::{flash, memberships::sync_memberships};
 
 const TTL: Duration = Duration::from_secs(3600);
 const LIMIT: usize = 64 * 1024 * 1024;
@@ -472,7 +472,7 @@ async fn apply_row(
                     .await?,
             );
         }
-        form::sync_memberships(
+        sync_memberships(
             conn,
             [table, owner, member],
             id,

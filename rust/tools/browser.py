@@ -1181,10 +1181,42 @@ def assert_resource_editor(driver, django, rust, fixture):
     driver.get(f"{roots[0]}{edit}")
     assert driver.find_element("id", "id_title").get_attribute("value") == fields[0][1]
     assert driver.find_element("id", "id_resource_type").get_attribute("value") == "writeup"
+    resource_id = int(detail.rsplit("/", 1)[-1])
+    raw = subprocess.check_output([str(ROOT / "venv/bin/python"), "-c", """
+from django import setup
+setup()
+from core.models import Debater, Resource
+import json
+from sys import argv
+resource = Resource.objects.get(pk=int(argv[1]))
+archived = [Debater.all_objects.create(first_name="Archived coauthor fixture", **{flag: True}).id
+            for flag in ("temporary", "synthetic")]
+resource.authors.through.objects.bulk_create([
+    resource.authors.through(resource_id=resource.id, debater_id=id) for id in archived
+])
+print(json.dumps(archived))
+""", str(resource_id)], text=True)
+    archived = json.loads(raw.splitlines()[-1])
+    authors = set(fixture["authors"][:2])
+    removed = fixture["authors"][2]
+    db = Path(os.environ["BR_STATE"]) / "dev.sqlite3"
     fields[0][1] = "Parity resource edited in Rust"
     fields = [pair for pair in fields if pair != ["tags", "Fixture resource tag"]]
-    updated = submit(roots[1], edit, fields)
-    assert updated["path"] == detail and updated["status"] == 200 and fields[0][1] in updated["text"], updated
+    for root in roots:
+        with sqlite3.connect(db) as connection:
+            connection.execute("INSERT INTO core_resource_authors (resource_id,debater_id) VALUES (?,?)",
+                               (resource_id, removed))
+        driver.get(root + edit)
+        selected = driver.execute_script("""
+            return Array.from(document.getElementById('id_authors').selectedOptions, option => Number(option.value));
+        """)
+        assert set(selected) == {*authors, removed}, (root, selected)
+        updated = submit(root, edit, fields)
+        assert updated["path"] == detail and updated["status"] == 200 and fields[0][1] in updated["text"], updated
+        with sqlite3.connect(f"{db.as_uri()}?mode=ro", uri=True) as connection:
+            links = connection.execute("SELECT debater_id FROM core_resource_authors WHERE resource_id=?",
+                                       (resource_id,)).fetchall()
+            assert {row[0] for row in links} == {*authors, *archived}, (root, links)
     driver.get(f"{roots[0]}{detail}")
     assert "Second fixture resource tag" in driver.find_element("tag name", "body").text
     deleted = submit(roots[1], f"{detail}/delete", [])

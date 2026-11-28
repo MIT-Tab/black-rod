@@ -8,7 +8,10 @@ use axum::{
 use minijinja::context;
 use sqlx::Row;
 
-use crate::{ApiError, AppState, claims, is_django_integer, login, session, web};
+use crate::{
+    ApiError, AppState, claims, is_django_integer, login, memberships::sync_memberships, session,
+    web,
+};
 
 async fn view(state: &AppState, request: Request, id: i64) -> Result<Response, ApiError> {
     let uri = request.uri().clone();
@@ -110,22 +113,15 @@ async fn view(state: &AppState, request: Request, id: i64) -> Result<Response, A
             if updated.rows_affected() == 0 {
                 return Ok(StatusCode::NOT_FOUND.into_response());
             }
-            let current = sqlx::query_scalar::<_, i64>(
-                "SELECT CAST(debater_id AS BIGINT) FROM core_team_debaters WHERE team_id=$1",
+            let selected = people.keys().copied().collect();
+            sync_memberships(
+                &mut tx,
+                ["core_team_debaters", "team_id", "debater_id"],
+                id,
+                &selected,
+                true,
             )
-            .bind(id)
-            .fetch_all(&mut *tx)
             .await?;
-            for person in current.iter().filter(|person| !people.contains_key(person)) {
-                // The edit form can change only the roster members it can display.
-                sqlx::query("DELETE FROM core_team_debaters WHERE team_id=$1 AND debater_id=$2
-                    AND EXISTS (SELECT 1 FROM core_debater d WHERE d.id=$2 AND NOT d.synthetic AND NOT d.temporary)")
-                    .bind(id).bind(person).execute(&mut *tx).await?;
-            }
-            for person in people.keys().filter(|person| !current.contains(person)) {
-                sqlx::query("INSERT INTO core_team_debaters (team_id,debater_id) VALUES ($1,$2) ON CONFLICT DO NOTHING")
-                    .bind(id).bind(person).execute(&mut *tx).await?;
-            }
             claims::edit::team_name(&mut tx, id).await?;
             tx.commit().await?;
             return Ok((

@@ -13,6 +13,7 @@ use sqlx::{AnyPool, Row, any::AnyRow};
 use super::{AUTHORS, DETAIL, TAGS, TYPES};
 use crate::{
     ApiError, AppState, autocomplete, flash, is_django_integer, login,
+    memberships::sync_memberships,
     session::{self, User},
     tag_filter, web,
 };
@@ -313,25 +314,15 @@ async fn save(
         .bind(action.id().or(user.id))
         .fetch_one(&mut *tx)
         .await?;
-    let current = sqlx::query_scalar::<_, i64>(
-        "SELECT CAST(debater_id AS BIGINT) FROM core_resource_authors WHERE resource_id=$1",
+    let authors = fields.authors.iter().map(|(author, _)| *author).collect();
+    sync_memberships(
+        &mut tx,
+        ["core_resource_authors", "resource_id", "debater_id"],
+        id,
+        &authors,
+        true,
     )
-    .bind(id)
-    .fetch_all(&mut *tx)
     .await?;
-    for old in current {
-        if !fields.authors.iter().any(|(author, _)| *author == old) {
-            sqlx::query("DELETE FROM core_resource_authors WHERE resource_id=$1 AND debater_id=$2")
-                .bind(id)
-                .bind(old)
-                .execute(&mut *tx)
-                .await?;
-        }
-    }
-    for (author, _) in &fields.authors {
-        sqlx::query("INSERT INTO core_resource_authors (resource_id,debater_id) VALUES ($1,$2) ON CONFLICT DO NOTHING")
-            .bind(id).bind(author).execute(&mut *tx).await?;
-    }
     let existing = sqlx::query_scalar::<_,i64>("SELECT CAST(tag_id AS BIGINT) FROM core_taggedresource WHERE content_type_id=$1 AND object_id=$2")
         .bind(content_type).bind(id).fetch_all(&mut *tx).await?;
     let mut tags = Vec::new();

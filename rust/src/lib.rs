@@ -23,6 +23,7 @@ mod generated_code;
 mod immaculate;
 mod live;
 mod login;
+mod memberships;
 mod merge_requests;
 mod motion;
 pub use live::Live;
