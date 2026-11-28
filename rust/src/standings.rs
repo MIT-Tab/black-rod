@@ -28,35 +28,40 @@ pub(crate) async fn generation(state: &AppState) -> Option<uuid::Uuid> {
     cache.generation(GENERATION).await
 }
 
-pub(crate) async fn invalidate(state: &AppState, season: &str, boards: &[&str]) {
-    use md5::{Digest, Md5};
-
+pub(crate) async fn invalidate_native(state: &AppState) {
     state.home.invalidate_all();
     state.standings.invalidate_all();
     state.replay.invalidate_all();
     state.snapshots.invalidate_all();
     if let Some(cache) = &state.memcached {
-        let hash = Md5::digest(format!("{season}:"));
-        let mut deletes = tokio::task::JoinSet::new();
-        let writer = cache.clone();
-        deletes.spawn(async move {
-            let _ = writer.advance_generation(GENERATION).await;
-        });
-        let keys = boards
-            .iter()
-            .map(|board| format!(":1:template.cache.{board}.{hash:x}"))
-            .chain([
-                format!(":1:api:standings:{season}"),
-                format!(":1:api:standings_replay:{season}"),
-            ]);
-        for key in keys {
-            let cache = cache.clone();
-            deletes.spawn(async move {
-                cache.invalidate_raw(&key).await;
-            });
-        }
-        while deletes.join_next().await.is_some() {}
+        let _ = cache.advance_generation(GENERATION).await;
     }
+}
+
+pub(crate) async fn invalidate(state: &AppState, season: &str, boards: &[&str]) {
+    use md5::{Digest, Md5};
+
+    let legacy = async {
+        if let Some(cache) = &state.memcached {
+            let hash = Md5::digest(format!("{season}:"));
+            let mut deletes = tokio::task::JoinSet::new();
+            let keys = boards
+                .iter()
+                .map(|board| format!(":1:template.cache.{board}.{hash:x}"))
+                .chain([
+                    format!(":1:api:standings:{season}"),
+                    format!(":1:api:standings_replay:{season}"),
+                ]);
+            for key in keys {
+                let cache = cache.clone();
+                deletes.spawn(async move {
+                    cache.invalidate_raw(&key).await;
+                });
+            }
+            while deletes.join_next().await.is_some() {}
+        }
+    };
+    tokio::join!(invalidate_native(state), legacy);
     if let Ok(year) = season.parse() {
         crate::live::invalidate(state, year).await;
     }

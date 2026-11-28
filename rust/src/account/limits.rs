@@ -14,7 +14,14 @@ use tokio::sync::Mutex;
 
 use crate::{AppState, cache::Memcached};
 
-pub(crate) type Limits = moka::future::Cache<String, Arc<Mutex<Vec<f64>>>>;
+pub(crate) type Limits = moka::future::Cache<String, Arc<Mutex<Bucket>>>;
+
+#[derive(Default)]
+pub(crate) struct Bucket {
+    attempts: Vec<f64>,
+    pending: Vec<f64>,
+    rollbacks: Vec<f64>,
+}
 const MAX_ATTEMPT_WINDOW: Duration = Duration::from_secs(300);
 
 pub(crate) fn cache() -> Limits {
@@ -68,7 +75,6 @@ pub(super) struct Attempt {
     key: String,
     time: f64,
     ttl: u32,
-    shared: bool,
 }
 
 fn record_attempt(attempts: &mut Vec<f64>, now: f64, limit: usize, ttl: u32) -> Option<f64> {
@@ -87,11 +93,16 @@ fn record_attempt(attempts: &mut Vec<f64>, now: f64, limit: usize, ttl: u32) -> 
 async fn update_shared<T>(
     cache: &Memcached,
     key: &str,
-    local: &mut Vec<f64>,
+    local: &mut Bucket,
+    now: f64,
     ttl: u32,
     mut update: impl FnMut(&mut Vec<f64>) -> Option<T>,
 ) -> io::Result<Option<T>> {
     const MAX_RETRIES: usize = 16;
+    let oldest = now - f64::from(ttl);
+    local.pending.retain(|time| *time > oldest);
+    local.rollbacks.retain(|time| *time > oldest);
+    let reconcile = !local.pending.is_empty() || !local.rollbacks.is_empty();
     for _ in 0..MAX_RETRIES {
         let (mut attempts, version) = match cache.read_versioned(key).await? {
             Some((1, data, version)) => (
@@ -106,18 +117,37 @@ async fn update_shared<T>(
                 ));
             }
         };
-        let Some(result) = update(&mut attempts) else {
-            *local = attempts;
+        if reconcile {
+            attempts.retain(|time| *time > oldest && !local.rollbacks.contains(time));
+            for time in &local.pending {
+                if !attempts.contains(time) {
+                    attempts.push(*time);
+                }
+            }
+            attempts.sort_unstable_by(|left, right| right.total_cmp(left));
+        }
+        let result = update(&mut attempts);
+        if result.is_none() && !reconcile {
+            local.attempts = attempts;
             return Ok(None);
-        };
+        }
         let bytes =
             serde_pickle::to_vec(&attempts, Default::default()).map_err(io::Error::other)?;
         if cache.compare_and_swap(key, 1, &bytes, ttl, version).await? {
-            *local = attempts;
-            return Ok(Some(result));
+            local.attempts = attempts;
+            local.pending.clear();
+            local.rollbacks.clear();
+            return Ok(result);
         }
     }
     Ok(None)
+}
+
+fn epoch_seconds() -> f64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs_f64()
 }
 
 pub(super) async fn consume(
@@ -130,53 +160,50 @@ pub(super) async fn consume(
     let key = format!(":1:allauth:rl:{action}:{subject}");
     let cell = state
         .account_limits
-        .get_with(key.clone(), async { Arc::new(Mutex::new(Vec::new())) })
+        .get_with(key.clone(), async {
+            Arc::new(Mutex::new(Bucket::default()))
+        })
         .await;
     let mut local = cell.lock().await;
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs_f64();
+    let now = epoch_seconds();
     if let Some(cache) = &state.memcached
-        && let Ok(result) = update_shared(cache, &key, &mut local, ttl, |attempts| {
+        && let Ok(result) = update_shared(cache, &key, &mut local, now, ttl, |attempts| {
             record_attempt(attempts, now, limit, ttl)
         })
         .await
     {
-        return result.map(|time| Attempt {
-            key,
-            time,
-            ttl,
-            shared: true,
-        });
+        return result.map(|time| Attempt { key, time, ttl });
     }
-    let time = record_attempt(&mut local, now, limit, ttl)?;
-    Some(Attempt {
-        key,
-        time,
-        ttl,
-        shared: false,
-    })
+    let time = record_attempt(&mut local.attempts, now, limit, ttl)?;
+    if state.memcached.is_some() {
+        local.pending.push(time);
+    }
+    Some(Attempt { key, time, ttl })
 }
 
 impl Attempt {
     pub(super) async fn rollback(self, state: &AppState) {
         let cell = state
             .account_limits
-            .get_with(self.key.clone(), async { Arc::new(Mutex::new(Vec::new())) })
-            .await;
-        let mut local = cell.lock().await;
-        if self.shared
-            && let Some(cache) = &state.memcached
-        {
-            let _ = update_shared(cache, &self.key, &mut local, self.ttl, |attempts| {
-                let index = attempts.iter().position(|time| *time == self.time)?;
-                attempts.remove(index);
-                Some(())
+            .get_with(self.key.clone(), async {
+                Arc::new(Mutex::new(Bucket::default()))
             })
             .await;
+        let mut local = cell.lock().await;
+        local.pending.retain(|time| *time != self.time);
+        local.attempts.retain(|time| *time != self.time);
+        if let Some(cache) = &state.memcached {
+            local.rollbacks.push(self.time);
+            let _ = update_shared(
+                cache,
+                &self.key,
+                &mut local,
+                epoch_seconds(),
+                self.ttl,
+                |_| None::<()>,
+            )
+            .await;
         }
-        local.retain(|time| *time != self.time);
     }
 }
 

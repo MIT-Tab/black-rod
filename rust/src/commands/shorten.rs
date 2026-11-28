@@ -135,7 +135,10 @@ pub(super) async fn names(state: &AppState, dry_run: bool) -> Result<()> {
     }
     tx.commit().await?;
     if updated_tournaments {
-        crate::recent_results::invalidate(state).await;
+        tokio::join!(
+            crate::recent_results::invalidate(state),
+            crate::standings::invalidate_native(state),
+        );
     }
 
     println!("\n{}", "=".repeat(60));

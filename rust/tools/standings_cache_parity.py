@@ -146,6 +146,30 @@ def check_search_recovers_if_generation_is_unchanged(database, debater, env, cac
         assert cache.get(SEARCH) == before, "The expiry check must keep the shared generation unchanged"
 
 
+def check_shortening_invalidates(database, env, cache):
+    code = """
+from reference import application
+from core.models import Tournament
+event = Tournament.objects.order_by("id").first()
+Tournament.objects.filter(pk=event.pk).update(name="Disposable cache fixture (old)", short_name="Old fixture")
+"""
+    subprocess.run([str(ROOT / "venv/bin/python"), "-c", code], env=env, check=True)
+    command_env = {
+        **env, "DOT_ENV_FILE": os.devnull, "LIVE_MITTAB_DIRECTORY_URL": "",
+        "BLACK_ROD_MEMCACHED_ADDR": os.environ["BLACK_ROD_PARITY_MEMCACHED_ADDR"],
+        "BLACK_ROD_DATABASE_URL": os.environ.get(
+            "BLACK_ROD_PARITY_POSTGRES_URL", f"sqlite:{database.as_posix()}?mode=rw"
+        ),
+    }
+    generation = cache.get(GENERATION)
+    for args in (["--dry-run"], []):
+        result = subprocess.run([str(RUST_BIN), "shorten_names", *args], env=command_env,
+                                capture_output=True, text=True, timeout=20)
+        assert result.returncode == 0, result.stderr
+        current = cache.get(GENERATION)
+        assert len(current) == 16 and (current == generation) == bool(args), "Incorrect name cache generation"
+
+
 def main():
     seed = Path(os.environ["BR_STATE"]) / "dev.sqlite3"
     postgres = os.environ.get("BLACK_ROD_PARITY_POSTGRES_URL")
@@ -182,6 +206,7 @@ def main():
                 assert search_match(rust, debater, "Aftercache")
                 assert not search_match(rust, debater, "Beforecache")
                 check_search_recovers_if_generation_is_unchanged(database, debater, env, cache)
+                check_shortening_invalidates(database, env, cache)
             check_local_reindex(database, debater, env)
     print("Search refreshes after Django edits, local reindexing and a missed shared generation update")
 

@@ -5,10 +5,11 @@ from hashlib import sha256
 import json
 import os
 from pathlib import Path
+import socket
 from socketserver import StreamRequestHandler, ThreadingTCPServer
 import subprocess
 from tempfile import TemporaryDirectory
-from threading import Barrier, Thread
+from threading import Barrier, Event, Thread
 from time import time
 
 from bs4 import BeautifulSoup
@@ -104,6 +105,41 @@ def refusing_cache():
             thread.join()
 
 
+class InterruptedCache(StreamRequestHandler):
+    def handle(self):
+        if self.server.interrupted.is_set():
+            return
+        line = self.rfile.readline(300)
+        fields = line.split()
+        if not fields:
+            return
+        with socket.create_connection(self.server.upstream, timeout=2) as backend, backend.makefile("rb") as reader:
+            if fields[0] in (b"add", b"cas", b"replace", b"set"):
+                line += self.rfile.read(int(fields[4]) + 2)
+            backend.sendall(line)
+            reply = reader.readline()
+            self.wfile.write(reply)
+            if reply.startswith(b"VALUE "):
+                length = int(reply.split()[3])
+                self.wfile.write(reader.read(length + 2))
+                self.wfile.write(reader.readline())
+
+
+@contextmanager
+def interrupted_cache(cache):
+    host, _, port = cache.rpartition(":")
+    with ThreadingTCPServer((HOST, 0), InterruptedCache) as server:
+        server.upstream = (host, int(port))
+        server.interrupted = Event()
+        thread = Thread(target=server.serve_forever)
+        thread.start()
+        try:
+            yield f"{HOST}:{server.server_address[1]}", server.interrupted
+        finally:
+            server.shutdown()
+            thread.join()
+
+
 @contextmanager
 def worker(env, database, cache):
     port = available_port()
@@ -189,6 +225,34 @@ def check_login_limits(roots, cache, username, site):
         assert len(backend.get(key(unknown))) == 5, "Workers did not share the five-attempt limit"
 
 
+def check_interrupted_logins(url, cache, username, site, interruption):
+    path = url + "/accounts/login/"
+    username += "-interrupted"
+    headers = {"X-Forwarded-For": "2001:db8:6789:abcd::1"}
+    initial = requests.get(path, timeout=15)
+    token = BeautifulSoup(initial.content, "html.parser").select_one("input[name=csrfmiddlewaretoken]")["value"]
+    data = {"login": username, "password": "fixture-wrong-password", "csrfmiddlewaretoken": token}
+
+    def post():
+        response = requests.post(path, cookies=initial.cookies, headers=headers, data=data, timeout=15)
+        assert response.status_code == 200, response.status_code
+        return response.text
+
+    for _ in range(2):
+        assert "Too many failed login attempts" not in post()
+    interruption.set()
+    for _ in range(3):
+        assert "Too many failed login attempts" not in post()
+    interruption.clear()
+    assert "Too many failed login attempts" in post(), "Restoring Memcached discarded local attempts"
+
+    host, _, port = cache.rpartition(":")
+    with closing(Client((host, int(port)), serde=pickle_serde, connect_timeout=2, timeout=2)) as backend:
+        digest = sha256(f"{site}:{username}".encode()).hexdigest()
+        attempts = backend.get(f":1:allauth:rl:login_failed:{digest}")
+        assert len(attempts) == 5, attempts
+
+
 def exercise(env, database, cache, school, debaters, session, username, site, rejected, counts):
     with refusing_cache() as read_only:
         for failing in (f"{HOST}:{available_port()}", read_only):
@@ -197,6 +261,9 @@ def exercise(env, database, cache, school, debaters, session, username, site, re
                 assert add(0).status_code == 503
                 assert submit(debaters[0]).status_code == 503
                 assert counts() == [0, 0]
+
+    with interrupted_cache(cache) as (address, interruption), worker(env, database, address) as url:
+        check_interrupted_logins(url, cache, username, site, interruption)
 
     with worker(env, database, cache) as first, worker(env, database, cache) as second:
         clients = [forms(url, session, school) for url in (first, second)]
