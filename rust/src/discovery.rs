@@ -3,7 +3,7 @@ use std::sync::LazyLock;
 use axum::{
     Json,
     body::{Body, to_bytes},
-    extract::{OriginalUri, State},
+    extract::{OriginalUri, Request as IncomingRequest, State},
     http::{HeaderMap, HeaderValue, Method, Request, StatusCode, header},
     response::{Html, IntoResponse, Response},
 };
@@ -89,8 +89,7 @@ fn accepts_schema(headers: &HeaderMap) -> bool {
 pub(crate) async fn schema(
     State(state): State<AppState>,
     OriginalUri(uri): OriginalUri,
-    method: Method,
-    headers: HeaderMap,
+    mut request: IncomingRequest,
 ) -> Response {
     let format = url::form_urlencoded::parse(uri.query().unwrap_or_default().as_bytes())
         .filter(|(name, _)| name == "format")
@@ -99,16 +98,16 @@ pub(crate) async fn schema(
     let error = |status, detail| (status, Json(json!({"detail": detail}))).into_response();
     let mut response = if format.is_some_and(|format| !matches!(format.as_ref(), "" | "json")) {
         error(StatusCode::NOT_FOUND, "Not found.".to_owned())
-    } else if !accepts_schema(&headers) {
+    } else if !accepts_schema(request.headers()) {
         error(
             StatusCode::NOT_ACCEPTABLE,
             "Could not satisfy the request Accept header.".to_owned(),
         )
     } else {
-        let mut response = match drf::public_user(&state, &headers).await {
+        let mut response = match drf::public_user(&state, &mut request).await {
             Err(response) => response,
-            Ok(_) => match method {
-                Method::HEAD | Method::GET => schema_document(&state, &headers),
+            Ok(_) => match *request.method() {
+                Method::HEAD | Method::GET => schema_document(&state, request.headers()),
                 Method::OPTIONS => Json(json!({
                     "name": "Plugin Schema",
                     "description": "Return the OpenAPI schema in JSON with stable server metadata.",
@@ -118,7 +117,7 @@ pub(crate) async fn schema(
                 .into_response(),
                 _ => error(
                     StatusCode::METHOD_NOT_ALLOWED,
-                    format!("Method \"{method}\" not allowed."),
+                    format!("Method \"{}\" not allowed.", request.method()),
                 ),
             },
         };
@@ -135,7 +134,7 @@ pub(crate) async fn schema(
         header::ALLOW,
         HeaderValue::from_static("GET, HEAD, OPTIONS"),
     );
-    if method == Method::HEAD {
+    if request.method() == Method::HEAD {
         *response.body_mut() = Body::empty();
     }
     response

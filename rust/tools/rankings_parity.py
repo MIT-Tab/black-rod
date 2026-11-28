@@ -31,8 +31,14 @@ session.save()
 school = School.objects.create(name="Ranking primary school")
 other = School.objects.create(name="Ranking second school")
 excluded = School.objects.create(name="Ranking excluded school", included_in_oty=False)
+temporary = School.all_objects.create(name="Ranking temporary school in results", temporary=True)
+unlisted = School.all_objects.create(name="Ranking temporary school without results", temporary=True)
 people = [Debater.objects.create(first_name=f"Person {i}", school=affiliation, first_season="2018", latest_season="2019")
           for i, affiliation in enumerate([school,school,school,school,other,excluded,school,school,school])]
+temporary_member = Debater.objects.create(first_name="Temporary school competitor", school=temporary)
+temporary_partner = Debater.objects.create(first_name="Temporary school partner", school=temporary)
+temporary_team = Team.objects.create(name="Temporary school competitor team")
+temporary_team.debaters.add(temporary_member, temporary_partner)
 teams = [Team.objects.create(name=f"Partnership {i}") for i in range(6)]
 teams[0].debaters.add(*people[:2])
 teams[1].debaters.add(*people[2:4])
@@ -56,9 +62,12 @@ for year in [2019, 2020, 2026]:
                 SpeakerResult.objects.create(tournament=event, debater=person,
                     type_of_place=Debater.NOVICE, place=place)
         if i==0:
+            TeamResult.objects.create(tournament=event, team=temporary_team, place=4)
             TournamentAutoQual.objects.create(tournament=event, debater=people[6])
             Round.objects.create(tournament=event, gov=teams[3], opp=teams[4], victor=Round.GOV)
     COTY.objects.update_or_create(season=str(year), school=other, defaults={"points":19})
+    COTY.objects.create(season=str(year), school=temporary, points=17)
+    COTY.objects.create(season=str(year), school=unlisted, points=11)
     QualPoints.objects.create(season=str(year), debater=people[6], points=8)
     QualPoints.objects.create(season=str(year), debater=people[5], points=18)
     QUAL.objects.get_or_create(season=str(year), debater=people[7], qual_type=QUAL.WORLDS)

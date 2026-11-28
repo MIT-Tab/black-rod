@@ -234,16 +234,30 @@ pub(crate) enum SearchGeneration {
 pub(crate) fn database_marker(pool: &sqlx::AnyPool) -> Option<String> {
     let options = pool.connect_options();
     let url = &options.database_url;
-    if url.scheme() == "sqlite" && url.path() == ":memory:" {
-        return None;
-    }
-    let identity = format!(
-        "{}\0{}\0{}\0{}",
-        url.scheme(),
-        url.host_str().unwrap_or_default(),
-        url.port().unwrap_or_default(),
-        url.path()
-    );
+    let identity = match url.scheme() {
+        "sqlite" => {
+            if url.path() == ":memory:"
+                || url
+                    .query_pairs()
+                    .any(|(key, value)| key == "mode" && value == "memory")
+            {
+                return None;
+            }
+            let sqlite: sqlx::sqlite::SqliteConnectOptions = url.as_str().parse().ok()?;
+            let path = sqlite.get_filename().canonicalize().ok()?;
+            format!("sqlite\0{}", path.to_str()?)
+        }
+        "postgres" | "postgresql" => {
+            let postgres: sqlx::postgres::PgConnectOptions = url.as_str().parse().ok()?;
+            format!(
+                "postgres\0{}\0{}\0{}",
+                postgres.get_host().to_ascii_lowercase(),
+                postgres.get_port(),
+                postgres.get_database()?
+            )
+        }
+        _ => return None,
+    };
     let hash = ring::digest::digest(&ring::digest::SHA256, identity.as_bytes());
     Some(format!("search-{}.version", hex::encode(hash)))
 }

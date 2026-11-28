@@ -2,6 +2,7 @@ use std::{collections::BTreeMap, sync::LazyLock};
 
 use axum::{
     body::to_bytes,
+    extract::Request,
     http::{HeaderMap, HeaderValue, Method, StatusCode, Uri, header},
     response::{Html, IntoResponse, Response},
 };
@@ -52,17 +53,39 @@ fn basic_credentials(headers: &HeaderMap) -> Result<Option<(String, String)>, &'
 
 pub(super) async fn public_user(
     state: &AppState,
-    headers: &HeaderMap,
+    request: &mut Request,
 ) -> Result<session::User, Response> {
     let internal = |_| json_error(StatusCode::INTERNAL_SERVER_ERROR, "Internal server error.");
     let failed = |detail| json_error(StatusCode::FORBIDDEN, detail);
-    let user = session::user(&state.pool, headers, state.secret.as_deref())
+    let user = session::user(&state.pool, request.headers(), state.secret.as_deref())
         .await
         .map_err(internal)?;
     if user.is_authenticated {
+        if !matches!(
+            *request.method(),
+            Method::GET | Method::HEAD | Method::OPTIONS | Method::TRACE
+        ) {
+            let origin = state
+                .origin(request.headers())
+                .ok_or_else(|| failed("Invalid host."))?;
+            let fields = if request.method() == Method::POST {
+                let body = std::mem::take(request.body_mut());
+                login::form_fields(request.headers(), body, 2_621_440)
+                    .await
+                    .map_err(|status| json_error(status, "Invalid form data."))?
+            } else {
+                Vec::new()
+            };
+            let token = fields.iter().rev().find_map(|(name, value)| {
+                (name == "csrfmiddlewaretoken").then_some(value.as_str())
+            });
+            login::check_csrf(request.headers(), token, &origin).map_err(|reason| {
+                json_error(StatusCode::FORBIDDEN, &format!("CSRF Failed: {reason}"))
+            })?;
+        }
         return Ok(user);
     }
-    let Some((username, password)) = basic_credentials(headers).map_err(failed)? else {
+    let Some((username, password)) = basic_credentials(request.headers()).map_err(failed)? else {
         return Ok(user);
     };
     login::basic_user(&state.pool, &username, &password)

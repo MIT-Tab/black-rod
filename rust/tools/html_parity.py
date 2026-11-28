@@ -476,7 +476,11 @@ def main():
     os.environ["BLACK_ROD_PARITY_STATIC"] = "1"
     os.environ["BLACK_ROD_PARITY_WRITABLE"] = "1"
     options = Options()
-    for option in ("--headless=new", "--no-sandbox", "--disable-search-engine-choice-screen", "--disable-lcd-text"):
+    # Software rasterization keeps identical native controls reproducible on both servers.
+    for option in (
+        "--headless=new", "--no-sandbox", "--disable-search-engine-choice-screen",
+        "--disable-lcd-text", "--disable-gpu",
+    ):
         options.add_argument(option)
     if os.environ.get("BLACK_ROD_PARITY_POSTGRES_URL"):
         parser.error("HTML parity uses a disposable local SQLite fixture.")

@@ -174,7 +174,7 @@ pub(super) async fn api_protocol(
             negotiation_error(status, detail)
         }
     } else if public {
-        match drf::public_user(&state, request.headers()).await {
+        match drf::public_user(&state, &mut request).await {
             Err(response) => response,
             Ok(user)
                 if matches!(

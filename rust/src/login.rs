@@ -113,31 +113,67 @@ fn mask(secret: &str) -> Result<String, ring::error::Unspecified> {
 }
 
 pub(crate) fn csrf_valid(headers: &HeaderMap, token: Option<&str>, origin: &str) -> bool {
+    check_csrf(headers, token, origin).is_ok()
+}
+
+pub(crate) fn check_csrf(
+    headers: &HeaderMap,
+    token: Option<&str>,
+    origin: &str,
+) -> Result<(), String> {
     if let Some(origin_header) = headers.get(header::ORIGIN) {
         if origin_header != origin {
-            return false;
+            let value = origin_header.to_str().unwrap_or_default();
+            return Err(format!(
+                "Origin checking failed - {value} does not match any trusted origins."
+            ));
         }
     } else if origin.starts_with("https://") {
-        let referer = headers
+        let raw = headers
             .get(header::REFERER)
-            .and_then(|value| value.to_str().ok())
-            .and_then(|value| url::Url::parse(value).ok());
-        if referer.is_none_or(|url| url.origin().ascii_serialization() != origin) {
-            return false;
+            .ok_or("Referer checking failed - no Referer.")?;
+        let raw = raw.to_str().unwrap_or_default();
+        let referer = url::Url::parse(raw)
+            .ok()
+            .filter(|url| url.has_host())
+            .ok_or("Referer checking failed - Referer is malformed.")?;
+        if referer.scheme() != "https" {
+            return Err(
+                "Referer checking failed - Referer is insecure while host is secure.".into(),
+            );
+        }
+        if referer.origin().ascii_serialization() != origin {
+            return Err(format!(
+                "Referer checking failed - {raw} does not match any trusted origins."
+            ));
         }
     }
-    let Some(secret) = session::cookie(headers, "csrftoken").and_then(unmask) else {
-        return false;
+    let invalid = |value: &str| {
+        if matches!(value.chars().count(), 32 | 64) {
+            "has invalid characters"
+        } else {
+            "has incorrect length"
+        }
     };
-    let header_token = || {
-        headers
-            .get("x-csrftoken")
-            .and_then(|value| value.to_str().ok())
+    let cookie = session::cookie(headers, "csrftoken").ok_or("CSRF cookie not set.")?;
+    let secret = unmask(cookie).ok_or_else(|| format!("CSRF cookie {}.", invalid(cookie)))?;
+    let (provided, source) = match token.filter(|value| !value.is_empty()) {
+        Some(token) => (token, "POST"),
+        None => (
+            headers
+                .get("x-csrftoken")
+                .ok_or("CSRF token missing.")?
+                .to_str()
+                .unwrap_or_default(),
+            "the 'X-Csrftoken' HTTP header",
+        ),
     };
-    let Some(provided) = token.or_else(header_token).and_then(unmask) else {
-        return false;
-    };
-    bool::from(secret.as_bytes().ct_eq(provided.as_bytes()))
+    let token = unmask(provided)
+        .ok_or_else(|| format!("CSRF token from {source} {}.", invalid(provided)))?;
+    if !bool::from(secret.as_bytes().ct_eq(token.as_bytes())) {
+        return Err(format!("CSRF token from {source} incorrect."));
+    }
+    Ok(())
 }
 
 pub(crate) fn csrf_failure() -> Response {

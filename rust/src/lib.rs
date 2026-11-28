@@ -137,12 +137,9 @@ impl AppState {
 
     pub fn with_cache_lifetime(pool: AnyPool, current_season: i32, lifetime: Duration) -> Self {
         let search_marker = search::database_marker(&pool).map(Arc::from);
-        let search = Cache::builder().max_capacity(1);
-        let search = if lifetime.is_zero() {
-            search.time_to_live(Duration::ZERO)
-        } else {
-            search
-        };
+        let search = Cache::builder()
+            .max_capacity(1)
+            .time_to_live(lifetime.min(Duration::from_secs(300)));
         Self {
             pool,
             secret: None,

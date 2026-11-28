@@ -29,6 +29,7 @@ WITH teams AS (
 )
 SELECT CAST(d.id AS BIGINT) AS id, d.latest_season,CAST(d.school_id AS BIGINT) AS school,
     CAST(CASE WHEN s.included_in_oty THEN 1 ELSE 0 END AS BIGINT) AS included,
+    CAST(CASE WHEN s.temporary AND related.has_results=1 THEN s.id END AS BIGINT) AS temporary_team_school,
     CAST(CASE WHEN COALESCE(related.has_results,0)=1 OR (
         NOT EXISTS (
             SELECT 1 FROM core_team_debaters m JOIN core_teamresult r ON r.team_id=m.team_id
@@ -126,6 +127,7 @@ async fn recompute_for(
     }
     let mut cleared_schools = BTreeSet::new();
     let mut selected_schools = BTreeSet::new();
+    let mut temporary_team_schools = BTreeSet::new();
     let people = sqlx::query(DEBATERS)
         .bind(season)
         .fetch_all(&mut *conn)
@@ -144,6 +146,8 @@ async fn recompute_for(
         }
         if selected_people.is_some() {
             selected_schools.insert(row.try_get::<Option<i64>, _>("school")?);
+        } else if let Some(school) = row.try_get::<Option<i64>, _>("temporary_team_school")? {
+            temporary_team_schools.insert(school);
         }
         let rounds = results.get(&id).map_or(&[][..], Vec::as_slice);
         if recalc
@@ -309,10 +313,13 @@ async fn recompute_for(
         return Ok(());
     }
     if online {
-        sqlx::query("DELETE FROM core_coty WHERE season=$1")
-            .bind(season)
-            .execute(&mut *conn)
-            .await?;
+        sqlx::query(
+            "DELETE FROM core_coty WHERE season=$1 AND school_id IN
+            (SELECT id FROM core_school WHERE NOT temporary)",
+        )
+        .bind(season)
+        .execute(&mut *conn)
+        .await?;
     } else {
         let mut totals: BTreeMap<i64, f64> = BTreeMap::new();
         let mut awarded = BTreeSet::new();
@@ -339,6 +346,10 @@ async fn recompute_for(
                 ON CONFLICT (season,school_id) DO UPDATE SET points=excluded.points")
                 .bind(season).bind(school).bind(total).execute(&mut *conn).await?;
         }
+    }
+    // Django's school sweep skips temporary schools, but team updates follow the school FK.
+    for school in temporary_team_schools {
+        refresh_school(conn, season, online, school).await?;
     }
     rank(conn, "core_coty", season).await?;
     rank(conn, "core_onlinequal", season).await

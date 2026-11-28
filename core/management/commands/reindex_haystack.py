@@ -2,7 +2,10 @@ from __future__ import print_function
 
 from django.core.management.base import BaseCommand
 from django.core import management
+from django.db import transaction
 import logging
+
+from core.search_signals import invalidate_rust_search
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +64,7 @@ class Command(BaseCommand):
                 )
             else:
                 management.call_command("update_index", using=using_arg)
+            transaction.on_commit(invalidate_rust_search, robust=True)
             self.stdout.write(self.style.SUCCESS("Haystack update_index completed successfully."))
         except Exception as e:
             logger.exception("update_index failed")

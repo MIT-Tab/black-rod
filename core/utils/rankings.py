@@ -459,14 +459,15 @@ def redo_rankings(rankings, season=settings.CURRENT_SEASON, cache_type="toty"):
         previous_points = row.points
     if rows:
         rankings.model.objects.bulk_update(rows, ["place", "tied"], batch_size=500)
-    cache.delete(make_template_fragment_key(cache_type, [season]))
-    if cache_type == "coty":
-        cache.delete(f"api:standings_replay:{season}")
-    invalidate_live_standings(season)
-    transaction.on_commit(
-        lambda: cache.set("black-rod:rust:standings-generation:v1", uuid4().bytes, timeout=None),
-        robust=True,
-    )
+
+    def invalidate_rankings():
+        cache.delete(make_template_fragment_key(cache_type, [season]))
+        if cache_type == "coty":
+            cache.delete(f"api:standings_replay:{season}")
+        invalidate_live_standings(season)
+        cache.set("black-rod:rust:standings-generation:v1", uuid4().bytes, timeout=None)
+
+    transaction.on_commit(invalidate_rankings, robust=True)
 
 
 def rebuild_coty_related_rankings(season=settings.CURRENT_SEASON):

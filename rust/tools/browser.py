@@ -640,6 +640,7 @@ Video.objects.create(tournament=event, round=Video.VF, permissions=Video.DEBATER
         Case(path, authorization="Basic invalid extra"),
         Case(path, authorization="Basic !!"),
         Case(path, method="OPTIONS", authorization=bad),
+        Case(path, method="POST", authorization=good),
         Case("/api/schools/", authorization=bad),
     ]
     compare_responses(django, rust, cases)
@@ -659,6 +660,26 @@ Video.objects.create(tournament=event, round=Video.VF, permissions=Video.DEBATER
             response = connection.getresponse()
             assert response.status == 200, server.name
             assert json.loads(response.read())["team_tab_cards"], server.name
+
+            csrf = "testCsrfToken0123456789ABCDEFGHI"
+            cases = (
+                ({}, None, 403, "CSRF Failed: CSRF cookie not set."),
+                ({"Cookie": f"{headers['Cookie']}; csrftoken={csrf}"}, None, 403,
+                 "CSRF Failed: CSRF token missing."),
+                ({"Cookie": f"{headers['Cookie']}; csrftoken={csrf}", "X-CSRFToken": "short"}, None, 403,
+                 "CSRF Failed: CSRF token from the 'X-Csrftoken' HTTP header has incorrect length."),
+                ({"Cookie": f"{headers['Cookie']}; csrftoken={csrf}", "X-CSRFToken": csrf}, None, 405,
+                 'Method "POST" not allowed.'),
+                ({"Cookie": f"{headers['Cookie']}; csrftoken={csrf}",
+                  "Content-Type": "application/x-www-form-urlencoded"},
+                 urlencode({"csrfmiddlewaretoken": csrf}), 405, 'Method "POST" not allowed.'),
+            )
+            for extra, body, status, detail in cases:
+                connection.request("POST", path, body=body, headers={**headers, **extra})
+                result = connection.getresponse()
+                assert (result.status, json.loads(result.read())) == (status, {"detail": detail}), (
+                    server.name, result.status, detail
+                )
 
 
 def assert_team_tab_card_members(django, rust):
