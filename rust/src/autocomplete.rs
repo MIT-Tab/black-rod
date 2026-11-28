@@ -316,12 +316,12 @@ async fn lookup(
             }
             Kind::Team => {
                 name = row.try_get("name")?;
+                // Django's related debater queryset has no explicit ordering.
                 let members = sqlx::query(
                     "
-                    SELECT d.first_name, d.last_name FROM core_team_debaters td
-                    JOIN core_debater d ON d.id = td.debater_id
+                    SELECT d.first_name, d.last_name FROM core_debater d
+                    JOIN core_team_debaters td ON d.id = td.debater_id
                     WHERE td.team_id = $1 AND NOT d.temporary AND NOT d.synthetic
-                    ORDER BY d.id
                 ",
                 )
                 .bind(id)
