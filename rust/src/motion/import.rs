@@ -344,6 +344,9 @@ async fn page(state: &AppState, request: Request, user: User) -> Result<Response
             .and_then(|header| header.to_str().ok())
             .is_some_and(|value| value.starts_with("multipart/form-data"));
         if multipart {
+            if login::csrf_request_secret(&headers, &origin).is_err() {
+                return Ok(login::csrf_failure());
+            }
             let mut form = match Multipart::from_request(request, &()).await {
                 Ok(form) => form,
                 Err(err) => return Ok(err.into_response()),

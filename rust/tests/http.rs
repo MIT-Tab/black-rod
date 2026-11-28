@@ -313,3 +313,28 @@ async fn reading_an_editor_upload_does_not_reserve_an_image_decoder() {
         drop(sender);
     }
 }
+
+#[tokio::test]
+async fn llm_browsing_preserves_a_successful_large_api_response() {
+    let pool = fixture().await;
+    let school_name = format!("{}large-response-marker", "x".repeat(32 * 1024 * 1024));
+    sqlx::query("UPDATE core_school SET name=$1 WHERE id=7")
+        .bind(school_name)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let router = app(AppState::new(pool, 2026));
+    let response = router
+        .oneshot(
+            Request::get("/llm/?endpoint=/api/schools/")
+                .header(header::HOST, "localhost")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let html = response.into_body().collect().await.unwrap().to_bytes();
+    assert!(html.len() > 32 * 1024 * 1024);
+    assert!(String::from_utf8_lossy(&html).contains("large-response-marker"));
+}

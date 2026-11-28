@@ -202,12 +202,15 @@ async fn request(state: &AppState, request: Request) -> Result<Response, Error> 
         };
     }
     let headers = request.headers().clone();
+    let Some(origin) = state.origin(&headers) else {
+        return Ok(StatusCode::BAD_REQUEST.into_response());
+    };
+    if login::csrf_request_secret(&headers, &origin).is_err() {
+        return Ok(login::csrf_failure());
+    }
     let upload = match Upload::read(request, state).await {
         Ok(upload) => upload,
         Err(status) => return Ok(status.into_response()),
-    };
-    let Some(origin) = state.origin(&headers) else {
-        return Ok(StatusCode::BAD_REQUEST.into_response());
     };
     if !login::csrf_valid(&headers, upload.token.as_deref(), &origin) {
         return Ok(login::csrf_failure());

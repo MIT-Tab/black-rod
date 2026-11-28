@@ -37,6 +37,32 @@ from compare import (
 CASE = "/standings/replay/?season=2025&default=coty"
 
 
+def post_large_json_upload(driver, server, path, fields, file_field, filename, document):
+    csrf = driver.find_element("name", "csrfmiddlewaretoken").get_attribute("value")
+    cookies = "; ".join(f"{name}={driver.get_cookie(name)['value']}" for name in ("sessionid", "csrftoken"))
+    boundary = "standings-local-large-upload"
+    with TemporaryFile() as body, closing(server.connect()) as client:
+        for name, value in {"csrfmiddlewaretoken": csrf, **fields}.items():
+            body.write((f'--{boundary}\r\nContent-Disposition: form-data; name="{name}"\r\n\r\n'
+                        f'{value}\r\n').encode())
+        body.write((f'--{boundary}\r\nContent-Disposition: form-data; name="{file_field}"; '
+                    f'filename="{filename}"\r\nContent-Type: application/json\r\n\r\n').encode())
+        padding = b" " * (1024 * 1024)
+        for _ in range(65):
+            body.write(padding)
+        body.write(json.dumps(document).encode())
+        body.write(f"\r\n--{boundary}--\r\n".encode())
+        length = body.tell()
+        body.seek(0)
+        client.request("POST", path, body=body, headers={
+            "Content-Type": f"multipart/form-data; boundary={boundary}",
+            "Content-Length": str(length),
+            "Cookie": cookies,
+        })
+        response = client.getresponse()
+        return response.status, response.read()
+
+
 def document_replaced(element):
     stale = staleness_of(element)
 
@@ -3428,6 +3454,14 @@ print(school.id)
         """,incoming,str(index),formats[index])
         assert draft.get("ok") and draft.get("preview") and "Échange, school" in draft.get("text",""), (formats[index],draft)
 
+    for server in (django, rust):
+        open_page(server, "import/")
+        status, body = post_large_json_upload(
+            driver, server, route + "import/", {"input_format": str(formats.index("json"))},
+            "import_file", "large-fixture.json", json.loads(base64.b64decode(django_exports[5]["blob"])),
+        )
+        assert status == 200 and b'name="confirm"' in body, (server.name, status)
+
     open_page(rust,"import/")
     from tempfile import NamedTemporaryFile
     with NamedTemporaryFile(mode="w",encoding="utf-8",suffix=".csv") as fixture:
@@ -4179,29 +4213,10 @@ def assert_mittab_bundle_upload(driver, django, rust, fixture):
     assert len(after) == 1 and after[0][:4] == (before[0][0], "prelim-1", 2, "prelim"), after
     for server in (django, rust):
         driver.get(f"http://{HOST}:{server.port}{path}")
-        csrf = driver.find_element("name", "csrfmiddlewaretoken").get_attribute("value")
-        cookies = "; ".join(f"{name}={driver.get_cookie(name)['value']}" for name in ("sessionid", "csrftoken"))
-        boundary = "standings-local-large-upload"
-        with TemporaryFile() as body, closing(server.connect()) as client:
-            body.write((f'--{boundary}\r\nContent-Disposition: form-data; name="csrfmiddlewaretoken"\r\n\r\n'
-                        f'{csrf}\r\n--{boundary}\r\nContent-Disposition: form-data; name="bundle_file"; '
-                        'filename="large-fixture.json"\r\nContent-Type: application/json\r\n\r\n').encode())
-            padding = b" " * (1024 * 1024)
-            for _ in range(65):
-                body.write(padding)
-            bundle = {**reference, "tournament_name": f"Large fixture {server.name}",
-                      "rounds": [{**fixture_round, "opp": {}}]}
-            body.write(json.dumps(bundle).encode())
-            body.write(f"\r\n--{boundary}--\r\n".encode())
-            length = body.tell()
-            body.seek(0)
-            client.request("POST", path, body=body, headers={
-                "Content-Type": f"multipart/form-data; boundary={boundary}", "Content-Length": str(length),
-                "Cookie": cookies,
-            })
-            response = client.getresponse()
-            assert response.status == 302, (server.name, response.status)
-            response.read()
+        bundle = {**reference, "tournament_name": f"Large fixture {server.name}",
+                  "rounds": [{**fixture_round, "opp": {}}]}
+        status, _ = post_large_json_upload(driver, server, path, {}, "bundle_file", "large-fixture.json", bundle)
+        assert status == 302, (server.name, status)
     assert snapshot() == after
     driver.delete_all_cookies()
 

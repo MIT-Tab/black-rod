@@ -1,12 +1,13 @@
 use std::{
     collections::BTreeSet,
+    io::{BufReader, BufWriter, Write},
     path::{Path, PathBuf},
     time::Duration,
 };
 
 use axum::{
     body::Body,
-    extract::{FromRequest, Multipart, Request},
+    extract::{DefaultBodyLimit, FromRequest, Multipart, Request},
     http::{Method, StatusCode, header},
     response::{IntoResponse, Response},
 };
@@ -20,10 +21,13 @@ use super::{
     super::{form, model_rules, redirect},
     AdminRequest, ApiError, Exchange, Field, Model, common, formats, login,
 };
-use crate::{flash, memberships::sync_memberships};
+use crate::{
+    flash,
+    memberships::sync_memberships,
+    upload_file::{self, UploadFile},
+};
 
 const TTL: Duration = Duration::from_secs(3600);
-const LIMIT: usize = 64 * 1024 * 1024;
 
 #[derive(Deserialize, Serialize)]
 struct Pending {
@@ -75,8 +79,6 @@ fn directory(path: &Path) -> std::io::Result<()> {
 }
 
 fn write_file(pending: &Pending) -> Result<String, ApiError> {
-    use std::io::Write;
-
     let token = uuid::Uuid::new_v4().to_string();
     let path = location(&token).expect("generated import path");
     let root = path.parent().expect("private import directory");
@@ -109,9 +111,9 @@ fn write_file(pending: &Pending) -> Result<String, ApiError> {
         use std::os::unix::fs::OpenOptionsExt;
         options.mode(0o600);
     }
-    let mut file = options.open(path).map_err(failed)?;
-    let bytes = serde_json::to_vec(pending)?;
-    file.write_all(&bytes).map_err(failed)?;
+    let mut file = BufWriter::new(options.open(path).map_err(failed)?);
+    serde_json::to_writer(&mut file, pending)?;
+    file.flush().map_err(failed)?;
     Ok(token)
 }
 
@@ -119,13 +121,10 @@ fn load_file(id: &str) -> Option<Pending> {
     let path = location(id)?;
     directory(path.parent()?).ok()?;
     let meta = std::fs::symlink_metadata(&path).ok()?;
-    if !meta.is_file()
-        || meta.modified().ok()?.elapsed().ok()? > TTL
-        || meta.len() > (LIMIT * 8) as u64
-    {
+    if !meta.is_file() || meta.modified().ok()?.elapsed().ok()? > TTL {
         return None;
     }
-    serde_json::from_slice(&std::fs::read(path).ok()?).ok()
+    serde_json::from_reader(BufReader::new(std::fs::File::open(path).ok()?)).ok()
 }
 
 #[derive(Serialize)]
@@ -609,10 +608,11 @@ async fn process(
 struct Upload {
     csrf: Option<String>,
     format: Option<String>,
-    file: Option<(String, axum::body::Bytes)>,
+    file: Option<(String, UploadFile)>,
 }
 
-async fn upload(request: Request) -> Result<Upload, Box<Response>> {
+async fn upload(mut request: Request) -> Result<Upload, Box<Response>> {
+    DefaultBodyLimit::disable().apply(&mut request);
     let mut multipart = Multipart::from_request(request, &())
         .await
         .map_err(|error| Box::new(error.into_response()))?;
@@ -623,8 +623,20 @@ async fn upload(request: Request) -> Result<Upload, Box<Response>> {
         .map_err(|error| Box::new(error.into_response()))?
     {
         match field.name() {
-            Some("csrfmiddlewaretoken") => upload.csrf = field.text().await.ok(),
-            Some("input_format") => upload.format = field.text().await.ok(),
+            Some("csrfmiddlewaretoken") => {
+                upload.csrf = Some(
+                    upload_file::text(field)
+                        .await
+                        .map_err(|status| Box::new(status.into_response()))?,
+                );
+            }
+            Some("input_format") => {
+                upload.format = Some(
+                    upload_file::text(field)
+                        .await
+                        .map_err(|status| Box::new(status.into_response()))?,
+                );
+            }
             Some("import_file") => {
                 if let Some(name) = field.file_name().map(|name| {
                     name.rsplit(['\\', '/'])
@@ -632,14 +644,10 @@ async fn upload(request: Request) -> Result<Upload, Box<Response>> {
                         .unwrap_or_default()
                         .to_owned()
                 }) {
-                    let bytes = field
-                        .bytes()
+                    let file = UploadFile::stage(field)
                         .await
-                        .map_err(|error| Box::new(error.into_response()))?;
-                    if bytes.len() > LIMIT {
-                        return Err(Box::new(StatusCode::PAYLOAD_TOO_LARGE.into_response()));
-                    }
-                    upload.file = Some((name, bytes));
+                        .map_err(|status| Box::new(status.into_response()))?;
+                    upload.file = Some((name, file));
                 }
             }
             _ => {}
@@ -660,12 +668,15 @@ pub(in crate::site_admin) async fn preview(
     if request.method() != Method::POST {
         return admin.view("site_admin/exchange.html", standard);
     }
+    let Some(origin) = admin.origin() else {
+        return Ok(StatusCode::BAD_REQUEST.into_response());
+    };
+    if login::csrf_request_secret(admin.headers, &origin).is_err() {
+        return Ok(login::csrf_failure());
+    }
     let upload = match upload(request).await {
         Ok(upload) => upload,
         Err(response) => return Ok(*response),
-    };
-    let Some(origin) = admin.origin() else {
-        return Ok(StatusCode::BAD_REQUEST.into_response());
     };
     if !login::csrf_valid(admin.headers, upload.csrf.as_deref(), &origin) {
         return Ok(login::csrf_failure());
@@ -678,13 +689,14 @@ pub(in crate::site_admin) async fn preview(
     let file_error = upload
         .file
         .as_ref()
-        .filter(|(name, bytes)| !name.is_empty() && !bytes.is_empty())
+        .filter(|(name, file)| !name.is_empty() && !file.empty)
         .is_none()
         .then_some("This field is required.");
     let error = choice.is_none().then_some("This field is required.");
-    if let (Some(format), Some((name, bytes)), None) = (choice, upload.file, file_error) {
+    if let (Some(format), Some((name, file)), None) = (choice, upload.file, file_error) {
         let parse = exchange.import_formats[format].clone();
-        let rows = tokio::task::spawn_blocking(move || formats::read(&parse, &bytes))
+        let rows = file
+            .parse(move |bytes| formats::read(&parse, bytes))
             .await
             .map_err(|_| ApiError::Serialization)?;
         let rows = match rows {

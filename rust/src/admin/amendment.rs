@@ -365,6 +365,9 @@ pub(crate) async fn upload(State(state): State<AppState>, request: Request) -> R
     let Some(origin) = state.origin(&headers) else {
         return StatusCode::BAD_REQUEST.into_response();
     };
+    if login::csrf_request_secret(&headers, &origin).is_err() {
+        return login::csrf_failure();
+    }
     let mut multipart = match Multipart::from_request(request, &state).await {
         Ok(multipart) => multipart,
         Err(error) => return error.status().into_response(),

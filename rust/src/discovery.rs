@@ -240,28 +240,36 @@ pub(crate) async fn proxy(
             "",
         );
     }
-    let Ok(body) = to_bytes(response.into_body(), 32 * 1024 * 1024).await else {
+    let Ok(body) = to_bytes(response.into_body(), usize::MAX).await else {
         return proxy_error(
             StatusCode::BAD_GATEWAY,
             "Unable to read the API response.",
             "",
         );
     };
-    let Ok(data) = serde_json::from_slice::<Value>(&body) else {
-        return proxy_error(
-            StatusCode::BAD_GATEWAY,
-            &format!(
-                "The endpoint {endpoint} returned a successful response, but it was not JSON."
-            ),
-            "",
-        );
-    };
-    let Ok(payload) = serde_json::to_string_pretty(&data) else {
-        return proxy_error(
-            StatusCode::BAD_GATEWAY,
-            "Unable to encode the API response.",
-            "",
-        );
+    // JSON larger than a typical API page can take time to decode and format.
+    let payload = match tokio::task::spawn_blocking(move || {
+        serde_json::from_slice::<Value>(&body).map(|data| serde_json::to_string_pretty(&data))
+    })
+    .await
+    {
+        Ok(Ok(Ok(payload))) => payload,
+        Ok(Err(_)) => {
+            return proxy_error(
+                StatusCode::BAD_GATEWAY,
+                &format!(
+                    "The endpoint {endpoint} returned a successful response, but it was not JSON."
+                ),
+                "",
+            );
+        }
+        _ => {
+            return proxy_error(
+                StatusCode::BAD_GATEWAY,
+                "Unable to encode the API response.",
+                "",
+            );
+        }
     };
     proxy_result(
         StatusCode::OK,

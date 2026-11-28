@@ -23,6 +23,7 @@ use moka::future::Cache as LocalCache;
 use ring::digest::{SHA1_FOR_LEGACY_USE_ONLY, SHA256, digest};
 use serde::Serialize;
 use serde_json::json;
+use tokio::sync::Mutex;
 
 use crate::{ApiError, AppState, flash, login, session, team_profile::read_transaction, web};
 
@@ -33,6 +34,7 @@ const PAGE_LENGTH: usize = 50;
 #[derive(Clone)]
 pub(crate) struct Cache {
     generation: Arc<AtomicU64>,
+    pending_invalidation: Arc<Mutex<bool>>,
     results: LocalCache<String, Arc<profiles::Dashboard>>,
     ingestion: LocalCache<String, Arc<ingestion::Ingested>>,
     ratings: LocalCache<String, Arc<rating::Computed>>,
@@ -47,6 +49,7 @@ impl Cache {
         };
         Self {
             generation: Arc::new(AtomicU64::new(1)),
+            pending_invalidation: Arc::new(Mutex::new(false)),
             results: LocalCache::builder()
                 .max_capacity(100)
                 .time_to_live(ttl)
@@ -69,42 +72,79 @@ fn runtime_cache<T: Send + Sync + 'static>(enabled: bool) -> LocalCache<String, 
         .build()
 }
 
-async fn version(state: &AppState) -> u64 {
-    if let Some(cache) = &state.memcached {
-        if let Some((2, bytes)) = cache.read_raw(NAMESPACE).await
-            && let Some(version) = std::str::from_utf8(&bytes)
-                .ok()
-                .and_then(|value| value.parse().ok())
-        {
-            return version;
-        }
-        cache.write_raw(NAMESPACE, 2, b"1", 0, false).await;
-    }
-    state.elo.generation.load(Ordering::Relaxed)
+async fn shared_version(cache: &crate::cache::Memcached) -> Option<u64> {
+    let entry = match cache.read_raw_checked(NAMESPACE).await.ok()? {
+        Some(entry) => entry,
+        None if cache.write_raw(NAMESPACE, 2, b"1", 0, false).await => return Some(1),
+        None => cache.read_raw(NAMESPACE).await?,
+    };
+    let (2, bytes) = entry else {
+        return None;
+    };
+    std::str::from_utf8(&bytes).ok()?.parse().ok()
 }
 
-pub(crate) async fn invalidate(state: &AppState) -> u64 {
-    let previous = version(state).await;
-    let next = if let Some(cache) = &state.memcached
-        && cache.advance_counter(NAMESPACE, 0).await
-    {
-        let next = version(state).await;
-        state.elo.generation.fetch_max(next, Ordering::Relaxed);
-        next
-    } else {
-        let generation = &state.elo.generation;
-        generation.fetch_max(previous, Ordering::Relaxed);
-        let previous = generation
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
-                Some(value.saturating_add(1))
-            })
-            .expect("local generation always advances or saturates");
-        previous.saturating_add(1)
+async fn publish_invalidation(cache: &crate::cache::Memcached, pending: &mut bool) -> Option<u64> {
+    let before = shared_version(cache).await?;
+    if !cache.advance_counter(NAMESPACE, 0).await {
+        return None;
+    }
+    let after = shared_version(cache)
+        .await
+        .filter(|value| *value > before)?;
+    *pending = false;
+    Some(after)
+}
+
+fn retry_invalidation(cache: crate::cache::Memcached, pending: Arc<Mutex<bool>>) {
+    tokio::spawn(async move {
+        let mut delay = Duration::from_secs(1);
+        loop {
+            tokio::time::sleep(delay).await;
+            let mut pending = pending.lock().await;
+            if !*pending || publish_invalidation(&cache, &mut pending).await.is_some() {
+                break;
+            }
+            delay = (delay * 2).min(Duration::from_secs(30));
+        }
+    });
+}
+
+async fn version(state: &AppState) -> Option<u64> {
+    let Some(cache) = &state.memcached else {
+        return Some(state.elo.generation.load(Ordering::Relaxed));
     };
+    let mut pending = state.elo.pending_invalidation.lock().await;
+    if *pending {
+        return publish_invalidation(cache, &mut pending).await;
+    }
+    drop(pending);
+    shared_version(cache).await
+}
+
+pub(crate) async fn invalidate(state: &AppState) -> Option<u64> {
+    let previous = state
+        .elo
+        .generation
+        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
+            Some(value.saturating_add(1))
+        })
+        .expect("local generation always advances or saturates");
     state.elo.ingestion.invalidate_all();
     state.elo.ratings.invalidate_all();
     state.elo.results.invalidate_all();
-    next
+    let Some(cache) = &state.memcached else {
+        return Some(previous.saturating_add(1));
+    };
+    let mut pending = state.elo.pending_invalidation.lock().await;
+    let retry_scheduled = *pending;
+    *pending = true;
+    let published = publish_invalidation(cache, &mut pending).await;
+    if published.is_none() && !retry_scheduled {
+        eprintln!("Shared ELO cache invalidation failed and will be retried");
+        retry_invalidation(cache.clone(), Arc::clone(&state.elo.pending_invalidation));
+    }
+    published
 }
 
 fn signature(data: &impl Serialize) -> String {
@@ -112,7 +152,8 @@ fn signature(data: &impl Serialize) -> String {
     hex::encode(digest(&SHA256, &bytes))
 }
 
-async fn result(state: &AppState, key: &str) -> Option<Arc<profiles::Dashboard>> {
+async fn result(state: &AppState, key: Option<&str>) -> Option<Arc<profiles::Dashboard>> {
+    let key = key?;
     if state.cache_lifetime.is_zero() {
         return None;
     }
@@ -196,7 +237,7 @@ struct Compute {
 
 async fn compute(
     state: &AppState,
-    generation: u64,
+    generation: Option<u64>,
     config: Compute,
     display: profiles::Settings,
 ) -> Result<Result<profiles::Dashboard, &'static str>, ApiError> {
@@ -524,11 +565,13 @@ async fn response(state: &AppState, request: Request) -> Result<Response, ApiErr
     let (min, max) = bounds(state).await;
     let mut controls = controls(min, max);
     let generation = version(state).await;
-    let latest = format!(
-        ":1:elo_dashboard_state:v{generation}:user:{}",
-        user.id.unwrap_or_default()
-    );
-    let mut found = result(state, &latest).await;
+    let latest = generation.map(|generation| {
+        format!(
+            ":1:elo_dashboard_state:v{generation}:user:{}",
+            user.id.unwrap_or_default()
+        )
+    });
+    let mut found = result(state, latest.as_deref()).await;
     let mut errors = Vec::new();
     if parts.method == Method::POST {
         let values = match login::parse_form(&parts.headers, body, 2_621_440).await {
@@ -547,20 +590,24 @@ async fn response(state: &AppState, request: Request) -> Result<Response, ApiErr
         }
         if let Some((config, display)) = submit(&mut controls, &values) {
             let (compute_key, display_key) = cache_signatures(config, display);
-            let key = format!("{latest}:compute:{compute_key}:display:{display_key}");
-            found = result(state, &key).await;
+            let key = latest
+                .as_ref()
+                .map(|latest| format!("{latest}:compute:{compute_key}:display:{display_key}"));
+            found = result(state, key.as_deref()).await;
             if found.is_none() {
                 match compute(state, generation, config, display).await? {
                     Ok(computed) => {
                         let computed = Arc::new(computed);
-                        save(
-                            state,
-                            latest,
-                            key,
-                            (&compute_key, &display_key),
-                            Arc::clone(&computed),
-                        )
-                        .await;
+                        if let (Some(latest), Some(key)) = (latest, key) {
+                            save(
+                                state,
+                                latest,
+                                key,
+                                (&compute_key, &display_key),
+                                Arc::clone(&computed),
+                            )
+                            .await;
+                        }
                         found = Some(computed);
                     }
                     Err(error) => errors.push(error),
@@ -656,14 +703,76 @@ pub(crate) async fn invalidate_view(State(state): State<AppState>, request: Requ
     )
         .into_response();
     if let Some(secret) = state.secret.as_deref() {
+        let (level, message) = if let Some(version) = version {
+            (
+                25,
+                format!("ELO cache invalidated successfully. Active namespace version: {version}."),
+            )
+        } else {
+            (
+                30,
+                "The shared ELO cache is unavailable. Standings will retry the invalidation."
+                    .to_owned(),
+            )
+        };
         flash::push(
             &mut response,
             &parts.headers,
             secret,
-            25,
-            &format!("ELO cache invalidated successfully. Active namespace version: {version}."),
+            level,
+            &message,
             origin.starts_with("https://"),
         );
     }
     response
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::{
+        io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
+        net::TcpListener,
+    };
+
+    #[tokio::test]
+    async fn retries_pending_invalidation_before_reusing_shared_dashboard_data() {
+        sqlx::any::install_default_drivers();
+        let pool = sqlx::any::AnyPoolOptions::new()
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let state =
+            AppState::new(pool.clone(), 2026).with_memcached(listener.local_addr().unwrap());
+        let other_worker = AppState::new(pool, 2026).with_memcached(listener.local_addr().unwrap());
+        // The cache listener deliberately does not respond until after the failed invalidation.
+        assert_eq!(invalidate(&state).await, None);
+        let service = tokio::spawn(async move {
+            let mut generation = 7;
+            while let Ok((socket, _)) = listener.accept().await {
+                let mut socket = BufReader::new(socket);
+                let mut command = String::new();
+                if socket.read_line(&mut command).await.is_err() {
+                    continue;
+                }
+                let reply = match command.split_whitespace().next() {
+                    Some("get") => format!("VALUE {NAMESPACE} 2 1\r\n{generation}\r\nEND\r\n"),
+                    Some("add") => "NOT_STORED\r\n".into(),
+                    Some("incr") => {
+                        generation += 1;
+                        format!("{generation}\r\n")
+                    }
+                    Some("touch") => "TOUCHED\r\n".into(),
+                    _ => continue,
+                };
+                let _ = socket.get_mut().write_all(reply.as_bytes()).await;
+            }
+        });
+        assert_eq!(version(&other_worker).await, Some(7));
+        assert_eq!(version(&state).await, Some(8));
+        assert_eq!(version(&other_worker).await, Some(8));
+        assert_eq!(version(&state).await, Some(8));
+        service.abort();
+    }
 }
