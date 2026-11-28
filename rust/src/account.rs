@@ -21,7 +21,9 @@ use crate::{ApiError, AppState, flash, login, session::User, web};
 
 pub(crate) use connections::endpoint as connections;
 pub(crate) use emails::endpoint as emails;
-pub(crate) use entrance::{email_valid, endpoint as entrance, normal_username};
+pub(crate) use entrance::{
+    contact_email_valid, email_valid, endpoint as entrance, normal_username,
+};
 pub(crate) use passwords::change;
 pub(crate) use reauthentication::endpoint as reauthenticate;
 pub(crate) use reset::{legacy::page as legacy_passwords, page as reset};

@@ -380,7 +380,7 @@ async fn complete(
         .await?;
     let response = super::batch(&mut tx, endpoint, id).await?;
     tx.commit().await.map_err(journal::storage_error)?;
-    state.search.invalidate_all();
+    crate::search::invalidate(state).await;
     let mut seasons = std::collections::BTreeSet::new();
     for row in &changes {
         if matches!(

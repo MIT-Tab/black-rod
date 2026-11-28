@@ -1015,8 +1015,8 @@ async fn save(
         crate::claims::edit::team_names(&mut tx, record).await?;
         if hide_from_grid {
             sqlx::query(
-                "INSERT INTO core_immaculategridhiddendebater (debater_id,created_at)
-                VALUES ($1,CURRENT_TIMESTAMP) ON CONFLICT(debater_id) DO NOTHING",
+                "INSERT INTO core_immaculategridhiddendebater (debater_id)
+                VALUES ($1) ON CONFLICT(debater_id) DO NOTHING",
             )
             .bind(record)
             .execute(&mut *tx)
@@ -1058,8 +1058,8 @@ async fn save(
             failure => return Err(failure),
         }
     }
-    if model.key == "core.debater" {
-        admin.state.search.invalidate_all();
+    if matches!(model.key.as_str(), "core.debater" | "core.school") {
+        crate::search::invalidate(admin.state).await;
     }
     if model.table == "core_tournament" {
         crate::recent_results::invalidate(admin.state).await;

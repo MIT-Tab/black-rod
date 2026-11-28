@@ -213,14 +213,22 @@ impl SearchIndex {
 
 const GENERATION: &str = ":1:black-rod:search-index:generation";
 
-pub(crate) async fn reindex(state: &AppState) -> Result<usize, ApiError> {
-    let index = SearchIndex::load(&state.pool).await?;
+pub(crate) async fn invalidate(state: &AppState) -> bool {
+    state.search.invalidate_all();
     if let Some(cache) = &state.memcached
         && !cache.advance_counter(GENERATION, 0).await
     {
+        eprintln!("Could not invalidate the shared search index");
+        return false;
+    }
+    true
+}
+
+pub(crate) async fn reindex(state: &AppState) -> Result<usize, ApiError> {
+    let index = SearchIndex::load(&state.pool).await?;
+    if !invalidate(state).await {
         return Err(ApiError::Serialization);
     }
-    state.search.invalidate_all();
     Ok(index.records.len())
 }
 

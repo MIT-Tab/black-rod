@@ -340,7 +340,7 @@ pub(super) async fn delete(
             })?;
         }
         tx.commit().await?;
-        admin.state.search.invalidate_all();
+        crate::search::invalidate(admin.state).await;
         if removed.iter().any(|(table, _)| *table == "core_tournament") {
             crate::recent_results::invalidate(admin.state).await;
         }

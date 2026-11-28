@@ -1,4 +1,5 @@
 use std::{
+    collections::BTreeSet,
     path::{Path, PathBuf},
     time::Duration,
 };
@@ -391,10 +392,21 @@ async fn apply_row(
         };
         let Some(value) = row.get(name) else { continue };
         let data = formats::text(value);
-        let related = data
-            .split(',')
-            .filter_map(|key| key.trim().parse::<i64>().ok())
-            .collect::<std::collections::BTreeSet<_>>();
+        let related = match value {
+            Value::Bool(true) => Some(BTreeSet::from([1])),
+            Value::Bool(false) => Some(BTreeSet::new()),
+            Value::Number(_) => number(value, &data).map(|id| BTreeSet::from([id])),
+            _ => data
+                .split(',')
+                .map(str::trim)
+                .filter(|key| !key.is_empty())
+                .map(str::parse::<i64>)
+                .collect::<Result<BTreeSet<_>, _>>()
+                .ok(),
+        };
+        let Some(related) = related else {
+            return Ok(Err(format!("{name}: Enter a whole number.")));
+        };
         let Some((app, related_model)) = field
             .related
             .as_deref()
@@ -410,7 +422,7 @@ async fn apply_row(
         } else {
             ""
         };
-        let mut valid = std::collections::BTreeSet::new();
+        let mut valid = BTreeSet::new();
         if !related.is_empty() {
             let ids = related
                 .iter()
@@ -535,7 +547,7 @@ async fn process(
                 .await?;
         }
         tx.commit().await?;
-        admin.state.search.invalidate_all();
+        crate::search::invalidate(admin.state).await;
         if model.table == "core_tournament" && (result.new > 0 || result.updated > 0) {
             crate::recent_results::invalidate(admin.state).await;
         }

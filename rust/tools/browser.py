@@ -28,7 +28,10 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support.expected_conditions import staleness_of
 from selenium.webdriver.support.ui import WebDriverWait
 
-from compare import Case, HOST, ROOT, RUST_BIN, compare as compare_responses, request, servers
+from compare import (
+    Case, HOST, ROOT, RUST_BIN, available_port, compare as compare_responses,
+    request, servers, start_server,
+)
 
 CASE = "/standings/replay/?season=2025&default=coty"
 
@@ -362,7 +365,7 @@ def assert_search(driver, django, rust):
 
 
 
-def assert_search_reindex(rust):
+def assert_search_reindex(driver, rust):
     path = Path(os.environ["BR_STATE"]) / "dev.sqlite3"
     address = os.environ["BLACK_ROD_PARITY_MEMCACHED_ADDR"]
     query = Case("/search/?q=Uniqueparityindex", accept="text/html")
@@ -376,6 +379,37 @@ def assert_search_reindex(rust):
                    env={**os.environ, "BLACK_ROD_DATABASE_URL": f"sqlite://{path}?mode=ro",
                         "BLACK_ROD_MEMCACHED_ADDR": address}, check=True, capture_output=True)
     assert label in request(rust, query)[2]
+
+    with sqlite3.connect(f"{path.as_uri()}?mode=ro", uri=True) as connection:
+        debater, = connection.execute(
+            "SELECT id FROM core_debater WHERE first_name='Uniqueparityindex'"
+        ).fetchone()
+    port = available_port()
+    peer_env = {
+        "BLACK_ROD_DATABASE_URL": f"sqlite://{path}?mode=ro",
+        "BLACK_ROD_MEMCACHED_ADDR": address,
+        "BLACK_ROD_BIND": f"{HOST}:{port}",
+        "SECRET_KEY": "disposable-local-parity-key",
+        "LIVE_MITTAB_DIRECTORY_URL": "http://127.0.0.1:1",
+    }
+    with start_server("Rust search peer", [str(RUST_BIN)], port, peer_env) as peer:
+        assert label in request(peer, query)[2]
+        origin = f"http://{HOST}:{rust.port}"
+        driver.get(origin + "/robots.txt")
+        driver.delete_all_cookies()
+        driver.add_cookie({"name": "sessionid", "value": django_session()})
+        driver.get(origin + f"/admin/core/debater/{debater}/change/")
+        last_name = driver.find_element("name", "last_name")
+        last_name.clear()
+        last_name.send_keys("Renamed")
+        previous = driver.find_element("tag name", "html")
+        driver.find_element("name", "_continue").click()
+        WebDriverWait(driver, 10).until(document_replaced(previous))
+        for server in (rust, peer):
+            page = request(server, query)[2]
+            assert b"Uniqueparityindex Renamed" in page and label not in page, server.name
+        driver.delete_all_cookies()
+
 
 def seed_browser_cases():
     code = """
@@ -1479,8 +1513,8 @@ def assert_school_admin(driver, django, rust, fixture):
         driver.get(f"{rust_root}/games/")
         driver.add_cookie({"name": "sessionid", "value": token})
 
-    def post(page, endpoint, values):
-        driver.get(f"{rust_root}{page}")
+    def post(page, endpoint, values, origin=rust_root):
+        driver.get(f"{origin}{page}")
         return driver.execute_async_script("""
             const [action, values, done] = arguments;
             const token = document.querySelector("[name=csrfmiddlewaretoken]")?.value || window.csrfToken;
@@ -1523,6 +1557,22 @@ def assert_school_admin(driver, django, rust, fixture):
             assert result["status"] == 200 and result["redirected"], (index, result["status"])
     driver.get(f"{django_root}{dashboard}")
     assert "Role Fixture4" in driver.find_element("tag name", "body").text
+    database = Path(os.environ["BR_STATE"]) / "dev.sqlite3"
+    with sqlite3.connect(f"{database.as_uri()}?mode=ro", uri=True) as connection:
+        debater, = connection.execute(
+            "SELECT id FROM core_debater WHERE school_id=? AND last_name='Fixture4'", (school,)
+        ).fetchone()
+        edit = f"{dashboard}debater/{debater}/edit/"
+        for origin, contact in ((django_root, "django@example.org"), (rust_root, "rust@example.org")):
+            original, = connection.execute("SELECT email FROM core_debater WHERE id=?", (debater,)).fetchone()
+            malformed = post(edit, edit, {**form, "last_name": "Fixture4", "school": school,
+                                            "email": "somebody@@example.org"}, origin)
+            assert malformed["status"] == 200 and not malformed["redirected"], malformed["status"]
+            assert "Enter a valid email address." in malformed["result"]
+            assert connection.execute("SELECT email FROM core_debater WHERE id=?", (debater,)).fetchone() == (original,)
+            valid = post(edit, edit, {**form, "last_name": "Fixture4", "school": school, "email": contact}, origin)
+            assert valid["status"] == 200 and valid["redirected"], (origin, valid["status"])
+            assert connection.execute("SELECT email FROM core_debater WHERE id=?", (debater,)).fetchone() == (contact,)
     login(fixture["sessions"]["ordinary"])
     removed = post(dashboard, f"{manage}remove/", {"school_admin_id": first})
     assert removed["status"] == 200 and removed["result"]["success"], removed
@@ -2334,6 +2384,24 @@ print(json.dumps((group.pk, first.pk, second.pk, team.pk)))
         save()
         assert not hidden(first) and hidden(second)
 
+        member = int(edit.removesuffix("/change/").rsplit("/", 1)[-1])
+        for server in (django, rust):
+            origin = f"http://{HOST}:{server.port}"
+            driver.get(origin + edit)
+            driver.find_element("id", "id_immaculate_hidden").click()
+            field = driver.find_element("id", "id_last_name")
+            field.clear()
+            field.send_keys("Edited with privacy setting")
+            save()
+            assert hidden(member) and hidden(second)
+            assert driver.find_element("id", "id_last_name").get_attribute("value") == "Edited with privacy setting"
+
+            driver.get(origin + f"/admin/core/debater/{first}/change/")
+            assert driver.find_element("id", "id_immaculate_hidden").is_selected()
+            driver.find_element("id", "id_immaculate_hidden").click()
+            save()
+            assert not hidden(first) and not hidden(member) and hidden(second)
+
         def roster():
             return connection.execute("SELECT id,debater_id FROM core_team_debaters WHERE team_id=? ORDER BY id",
                                       (team,)).fetchall()
@@ -2744,6 +2812,13 @@ print(json.dumps([[motion.pk, video.pk]]))
             driver.get(f"http://{HOST}:{server.port}{edit}")
             tags = driver.find_element("id", "id_tags").get_attribute("value")
             assert '"Parity topic alpha"' in tags and '"Parity topic zeta"' not in tags, tags
+    database = Path(os.environ["BR_STATE"]) / "dev.sqlite3"
+    with sqlite3.connect(f"{database.as_uri()}?mode=ro", uri=True) as connection:
+        links, = connection.execute(
+            "SELECT COUNT(*) FROM core_taggedmotion a JOIN core_motiontopic t ON t.id=a.tag_id "
+            "WHERE t.name='Parity topic alpha' AND a.content_object_id=?", (motion,)
+        ).fetchone()
+        assert links == 1, links
     driver.delete_all_cookies()
 
 
@@ -2901,17 +2976,20 @@ print(json.dumps((standing.pk, result.pk, event.pk, person.pk)))
         members = [row[0] for row in connection.execute(
             "SELECT id FROM core_debater WHERE NOT(temporary OR synthetic) ORDER BY id LIMIT 2")]
 
-    def submit_team(record, short_name):
-        open_page(rust, "import/")
+    def preview_team(server, record, short_name, roster):
+        open_page(server, "import/")
         with NamedTemporaryFile(mode="w", encoding="utf-8", suffix=".csv") as fixture:
             fixture.write("id,name,short_name,synthetic,debaters\n")
-            fixture.write(f'{record},{team_name},{short_name},0,"{members[0]},{members[1]}"\n')
+            fixture.write(f'{record},{team_name},{short_name},0,"{roster}"\n')
             fixture.flush()
             driver.find_element("name", "import_file").send_keys(fixture.name)
             driver.find_element("css selector", 'select[name="input_format"] option[value="0"]').click()
             previous = driver.find_element("tag name", "html")
             driver.find_element("css selector", '#content input[value="Submit"]').click()
             WebDriverWait(driver, 10).until(document_replaced(previous))
+
+    def submit_team(record, short_name):
+        preview_team(rust, record, short_name, f"{members[0]},{members[1]}")
         assert "Preview" in driver.find_element("id", "content").text
         assert team_name in driver.find_element("css selector", ".import-preview").text
         previous = driver.find_element("tag name", "html")
@@ -2925,6 +3003,13 @@ print(json.dumps((standing.pk, result.pk, event.pk, person.pk)))
         sql = "SELECT id,debater_id FROM core_team_debaters WHERE team_id=? ORDER BY id"
         roster = connection.execute(sql, (team,)).fetchall()
         assert [member for _, member in roster] == members
+        for server in (django, rust):
+            preview_team(server, team, "Invalid import label", f"{members[0]},invalid-member")
+            assert "error" in driver.find_element("id", "content").text.lower()
+            assert not driver.find_elements("css selector", '#content form input[name="import_file_name"]')
+            assert not driver.find_elements("name", "confirm")
+            assert connection.execute(sql, (team,)).fetchall() == roster
+            assert connection.execute("SELECT short_name FROM core_team WHERE id=?", (team,)).fetchone() == ("Imported roster",)
         submit_team(team, "Updated label")
         assert connection.execute(sql, (team,)).fetchall() == roster
         assert connection.execute("SELECT short_name FROM core_team WHERE id=?", (team,)).fetchone() == ("Updated label",)
@@ -4527,7 +4612,7 @@ def browser_checks(database, options, output):
             assert_shared_partnership_cache(driver, django, rust)
         assert_search(driver, django, rust)
         if os.environ.get("BLACK_ROD_PARITY_MEMCACHED_ADDR"):
-            assert_search_reindex(rust)
+            assert_search_reindex(driver, rust)
         assert_video_permissions(driver, django, rust, fixture)
         assert_api_basic_auth(django, rust, fixture)
         assert_video_editor(driver, django, rust, fixture)

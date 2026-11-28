@@ -134,19 +134,10 @@ impl Profile {
                 errors.insert(field, vec!["Null characters are not allowed."]);
             }
         }
-        if !self.text["email"].is_empty() {
-            let raw = &self.text["email"];
-            let allowed_domain = raw.rsplit_once('@').is_some_and(|(_, domain)| {
-                domain.contains('.')
-                    || domain == "localhost"
-                    || domain
-                        .strip_prefix('[')
-                        .and_then(|value| value.strip_suffix(']'))
-                        .is_some_and(|value| value.parse::<std::net::IpAddr>().is_ok())
-            });
-            if !allowed_domain || raw.chars().count() > 254 || !crate::account::email_valid(raw) {
-                errors.insert("email", vec!["Enter a valid email address."]);
-            }
+        if !self.text["email"].is_empty()
+            && !crate::account::contact_email_valid(&self.text["email"])
+        {
+            errors.insert("email", vec!["Enter a valid email address."]);
         }
         if !self.text["paradigm"].is_empty() {
             let raw = self.text.get_mut("paradigm").unwrap();
@@ -523,7 +514,7 @@ pub(crate) async fn endpoint(State(state): State<AppState>, request: Request) ->
         if errors.is_empty() {
             return match save(&state.pool, &update, id, &user).await {
                 Ok(true) => {
-                    state.search.invalidate_all();
+                    crate::search::invalidate(&state).await;
                     redirect(
                         &state,
                         &parts.headers,

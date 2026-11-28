@@ -101,7 +101,7 @@ pub(crate) async fn page(State(state): State<AppState>, request: Request) -> Res
             eprintln!("Rankings recomputation failed: {reason:?}");
             return error("The database could not recompute the rankings.");
         }
-        state.search.invalidate_all();
+        crate::search::invalidate(&state).await;
         let boards = if ranking == "coty" {
             &["coty", "online_quals"][..]
         } else {

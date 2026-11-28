@@ -245,7 +245,7 @@ pub(super) async fn store(
         historical_coty(&mut tx, &season, &affected).await?;
     }
     tx.commit().await?;
-    state.search.invalidate_all();
+    crate::search::invalidate(state).await;
     let boards = if season == state.current_season.to_string() {
         crate::standings::STORED_BOARDS
     } else if !affected.is_empty() {

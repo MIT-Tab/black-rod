@@ -319,7 +319,7 @@ async fn mutate_review(
         .bind(approved).execute(&mut *tx).await?;
     tx.commit().await?;
     if approved {
-        state.search.invalidate_all();
+        crate::search::invalidate(state).await;
         for season in seasons {
             crate::standings::invalidate(state, &season, crate::standings::STORED_BOARDS).await;
         }

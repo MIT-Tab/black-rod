@@ -163,7 +163,7 @@ async fn debater(
                 .await?,
         )
     };
-    state.search.invalidate_all();
+    crate::search::invalidate(state).await;
     Ok(id)
 }
 
@@ -289,6 +289,9 @@ async fn page(state: &AppState, request: Request) -> Result<Response, ApiError> 
             debater(state, &values, &mut errors, &mut choices, id).await?
         };
         if let Some(id) = result {
+            if is_school {
+                crate::search::invalidate(state).await;
+            }
             if !is_school && submitted.contains_key("ajax") {
                 return Ok(Html(id.to_string()).into_response());
             }

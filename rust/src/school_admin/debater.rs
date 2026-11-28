@@ -185,11 +185,7 @@ impl Form {
                 errors.insert(key, "Null characters are not allowed.".to_owned());
             }
         }
-        if !fields.email.is_empty()
-            && (!fields.email.rsplit_once('@').is_some_and(|(user, host)| {
-                !user.is_empty() && (host.contains('.') || host == "localhost")
-            }) || fields.email.chars().any(char::is_whitespace))
-        {
+        if !fields.email.is_empty() && !crate::account::contact_email_valid(&fields.email) {
             errors.insert("email", "Enter a valid email address.".to_owned());
         }
         for (key, value, min) in [
@@ -332,7 +328,7 @@ async fn save(
         claims::edit::team_names(&mut tx, id).await?;
     }
     tx.commit().await?;
-    state.search.invalidate_all();
+    crate::search::invalidate(state).await;
     Ok(true)
 }
 

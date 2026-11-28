@@ -106,7 +106,7 @@ async fn page(
             Ok(()) => {
                 tx.commit().await?;
                 if matches!(entity.model, "core_school" | "core_debater") {
-                    state.search.invalidate_all();
+                    crate::search::invalidate(state).await;
                 }
                 if entity.model == "core_tournament" {
                     crate::recent_results::invalidate(state).await;

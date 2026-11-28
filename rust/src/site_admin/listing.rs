@@ -1398,6 +1398,12 @@ async fn merge_topics(
     let scope = action_scope(filter, data, across);
     let sql = format!("SELECT CAST(t0.id AS BIGINT),t0.name FROM {scope} ORDER BY t0.name");
     let mut tx = admin.state.pool.begin().await?;
+    if motion && tx.backend_name() == "PostgreSQL" {
+        // The existing motion tag table has no unique constraint on the tag and motion pair.
+        sqlx::query("LOCK TABLE core_taggedmotion IN SHARE ROW EXCLUSIVE MODE")
+            .execute(&mut *tx)
+            .await?;
+    }
     let mut query = sqlx::query_as::<_, (i64, String)>(AssertSqlSafe(sql));
     for value in &filter.values {
         query = query.bind(value);
@@ -1415,19 +1421,29 @@ async fn merge_topics(
         )
     } else {
         let (target, name) = &topics[0];
-        let (table, columns) = if motion {
-            ("core_taggedmotion", "content_object_id")
+        let (table, copy) = if motion {
+            (
+                "core_taggedmotion",
+                "INSERT INTO core_taggedmotion (tag_id,content_object_id)
+                 SELECT DISTINCT CAST($1 AS BIGINT), source.content_object_id
+                 FROM core_taggedmotion source
+                 WHERE source.tag_id=$2 AND NOT EXISTS (
+                     SELECT 1 FROM core_taggedmotion target
+                     WHERE target.tag_id=$1 AND target.content_object_id=source.content_object_id
+                 )",
+            )
         } else {
-            ("taggit_taggeditem", "content_type_id,object_id")
+            (
+                "taggit_taggeditem",
+                "INSERT INTO taggit_taggeditem (tag_id,content_type_id,object_id)
+                 SELECT $1,content_type_id,object_id FROM taggit_taggeditem
+                 WHERE tag_id=$2 ON CONFLICT DO NOTHING",
+            )
         };
-        let copy = format!(
-            "INSERT INTO {table} (tag_id,{columns}) SELECT $1,{columns} FROM {table}
-             WHERE tag_id=$2 ON CONFLICT DO NOTHING"
-        );
         let unlink = format!("DELETE FROM {table} WHERE tag_id=$1");
         let delete = format!("DELETE FROM {} WHERE id=$1", model.table);
         for (source, _) in &topics[1..] {
-            sqlx::query(AssertSqlSafe(copy.as_str()))
+            sqlx::query(copy)
                 .bind(target)
                 .bind(source)
                 .execute(&mut *tx)
