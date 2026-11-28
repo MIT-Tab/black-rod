@@ -58,7 +58,6 @@
     "papaparse": "^5.7.0",
     "popper.js": "1.16.1",
     "select2": "4.0.13",
-    "summernote": "0.8.20",
     "vis-network": "10.1.5"
   },
   "eslintConfig": {

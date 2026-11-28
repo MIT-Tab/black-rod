@@ -362,17 +362,23 @@ def capture(driver, server, route, session, target, exclude):
             done();
         }
     """)
+    viewport = driver.execute_script("""
+        const root = document.documentElement;
+        return [root.clientWidth, root.clientHeight, root.scrollWidth, root.scrollHeight];
+    """)
     assert driver.save_screenshot(str(target.with_suffix(".png")))
-    return navigation, html, sidebar
+    return navigation, html, sidebar, viewport
 
 
 # Permit isolated rasterization differences without relaxing the DOM comparison.
 MAX_CHANGED_PIXELS = 2
 
 
-def pixels(left, right):
+def pixels(left, right, content_width=None):
     with Image.open(left.with_suffix(".png")) as expected, Image.open(right.with_suffix(".png")) as actual:
         difference = ImageChops.difference(expected.convert("RGB"), actual.convert("RGB"))
+        if content_width is not None and content_width < difference.width:
+            difference = difference.crop((0, 0, content_width, difference.height))
         maximum = ImageChops.lighter(ImageChops.lighter(*difference.split()[:2]), difference.split()[2])
         changed = maximum.point(lambda value: int(value > 8))
         count = changed.histogram()[1]
@@ -426,15 +432,27 @@ def compare(driver, django, rust, cases, sessions, output, viewports, exclude, p
                     if attempt:
                         active.execute_cdp_cmd("Emulation.setDeviceMetricsOverride", metrics)
                     proxy.target = django
-                    left_navigation, left, left_sidebar = capture(active, origin, route, session, reference, exclude)
+                    left_navigation, left, left_sidebar, left_viewport = capture(
+                        active, origin, route, session, reference, exclude
+                    )
                     proxy.target = rust
-                    right_navigation, right, right_sidebar = capture(active, origin, route, session, candidate, exclude)
+                    right_navigation, right, right_sidebar, right_viewport = capture(
+                        active, origin, route, session, candidate, exclude
+                    )
                 structural = first_difference(left, right)
                 if left_navigation != right_navigation:
                     structural = ("navigation URL or status", left_navigation, right_navigation)
                 if structural is None and left_sidebar != right_sidebar:
                     structural = ("video sidebar layout", left_sidebar, right_sidebar)
-                count, fraction, difference = pixels(reference, candidate)
+                content_width = None
+                if route == "/stats/":
+                    # Chrome can paint the native thumb a pixel early during chart layout.
+                    # Compare the actual scroll extents and every pixel inside the viewport.
+                    if left_viewport == right_viewport:
+                        content_width = left_viewport[0]
+                    elif structural is None:
+                        structural = ("statistics viewport and scroll extent", left_viewport, right_viewport)
+                count, fraction, difference = pixels(reference, candidate, content_width)
                 if (structural is None and count <= MAX_CHANGED_PIXELS) or attempt == 1:
                     break
                 print(f"{mode} {route} first comparison differed, repeating in a fresh Chrome session")

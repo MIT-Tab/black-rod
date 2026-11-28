@@ -1,10 +1,5 @@
-async function initRichTextEditors() {
+function initRichTextEditors() {
   const fields = document.querySelectorAll("textarea[data-rust-summernote]");
-  if (!fields.length) return;
-  await Promise.all([
-    import("summernote/dist/summernote-lite.min"),
-    import("summernote/dist/summernote-lite.css"),
-  ]);
   fields.forEach((field) => {
     const editor = $(field);
     const synchronize = () => {
@@ -44,7 +39,6 @@ async function initRichTextEditors() {
       callbacks: {
         onInit: () => {
           const frame = editor.next(".note-editor");
-          frame.wrap('<div class="summernote-div"></div>');
           const chrome = [
             ".note-toolbar",
             ".note-status-output",
@@ -59,6 +53,7 @@ async function initRichTextEditors() {
             .outerHeight(
               480 - chrome - (frame.outerHeight() - frame.innerHeight()),
             );
+          frame.wrap('<div class="summernote-div"></div>');
         },
         onChange: synchronize,
         onBlur: synchronize,
