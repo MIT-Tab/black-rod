@@ -128,3 +128,13 @@ The latest four-endpoint release run used the same local PostgreSQL fixture, 120
 | 2025–26 replay | 60.79 → 2.21 | 221 → 6,116 | 185.39 → 34.89 | 189.60 → 23.52 | 147.70 → 61.00 |
 | Debater detail 5270 | 2,169.71 → 55.17 | 4.34 → 288.81 | 139.22 → 37.23 | 317.99 → 14.70 | 130.91 → 23.22 |
 | Partnership network since 2025 | 5,084.50 → 71.58 | 2.45 → 151.25 | 391.64 → 108.03 | 739.58 → 27.06 | 168.56 → 37.19 |
+
+A release run with local PostgreSQL and shared Memcached verified 302 HTTP cases. Each warm endpoint received 1,200 requests from 12 concurrent clients. RSS is the sampled peak sum for the application process tree.
+
+| Endpoint | Warm p95 ms Django → Rust | Warm req/s Django → Rust | Warm peak RSS MiB Django → Rust |
+| --- | ---: | ---: | ---: |
+| 2025–26 standings | 75.21 → 3.45 | 287 → 5,847 | 167.62 → 28.72 |
+| 2025–26 replay | 107.75 → 3.89 | 159 → 4,793 | 174.84 → 40.34 |
+| All schools | 24.28 → 3.12 | 853 → 7,607 | 140.00 → 21.50 |
+
+Set `BLACK_ROD_PARITY_MEMCACHED_ADDR` to a disposable local Memcached instance and run the HTTP benchmark with `--benchmark-path` for each endpoint. The cache-disabled cases bypass Memcached regardless of that setting.
