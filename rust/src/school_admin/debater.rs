@@ -256,6 +256,17 @@ impl Form {
     }
 }
 
+enum Save {
+    Saved,
+    Invalid,
+    Missing,
+    Limited,
+}
+
+fn daily_limit() -> Response {
+    (StatusCode::FORBIDDEN, "You have reached the daily limit of 5 new debaters. Please contact a site administrator if you need to create more.").into_response()
+}
+
 async fn save(
     state: &AppState,
     action: Action,
@@ -263,8 +274,22 @@ async fn save(
     owner: i64,
     form: &Form,
     errors: &mut Errors,
-) -> Result<bool, ApiError> {
+    cache_key: Option<&str>,
+) -> Result<Save, ApiError> {
     let mut tx = state.pool.begin().await?;
+    let quota = if let (Some(cache), Some(key)) = (&state.memcached, cache_key) {
+        sqlx::query("UPDATE core_user SET is_active=is_active WHERE id=$1")
+            .bind(owner)
+            .execute(&mut *tx)
+            .await?;
+        let count = cache.quota_count(key).await?;
+        if count >= 5 {
+            return Ok(Save::Limited);
+        }
+        Some((cache, key, count))
+    } else {
+        None
+    };
     sqlx::query("UPDATE core_school SET id=id WHERE id=$1")
         .bind(school)
         .execute(&mut *tx)
@@ -277,7 +302,7 @@ async fn save(
     .fetch_optional(&mut *tx)
     .await?;
     if membership.is_none() {
-        return Ok(false);
+        return Ok(Save::Missing);
     }
     let region = if state.pool.connect_options().database_url.scheme() == "sqlite" {
         "$8"
@@ -294,7 +319,7 @@ async fn save(
                 "form",
                 "A debater with this name already exists at this school.".to_owned(),
             );
-            return Ok(false);
+            return Ok(Save::Invalid);
         }
     }
     let sql = if create {
@@ -324,14 +349,17 @@ async fn save(
         query = query.bind(id).bind((state.current_season - 6).to_string());
     }
     let Some(id) = query.fetch_optional(&mut *tx).await? else {
-        return Ok(false);
+        return Ok(Save::Missing);
     };
     if !create {
         claims::edit::team_names(&mut tx, id).await?;
     }
+    if let Some((cache, key, count)) = quota {
+        cache.record_quota(key, count + 1).await?;
+    }
     tx.commit().await?;
     crate::search::invalidate(state).await;
-    Ok(true)
+    Ok(Save::Saved)
 }
 
 async fn view(state: &AppState, request: Request) -> Result<Response, ApiError> {
@@ -419,12 +447,12 @@ async fn view(state: &AppState, request: Request) -> Result<Response, ApiError> 
             let guard = cell.lock_owned().await;
             let shared = format!(":1:debater_create_count_{}_{}", key.0, key.1);
             let current = if let Some(cache) = &state.memcached {
-                cache.read_counter(&shared).await.unwrap_or_default()
+                cache.quota_count(&shared).await?
             } else {
                 *guard
             };
             if current >= 5 {
-                return Ok((StatusCode::FORBIDDEN,"You have reached the daily limit of 5 new debaters. Please contact a site administrator if you need to create more.").into_response());
+                return Ok(daily_limit());
             }
             Some((guard, shared))
         } else {
@@ -432,18 +460,29 @@ async fn view(state: &AppState, request: Request) -> Result<Response, ApiError> 
         };
         (fields, errors) = Form::submitted(state, &bytes, fields.initial_dino).await?;
         if errors.is_empty() {
-            if save(state, action, school_id, owner, &fields, &mut errors).await? {
-                if let Some((count, key)) = count.as_mut() {
-                    if let Some(cache) = &state.memcached {
-                        let _ = cache.advance_counter(key, 86_400).await;
-                    } else {
+            let cache_key = count.as_ref().map(|(_, key)| key.as_str());
+            match save(
+                state,
+                action,
+                school_id,
+                owner,
+                &fields,
+                &mut errors,
+                cache_key,
+            )
+            .await?
+            {
+                Save::Saved => {
+                    if state.memcached.is_none()
+                        && let Some((count, _)) = count.as_mut()
+                    {
                         **count += 1;
                     }
+                    return Ok((StatusCode::FOUND, [(header::LOCATION, DASHBOARD)]).into_response());
                 }
-                return Ok((StatusCode::FOUND, [(header::LOCATION, DASHBOARD)]).into_response());
-            }
-            if errors.is_empty() {
-                return Ok(StatusCode::NOT_FOUND.into_response());
+                Save::Missing => return Ok(StatusCode::NOT_FOUND.into_response()),
+                Save::Limited => return Ok(daily_limit()),
+                Save::Invalid => {}
             }
         }
     }
@@ -479,7 +518,9 @@ async fn view(state: &AppState, request: Request) -> Result<Response, ApiError> 
 }
 
 pub(crate) async fn endpoint(State(state): State<AppState>, request: Request) -> Response {
-    view(&state, request)
-        .await
-        .unwrap_or_else(super::roles::failed)
+    match view(&state, request).await {
+        Ok(response) => response,
+        Err(ApiError::QuotaUnavailable) => StatusCode::SERVICE_UNAVAILABLE.into_response(),
+        Err(error) => super::roles::failed(error),
+    }
 }

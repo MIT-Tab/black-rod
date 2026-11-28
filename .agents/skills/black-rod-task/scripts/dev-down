@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Usage: dev-down   Stops this worktree's background webpack + runserver.
+# Usage: dev-down   Stops this worktree's background webpack and dev server.
 . "$(dirname "$0")/_env.sh"
 for name in server webpack; do
   pid_file="$BR_STATE/$name.pid"

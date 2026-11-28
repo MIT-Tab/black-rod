@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# Usage: dev-up [--fresh] [--empty]
-# Starts webpack --watch + runserver for this worktree in the background and returns once the
+# Usage: dev-up [--fresh] [--empty] [--django]
+# Starts webpack and the Rust server for this worktree in the background and returns once the
 # site answers. First run migrates private SQLite and loads dev_fixtures. Login: tab / password.
 #   --fresh  rebuild only this checkout's private dev DB
 #   --empty  skip fixtures, create only the local tab login
+#   --django run the Django reference server
 . "$(dirname "$0")/_env.sh"
 cd "$BR_ROOT"
 set -uo pipefail
@@ -14,10 +15,12 @@ set -uo pipefail
 
 fresh=0
 empty=0
+runtime=rust
 for arg in "$@"; do
   case "$arg" in
     --fresh) fresh=1 ;;
     --empty) empty=1 ;;
+    --django) runtime=django ;;
     *) echo "unknown option: $arg" >&2; exit 2 ;;
   esac
 done
@@ -32,6 +35,15 @@ fail() {
 "$BR_SCRIPTS/dev-down" >/dev/null 2>&1
 setup_log="$BR_STATE/dev-setup.log"
 : >"$setup_log"
+
+if [ "$runtime" = rust ]; then
+  command -v cargo >/dev/null || {
+    echo "Rust is required; install it with rustup and add cargo to your PATH." >&2
+    exit 1
+  }
+  cargo +1.94.0 build --release --locked --manifest-path rust/Cargo.toml \
+    --target-dir rust/target >>"$setup_log" 2>&1 || fail "$setup_log"
+fi
 
 if [ "$fresh" = 1 ]; then
   rm -f "$BR_STATE/dev.sqlite3" "$BR_STATE/dev.sqlite3-wal" "$BR_STATE/dev.sqlite3-shm" "$BR_STATE/seeded"
@@ -56,22 +68,34 @@ echo "$port" >"$BR_STATE/port"
 
 started="$(date +%s)"
 # Python's process/session API works on Linux and macOS without GNU setsid/nohup.
-"$BR_PYTHON" - "$BR_STATE" "$port" <<'PYTHON'
+"$BR_PYTHON" - "$BR_STATE" "$port" "$runtime" <<'PYTHON'
 import os
 import subprocess
 import sys
 from pathlib import Path
-state = Path(sys.argv[1])
+state, port, runtime = Path(sys.argv[1]), sys.argv[2], sys.argv[3]
+bind = f"127.0.0.1:{port}"
+environment = {**os.environ, "NODE_ENV": "development", "DEBUG": "1", "SILK_ENABLED": "0"}
 commands = {
     "webpack": ["./node_modules/.bin/webpack", "--config", "webpack.config.js", "--watch"],
-    "server": [os.environ["BR_PYTHON"], "manage.py", "runserver", f"127.0.0.1:{sys.argv[2]}", "--noreload"],
 }
+if runtime == "django":
+    commands["server"] = [os.environ["BR_PYTHON"], "manage.py", "runserver", bind, "--noreload"]
+else:
+    commands["server"] = ["./rust/target/release/black-rod", "serve"]
+    environment.update({
+        "DOT_ENV_FILE": os.devnull,
+        "BLACK_ROD_DATABASE_URL": f"sqlite://{state / 'dev.sqlite3'}?mode=rw",
+        "BLACK_ROD_BIND": bind,
+        "BLACK_ROD_ALLOWED_HOSTS": "localhost,127.0.0.1",
+        "BLACK_ROD_MEDIA_ROOT": str(state / "media"),
+        "BLACK_ROD_WATCH_WEBPACK": "1",
+        "WEBPACK_STATS_FILE": "webpack-stats.json",
+    })
 for name, command in commands.items():
     with (state / f"{name}.log").open("w") as log:
         process = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=log, stderr=log,
-                                   start_new_session=True,
-                                   env={**os.environ, "NODE_ENV": "development", "DEBUG": "1",
-                                        "SILK_ENABLED": "0"})
+                                   start_new_session=True, env=environment)
     (state / f"{name}.pid").write_text(str(process.pid))
 PYTHON
 
@@ -83,7 +107,7 @@ for _ in $(seq 1 120); do
   fi
   code="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$port/" || true)"
   if [ "$stats_ready" = 1 ] && [[ $code =~ ^(200|302)$ ]]; then
-    echo "dev server: http://127.0.0.1:$port  (login tab / password)"
+    echo "$runtime dev server: http://127.0.0.1:$port  (login tab / password)"
     echo "DB: $BR_STATE/dev.sqlite3   logs: $BR_STATE/server.log, $BR_STATE/webpack.log   stop: dev-down"
     exit 0
   fi

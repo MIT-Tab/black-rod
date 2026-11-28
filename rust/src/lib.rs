@@ -488,6 +488,7 @@ enum ApiError {
     Constraint,
     Serialization,
     InvalidStoredDate,
+    QuotaUnavailable,
 }
 
 impl From<sqlx::Error> for ApiError {

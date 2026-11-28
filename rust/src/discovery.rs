@@ -13,7 +13,7 @@ use tower::ServiceExt;
 
 use crate::{
     AppState, drf,
-    routing::{local_api, public_api_path},
+    routing::{local_api, protected_api_path, public_api_path},
     web,
 };
 
@@ -210,7 +210,7 @@ pub(crate) async fn proxy(
         path,
         "/.well-known/openapi.json" | "/.well-known/ai-plugin.json"
     );
-    if !public_api_path(path) && !well_known {
+    if !public_api_path(path) && !protected_api_path(path) && !well_known {
         return proxy_error(
             StatusCode::NOT_FOUND,
             &format!("The path {endpoint} could not be found."),

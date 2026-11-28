@@ -1,7 +1,7 @@
 mod protocol;
 
 use protocol::{api_protocol, append_slash, report_server_errors, security_headers, validate_host};
-pub(crate) use protocol::{limit, public_api_path, slash_redirect};
+pub(crate) use protocol::{limit, protected_api_path, public_api_path, slash_redirect};
 
 use axum::{Router, routing::get};
 
@@ -63,6 +63,36 @@ fn api_routes() -> Router<AppState> {
         .route(
             "/api/standings/through-date/",
             get(replay::handle).options(replay::through_options),
+        )
+        .route(
+            "/api/private/forum-profiles/",
+            axum::routing::any(private_api::forum),
+        )
+        .route(
+            "/api/private/debater-emails/",
+            axum::routing::any(private_api::mittab),
+        )
+        .route("/api/agent/v1/", axum::routing::any(agent::endpoint))
+        .route("/api/agent/v1/guide/", axum::routing::any(agent::endpoint))
+        .route(
+            "/api/agent/v1/records/{resource}/",
+            axum::routing::any(agent::endpoint),
+        )
+        .route(
+            "/api/agent/v1/records/{resource}/{id}/",
+            axum::routing::any(agent::endpoint),
+        )
+        .route(
+            "/api/agent/v1/batches/",
+            axum::routing::any(agent::endpoint),
+        )
+        .route(
+            "/api/agent/v1/batches/{id}/",
+            axum::routing::any(agent::endpoint),
+        )
+        .route(
+            "/api/agent/v1/batches/{id}/undo/",
+            axum::routing::any(agent::endpoint),
         )
         .route("/.well-known/ai-plugin.json", get(discovery::manifest))
         .route(
@@ -506,14 +536,6 @@ pub fn app(state: AppState) -> Router {
                 .fallback(tower_http::services::ServeDir::new("rust/static/vendor")),
         )
         .route(
-            "/api/private/forum-profiles/",
-            axum::routing::any(private_api::forum),
-        )
-        .route(
-            "/api/private/debater-emails/",
-            axum::routing::any(private_api::mittab),
-        )
-        .route(
             "/core/resources/tags_no_create",
             get(autocomplete::endpoint),
         )
@@ -602,28 +624,6 @@ pub fn app(state: AppState) -> Router {
         .route(
             "/django-summernote/{day}/{name}",
             get(summernote::attachment),
-        )
-        .route("/api/agent/v1/", axum::routing::any(agent::endpoint))
-        .route("/api/agent/v1/guide/", axum::routing::any(agent::endpoint))
-        .route(
-            "/api/agent/v1/records/{resource}/",
-            axum::routing::any(agent::endpoint),
-        )
-        .route(
-            "/api/agent/v1/records/{resource}/{id}/",
-            axum::routing::any(agent::endpoint),
-        )
-        .route(
-            "/api/agent/v1/batches/",
-            axum::routing::any(agent::endpoint),
-        )
-        .route(
-            "/api/agent/v1/batches/{id}/",
-            axum::routing::any(agent::endpoint),
-        )
-        .route(
-            "/api/agent/v1/batches/{id}/undo/",
-            axum::routing::any(agent::endpoint),
         )
         .route("/robots.txt", get(robots))
         .route("/llms.txt", get(discovery::documentation))

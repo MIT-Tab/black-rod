@@ -1,15 +1,12 @@
 # Black Rod Rust runtime
 
-Run the Rust service from the repository root against an existing Black Rod database. For local development, `dev-up` creates and loads the isolated SQLite fixture. The Rust server uses the existing table names and reads the schema directly. It has no startup migration.
+Run the Rust service from the repository root against an existing Black Rod database. For local development, `dev-up` creates and loads the isolated SQLite fixture and starts Rust with webpack watching the frontend assets. The Rust server uses the existing table names and reads the schema directly. It has no startup migration.
 
 ```sh
 scripts=.agents/skills/black-rod-task/scripts
 "$scripts/dev-up"
-cargo build --release --locked --manifest-path rust/Cargo.toml
-"$scripts/br" bash -c '
-  export BLACK_ROD_DATABASE_URL="sqlite://$BR_STATE/dev.sqlite3?mode=rw"
-  exec rust/target/release/black-rod
-'
+"$scripts/dev-down"
+"$scripts/dev-up" --django  # Start the reference server for manual comparison.
 ```
 
 `BLACK_ROD_DATABASE_URL` accepts SQLite and PostgreSQL URLs. The default listener is `127.0.0.1:9090`. Set `BLACK_ROD_BIND` to override it or set `PORT` to bind on all interfaces. The service reads `.env` from the repository root, with the same `DOT_ENV_FILE` override as Django. Shell variables take precedence. With `ENV=production` and no explicit database URL, it uses the existing Linode PostgreSQL database on `localhost:5433` with `DATABASE_USERNAME` and `DATABASE_PASSWORD` and the existing Memcached address on `127.0.0.1:11211`. Production defaults to the existing HTTPS origin and allowed hosts. Use `BLACK_ROD_PUBLIC_ORIGIN` and `BLACK_ROD_ALLOWED_HOSTS` to override them. Production uses `SENTRY_DSN` for panic and server-error reporting, with route patterns and status codes in HTTP reports. Browser pages use the existing webpack bundles and assets. Rust's vendored framework assets live in `rust/static/vendor`, alongside the shared frontend assets served under `/static/`. Set `ENV=development` to use the Django development signing key locally. Set the same `SECRET_KEY` in both services to test another key. Set `BLACK_ROD_MEDIA_ROOT` to the existing file storage path when using Summernote attachments.

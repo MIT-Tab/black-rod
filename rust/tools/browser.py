@@ -1018,6 +1018,7 @@ def assert_motion_import(driver, django, rust, fixture):
            f'"This House would import the fixture CSV.",2/14/2026,{fixture["tournament"]},"Ethics; Finance"\n'
            'This House would import a short date.,2/14/26,,\n'
            'This House would import an older short date.,11/27/69,,\n'
+           '\n'
            'This is invalid,not-a-date,999999,\n'
            'This House would use a disposable browser fixture.,,,\n')
     xlsx = subprocess.check_output([str(ROOT / "venv/bin/python"), "-c", """
@@ -1044,6 +1045,7 @@ print(b64encode(out.getvalue()).decode())
         dates = ["2026-02-14"]
         if name.endswith(".csv"):
             dates.extend(["2026-02-14", "1969-11-27"])
+            assert [row[0] for row in actual["rows"]] == ["2", "3", "4", "6", "7"]
         assert [row[2] for row in actual["rows"][:len(dates)]] == dates
         rejected = confirm(roots[1], actual["token"] + "invalid")
         assert rejected["status"] == 400 and not rejected["redirected"], rejected

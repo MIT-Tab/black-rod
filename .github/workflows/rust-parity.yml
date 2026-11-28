@@ -114,6 +114,11 @@ jobs:
           "$scripts/br" venv/bin/python rust/tools/qualification_rebuild_parity.py
           "$scripts/br" venv/bin/python rust/tools/admin_import_concurrency.py
           "$scripts/br" venv/bin/python rust/tools/account_write_parity.py
+      - name: Verify daily write limits across Rust workers on PostgreSQL
+        env:
+          BLACK_ROD_PARITY_POSTGRES_URL: postgres://black_rod:fixture@127.0.0.1:5432/black_rod_parity
+          BLACK_ROD_PARITY_MEMCACHED_ADDR: 127.0.0.1:11211
+        run: .agents/skills/black-rod-task/scripts/br venv/bin/python rust/tools/write_quota_parity.py
       - name: Retain failing parity screenshots
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

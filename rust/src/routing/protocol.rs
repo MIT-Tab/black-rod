@@ -42,6 +42,36 @@ pub(crate) fn public_api_path(path: &str) -> bool {
         })
 }
 
+pub(crate) fn protected_api_path(path: &str) -> bool {
+    if matches!(
+        path,
+        "/api/private/forum-profiles/" | "/api/private/debater-emails/"
+    ) {
+        return true;
+    }
+    let Some(tail) = path.strip_prefix("/api/agent/v1/") else {
+        return false;
+    };
+    let mut segments = tail.split('/');
+    match (
+        segments.next(),
+        segments.next(),
+        segments.next(),
+        segments.next(),
+        segments.next(),
+    ) {
+        (Some(""), None, None, None, None)
+        | (Some("guide" | "batches"), Some(""), None, None, None) => true,
+        (Some("records"), Some(resource), Some(""), None, None) => !resource.is_empty(),
+        (Some("records"), Some(resource), Some(id), Some(""), None) => {
+            !resource.is_empty() && is_django_integer(id)
+        }
+        (Some("batches"), Some(id), Some(""), None, None)
+        | (Some("batches"), Some(id), Some("undo"), Some(""), None) => is_django_integer(id),
+        _ => false,
+    }
+}
+
 fn normalized_public_uri(uri: &Uri) -> Option<Uri> {
     let path = uri.path();
     if !path.contains('%') {

@@ -63,26 +63,60 @@ pub(crate) fn worksheet_index(data: &[u8]) -> usize {
         .unwrap_or_default()
 }
 
-fn spreadsheet(bytes: &[u8], path: &str) -> Result<Vec<Vec<String>>, String> {
+type SpreadsheetRows = Vec<(usize, Vec<String>)>;
+
+fn csv_rows(bytes: &[u8]) -> Result<SpreadsheetRows, String> {
+    let text = std::str::from_utf8(bytes).map_err(|_| "The CSV must be UTF-8 encoded.")?;
+    let bytes = text.strip_prefix('\u{feff}').unwrap_or(text).as_bytes();
+    let mut reader = csv::ReaderBuilder::new()
+        .flexible(true)
+        .has_headers(false)
+        .from_reader(bytes);
+    let mut rows = Vec::new();
+    let mut record = csv::StringRecord::new();
+    let mut row_number = 0;
+    loop {
+        let mut start = reader.position().byte() as usize;
+        if start > 0 && bytes.get(start) == Some(&b'\n') && bytes[start - 1] == b'\r' {
+            // The reader can leave the LF of the preceding CRLF for its next read.
+            start += 1;
+        }
+        let has_record = reader
+            .read_record(&mut record)
+            .map_err(|error| error.to_string())?;
+        let end = reader.position().byte() as usize;
+        let mut prefix = &bytes[start..end];
+        // The csv crate skips empty records. Count only separators before the
+        // record so line breaks inside quoted fields do not affect its number.
+        let before = row_number;
+        while let Some(rest) = prefix
+            .strip_prefix(b"\r\n")
+            .or_else(|| prefix.strip_prefix(b"\n"))
+            .or_else(|| prefix.strip_prefix(b"\r"))
+        {
+            row_number += 1;
+            prefix = rest;
+        }
+        if before == 0 && row_number > 0 {
+            rows.push((1, Vec::new()));
+        }
+        if !has_record {
+            break;
+        }
+        row_number += 1;
+        rows.push((row_number, record.iter().map(str::to_owned).collect()));
+    }
+    Ok(rows)
+}
+
+fn spreadsheet(bytes: &[u8], path: &str) -> Result<SpreadsheetRows, String> {
     let extension = path
         .rsplit('.')
         .next()
         .unwrap_or_default()
         .to_ascii_lowercase();
     let rows = match extension.as_str() {
-        "csv" => {
-            let text = std::str::from_utf8(bytes).map_err(|_| "The CSV must be UTF-8 encoded.")?;
-            csv::ReaderBuilder::new()
-                .flexible(true)
-                .has_headers(false)
-                .from_reader(text.trim_start_matches('\u{feff}').as_bytes())
-                .records()
-                .map(|row| {
-                    row.map(|record| record.iter().map(str::to_owned).collect())
-                        .map_err(|error| error.to_string())
-                })
-                .collect::<Result<Vec<_>, _>>()?
-        }
+        "csv" => csv_rows(bytes)?,
         "xlsx" => {
             let mut workbook = Xlsx::new(Cursor::new(bytes)).map_err(|error| error.to_string())?;
             let range = workbook
@@ -91,10 +125,10 @@ fn spreadsheet(bytes: &[u8], path: &str) -> Result<Vec<Vec<String>>, String> {
                 .map_err(|error| error.to_string())?;
             let mut rows = Vec::new();
             let (first_row, first_col) = range.start().unwrap_or_default();
-            for _ in 0..first_row {
-                rows.push(Vec::new());
+            if first_row > 0 {
+                rows.push((1, Vec::new()));
             }
-            for row in range.rows() {
+            for (index, row) in range.rows().enumerate() {
                 let mut cells = vec![String::new(); first_col as usize];
                 for value in row {
                     cells.push(match value {
@@ -107,7 +141,7 @@ fn spreadsheet(bytes: &[u8], path: &str) -> Result<Vec<Vec<String>>, String> {
                         _ => value.to_string(),
                     });
                 }
-                rows.push(cells);
+                rows.push((first_row as usize + index + 1, cells));
             }
             rows
         }
@@ -162,9 +196,9 @@ fn is_django_id(value: &str) -> bool {
 
 async fn validate(
     pool: &AnyPool,
-    rows: &[Vec<String>],
+    rows: &[(usize, Vec<String>)],
 ) -> Result<Result<Vec<ImportRow>, String>, ApiError> {
-    let Some(first) = rows.first() else {
+    let Some((_, first)) = rows.first() else {
         return Ok(Err("The spreadsheet is empty.".to_owned()));
     };
     let headers = first
@@ -178,7 +212,7 @@ async fn validate(
         ));
     }
     let mut validated = Vec::new();
-    for (index, fields) in rows.iter().enumerate().skip(1) {
+    for &(row_number, ref fields) in rows.iter().skip(1) {
         if headers
             .values()
             .all(|index| fields.get(*index).is_none_or(String::is_empty))
@@ -230,7 +264,7 @@ async fn validate(
             .await?
             .is_some();
         validated.push(ImportRow {
-            row_number: index + 1,
+            row_number,
             text: text.to_owned(),
             background_slide: read("background_slide").to_owned(),
             date_set,
@@ -439,4 +473,31 @@ pub(crate) async fn endpoint(State(state): State<AppState>, request: Request) ->
         eprintln!("Motion import failed: {err:?}");
         StatusCode::INTERNAL_SERVER_ERROR.into_response()
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::csv_rows;
+
+    #[test]
+    fn csv_counts_empty_records_but_not_line_breaks_inside_quotes() {
+        for newline in ["\n", "\r\n", "\r"] {
+            let input = format!(
+                "Motion{newline}{newline}\"First{newline}motion\"{newline}{newline}Last{newline}"
+            );
+            let rows = csv_rows(input.as_bytes()).unwrap();
+            assert_eq!(rows.iter().map(|(i, _)| *i).collect::<Vec<_>>(), [1, 3, 5]);
+            assert_eq!(rows[1].1[0], format!("First{newline}motion"));
+        }
+        assert!(csv_rows(b"").unwrap().is_empty());
+        assert_eq!(csv_rows(b"\r\n").unwrap(), [(1, vec![])]);
+        assert_eq!(
+            csv_rows(b"\r\nMotion\r\nExample").unwrap(),
+            [
+                (1, vec![]),
+                (2, vec!["Motion".to_owned()]),
+                (3, vec!["Example".to_owned()])
+            ]
+        );
+    }
 }

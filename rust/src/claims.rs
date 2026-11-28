@@ -190,7 +190,6 @@ pub(crate) async fn profile(State(state): State<AppState>, request: Request) -> 
     )
 }
 
-const LIMIT_TTL_SECONDS: u32 = 86_400;
 type LocalLimit = std::sync::Arc<tokio::sync::Mutex<u32>>;
 
 pub(crate) type Limits = moka::future::Cache<i64, LocalLimit>;
@@ -206,12 +205,12 @@ async fn count(state: &AppState, user: i64) -> (String, LocalLimit) {
     (key, cell)
 }
 
-async fn rate_limited(state: &AppState, user: i64) -> bool {
+async fn rate_limited(state: &AppState, user: i64) -> Result<bool, ApiError> {
     let (key, local) = count(state, user).await;
     if let Some(cache) = &state.memcached {
-        return cache.read_counter(&key).await.unwrap_or_default() >= 5;
+        return Ok(cache.quota_count(&key).await? >= 5);
     }
-    *local.lock().await >= 5
+    Ok(*local.lock().await >= 5)
 }
 
 const INVALID: &str = "Select a valid choice. That choice is not one of the available choices.";
@@ -222,7 +221,7 @@ async fn submit_claim(
     user: i64,
     school: i64,
     debater: i64,
-) -> Result<Option<&'static str>, sqlx::Error> {
+) -> Result<Option<&'static str>, ApiError> {
     let mut tx = state.pool.begin().await?;
     // Lock the requesting user and candidate profile in a stable order.
     sqlx::query("UPDATE core_user SET is_active=is_active WHERE id=$1")
@@ -265,7 +264,7 @@ async fn submit_claim(
     let (key, local) = count(state, user).await;
     let mut counter = local.clone().lock_owned().await;
     let current = if let Some(cache) = &state.memcached {
-        cache.read_counter(&key).await.unwrap_or_default()
+        cache.quota_count(&key).await?
     } else {
         *counter
     };
@@ -275,12 +274,13 @@ async fn submit_claim(
     sqlx::query("INSERT INTO core_claimdebaterrequest (requested_by_id,debater_id,status,created_at,denial_reason)
         VALUES ($1,$2,'pending',CURRENT_TIMESTAMP,'')").bind(user).bind(debater).execute(&mut *tx).await?;
     if let Some(cache) = &state.memcached {
-        let _ = cache.advance_counter(&key, LIMIT_TTL_SECONDS).await;
-    } else {
+        cache.record_quota(&key, current + 1).await?;
+    }
+    tx.commit().await?;
+    if state.memcached.is_none() {
         *counter += 1;
         state.claim_limits.insert(user, local).await;
     }
-    tx.commit().await?;
     Ok(None)
 }
 
@@ -391,8 +391,11 @@ pub(crate) async fn create(State(state): State<AppState>, request: Request) -> R
                     };
                     errors.insert(field, vec![error]);
                 }
+                Err(ApiError::QuotaUnavailable) => {
+                    return StatusCode::SERVICE_UNAVAILABLE.into_response();
+                }
                 Err(error) => {
-                    eprintln!("Claim submission failed: {error}");
+                    eprintln!("Claim submission failed: {error:?}");
                     return StatusCode::INTERNAL_SERVER_ERROR.into_response();
                 }
             }
@@ -401,7 +404,9 @@ pub(crate) async fn create(State(state): State<AppState>, request: Request) -> R
     let Ok((csrf, token)) = login::csrf_tokens(&parts.headers) else {
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     };
-    let limited = rate_limited(&state, id).await;
+    let Ok(limited) = rate_limited(&state, id).await else {
+        return StatusCode::SERVICE_UNAVAILABLE.into_response();
+    };
     render(
         &state,
         &user,

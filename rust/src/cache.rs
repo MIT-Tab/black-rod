@@ -37,11 +37,36 @@ impl Memcached {
     }
 
     pub(crate) async fn read_counter(&self, key: &str) -> Option<u32> {
-        let (flags, value) = self.read_raw(key).await?;
-        if flags != 2 {
-            return None;
+        self.read_counter_checked(key).await.ok().flatten()
+    }
+
+    pub(crate) async fn read_counter_checked(&self, key: &str) -> io::Result<Option<u32>> {
+        let Some((flags, value)) = self.read_raw_checked(key).await? else {
+            return Ok(None);
+        };
+        let count = (flags == 2)
+            .then(|| std::str::from_utf8(&value).ok()?.parse().ok())
+            .flatten()
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "Invalid cache counter"))?;
+        Ok(Some(count))
+    }
+
+    pub(crate) async fn quota_count(&self, key: &str) -> Result<u32, crate::ApiError> {
+        self.read_counter_checked(key)
+            .await
+            .map(Option::unwrap_or_default)
+            .map_err(|_| crate::ApiError::QuotaUnavailable)
+    }
+
+    // Callers hold the account's database lock until the write commits.
+    pub(crate) async fn record_quota(&self, key: &str, count: u32) -> Result<(), crate::ApiError> {
+        match self
+            .update_raw_checked(key, 2, count.to_string().as_bytes(), 86_400)
+            .await
+        {
+            Ok(true) => Ok(()),
+            _ => Err(crate::ApiError::QuotaUnavailable),
         }
-        std::str::from_utf8(&value).ok()?.parse().ok()
     }
 
     pub(crate) async fn advance_counter(&self, key: &str, seconds: u32) -> bool {
