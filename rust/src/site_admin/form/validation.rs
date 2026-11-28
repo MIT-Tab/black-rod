@@ -5,13 +5,13 @@ use std::{
     sync::LazyLock,
 };
 
-use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, SecondsFormat};
+use chrono::{DateTime, NaiveDateTime, NaiveTime, SecondsFormat};
 use serde_json::{Value as Json, json};
 use sqlx::{AnyConnection, AssertSqlSafe};
 
 use super::{
-    AdminRequest, ApiError, Errors, Field, Model, Values, Widget, error, primitive, raw,
-    related_model,
+    AdminRequest, ApiError, Errors, Field, Model, Values, Widget, checkbox_posted, error,
+    primitive, raw, related_model,
 };
 
 fn related_table(field: &Field) -> Option<&'static str> {
@@ -58,7 +58,7 @@ fn datetime(values: &Values, name: &str) -> Option<Json> {
     let date = raw(values, &format!("{name}_0"));
     let time = raw(values, &format!("{name}_1"));
     if !date.is_empty() || !time.is_empty() {
-        let date = NaiveDate::parse_from_str(date, "%Y-%m-%d").ok()?;
+        let date = crate::django_date::form(date)?;
         let time = NaiveTime::parse_from_str(time, "%H:%M:%S")
             .or_else(|_| NaiveTime::parse_from_str(time, "%H:%M"))
             .ok()?;
@@ -80,6 +80,35 @@ fn datetime(values: &Values, name: &str) -> Option<Json> {
                 .ok()
                 .map(|datetime| json!(datetime.and_utc().to_rfc3339()))
         })
+}
+
+fn integer_range(kind: &str, sqlite: bool) -> (i64, i64) {
+    let (minimum, maximum) = match (kind, sqlite) {
+        ("SmallIntegerField" | "PositiveSmallIntegerField", false) => {
+            (i64::from(i16::MIN), i64::from(i16::MAX))
+        }
+        ("IntegerField" | "PositiveIntegerField", false) => {
+            (i64::from(i32::MIN), i64::from(i32::MAX))
+        }
+        _ => (i64::MIN, i64::MAX),
+    };
+    (
+        if kind.starts_with("Positive") {
+            0
+        } else {
+            minimum
+        },
+        maximum,
+    )
+}
+
+fn integer_value(raw: &str) -> Option<i64> {
+    let raw = raw.trim();
+    let value = raw
+        .rsplit_once('.')
+        .filter(|(_, fraction)| fraction.bytes().all(|digit| digit == b'0'))
+        .map_or(raw, |(whole, _)| whole);
+    value.parse().ok()
 }
 
 fn normalize_url<'a>(value: &'a str, scheme: &str) -> Cow<'a, str> {
@@ -226,7 +255,7 @@ pub(super) async fn cleaned(
         );
     }
     let value = match kind {
-        "BooleanField" => Some(json!(values.contains_key(name))),
+        "BooleanField" => Some(json!(checkbox_posted(values, name))),
         "IntegerField"
         | "SmallIntegerField"
         | "BigIntegerField"
@@ -235,10 +264,28 @@ pub(super) async fn cleaned(
         | "PositiveBigIntegerField"
             if !raw.is_empty() =>
         {
-            raw.parse::<i64>()
-                .ok()
-                .filter(|value| !field.kind.starts_with("Positive") || *value >= 0)
-                .map(|value| json!(value))
+            if let Some(value) = integer_value(raw) {
+                let sqlite = admin.state.pool.connect_options().database_url.scheme() == "sqlite";
+                let (minimum, maximum) = integer_range(kind, sqlite);
+                let bounds = if value < minimum {
+                    Some(("greater", minimum))
+                } else if value > maximum {
+                    Some(("less", maximum))
+                } else {
+                    None
+                };
+                if let Some((direction, bound)) = bounds {
+                    error(
+                        errors,
+                        name,
+                        &format!("Ensure this value is {direction} than or equal to {bound}."),
+                    );
+                    return Ok(None);
+                }
+                Some(json!(value))
+            } else {
+                None
+            }
         }
         "DecimalField" if !raw.trim().is_empty() => {
             match crate::decimal::validate(raw, field.precision, field.scale) {
@@ -255,9 +302,9 @@ pub(super) async fn cleaned(
             .filter(|value| value.is_finite())
             .map(|_| json!(raw)),
         "DateTimeField" => date_value,
-        "DateField" if !raw.is_empty() => NaiveDate::parse_from_str(raw, "%Y-%m-%d")
-            .ok()
-            .map(|date| json!(date.to_string())),
+        "DateField" if !raw.is_empty() => {
+            crate::django_date::form(raw).map(|date| json!(date.to_string()))
+        }
         "JSONField" if !raw.is_empty() => serde_json::from_str(raw).ok(),
         "EmailField" if !raw.is_empty() => {
             crate::account::contact_email_valid(raw).then(|| json!(raw))

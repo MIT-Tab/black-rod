@@ -14,10 +14,12 @@ use tokio::sync::Mutex;
 use crate::AppState;
 
 pub(crate) type Limits = moka::future::Cache<String, Arc<Mutex<Vec<f64>>>>;
+const MAX_ATTEMPT_WINDOW: Duration = Duration::from_secs(300);
 
 pub(crate) fn cache() -> Limits {
     Limits::builder()
-        .time_to_live(Duration::from_secs(300))
+        // Recent attempts stay in the cache across the bucket's creation window.
+        .time_to_idle(MAX_ATTEMPT_WINDOW)
         .max_capacity(8192)
         .build()
 }
@@ -138,6 +140,13 @@ mod tests {
     use super::*;
     use axum::body::Body;
     use sqlx::any::{AnyPoolOptions, install_default_drivers};
+
+    #[tokio::test]
+    async fn fallback_buckets_expire_after_inactivity() {
+        let limits = cache();
+        assert_eq!(limits.policy().time_to_idle(), Some(MAX_ATTEMPT_WINDOW));
+        assert_eq!(limits.policy().time_to_live(), None);
+    }
 
     #[tokio::test]
     async fn client_address_requires_a_matching_immediate_proxy() {

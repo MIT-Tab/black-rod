@@ -5,7 +5,7 @@ pub(super) mod validation;
 use std::collections::{BTreeMap, BTreeSet};
 
 use axum::{
-    body::{Bytes, to_bytes},
+    body::Bytes,
     extract::{FromRequest, Multipart, Request},
     http::{Method, StatusCode, header},
     response::{IntoResponse, Response},
@@ -360,7 +360,7 @@ impl Bound<'_> {
         } else {
             self.submitted
                 .map_or(value.as_bool().unwrap_or_default(), |values| {
-                    values.contains_key(name)
+                    checkbox_posted(values, name)
                 })
         };
         let widget_help = widget
@@ -1172,15 +1172,14 @@ pub(super) async fn page(
             Err(response) => return Ok(*response),
         }
     } else {
-        let Ok(data) = to_bytes(request.into_body(), 2_621_440).await else {
-            return Ok(StatusCode::PAYLOAD_TOO_LARGE.into_response());
+        let (parts, body) = request.into_parts();
+        let fields = match login::form_fields(&parts.headers, body, 2_621_440).await {
+            Ok(fields) => fields,
+            Err(status) => return Ok(status.into_response()),
         };
         let mut parsed = Values::new();
-        for (name, value) in url::form_urlencoded::parse(&data) {
-            parsed
-                .entry(name.into_owned())
-                .or_default()
-                .push(value.into_owned());
+        for (name, value) in fields {
+            parsed.entry(name).or_default().push(value);
         }
         (parsed, None)
     };

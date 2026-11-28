@@ -2433,6 +2433,14 @@ print(json.dumps(pairs))
         save_edit(root, route)
         assert driver.find_element("id", "id_autoqual_bar").get_attribute("value") == "2"
 
+        date = driver.find_element("id", "id_date")
+        date.clear()
+        date.send_keys("11/27/25")
+        save_edit(root, route)
+        db = Path(os.environ["BR_STATE"]) / "dev.sqlite3"
+        with sqlite3.connect(f"{db.as_uri()}?mode=ro", uri=True) as connection:
+            assert connection.execute("SELECT date FROM core_tournament WHERE id=?", (tournament,)).fetchone() == ("2025-11-27",)
+
         route = f"/admin/core/debater/{debater}/change/"
         driver.get(root + route)
         first = driver.find_element("id", "id_first_name")
@@ -2708,7 +2716,7 @@ def assert_admin_value_constraints(driver, django, rust):
 from django import setup
 setup()
 from django.conf import settings
-from core.models import Debater, QualPoints, Round, RoundStats
+from core.models import Debater, QualPoints, Round, RoundStats, User
 import json
 
 allowed = Debater.objects.create(first_name="Eligible fixture", last_name="Debater")
@@ -2716,12 +2724,14 @@ unavailable = Debater.all_objects.create(first_name="Unavailable fixture", last_
 record = QualPoints.objects.create(debater=allowed, points=2, season=str(settings.CURRENT_SEASON))
 prelim = Round.objects.filter(stage=Round.Stage.PRELIM).first()
 score = RoundStats.objects.create(round=prelim, debater=allowed, speaks="27.1")
-print(json.dumps([record.pk, allowed.pk, unavailable.pk, score.pk, str(settings.CURRENT_SEASON)]))
+account = User.objects.create_user(username="admin-multipart-fixture", is_active=True, is_staff=True, is_superuser=True)
+print(json.dumps([record.pk, allowed.pk, unavailable.pk, score.pk, str(settings.CURRENT_SEASON), account.pk]))
 """
     out = subprocess.check_output([str(ROOT / "venv/bin/python"), "-c", code], text=True)
-    record, eligible, unavailable, score, season = json.loads(out.splitlines()[-1])
+    record, eligible, unavailable, score, season, account = json.loads(out.splitlines()[-1])
     session = django_session()
     profile = f"/admin/core/debater/{eligible}/change/"
+    user = f"/admin/core/user/{account}/change/"
     quals = f"/admin/core/qualpoints/{record}/change/"
     scores = f"/admin/core/roundstats/{score}/change/"
     credentials = "/admin/core/agentcredential/add/"
@@ -2734,19 +2744,20 @@ print(json.dumps([record.pk, allowed.pk, unavailable.pk, score.pk, str(settings.
     def qualifier_state():
         return read("SELECT debater_id, points, season FROM core_qualpoints WHERE id=?", record)
 
-    def submit(route, fields):
+    def submit(route, fields, multipart=False):
         driver.get(root + route)
         return driver.execute_async_script("""
-            const [fields, done] = arguments;
-            const body = new URLSearchParams(new FormData(document.querySelector('#content-main form')));
-            for (const [name, value] of Object.entries(fields)) body.set(name, value);
-            body.set('_continue', 'Save and continue editing');
+            const [fields, multipart, done] = arguments;
+            const fieldsToSend = new FormData(document.querySelector('#content-main form'));
+            for (const [name, value] of Object.entries(fields)) fieldsToSend.set(name, value);
+            fieldsToSend.set('_continue', 'Save and continue editing');
+            const body = multipart ? fieldsToSend : new URLSearchParams(fieldsToSend);
             fetch(location.href, {method:'POST', body}).then(async response => {
                 const page = new DOMParser().parseFromString(await response.text(), 'text/html');
                 done({status:response.status, redirect:response.redirected,
                     errors:[...page.querySelectorAll('.errorlist')].map(error => error.textContent)});
             }, () => done({status:0}));
-        """, fields)
+        """, fields, multipart)
 
     def rejected(route, fields, message):
         result = submit(route, fields)
@@ -2761,6 +2772,11 @@ print(json.dumps([record.pk, allowed.pk, unavailable.pk, score.pk, str(settings.
         driver.get(root + "/robots.txt")
         driver.delete_all_cookies()
         driver.add_cookie({"name": "sessionid", "value": session})
+        with sqlite3.connect(db) as connection:
+            connection.execute("UPDATE core_user SET is_active=1,is_staff=1,is_superuser=1 WHERE id=?", (account,))
+        changed = submit(user, {"is_active": "false", "is_staff": "False", "is_superuser": "false"}, multipart=True)
+        assert changed["status"] == 200 and changed["redirect"], (server.name, changed)
+        assert read("SELECT is_active,is_staff,is_superuser FROM core_user WHERE id=?", account) == (0, 0, 0)
         rejected(profile, {"email": "invalid address"}, "Enter a valid email address.")
         rejected(profile, {"paradigm": "not a URL"}, "Enter a valid URL.")
         rejected(profile, {"paradigm": "https://singlelabel"}, "Enter a valid URL.")

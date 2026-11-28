@@ -1,4 +1,4 @@
-"""Verify PostgreSQL admin imports leave IDs safe for ordinary concurrent writes."""
+"""Verify PostgreSQL admin form validation and safe ID allocation during imports."""
 
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
@@ -190,6 +190,38 @@ def validate_import_cells(django, rust, session, tournament, award, control):
                 assert str(query(control, "SELECT date FROM core_tournament WHERE id=%s", tournament)) == "2026-10-05"
 
 
+def validate_admin_integer_fields(django, rust, session, tournament, db):
+    school = query(db, "SELECT host_id FROM core_tournament WHERE id=%s", tournament)
+    qual_type = query(db, "SELECT qual_type FROM core_tournament WHERE id=%s", tournament)
+    for server in (django, rust):
+        url = f"http://{HOST}:{server.port}/admin/core/tournament/{tournament}/change/"
+        previous = query(db, "SELECT num_teams FROM core_tournament WHERE id=%s", tournament)
+        with requests.Session() as client:
+            client.cookies.set("sessionid", session)
+            form = client.get(url, timeout=30)
+            assert form.status_code == 200
+            token = BeautifulSoup(form.content, "html.parser").select_one('input[name=csrfmiddlewaretoken]')["value"]
+            fields = {
+                "csrfmiddlewaretoken": token, "host": school, "name": "Numeric admin fixture",
+                "manual_name": "Numeric admin fixture", "short_name": "Numeric admin fixture",
+                "season": "2026", "date": "11/27/26", "qual_type": qual_type, "name_suffix": "0",
+                "num_novice_teams": 0, "num_debaters": 0, "num_novice_debaters": 0,
+                "num_rounds": 6, "autoqual_bar": 0, "_continue": "Save",
+            }
+            for value, message in (
+                ("2147483648", "Ensure this value is less than or equal to 2147483647."),
+                ("-2147483649", "Ensure this value is greater than or equal to -2147483648."),
+            ):
+                rejected = client.post(url, data={**fields, "num_teams": value}, timeout=30, allow_redirects=False)
+                assert rejected.status_code == 200 and message in rejected.text, (server.name, value, rejected.status_code)
+                assert query(db, "SELECT num_teams FROM core_tournament WHERE id=%s", tournament) == previous
+            saved = client.post(url, data={**fields, "num_teams": "48.00"}, timeout=30, allow_redirects=False)
+            assert saved.status_code == 302, (server.name, saved.status_code)
+            assert query(db, "SELECT num_teams FROM core_tournament WHERE id=%s", tournament) == 48
+            assert str(query(db, "SELECT date FROM core_tournament WHERE id=%s", tournament)) == "2026-11-27"
+    print("PostgreSQL admin forms validate integer bounds and normalize valid inputs")
+
+
 def main():
     postgres = os.environ["BLACK_ROD_PARITY_POSTGRES_URL"]
     seed = Path(os.environ["BR_STATE"]) / "dev.sqlite3"
@@ -208,6 +240,7 @@ def main():
                 client.cookies.set("sessionid", session)
                 control.autocommit = True
                 validate_import_cells(django, rust, session, tournament, award, control)
+                validate_admin_integer_fields(django, rust, session, tournament, control)
                 exercise(client, f"http://{HOST}:{rust.port}", control, writer)
     print("PostgreSQL admin imports validate complete dates and foreign keys, and advance IDs safely")
 
