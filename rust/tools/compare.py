@@ -500,6 +500,11 @@ def main():
         with servers(database) as (django, rust):
             cases, school = fixture_cases(django)
             compare(django, rust, cases)
+            empty = Case("/core/schools/?id=900000000&per_page=1&page=1", accept="text/html")
+            for server in (django, rust):
+                status, _, _ = request(server, empty)
+                assert status == 200, (server.name, empty.path, status)
+            print("An empty directory with one record per page returns HTTP 200 on both runtimes")
         if not args.benchmark:
             return
         endpoint_cases = [

@@ -26,7 +26,7 @@ from reference import application
 
 from datetime import date
 from django.contrib.sessions.backends.db import SessionStore
-from core.models import School, Team, TeamResult, Tournament, User
+from core.models import Debater, School, Team, TeamResult, Tournament, User
 
 user = User.objects.create_superuser(username="admin_import_fixture")
 session = SessionStore()
@@ -38,7 +38,13 @@ school = School.objects.create(name="Admin import relationship fixture")
 tournament = Tournament.objects.create(host=school, season="2026", date=date(2026, 11, 13))
 team = Team.objects.create(name="Admin import fixture team")
 award = TeamResult.objects.create(tournament=tournament, team=team, place=1)
-print(json.dumps([session.session_key, tournament.pk, award.pk]))
+deletions = []
+for side in ("Django", "Rust"):
+    source = School.objects.create(name=f"{side} concurrent deletion source")
+    destination = School.objects.create(name=f"{side} concurrent deletion destination")
+    debater = Debater.objects.create(first_name="Moving", last_name="Fixture", school=source)
+    deletions.append([source.pk, destination.pk, debater.pk])
+print(json.dumps([session.session_key, tournament.pk, award.pk, deletions]))
 """
 IMPORT = "/admin/core/school/import/"
 AUTO_NAME = "Automatic sequence fixture"
@@ -71,7 +77,7 @@ def wait_for_lock(connection, sql, *args):
         if query(connection, sql, *args):
             return
         sleep(0.03)
-    raise AssertionError("The import did not reach the expected PostgreSQL lock")
+    raise AssertionError("The request did not reach the expected PostgreSQL lock")
 
 
 def preview(client, root, name, school_id=None):
@@ -222,6 +228,29 @@ def validate_admin_integer_fields(django, rust, session, tournament, db):
     print("PostgreSQL admin forms validate integer bounds and normalize valid inputs")
 
 
+def validate_concurrent_deletion(servers, session, deletions, control, writer):
+    for server, (source, destination, debater) in zip(servers, deletions):
+        path = f"http://{HOST}:{server.port}/core/schools/{source}/delete"
+        with requests.Session() as client, ThreadPoolExecutor(max_workers=1) as pool:
+            client.cookies.set("sessionid", session)
+            form = client.get(path, timeout=15)
+            form.raise_for_status()
+            token = BeautifulSoup(form.content, "html.parser").select_one("input[name=csrfmiddlewaretoken]")["value"]
+            query(writer, "UPDATE core_debater SET school_id=%s WHERE id=%s", destination, debater)
+            deleting = pool.submit(client.post, path, data={"csrfmiddlewaretoken": token},
+                                   allow_redirects=False, timeout=25)
+            try:
+                wait_for_lock(control, """
+                    SELECT EXISTS (SELECT 1 FROM pg_stat_activity
+                    WHERE datname=current_database() AND wait_event_type='Lock' AND query ILIKE %s)
+                """, "%core_debater%")
+            finally:
+                writer.commit()
+            assert deleting.result().status_code == 302, server.name
+            assert query(control, "SELECT school_id FROM core_debater WHERE id=%s", debater) == destination, server.name
+            assert not query(control, "SELECT EXISTS (SELECT 1 FROM core_school WHERE id=%s)", source), server.name
+
+
 def main():
     postgres = os.environ["BLACK_ROD_PARITY_POSTGRES_URL"]
     seed = Path(os.environ["BR_STATE"]) / "dev.sqlite3"
@@ -232,7 +261,7 @@ def main():
             env = {**os.environ, "SECRET_KEY": "disposable-local-parity-key",
                    "PYTHONPATH": f"{Path(__file__).resolve().parent}{os.pathsep}{os.environ['PYTHONPATH']}"}
             data = subprocess.check_output([str(ROOT / "venv/bin/python"), "-c", SEED], env=env, text=True)
-            session, tournament, award = json.loads(data.splitlines()[-1])
+            session, tournament, award, deletions = json.loads(data.splitlines()[-1])
             clone = os.environ["BLACK_ROD_PARITY_POSTGRES_URL"]
             with servers(database) as (django, rust), requests.Session() as client, closing(
                 psycopg2.connect(clone)
@@ -242,7 +271,9 @@ def main():
                 validate_import_cells(django, rust, session, tournament, award, control)
                 validate_admin_integer_fields(django, rust, session, tournament, control)
                 exercise(client, f"http://{HOST}:{rust.port}", control, writer)
+                validate_concurrent_deletion((django, rust), session, deletions, control, writer)
     print("PostgreSQL admin imports validate complete dates and foreign keys, and advance IDs safely")
+    print("School deletion preserves a concurrently updated debater affiliation")
 
 
 if __name__ == "__main__":

@@ -1204,7 +1204,7 @@ pub(crate) async fn page(
         .ok()
         .filter(|n| *n > 0)
         .unwrap_or(25);
-    let total = count.saturating_sub(1) / per_page + 1;
+    let total = (count.max(1) - 1) / per_page + 1;
     let page = param("page")
         .parse::<i64>()
         .ok()

@@ -73,8 +73,10 @@ async fn children(
     conn: &mut AnyConnection,
     edge: &Relation,
     ids: &[i64],
+    preview: bool,
 ) -> Result<Vec<(i64, i64)>, sqlx::Error> {
     let mut selected = Vec::new();
+    let lock = !preview && edge.rule != Rule::Protect && conn.backend_name() == "PostgreSQL";
     for chunk in ids.chunks(200) {
         let table = edge.table;
         let field = edge.foreign_key;
@@ -82,7 +84,11 @@ async fn children(
         let content = edge.generic.map_or_else(String::new, |(column, app, model)| format!(
             " AND {column}=(SELECT id FROM django_content_type WHERE app_label='{app}' AND model='{model}')"
         ));
-        let order = if edge.table == "taggit_taggeditem" && edge.generic.is_some() {
+        let order = if lock {
+            // Recheck the relationship after waiting on a concurrent child update.
+            // Keep the child stable until the delete and any audit snapshots finish.
+            " ORDER BY id FOR UPDATE".to_owned()
+        } else if edge.table == "taggit_taggeditem" && edge.generic.is_some() {
             " ORDER BY object_id,tag_id".to_owned()
         } else if edge.order == "-" {
             String::new()
@@ -220,7 +226,7 @@ async fn collect_edges(
             // Django stops before visiting generic relations on a protected model.
             break;
         }
-        let rows = children(conn, edge, parents).await?;
+        let rows = children(conn, edge, parents, preview).await?;
         if rows.is_empty() {
             continue;
         }
