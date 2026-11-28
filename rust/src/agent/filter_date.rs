@@ -1,8 +1,6 @@
 use std::sync::LazyLock;
 
-use chrono::{
-    DateTime, Datelike, NaiveDate, NaiveDateTime, NaiveTime, SecondsFormat, TimeDelta, Utc,
-};
+use chrono::{Datelike, NaiveDate, NaiveDateTime, NaiveTime, TimeDelta, Timelike};
 use regex::Regex;
 
 static DATE: LazyLock<Regex> =
@@ -83,11 +81,11 @@ fn offset(raw: &str) -> Option<TimeDelta> {
     }))
 }
 
-fn parse_datetime(raw: &str) -> Result<DateTime<Utc>, String> {
+fn parse_datetime(raw: &str) -> Result<(NaiveDateTime, TimeDelta), String> {
     let trimmed = raw.strip_suffix('\n').unwrap_or(raw);
     if DATE.is_match(trimmed) {
         return calendar_date(trimmed)
-            .map(|date| date.and_time(NaiveTime::MIN).and_utc())
+            .map(|date| (date.and_time(NaiveTime::MIN), TimeDelta::zero()))
             .ok_or_else(|| invalid_date(raw));
     }
     let Some(parts) = ISO_DATETIME
@@ -108,11 +106,12 @@ fn parse_datetime(raw: &str) -> Result<DateTime<Utc>, String> {
             part(4).parse().ok()?,
             micros(part(5))?,
         )?;
-        let local = NaiveDateTime::new(date, time);
-        match parts.get(6) {
-            None => Some(local.and_utc()),
-            Some(value) => Some(local.checked_sub_signed(offset(value.as_str())?)?.and_utc()),
-        }
+        let offset = if let Some(value) = parts.get(6) {
+            offset(value.as_str())?
+        } else {
+            TimeDelta::zero()
+        };
+        Some((NaiveDateTime::new(date, time), offset))
     })();
     parsed.ok_or_else(|| format!(
         "['“{raw}” value has the correct format (YYYY-MM-DD HH:MM[:ss[.uuuuuu]][TZ]) but it is an invalid date/time.']"
@@ -120,21 +119,32 @@ fn parse_datetime(raw: &str) -> Result<DateTime<Utc>, String> {
 }
 
 pub(super) fn datetime(raw: &str, sqlite: bool) -> Result<String, String> {
-    let instant = parse_datetime(raw)?;
-    let fractional = instant.timestamp_subsec_micros() != 0;
+    let (local, offset) = parse_datetime(raw)?;
     if sqlite {
-        let format = if fractional {
+        let instant = local - offset;
+        let format = if instant.nanosecond() != 0 {
             "%Y-%m-%d %H:%M:%S%.6f"
         } else {
             "%Y-%m-%d %H:%M:%S"
         };
         Ok(instant.format(format).to_string())
     } else {
-        let seconds = if fractional {
-            SecondsFormat::Micros
-        } else {
-            SecondsFormat::Secs
-        };
-        Ok(instant.to_rfc3339_opts(seconds, true))
+        // Preserve the supplied offset for PostgreSQL's own timestamp validation.
+        let sign = if offset < TimeDelta::zero() { '-' } else { '+' };
+        let total = offset.num_seconds().abs();
+        let micros = offset.subsec_micros().abs();
+        let (hour, minute, second) = (total / 3600, total / 60 % 60, total % 60);
+        let mut encoded = format!(
+            "{}{sign}{hour:02}:{minute:02}",
+            local.format("%Y-%m-%d %H:%M:%S%.6f")
+        );
+        use std::fmt::Write;
+        if second != 0 || micros != 0 {
+            write!(encoded, ":{second:02}").expect("writing to String");
+        }
+        if micros != 0 {
+            write!(encoded, ".{micros:06}").expect("writing to String");
+        }
+        Ok(encoded)
     }
 }
