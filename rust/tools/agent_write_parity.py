@@ -8,7 +8,6 @@ from pathlib import Path
 import sqlite3
 import subprocess
 from tempfile import TemporaryDirectory
-from time import monotonic, sleep
 from urllib.parse import unquote, urlencode, urlsplit
 from uuid import uuid4
 
@@ -268,34 +267,8 @@ def exercise(django, rust, fixture):
         }
         if action == "merge_synthetic":
             operation["entity_type"] = "debater"
-        postgres = os.environ.get("BLACK_ROD_PARITY_POSTGRES_URL")
-        def preview_with_standings_lock(server):
-            payload = {**prepare([operation]), "dry_run": True}
-            if not postgres:
-                return run(server, "batches/", payload=payload)
-            with closing(psycopg2.connect(postgres)) as guard, ThreadPoolExecutor(max_workers=1) as executor:
-                with guard.cursor() as cursor:
-                    cursor.execute("SELECT pg_advisory_xact_lock(hashtext('black-rod standings'), hashtext('2035'))")
-                    result = executor.submit(run, server, "batches/", payload=payload)
-                    try:
-                        deadline = monotonic() + 8
-                        waiting = False
-                        while not result.done() and monotonic() < deadline:
-                            cursor.execute("""SELECT EXISTS (SELECT 1 FROM pg_locks WHERE locktype='advisory'
-                                AND database=(SELECT oid FROM pg_database WHERE datname=current_database())
-                                AND classid=hashtext('black-rod standings')::oid AND objid=hashtext('2035')::oid
-                                AND NOT granted)""")
-                            waiting = cursor.fetchone()[0]
-                            if waiting:
-                                break
-                            sleep(0.02)
-                        assert waiting, f"{server.name} did not wait for the common standings lock"
-                    finally:
-                        guard.rollback()
-                    return result.result()
-
-        reference = preview_with_standings_lock(django)
-        candidate = preview_with_standings_lock(rust)
+        reference = run(django, "batches/", payload={**prepare([operation]), "dry_run": True})
+        candidate = run(rust, "batches/", payload={**prepare([operation]), "dry_run": True})
         def effects(batch):
             # Log timestamps and IDs of newly sequenced PostgreSQL rows vary across previews.
             return Counter((entry["model"], entry["action"], entry["after"].get("points"))

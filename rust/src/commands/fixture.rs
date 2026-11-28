@@ -161,35 +161,6 @@ fn sanitize(
         "core.generatedcode" => {
             fields.insert("code".to_owned(), json!(format!("{id:012X}")));
         }
-        "core.resource" if fields["viewing_permission"] == 1 => {
-            fields.insert(
-                "title".to_owned(),
-                json!(format!("Restricted resource {id}")),
-            );
-            fields.insert(
-                "content_link".to_owned(),
-                json!(format!("https://example.invalid/resources/{id}")),
-            );
-            fields.insert("description".to_owned(), json!(""));
-            fields.insert("usage_permissions".to_owned(), json!(""));
-        }
-        "core.schedulerworkspace" => {
-            for key in [
-                "schools_csv",
-                "dates_csv",
-                "schools_filename",
-                "dates_filename",
-            ] {
-                fields.insert(key.to_owned(), json!(""));
-            }
-            fields.insert("settings".to_owned(), json!({}));
-        }
-        "core.schedulingrun" => {
-            fields.insert("output_text".to_owned(), json!(""));
-            fields.insert("error_text".to_owned(), json!(""));
-            fields.insert("settings_snapshot".to_owned(), json!({}));
-            fields.insert("result".to_owned(), json!({}));
-        }
         "core.agentcredential" => {
             fields.insert("token_hash".to_owned(), json!(format!("{id:064x}")));
             fields.insert("revoked_at".to_owned(), json!("2000-01-01T00:00:00Z"));

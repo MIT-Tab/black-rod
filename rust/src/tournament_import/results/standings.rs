@@ -48,7 +48,7 @@ fn year(season: &str) -> Option<i64> {
     season.split('-').next()?.parse().ok()
 }
 
-pub(crate) async fn lock_season(conn: &mut AnyConnection, season: &str) -> Result<(), ApiError> {
+pub(super) async fn lock_season(conn: &mut AnyConnection, season: &str) -> Result<(), ApiError> {
     if conn.backend_name() == "PostgreSQL" {
         // Match Django's standings_write_lock so a staged cutover can share the database.
         sqlx::query("SELECT pg_advisory_xact_lock(hashtext('black-rod standings'), hashtext($1))")
