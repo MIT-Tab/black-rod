@@ -235,6 +235,8 @@ async fn page(state: &AppState, headers: &HeaderMap, https: bool, page: LoginPag
     response
 }
 
+const MAX_FORM_FIELDS: usize = 10_240;
+
 pub(crate) async fn form_fields(
     headers: &HeaderMap,
     body: Body,
@@ -262,7 +264,12 @@ pub(crate) async fn form_fields(
         let mut fields = Vec::new();
         while let Some(field) = parts.next_field().await.map_err(|error| error.status())? {
             if field.file_name().is_none() {
-                let name = field.name().unwrap_or_default().to_owned();
+                if fields.len() == MAX_FORM_FIELDS {
+                    return Err(StatusCode::BAD_REQUEST);
+                }
+                let Some(name) = field.name().map(str::to_owned) else {
+                    continue;
+                };
                 let text = field.text().await.map_err(|error| error.status())?;
                 fields.push((name, text));
             }
@@ -275,6 +282,14 @@ pub(crate) async fn form_fields(
     let body = to_bytes(body, limit)
         .await
         .map_err(|_| StatusCode::PAYLOAD_TOO_LARGE)?;
+    if body
+        .iter()
+        .filter(|byte| **byte == b'&')
+        .nth(MAX_FORM_FIELDS - 1)
+        .is_some()
+    {
+        return Err(StatusCode::BAD_REQUEST);
+    }
     Ok(url::form_urlencoded::parse(&body).into_owned().collect())
 }
 
@@ -643,6 +658,34 @@ mod tests {
         assert_eq!(token.len(), 64);
         assert_eq!(unmask(&token).as_deref(), Some(secret));
         assert!(unmask(&format!("{token}!")).is_none());
+    }
+
+    #[tokio::test]
+    async fn form_fields_apply_djangos_field_count_to_both_encodings() {
+        for (multipart, content_type) in [
+            (false, "application/x-www-form-urlencoded"),
+            (true, "multipart/form-data; boundary=parity-form"),
+        ] {
+            let mut headers = HeaderMap::new();
+            headers.insert(header::CONTENT_TYPE, HeaderValue::from_static(content_type));
+            for count in [MAX_FORM_FIELDS, MAX_FORM_FIELDS + 1] {
+                let text = if multipart {
+                    let part = "--parity-form\r\nContent-Disposition: form-data; name=field\r\n\r\nvalue\r\n";
+                    part.repeat(count) + "--parity-form--\r\n"
+                } else {
+                    "field=value&"
+                        .repeat(count)
+                        .trim_end_matches('&')
+                        .to_owned()
+                };
+                let result = form_fields(&headers, Body::from(text), 1_048_576).await;
+                if count == MAX_FORM_FIELDS {
+                    assert_eq!(result.unwrap().len(), count);
+                } else {
+                    assert_eq!(result, Err(StatusCode::BAD_REQUEST));
+                }
+            }
+        }
     }
 
     #[test]

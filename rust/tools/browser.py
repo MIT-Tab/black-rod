@@ -1561,6 +1561,14 @@ def assert_scheduling(driver, django, rust, fixture):
     expected, actual = [call(server, "save-browser-run/", "POST", run) for server in root]
     assert expected == actual and actual[0] == 409, (expected, actual)
     run["workspace_version"] = workspace["version"]
+    rejected = [400, {"success": False, "error": "Unsupported scheduling run status."}]
+    db = Path(os.environ["BR_STATE"]) / "dev.sqlite3"
+    with sqlite3.connect(f"{db.as_uri()}?mode=ro", uri=True) as connection:
+        prior = connection.execute("SELECT COUNT(*) FROM core_schedulingrun").fetchone()
+        for invalid in (1, True, "unknown"):
+            for server in root:
+                assert call(server, "save-browser-run/", "POST", {**run, "status": invalid}) == rejected
+        assert connection.execute("SELECT COUNT(*) FROM core_schedulingrun").fetchone() == prior
     run["output_text"] = "Fixture scheduling result"
     run["result"] = {"best_penalty": 100, "best_seed": 7}
     status, saved = call(root[1], "save-browser-run/", "POST", run)

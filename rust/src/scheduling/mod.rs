@@ -252,7 +252,7 @@ fn fallback<'a>(input: &'a Value, default: &'a Value) -> &'a Value {
     if input.is_null()
         || input == false
         || input.as_str() == Some("")
-        || input.as_i64() == Some(0)
+        || input.as_f64() == Some(0.0)
         || input.as_object().is_some_and(|obj| obj.is_empty())
         || input.as_array().is_some_and(|arr| arr.is_empty())
     {
@@ -336,16 +336,14 @@ pub(crate) async fn save_run(State(state): State<AppState>, request: Request) ->
     if payload["workspace_version"].as_i64() != Some(workspace.version) {
         return error(StatusCode::CONFLICT, conflict);
     }
-    let status = payload["status"]
-        .as_str()
-        .filter(|value| !value.is_empty())
-        .unwrap_or("completed");
-    if !matches!(status, "completed" | "failed") {
+    let completed = json!("completed");
+    let Some(status @ ("completed" | "failed")) = fallback(&payload["status"], &completed).as_str()
+    else {
         return error(
             StatusCode::BAD_REQUEST,
             "Unsupported scheduling run status.",
         );
-    }
+    };
     match register_run(
         &state.pool,
         user.id.unwrap_or_default(),

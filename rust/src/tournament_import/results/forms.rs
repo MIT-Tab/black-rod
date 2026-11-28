@@ -166,15 +166,24 @@ pub(super) fn submitted(values: &FormValues, reviewing: bool) -> Vec<Panel> {
                 return panel;
             };
             panel.initial_count = initial;
-            if total > 1150 {
+            let maximum = if matches!(tab.kind, "school" | "debater") {
+                500
+            } else {
+                150
+            };
+            let absolute_maximum = maximum + 1000;
+            if total > absolute_maximum {
                 panel
                     .errors
-                    .push("Please submit at most 150 forms.".to_owned());
+                    .push(format!("Please submit at most {maximum} forms."));
             }
-            for index in 0..total.min(1150) {
+            for index in 0..total.min(absolute_maximum) {
                 let field = |name: &str| input(&format!("{index}-{name}"));
-                let check =
-                    |name| field(name).is_some_and(|value| !value.eq_ignore_ascii_case("false"));
+                let check = |name| {
+                    field(name).is_some_and(|value| {
+                        !value.is_empty() && !value.eq_ignore_ascii_case("false")
+                    })
+                };
                 let mut row = ResultRow {
                     order: index as i64 + 1,
                     scoring: check("counts_for_points"),
@@ -368,4 +377,25 @@ pub(super) async fn labels(
         }
     }
     Ok(people)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn review_panel_caps_follow_the_matching_django_formsets() {
+        let mut values = FormValues::new();
+        for (tab, total) in [(SCHOOL, 1300), (DEBATER, 1501), (TABS[0], 1151)] {
+            values.insert(format!("{}-TOTAL_FORMS", tab.key), total.to_string());
+            values.insert(format!("{}-INITIAL_FORMS", tab.key), "0".to_owned());
+        }
+        let panels = submitted(&values, true);
+        assert!(panels[0].valid());
+        assert_eq!(panels[0].rows.len(), 1300);
+        assert_eq!(panels[1].rows.len(), 1500);
+        assert_eq!(panels[1].errors, ["Please submit at most 500 forms."]);
+        assert_eq!(panels[2].rows.len(), 1150);
+        assert_eq!(panels[2].errors, ["Please submit at most 150 forms."]);
+    }
 }
