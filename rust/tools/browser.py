@@ -421,6 +421,31 @@ def assert_search_reindex(driver, rust):
         for server in (rust, peer):
             page = request(server, query)[2]
             assert b"Uniqueparityindex Renamed" in page and label not in page, server.name
+
+        keeper = """
+from core.models import Debater, Team
+team = Team.objects.create(name="Search duplicate with roster")
+team.debaters.add(Debater.objects.get(pk=%d))
+duplicate = Debater.objects.create(first_name="Uniqueparityindex", last_name="Renamed")
+print(duplicate.pk)
+""" % debater
+        result = subprocess.check_output([
+            str(ROOT / "venv/bin/python"), "manage.py", "shell", "--verbosity", "0", "-c", keeper,
+        ], text=True)
+        duplicate = int(result.splitlines()[-1])
+        env = {**os.environ, "BLACK_ROD_DATABASE_URL": f"sqlite://{path}?mode=rw",
+               "BLACK_ROD_MEMCACHED_ADDR": address}
+        subprocess.run([str(RUST_BIN), "reindex_haystack"], env=env, check=True, capture_output=True)
+        duplicate_link = f'href="/core/debaters/{duplicate}"'
+        original_link = f'href="/core/debaters/{debater}"'
+        for server in (rust, peer):
+            page = unescape(request(server, query)[2].decode())
+            assert original_link in page and duplicate_link in page, server.name
+        subprocess.run([str(RUST_BIN), "clean_duplicate_debaters", "--min-id", str(debater), "--confirm"],
+                       env=env, check=True, capture_output=True)
+        for server in (rust, peer):
+            page = unescape(request(server, query)[2].decode())
+            assert original_link in page and duplicate_link not in page, server.name
         driver.delete_all_cookies()
 
 
@@ -2628,6 +2653,8 @@ print(json.dumps([a, b, team.pk, resource.pk, one.pk, two.pk, synthetic.pk]))
         driver.get(root + "/robots.txt")
         driver.delete_all_cookies()
         driver.add_cookie({"name": "sessionid", "value": credential})
+        assert ids("/admin/core/debater?q=Rosterlookup+Alpha") == [one]
+        assert driver.current_url == root + "/admin/core/debater/?q=Rosterlookup+Alpha"
         assert ids("/admin/core/round/?" + urlencode({"q": "Rosterlookup"})) == [exact]
         assert ids("/admin/core/round/?" + urlencode({"q": exact})) == [exact]
         assert ids("/admin/core/round/?" + urlencode({"q": partial})) == [partial]

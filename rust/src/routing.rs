@@ -1,7 +1,7 @@
 mod protocol;
 
 use protocol::{api_protocol, append_slash, report_server_errors, security_headers, validate_host};
-pub(crate) use protocol::{limit, public_api_path};
+pub(crate) use protocol::{limit, public_api_path, slash_redirect};
 
 use axum::{Router, routing::get};
 

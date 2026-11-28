@@ -331,6 +331,9 @@ impl AppState {
             }
         }
         tx.commit().await?;
+        if deleted > 0 {
+            crate::search::invalidate(self).await;
+        }
         if planned == 0 {
             println!("\nNo duplicate debaters found with ID >= {min_id}");
         } else if dry_run {

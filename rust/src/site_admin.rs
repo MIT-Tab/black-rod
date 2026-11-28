@@ -315,11 +315,7 @@ async fn endpoint(state: &AppState, request: Request) -> Result<Response, ApiErr
     let bare = path.trim_end_matches('/');
     let segments = bare.split('/').collect::<Vec<_>>();
     if !parts.uri.path().ends_with('/') && parts.method == Method::GET {
-        return Ok((
-            StatusCode::MOVED_PERMANENTLY,
-            [(header::LOCATION, format!("{}/", parts.uri.path()))],
-        )
-            .into_response());
+        return Ok(crate::routing::slash_redirect(&parts.uri));
     }
     let result = match segments.as_slice() {
         [""] => admin.index(None).await,

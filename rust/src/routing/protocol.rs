@@ -2,7 +2,7 @@ use std::sync::LazyLock;
 
 use axum::{
     extract::{OriginalUri, Request, State},
-    http::{HeaderValue, Method, StatusCode, header},
+    http::{HeaderValue, Method, StatusCode, Uri, header},
     response::{IntoResponse, Response},
 };
 
@@ -276,6 +276,10 @@ pub(super) async fn append_slash(OriginalUri(uri): OriginalUri) -> Response {
     if path != "/admin" && !SLASH_ROUTES.is_match(&format!("{decoded}/")) {
         return StatusCode::NOT_FOUND.into_response();
     }
+    slash_redirect(&uri)
+}
+
+pub(crate) fn slash_redirect(uri: &Uri) -> Response {
     let mut location = uri.path().to_owned();
     location.push('/');
     if let Some(query) = uri.query() {
