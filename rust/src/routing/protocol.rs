@@ -163,7 +163,7 @@ pub(super) async fn api_protocol(
     } else {
         None
     };
-    let response = if let Some((status, detail)) = error {
+    let rejection = error.map(|(status, detail)| {
         if private {
             if path.starts_with("/api/agent/v1/") {
                 agent::negotiation_failure(path, status, detail)
@@ -173,6 +173,13 @@ pub(super) async fn api_protocol(
         } else {
             negotiation_error(status, detail)
         }
+    });
+    // Axum's implicit HEAD handler strips the body before the API renderers can negotiate it.
+    if head {
+        *request.method_mut() = Method::GET;
+    }
+    let response = if let Some(response) = rejection {
+        response
     } else if public {
         match drf::public_user(&state, &mut request).await {
             Err(response) => response,
@@ -196,19 +203,31 @@ pub(super) async fn api_protocol(
     } else {
         next.run(request).await
     };
+    let response = if let Some((uri, method, headers)) = view {
+        drf::response(&state, &uri, &method, &headers, response).await
+    } else {
+        indent_json(response, indent).await
+    };
     if head {
-        let mut response = response.map(|_| axum::body::Body::empty());
-        if browse {
-            response.headers_mut().insert(
-                header::CONTENT_TYPE,
-                HeaderValue::from_static("text/html; charset=utf-8"),
-            );
+        let (mut parts, body) = response.into_parts();
+        use axum::body::HttpBody;
+        if !parts.headers.contains_key(header::CONTENT_LENGTH)
+            && !matches!(
+                parts.status,
+                StatusCode::NO_CONTENT | StatusCode::NOT_MODIFIED
+            )
+            && let Some(size) = body.size_hint().exact()
+            && let Ok(length) = HeaderValue::from_str(&size.to_string())
+        {
+            parts.headers.insert(header::CONTENT_LENGTH, length);
         }
-        return response;
+        Response::from_parts(parts, axum::body::Body::empty())
+    } else {
+        response
     }
-    if let Some((uri, method, headers)) = view {
-        return drf::response(&state, &uri, &method, &headers, response).await;
-    }
+}
+
+async fn indent_json(response: Response, indent: u8) -> Response {
     if indent == 0
         || response
             .headers()
@@ -352,6 +371,38 @@ static SLASH_ROUTES: LazyLock<regex::RegexSet> = LazyLock::new(|| {
     regex::RegexSet::new(include_str!("../../schema/slash_routes.txt").lines())
         .expect("Django append-slash route patterns")
 });
+
+pub(super) fn normalize_path(mut request: Request) -> Request {
+    static ESCAPE: LazyLock<regex::Regex> =
+        LazyLock::new(|| regex::Regex::new(r"%([0-9A-Fa-f]{2})").expect("URI escape"));
+    let uri = request.uri();
+    if !uri.path().contains('%') {
+        return request;
+    }
+    let path = ESCAPE.replace_all(uri.path(), |matched: &regex::Captures<'_>| {
+        let byte = u8::from_str_radix(&matched[1], 16).expect("matched hex escape");
+        if byte.is_ascii_alphanumeric() || b"-._~".contains(&byte) {
+            char::from(byte).to_string()
+        } else {
+            matched[0].to_owned()
+        }
+    });
+    if path != uri.path() {
+        let target = match uri.query() {
+            Some(query) => format!("{path}?{query}"),
+            None => path.into_owned(),
+        };
+        if let Ok(target) = target.parse() {
+            let mut parts = uri.clone().into_parts();
+            parts.path_and_query = Some(target);
+            if let Ok(normalized) = Uri::from_parts(parts) {
+                *request.uri_mut() = normalized;
+                request.extensions_mut().remove::<OriginalUri>();
+            }
+        }
+    }
+    request
+}
 
 pub(super) async fn append_slash(OriginalUri(uri): OriginalUri) -> Response {
     missing_route(&uri)

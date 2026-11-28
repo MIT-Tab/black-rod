@@ -224,7 +224,7 @@ async fn append_slash_redirects_only_to_registered_routes() {
     for (path, expected) in [
         (
             "/api/debaters/%37/detail?limit=2",
-            Some("/api/debaters/%37/detail/?limit=2"),
+            Some("/api/debaters/7/detail/?limit=2"),
         ),
         (
             "/core/my-profile?source=legacy",
@@ -337,4 +337,56 @@ async fn llm_browsing_preserves_a_successful_large_api_response() {
     let html = response.into_body().collect().await.unwrap().to_bytes();
     assert!(html.len() > 32 * 1024 * 1024);
     assert!(String::from_utf8_lossy(&html).contains("large-response-marker"));
+}
+
+#[tokio::test]
+async fn head_negotiates_the_same_public_api_representation_without_a_body() {
+    let router = app(AppState::new(fixture().await, 2026));
+    for accept in ["text/html", "application/json; indent=4"] {
+        let request = |method| {
+            Request::builder()
+                .method(method)
+                .uri("/api/schools/")
+                .header(header::HOST, "localhost")
+                .header(header::ACCEPT, accept)
+                .body(Body::empty())
+                .unwrap()
+        };
+        let get = router.clone().oneshot(request("GET")).await.unwrap();
+        let head = router.clone().oneshot(request("HEAD")).await.unwrap();
+        assert_eq!(head.status(), StatusCode::OK);
+        for name in [header::CONTENT_TYPE, header::VARY, header::ALLOW] {
+            assert_eq!(
+                head.headers().get(&name),
+                get.headers().get(&name),
+                "{name}"
+            );
+        }
+        let length: usize = head.headers()[header::CONTENT_LENGTH]
+            .to_str()
+            .unwrap()
+            .parse()
+            .unwrap();
+        if accept == "text/html" {
+            assert!(
+                head.headers()[header::SET_COOKIE]
+                    .to_str()
+                    .unwrap()
+                    .starts_with("csrftoken=")
+            );
+            assert!(length > 1000);
+        } else {
+            let get = get.into_body().collect().await.unwrap().to_bytes();
+            assert_eq!(length, get.len());
+            assert!(String::from_utf8_lossy(&get).contains("\n    "));
+        }
+        assert!(
+            head.into_body()
+                .collect()
+                .await
+                .unwrap()
+                .to_bytes()
+                .is_empty()
+        );
+    }
 }

@@ -401,7 +401,7 @@ pub(crate) async fn response(
         .origin(request)
         .is_some_and(|origin| origin.starts_with("https://"));
     let (mut parts, body) = result.into_parts();
-    let Ok(bytes) = to_bytes(body, 64 * 1024 * 1024).await else {
+    let Ok(bytes) = to_bytes(body, usize::MAX).await else {
         return StatusCode::PAYLOAD_TOO_LARGE.into_response();
     };
     let value = match serde_json::from_slice::<Value>(&bytes) {

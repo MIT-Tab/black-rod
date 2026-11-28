@@ -671,9 +671,14 @@ pub fn app(state: AppState) -> Router {
         ))
         .layer(axum::middleware::from_fn(security_headers))
         .with_state(state);
-    if sentry::Hub::current().client().is_some() {
+    let router = if sentry::Hub::current().client().is_some() {
         router.layer(axum::middleware::from_fn(report_server_errors))
     } else {
         router
-    }
+    };
+    Router::new().fallback_service(
+        tower::ServiceBuilder::new()
+            .map_request(protocol::normalize_path)
+            .service(router),
+    )
 }
