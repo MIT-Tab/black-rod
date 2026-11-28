@@ -109,7 +109,12 @@ fn dates(text: &str) -> Result<Vec<Date>, String> {
 }
 
 fn schools(text: &str, known: &HashSet<&str>) -> Result<Vec<School>, String> {
-    let rows = read(text)?;
+    let mut rows = read(text)?;
+    let first = text.strip_prefix('\u{feff}').unwrap_or(text);
+    // A blank first row is a valid header when there are no date preferences.
+    if first.starts_with(['\n', '\r']) {
+        rows.insert(0, StringRecord::new());
+    }
     if rows.len() < 3 {
         return Err(
             "Schools CSV must include the date row, the label row, and at least one school.".into(),
@@ -223,5 +228,17 @@ mod tests {
                 .unwrap(),
             "Schools CSV includes dates that are missing from the dates CSV: 1/6"
         );
+    }
+
+    #[test]
+    fn schools_without_date_preferences_accept_a_blank_date_header() {
+        for newline in ["\n", "\r\n"] {
+            let data = format!(
+                "{newline}School Name,Region,Desired,Priority,Tags{newline}Alpha,East,1,2,Open{newline}"
+            );
+            let overview = summarize(&data, "Date,Tournaments,Tags\n9/8,1,Open\n").unwrap();
+            assert_eq!(overview.school_count, 1);
+            assert_eq!(overview.preview_schools[0].name, "Alpha");
+        }
     }
 }

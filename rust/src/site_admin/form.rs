@@ -792,7 +792,14 @@ async fn save_memberships(
         }
         if let (Some([table, current, target]), Some(new)) = (&field.through, selections.get(name))
         {
-            sync_memberships(conn, [table, current, target], record, new).await?;
+            sync_memberships(
+                conn,
+                [table, current, target],
+                record,
+                new,
+                field.related.as_deref() == Some("core.debater"),
+            )
+            .await?;
         }
     }
     Ok(())
@@ -803,6 +810,7 @@ pub(super) async fn sync_memberships(
     [table, current, target]: [&str; 3],
     record: i64,
     new: &BTreeSet<i64>,
+    related_debaters: bool,
 ) -> Result<(), ApiError> {
     let statement = format!("SELECT CAST({target} AS BIGINT) FROM {table} WHERE {current}=$1");
     let existing = sqlx::query_scalar::<_, i64>(AssertSqlSafe(statement))
@@ -811,7 +819,13 @@ pub(super) async fn sync_memberships(
         .await?
         .into_iter()
         .collect::<BTreeSet<_>>();
-    let delete = format!("DELETE FROM {table} WHERE {current}=$1 AND {target}=$2");
+    // A Django ManyToMany set() sees only active debaters on the removal side.
+    let scope = if related_debaters {
+        " AND EXISTS (SELECT 1 FROM core_debater d WHERE d.id=$2 AND NOT d.temporary AND NOT d.synthetic)"
+    } else {
+        ""
+    };
+    let delete = format!("DELETE FROM {table} WHERE {current}=$1 AND {target}=$2{scope}");
     for related in existing.difference(new) {
         sqlx::query(AssertSqlSafe(delete.as_str()))
             .bind(record)

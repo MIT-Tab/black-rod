@@ -19,7 +19,7 @@ use crate::{
     schools::{DEBATER_COLUMNS, Debater, School},
 };
 
-const GENERATION: &str = "black-rod:rust:standings-generation:v1";
+const GENERATION: &str = ":1:black-rod:rust:standings-generation:v1";
 
 pub(crate) async fn generation(state: &AppState) -> Option<uuid::Uuid> {
     let Some(cache) = &state.memcached else {

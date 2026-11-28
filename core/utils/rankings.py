@@ -1,9 +1,10 @@
 from contextlib import contextmanager
+from uuid import uuid4
 
 from django.conf import settings
 from django.core.cache import cache
 from django.core.cache.utils import make_template_fragment_key
-from django.db import connection
+from django.db import connection, transaction
 from django.db.models import Exists, OuterRef, Q
 
 from core.live_results import invalidate_live_standings
@@ -460,6 +461,10 @@ def redo_rankings(rankings, season=settings.CURRENT_SEASON, cache_type="toty"):
     if cache_type == "coty":
         cache.delete(f"api:standings_replay:{season}")
     invalidate_live_standings(season)
+    transaction.on_commit(
+        lambda: cache.set("black-rod:rust:standings-generation:v1", uuid4().bytes, timeout=None),
+        robust=True,
+    )
 
 
 def rebuild_coty_related_rankings(season=settings.CURRENT_SEASON):

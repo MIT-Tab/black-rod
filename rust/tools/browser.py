@@ -1603,6 +1603,48 @@ def assert_scheduling(driver, django, rust, fixture):
     driver.delete_all_cookies()
 
 
+def assert_tab_card_score_columns(driver, django, rust):
+    seed = """
+from django import setup
+setup()
+from core.models import Debater, Round, RoundStats, School, Team, TeamResult, Tournament
+from datetime import date
+import json
+school = School.objects.create(name="Fixture for missing speaker scores")
+tournament = Tournament.objects.create(host=school, date=date(2026, 4, 5), season="2025", num_rounds=2)
+team = Team.objects.create(name="Incomplete Score Fixture")
+opp = Team.objects.create(name="Opponent Score Fixture")
+first = Debater.objects.create(first_name="First", last_name="Fixture", school=school)
+second = Debater.objects.create(first_name="Second", last_name="Fixture", school=school)
+team.debaters.add(first, second)
+TeamResult.objects.create(team=team, tournament=tournament, place=1)
+one = Round.objects.create(tournament=tournament, gov=team, opp=opp, round_number=1, victor=Round.GOV)
+two = Round.objects.create(tournament=tournament, gov=opp, opp=team, round_number=2, victor=Round.OPP)
+RoundStats.objects.create(round=one, debater=first, speaks="25", ranks="2", debater_role="PM")
+RoundStats.objects.create(round=one, debater=second, speaks="27", ranks="1", debater_role="MG")
+RoundStats.objects.create(round=two, debater=second, speaks="29", ranks="1", debater_role="MO")
+print(json.dumps([team.pk, tournament.pk]))
+"""
+    team, tournament = json.loads(subprocess.check_output(
+        [str(ROOT / "venv/bin/python"), "-c", seed], text=True
+    ).splitlines()[-1])
+    session = django_session()
+    pages = []
+    for server in (django, rust):
+        root = f"http://{HOST}:{server.port}"
+        driver.get(root + "/robots.txt")
+        driver.add_cookie({"name": "sessionid", "value": session})
+        driver.get(root + f"/core/teams/{team}")
+        pages.append(driver.execute_script("""
+            return Array.from(document.querySelectorAll('#tournament_' + arguments[0] + ' tr'),
+                row => Array.from(row.cells, cell => cell.textContent.replace(/\s+/g, ' ').trim()));
+        """, tournament))
+    assert pages[0] == pages[1], pages
+    assert pages[1][0][-2:] == ["First Fixture", "Second Fixture"], pages[1]
+    assert len(pages[1][2]) == 5 and "MO / 29" in pages[1][2][-1], pages[1]
+    driver.delete_all_cookies()
+
+
 def assert_entities(driver, django, rust, fixture):
     rust_root = f"http://{HOST}:{rust.port}"
     django_root = f"http://{HOST}:{django.port}"
@@ -3264,6 +3306,57 @@ print(json.dumps((standing.pk, result.pk, event.pk, person.pk)))
         submit_team(team, "Updated label")
         assert connection.execute(sql, (team,)).fetchall() == roster
         assert connection.execute("SELECT short_name FROM core_team WHERE id=?", (team,)).fetchone() == ("Updated label",)
+    links = """
+from django import setup
+setup()
+from core.models import Debater, Team, TeamResult
+import json
+from sys import argv
+team = Team.objects.get(pk=int(argv[1]))
+temporary = Debater.all_objects.create(first_name="Temporary", last_name="Member", temporary=True)
+synthetic = Debater.all_objects.create(first_name="Synthetic", last_name="Member", synthetic=True)
+team.debaters.add(temporary.pk, synthetic.pk)
+award = TeamResult.objects.create(team=team, tournament_id=int(argv[2]))
+award.hidden_from_debaters.add(temporary.pk, synthetic.pk)
+print(json.dumps([temporary.pk, synthetic.pk, award.pk]))
+"""
+    temporary, synthetic, hidden_award = json.loads(subprocess.check_output(
+        [str(ROOT / "venv/bin/python"), "-c", links, str(team), str(tournament)], text=True
+    ).splitlines()[-1])
+
+    from csv import DictReader
+    from io import StringIO
+    for model, record, column, membership, expected_members, visible in (
+        ("team", team, "debaters",
+         "SELECT debater_id FROM core_team_debaters WHERE team_id=?",
+         {*members, temporary, synthetic}, ",".join(map(str, members))),
+        ("teamresult", hidden_award, "hidden_from_debaters",
+         "SELECT debater_id FROM core_teamresult_hidden_from_debaters WHERE teamresult_id=?",
+         {temporary, synthetic}, ""),
+    ):
+        route = f"/admin/core/{model}/"
+        for server in (django, rust):
+            open_page(server, f"export/?id__in={record}")
+            download = download_format(0)
+            assert download["status"] == 200, download
+            exported = base64.b64decode(download["blob"])
+            row, = DictReader(StringIO(exported.decode("utf-8")))
+            assert row[column] == visible, row
+        open_page(rust, "import/")
+        with NamedTemporaryFile(suffix=".csv") as fixture:
+            fixture.write(exported)
+            fixture.flush()
+            driver.find_element("name", "import_file").send_keys(fixture.name)
+            driver.find_element("css selector", 'select[name="input_format"] option[value="0"]').click()
+            previous = driver.find_element("tag name", "html")
+            driver.find_element("css selector", '#content input[value="Submit"]').click()
+            WebDriverWait(driver, 10).until(document_replaced(previous))
+        previous = driver.find_element("tag name", "html")
+        driver.find_element("name", "confirm").click()
+        WebDriverWait(driver, 10).until(document_replaced(previous))
+        assert driver.current_url == root + route
+        with sqlite3.connect(f"{db.as_uri()}?mode=ro", uri=True) as connection:
+            assert {person for person, in connection.execute(membership, (record,))} == expected_members
     driver.delete_all_cookies()
 
 
@@ -5143,6 +5236,7 @@ def browser_checks(database, options, output):
         assert_tournament_audit_writes(driver, django, rust, fixture)
         assert_generated_codes(driver, django, rust, fixture)
         assert_entities(driver, django, rust, fixture)
+        assert_tab_card_score_columns(driver, django, rust)
         assert_school_admin(driver, django, rust, fixture)
         assert_merge_requests(driver, django, rust, fixture)
         assert_agent_reads(django, rust, fixture)

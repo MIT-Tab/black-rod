@@ -472,7 +472,14 @@ async fn apply_row(
                     .await?,
             );
         }
-        form::sync_memberships(conn, [table, owner, member], id, &valid).await?;
+        form::sync_memberships(
+            conn,
+            [table, owner, member],
+            id,
+            &valid,
+            related_model == "debater",
+        )
+        .await?;
     }
     if model.slug() == "debater" {
         crate::claims::edit::team_names(conn, id).await?;

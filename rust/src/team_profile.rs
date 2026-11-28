@@ -179,14 +179,21 @@ pub(crate) struct Card {
     pub(crate) rounds: Vec<Value>,
 }
 
+#[derive(Clone, Copy)]
+pub(crate) enum ScoreColumns {
+    Recorded,
+    BothSpeakers,
+}
+
 pub(crate) async fn cards(
     conn: &mut AnyConnection,
     team: i64,
     people: &[Value],
     origin: &str,
     only_tournament: Option<i64>,
+    columns: ScoreColumns,
 ) -> Result<HashMap<i64, Card>, ApiError> {
-    card_data(conn, team, people, origin, only_tournament, false).await
+    card_data(conn, team, people, origin, only_tournament, columns).await
 }
 
 pub(crate) async fn tournament_card(
@@ -195,9 +202,16 @@ pub(crate) async fn tournament_card(
     people: &[Value],
     tournament: i64,
 ) -> Result<Vec<Value>, ApiError> {
-    let card = card_data(conn, team, people, "", Some(tournament), true)
-        .await?
-        .remove(&tournament);
+    let card = card_data(
+        conn,
+        team,
+        people,
+        "",
+        Some(tournament),
+        ScoreColumns::BothSpeakers,
+    )
+    .await?
+    .remove(&tournament);
     Ok(card.map_or_else(Vec::new, |card| card.rounds))
 }
 
@@ -207,8 +221,9 @@ async fn card_data(
     people: &[Value],
     origin: &str,
     only_tournament: Option<i64>,
-    include_empty: bool,
+    columns: ScoreColumns,
 ) -> Result<HashMap<i64, Card>, ApiError> {
+    let include_empty = matches!(columns, ScoreColumns::BothSpeakers);
     let round_rows = sqlx::query(ROUNDS)
         .bind(team)
         .bind(only_tournament)
@@ -391,6 +406,7 @@ async fn load(
     origin: &str,
     max: Option<i64>,
     path: &str,
+    columns: ScoreColumns,
 ) -> Result<Value, ApiError> {
     let mut tx = read_transaction(&state.pool).await?;
     let name = sqlx::query_scalar::<_, String>(TEAM)
@@ -441,7 +457,7 @@ async fn load(
             "team": team, "tournament": tournaments[&tournament],
         }));
     }
-    let cards = cards(&mut tx, id, &roster, origin, None).await?;
+    let cards = cards(&mut tx, id, &roster, origin, None, columns).await?;
     let mut performances = Vec::new();
     for (tournament_id, tournament) in tournaments {
         let awards = shown.remove(&tournament_id).unwrap_or_default();
@@ -501,7 +517,7 @@ pub(crate) async fn detail(
         .path_and_query()
         .map(|path| path.as_str())
         .unwrap_or_default();
-    match load(&state, id, &origin, max, path).await {
+    match load(&state, id, &origin, max, path, ScoreColumns::Recorded).await {
         Ok(result) => api_response(Json(result)),
         Err(ApiError::NotFound(detail)) => json_error(StatusCode::NOT_FOUND, detail),
         Err(_) => json_error(StatusCode::INTERNAL_SERVER_ERROR, "Internal server error."),
@@ -557,7 +573,7 @@ pub(crate) async fn render_page(
             }
         }
     }
-    let data = load(state, id, "", None, "").await;
+    let data = load(state, id, "", None, "", ScoreColumns::BothSpeakers).await;
     let Ok(data) = data else {
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     };

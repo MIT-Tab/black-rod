@@ -17,7 +17,8 @@ use crate::{
     session::{self, User},
     standings::{lite_school, place_display},
     team_profile::{
-        Card, SCHOOL_COLUMNS, Team, cards, members, members_for, read_transaction, school,
+        Card, SCHOOL_COLUMNS, ScoreColumns, Team, cards, members, members_for, read_transaction,
+        school,
     },
     tournament_profile::{tournament, videos},
 };
@@ -301,6 +302,7 @@ async fn summaries(
     debater: &Value,
     origin: &str,
     teams: &mut Teams,
+    columns: ScoreColumns,
 ) -> Result<Vec<Value>, ApiError> {
     let mut seasons = BTreeMap::<String, Vec<(String, Value)>>::new();
     let tournament_ids = profile.events.keys().copied().collect::<Vec<_>>();
@@ -327,7 +329,7 @@ async fn summaries(
             let cards = match team_cards.entry(team) {
                 std::collections::hash_map::Entry::Occupied(entry) => entry.into_mut(),
                 std::collections::hash_map::Entry::Vacant(entry) => {
-                    entry.insert(cards(&mut *conn, team, people, origin, None).await?)
+                    entry.insert(cards(&mut *conn, team, people, origin, None, columns).await?)
                 }
             };
             (team_json, cards.remove(&id))
@@ -521,6 +523,7 @@ async fn load(
     origin: &str,
     max: Option<i64>,
     path: &str,
+    columns: ScoreColumns,
 ) -> Result<Value, ApiError> {
     let mut tx = read_transaction(&state.pool).await?;
     let query = PERSON
@@ -584,7 +587,8 @@ async fn load(
         .map(|row| row.try_get("id"))
         .collect::<Result<Vec<i64>, _>>()?;
     let mut teams = Teams::new(&mut tx, &teams_ids, origin).await?;
-    let mut season_summaries = summaries(&mut tx, &events, &debater, origin, &mut teams).await?;
+    let mut season_summaries =
+        summaries(&mut tx, &events, &debater, origin, &mut teams, columns).await?;
     let redacted_teams = events
         .redacted_pairs
         .iter()
@@ -692,7 +696,17 @@ pub(crate) async fn detail(
         .path_and_query()
         .map(|path| path.as_str())
         .unwrap_or_default();
-    match load(&state, id, &user, &origin, max, path).await {
+    match load(
+        &state,
+        id,
+        &user,
+        &origin,
+        max,
+        path,
+        ScoreColumns::Recorded,
+    )
+    .await
+    {
         Ok(result) => api_response(Json(result)),
         Err(ApiError::NotFound(detail)) => json_error(StatusCode::NOT_FOUND, detail),
         Err(_) => json_error(StatusCode::INTERNAL_SERVER_ERROR, "Internal server error."),
@@ -747,7 +761,17 @@ pub(crate) async fn render_page(
     let Ok(user) = session::user(&state.pool, headers, state.secret.as_deref()).await else {
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     };
-    let data = match load(state, id, &user, "", None, uri.path()).await {
+    let data = match load(
+        state,
+        id,
+        &user,
+        "",
+        None,
+        uri.path(),
+        ScoreColumns::BothSpeakers,
+    )
+    .await
+    {
         Ok(data) => data,
         Err(ApiError::NotFound(_)) => return StatusCode::NOT_FOUND.into_response(),
         Err(_) => return StatusCode::INTERNAL_SERVER_ERROR.into_response(),

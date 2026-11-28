@@ -140,9 +140,20 @@ async fn export_rows(
             } else {
                 "GROUP_CONCAT"
             };
-            format!("(SELECT {aggregate}(CAST(id AS TEXT),',') FROM (
-                SELECT link.{member} AS id FROM {table} link WHERE link.{foreign}=t0.id ORDER BY link.{member}
-            ) members)")
+            let debaters = field.and_then(|field| field.related.as_deref()) == Some("core.debater");
+            let relation = if debaters {
+                format!(
+                    "JOIN core_debater d ON d.id=link.{member} AND NOT d.temporary AND NOT d.synthetic"
+                )
+            } else {
+                String::new()
+            };
+            format!(
+                "(SELECT {aggregate}(CAST(id AS TEXT),',') FROM (
+                SELECT link.{member} AS id FROM {table} link {relation}
+                WHERE link.{foreign}=t0.id ORDER BY link.{member}
+            ) members)"
+            )
         } else if let Some(column) = field.and_then(|field| field.column.as_ref()) {
             format!(r#"CAST(t0."{column}" AS TEXT)"#)
         } else {

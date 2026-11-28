@@ -313,7 +313,15 @@ async fn load(
             let name: &str = row.try_get("name")?;
             let people = members(&mut tx, team_id, origin).await?;
             let team = Team::new(team_id, name, hybrid(&people), &people, origin);
-            let mut team_cards = cards(&mut tx, team_id, &people, origin, Some(id)).await?;
+            let mut team_cards = cards(
+                &mut tx,
+                team_id,
+                &people,
+                origin,
+                Some(id),
+                crate::team_profile::ScoreColumns::Recorded,
+            )
+            .await?;
             let card = team_cards
                 .remove(&id)
                 .map(|card| card.rounds)
