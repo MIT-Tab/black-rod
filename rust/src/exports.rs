@@ -147,6 +147,7 @@ struct Stats {
     scores: Vec<f64>,
     ranks: Vec<f64>,
     role: String,
+    inferred_side: Option<Side>,
     source_names: Vec<String>,
 }
 
@@ -173,10 +174,20 @@ impl Stats {
                 .scores
                 .extend(row.try_get::<Option<f64>, _>("speaks")?);
             entry.ranks.extend(row.try_get::<Option<f64>, _>("ranks")?);
-            if entry.role.is_empty() {
-                entry.role = row
-                    .try_get::<Option<String>, _>("debater_role")?
+            if entry.role.is_empty() || entry.inferred_side.is_none() {
+                let role = row
+                    .try_get::<Option<&str>, _>("debater_role")?
                     .unwrap_or_default();
+                if entry.inferred_side.is_none() {
+                    entry.inferred_side = match role.trim().to_ascii_uppercase().as_str() {
+                        "PM" | "MG" => Some(Side::Gov),
+                        "LO" | "MO" => Some(Side::Opp),
+                        _ => None,
+                    };
+                }
+                if entry.role.is_empty() {
+                    entry.role = role.to_owned();
+                }
             }
             let metadata: Value = serde_json::from_str(row.try_get("metadata")?)?;
             if let Some(name) = metadata
@@ -311,11 +322,9 @@ fn side_for_round(
     if opp.iter().any(|person| subject.contains(&person.id)) {
         return Some(Side::Opp);
     }
-    match stats.role.trim().to_ascii_uppercase().as_str() {
-        "PM" | "MG" => Some(Side::Gov),
-        "LO" | "MO" => Some(Side::Opp),
-        _ => alias.map(|(side, _, _)| side),
-    }
+    stats
+        .inferred_side
+        .or_else(|| alias.map(|(side, _, _)| side))
 }
 
 async fn export(pool: &AnyPool, subject: i64, display: &str) -> Result<String, ApiError> {

@@ -3,6 +3,7 @@ from pathlib import Path
 import json
 
 from django import setup
+from django.conf import settings
 from django.core.serializers.json import DjangoJSONEncoder
 
 
@@ -109,7 +110,11 @@ def model_config(request, model, model_admin):
                 "empty_label": getattr(field, "empty_label", None),
             }
             if type(actual).__name__ in ("RadioSelect", "Select") and hasattr(field, "_choices"):
-                widgets[name]["choices"] = [(str(value), str(label)) for value, label in field.choices]
+                choices = [(str(value), str(label)) for value, label in field.choices]
+                if name == "season" and choices == list(settings.SEASONS):
+                    widgets[name]["season_choices"] = True
+                else:
+                    widgets[name]["choices"] = choices
         return widgets
 
     def form_meta(obj, change):

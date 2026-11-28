@@ -1354,9 +1354,28 @@ print(json.dumps(picks))
 
 
 def assert_career_export(django, rust, fixture):
+    code = """
+from django import setup
+setup()
+from core.models import Debater, Round, RoundStats, Team, Tournament
+import sys
+
+event = Tournament.objects.get(pk=int(sys.argv[1]))
+gov = Team.objects.create(name="Career export fixture Gov")
+opp = Team.objects.create(name="Career export fixture Opp")
+guest = Debater.objects.create(first_name="Career export guest", school=event.host)
+round_obj = Round.objects.create(tournament=event, gov=gov, opp=opp, round_number=1, victor=Round.OPP)
+RoundStats.objects.bulk_create([
+    RoundStats(round=round_obj, debater=guest, debater_role="NC", speaks=26, score_index=1),
+    RoundStats(round=round_obj, debater=guest, debater_role="LO", speaks=28, score_index=2),
+])
+print(guest.pk)
+"""
+    result = subprocess.check_output([str(ROOT / "venv/bin/python"), "-c", code, str(fixture["tournament"])], text=True)
+    guest = int(result.splitlines()[-1])
     cookie = django_session()
     access = fixture["sessions"]["ordinary"]
-    for pk in fixture["csv_debaters"]:
+    for pk in [*fixture["csv_debaters"], guest]:
         path = f"/core/debaters/{pk}/tab-cards-csv"
         bodies = []
         for server in (django, rust):
@@ -1375,6 +1394,11 @@ def assert_career_export(django, rust, fixture):
                     conn.close()
         assert bodies[0] == bodies[1], f"Career CSV {pk} differed: {bodies[0]!r} vs {bodies[1]!r}"
         assert bodies[0][1].count(b"\r\n") > 1
+        if pk == guest:
+            from csv import DictReader
+
+            row, = DictReader(bodies[0][1].decode().splitlines())
+            assert row["side"] == "OPP" and row["result"] == "W" and row["speaks"] == "27.0"
 
 
 def assert_claims(driver, django, rust, fixture):

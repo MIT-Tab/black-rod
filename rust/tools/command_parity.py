@@ -154,10 +154,11 @@ def verify_late_commands(databases):
         banner, token = output.splitlines()
         number = int(banner.split()[1].removesuffix(":"))
         with closing(sqlite3.connect(path)) as connection:
-            digest, can_write = connection.execute(
-                "SELECT token_hash,can_write FROM core_agentcredential WHERE id=?", (number,)
+            digest, can_write, expires_at = connection.execute(
+                "SELECT token_hash,can_write,expires_at FROM core_agentcredential WHERE id=?", (number,)
             ).fetchone()
         assert hashlib.sha256(token.encode()).hexdigest() == digest and can_write
+        assert expires_at[10] == " " and "+" not in expires_at
         assert run("agent_credential", path, engine, "--admin", username, "--revoke", str(number)) == "Credential revoked."
         with closing(sqlite3.connect(path)) as connection:
             revoked, = connection.execute("SELECT revoked_at FROM core_agentcredential WHERE id=?", (number,)).fetchone()

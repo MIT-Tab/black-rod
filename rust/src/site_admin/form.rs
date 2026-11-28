@@ -422,7 +422,7 @@ impl Bound<'_> {
             None
         };
         let mut options = widget
-            .map(|widget| widget.choices.clone())
+            .map(|widget| widget.choices(admin.state.current_season).into_owned())
             .unwrap_or_default();
         let target = field.and_then(related_model);
         if !read_only

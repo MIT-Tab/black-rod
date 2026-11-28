@@ -160,8 +160,9 @@ pub(super) async fn cleaned(
             ),
         );
     }
+    let choices = widget.choices(admin.state.current_season);
     if !raw.is_empty()
-        && ((!widget.choices.is_empty() && !widget.choices.iter().any(|(key, _)| key == raw))
+        && ((!choices.is_empty() && !choices.iter().any(|(key, _)| key == raw))
             || (!field.choices.is_empty()
                 && !field.choices.iter().any(|(key, _)| primitive(key) == raw)))
     {

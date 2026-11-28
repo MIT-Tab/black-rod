@@ -4,7 +4,7 @@ use serde::Deserialize;
 use serde_json::{Map, Value, json};
 use sqlx::{AnyConnection, AssertSqlSafe, Row};
 
-use super::catalog::Field;
+use super::{catalog::Field, credential_unexpired};
 use crate::ApiError;
 
 const SCHEMA: &str = include_str!("../../schema/agent_storage.json");
@@ -26,7 +26,8 @@ pub(super) static LABELS: LazyLock<BTreeMap<&'static str, &'static str>> = LazyL
 });
 
 pub(super) async fn lock(conn: &mut AnyConnection, credential: i64) -> Result<bool, ApiError> {
-    if conn.backend_name() == "SQLite" {
+    let sqlite = conn.backend_name() == "SQLite";
+    if sqlite {
         sqlx::query("UPDATE core_agentcredential SET last_used_at=last_used_at WHERE id=$1")
             .bind(credential)
             .execute(&mut *conn)
@@ -41,15 +42,17 @@ pub(super) async fn lock(conn: &mut AnyConnection, credential: i64) -> Result<bo
             .execute(&mut *conn)
             .await?;
     }
-    Ok(sqlx::query_scalar::<_, i64>(
+    let active = credential_unexpired(sqlite);
+    let statement = format!(
         "SELECT CAST(id AS BIGINT) FROM core_agentcredential
-        WHERE id=$1 AND revoked_at IS NULL AND expires_at>CURRENT_TIMESTAMP AND can_write
-        AND EXISTS (SELECT 1 FROM core_user WHERE id=created_by_id AND is_active AND is_superuser)",
-    )
-    .bind(credential)
-    .fetch_optional(conn)
-    .await?
-    .is_some())
+        WHERE id=$1 AND revoked_at IS NULL AND {active} AND can_write
+        AND EXISTS (SELECT 1 FROM core_user WHERE id=created_by_id AND is_active AND is_superuser)"
+    );
+    Ok(sqlx::query_scalar::<_, i64>(AssertSqlSafe(statement))
+        .bind(credential)
+        .fetch_optional(conn)
+        .await?
+        .is_some())
 }
 
 pub(crate) fn storage_error(error: sqlx::Error) -> ApiError {

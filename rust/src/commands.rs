@@ -212,12 +212,16 @@ impl AppState {
             .ok_or("Provide --name and --days between 1 and 90.")?;
         let (token, hash) =
             agent::new_credential().map_err(|_| "Could not generate a credential token.")?;
-        let expiration = (chrono::Utc::now() + chrono::Duration::days(days)).to_rfc3339();
-        let expires_at = if self.pool.connect_options().database_url.scheme() == "sqlite" {
-            "$4"
-        } else {
-            "CAST(CAST($4 AS TEXT) AS TIMESTAMPTZ)"
-        };
+        let expiration = chrono::Utc::now() + chrono::Duration::days(days);
+        let (expires_at, expiration) =
+            if self.pool.connect_options().database_url.scheme() == "sqlite" {
+                ("$4", expiration.format("%Y-%m-%d %H:%M:%S%.6f").to_string())
+            } else {
+                (
+                    "CAST(CAST($4 AS TEXT) AS TIMESTAMPTZ)",
+                    expiration.to_rfc3339(),
+                )
+            };
         let sql = format!(
             "INSERT INTO core_agentcredential
             (name,token_hash,created_by_id,expires_at,can_write,created_at)

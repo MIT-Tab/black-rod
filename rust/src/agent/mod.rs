@@ -115,6 +115,15 @@ impl Endpoint<'_> {
     }
 }
 
+fn credential_unexpired(sqlite: bool) -> &'static str {
+    if sqlite {
+        // SQLite credentials can contain Django's UTC text or an older Rust RFC 3339 timestamp.
+        "julianday(expires_at) > julianday('now')"
+    } else {
+        "expires_at > clock_timestamp()"
+    }
+}
+
 async fn credential(
     state: &AppState,
     headers: &HeaderMap,
@@ -132,18 +141,29 @@ async fn credential(
         return Ok(None);
     }
     let hash = hex::encode(digest::digest(&digest::SHA256, token.as_bytes()));
-    let possible=sqlx::query_scalar::<_,i64>(
-        "SELECT CAST(id AS BIGINT) FROM core_agentcredential WHERE token_hash=$1 AND revoked_at IS NULL
-            AND expires_at>CURRENT_TIMESTAMP"
-    ).bind(&hash).fetch_optional(&state.pool).await?;
+    let active =
+        credential_unexpired(state.pool.connect_options().database_url.scheme() == "sqlite");
+    let find = format!(
+        "SELECT CAST(id AS BIGINT) FROM core_agentcredential
+         WHERE token_hash=$1 AND revoked_at IS NULL AND {active}"
+    );
+    let possible = sqlx::query_scalar::<_, i64>(AssertSqlSafe(find))
+        .bind(&hash)
+        .fetch_optional(&state.pool)
+        .await?;
     if possible.is_none() {
         return Ok(None);
     }
-    let credential=sqlx::query("UPDATE core_agentcredential SET last_used_at=CURRENT_TIMESTAMP
-        WHERE token_hash=$1 AND revoked_at IS NULL AND expires_at>CURRENT_TIMESTAMP AND EXISTS (
-            SELECT 1 FROM core_user WHERE id=core_agentcredential.created_by_id AND is_active AND is_superuser
-        ) RETURNING CAST(id AS BIGINT) AS id, CAST(CASE WHEN can_write THEN 1 ELSE 0 END AS BIGINT) AS writable")
-        .bind(hash).fetch_optional(&state.pool).await?;
+    let use_credential = format!(
+        "UPDATE core_agentcredential SET last_used_at=CURRENT_TIMESTAMP
+         WHERE token_hash=$1 AND revoked_at IS NULL AND {active} AND EXISTS (
+             SELECT 1 FROM core_user WHERE id=core_agentcredential.created_by_id AND is_active AND is_superuser
+         ) RETURNING CAST(id AS BIGINT) AS id, CAST(CASE WHEN can_write THEN 1 ELSE 0 END AS BIGINT) AS writable"
+    );
+    let credential = sqlx::query(AssertSqlSafe(use_credential))
+        .bind(hash)
+        .fetch_optional(&state.pool)
+        .await?;
     Ok(credential
         .map(|row| {
             Ok::<_, sqlx::Error>((row.try_get("id")?, row.try_get::<i64, _>("writable")? != 0))
@@ -552,4 +572,70 @@ pub(crate) async fn endpoint(State(state): State<AppState>, request: Request) ->
         eprintln!("Agent data request failed: {error:?}");
         endpoint.render(StatusCode::CONFLICT, json!({"detail":"The database could not safely complete the change. The request was rolled back; retry with the same request_id."}))
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn credential_expiration_handles_both_sqlite_timestamp_formats() {
+        sqlx::any::install_default_drivers();
+        let pool = sqlx::any::AnyPoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        sqlx::query("CREATE TABLE core_user (id BIGINT, is_active BOOLEAN, is_superuser BOOLEAN)")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query("INSERT INTO core_user VALUES (7, TRUE, TRUE)")
+            .execute(&pool)
+            .await
+            .unwrap();
+        sqlx::query(
+            "CREATE TABLE core_agentcredential (
+                id BIGINT, token_hash TEXT, created_by_id BIGINT, expires_at TEXT,
+                revoked_at TEXT, last_used_at TEXT, can_write BOOLEAN
+            )",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        let (token, hash) = new_credential().unwrap();
+        sqlx::query("INSERT INTO core_agentcredential VALUES (2, $1, 7, NULL, NULL, NULL, TRUE)")
+            .bind(hash)
+            .execute(&pool)
+            .await
+            .unwrap();
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            header::AUTHORIZATION,
+            format!("Bearer {token}").parse().unwrap(),
+        );
+        let state = AppState::new(pool, 2026);
+        let now = chrono::Utc::now();
+        for (deadline, valid) in [
+            (now + chrono::Duration::minutes(5), true),
+            (now - chrono::Duration::seconds(5), false),
+        ] {
+            for expires_at in [
+                deadline.to_rfc3339(),
+                deadline.format("%Y-%m-%d %H:%M:%S%.6f").to_string(),
+            ] {
+                sqlx::query("UPDATE core_agentcredential SET expires_at=$1")
+                    .bind(expires_at)
+                    .execute(&state.pool)
+                    .await
+                    .unwrap();
+                assert_eq!(
+                    credential(&state, &headers).await.unwrap(),
+                    valid.then_some((2, true))
+                );
+                let mut connection = state.pool.acquire().await.unwrap();
+                assert_eq!(journal::lock(&mut connection, 2).await.unwrap(), valid);
+            }
+        }
+    }
 }

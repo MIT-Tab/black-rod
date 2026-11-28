@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, sync::LazyLock};
+use std::{borrow::Cow, collections::BTreeMap, sync::LazyLock};
 
 use serde::Deserialize;
 
@@ -68,7 +68,24 @@ pub(super) struct Widget {
     pub(super) related_url: Option<String>,
     pub(super) forward: Option<String>,
     #[serde(default)]
-    pub(super) choices: Vec<(String, String)>,
+    choices: Vec<(String, String)>,
+    #[serde(default)]
+    season_choices: bool,
+}
+
+impl Widget {
+    pub(super) fn choices(&self, current_season: i32) -> Cow<'_, [(String, String)]> {
+        if self.season_choices {
+            Cow::Owned(
+                (2004..=current_season)
+                    .rev()
+                    .map(|year| (year.to_string(), crate::schedule::season_display(year)))
+                    .collect(),
+            )
+        } else {
+            Cow::Borrowed(&self.choices)
+        }
+    }
 }
 
 #[derive(Deserialize)]
@@ -260,4 +277,43 @@ pub(super) fn quote(pk: &str) -> String {
         }
     }
     escaped
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn admin_season_choices_follow_the_running_season() {
+        for slug in [
+            "coty",
+            "noty",
+            "qual",
+            "qualpoints",
+            "reaff",
+            "soty",
+            "totyreaff",
+        ] {
+            let model = schema().model("core", slug).unwrap();
+            for form in [&model.form_add, &model.form_change] {
+                let widget = &form.widgets["season"];
+                let choices = widget.choices(2027);
+                assert_eq!(choices[0].0, "2027");
+                assert_eq!(choices[0].1, "2027-28");
+                assert_eq!(choices[23].0, "2004");
+                assert_eq!(choices[23].1, "2004-05");
+                assert_eq!(choices.len(), 24);
+                assert_eq!(widget.choices(2025).first().unwrap().0, "2025");
+            }
+        }
+        assert!(
+            schema()
+                .model("core", "tournament")
+                .unwrap()
+                .form_add
+                .widgets["season"]
+                .choices(2027)
+                .is_empty()
+        );
+    }
 }
