@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, HashSet};
 
-use chrono::{NaiveDate, SecondsFormat, Utc};
+use chrono::{SecondsFormat, Utc};
 use serde_json::{Map, Value, json};
 use sqlx::{AnyConnection, AssertSqlSafe};
 
@@ -161,11 +161,7 @@ async fn validate(
             .filter(|value| value.is_finite())
             .map(|value| json!(value))
             .ok_or_else(|| invalid(format!("{{'{name}': ['Enter a number.']}}")))?,
-        "DateField" => json!(
-            NaiveDate::parse_from_str(&raw, "%Y-%m-%d")
-                .map_err(|_| invalid(format!("{{'{name}': ['Enter a valid date.']}}")))?
-                .to_string()
-        ),
+        "DateField" => json!(super::filter_date::date(&raw).map_err(invalid)?),
         "JSONField" => data,
         _ => json!(raw),
     };

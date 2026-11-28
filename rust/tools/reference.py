@@ -10,10 +10,6 @@ from django.core.wsgi import get_wsgi_application
 if os.environ.get("BLACK_ROD_PARITY_PRODUCTION_ERRORS") == "1":
     settings.DEBUG = False
 
-for feature in ("ENABLE_DEBATER_PROFILE_TAB_CARDS", "ENABLE_DEBATER_PARTNER_PIE_CHART", "ENABLE_TOURNAMENT_TAB_CARD_SEARCH"):
-    if os.environ.get(feature) == "1":
-        setattr(settings, feature, True)
-
 if os.environ.get("BLACK_ROD_PARITY_CACHE_MODE") == "cold":
     settings.CACHES = {"default": {"BACKEND": "django.core.cache.backends.dummy.DummyCache"}}
 

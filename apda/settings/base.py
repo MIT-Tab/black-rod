@@ -130,9 +130,15 @@ WSGI_APPLICATION = "apda.wsgi.application"
 CURRENT_SEASON = str(int(os.environ.get("BLACK_ROD_CURRENT_SEASON", "2026")))
 DEFAULT_SEASON = CURRENT_SEASON
 GM_BIPOC_AUTOQUAL_START_SEASON = 2025
-ENABLE_DEBATER_PARTNER_PIE_CHART = False
-ENABLE_DEBATER_PROFILE_TAB_CARDS = False
-ENABLE_TOURNAMENT_TAB_CARD_SEARCH = False
+
+
+def _enabled(name):
+    return os.environ.get(name, "").lower() in {"1", "true", "yes"}
+
+
+ENABLE_DEBATER_PARTNER_PIE_CHART = _enabled("ENABLE_DEBATER_PARTNER_PIE_CHART")
+ENABLE_DEBATER_PROFILE_TAB_CARDS = _enabled("ENABLE_DEBATER_PROFILE_TAB_CARDS")
+ENABLE_TOURNAMENT_TAB_CARD_SEARCH = _enabled("ENABLE_TOURNAMENT_TAB_CARD_SEARCH")
 
 # Set defaults for non-production environments
 if os.environ.get("ENV") != "production":

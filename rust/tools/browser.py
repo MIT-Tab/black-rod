@@ -4,7 +4,7 @@ from argparse import ArgumentParser
 from concurrent.futures import ThreadPoolExecutor
 from email import policy
 from email.parser import BytesParser
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from hashlib import sha256
 from html import unescape
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -17,7 +17,7 @@ import socket
 from socketserver import StreamRequestHandler, ThreadingTCPServer
 import sqlite3
 import subprocess
-from tempfile import TemporaryDirectory
+from tempfile import TemporaryDirectory, TemporaryFile
 from threading import Thread
 from urllib.parse import parse_qsl, parse_qs, urlencode, urlsplit
 from urllib.request import urlopen
@@ -188,6 +188,7 @@ def assert_directories(driver, django, rust):
     paths = [
         "/core/schools/",
         "/core/schools/?name__icontains=harv&sort=-name",
+        "/core/schools/?id=7.0",
         "/core/debaters/?first_name__icontains=an&status=1&sort=last_name&page=2",
         "/core/debaters/?sort=status&sort=-id",
         "/core/teams/?name__icontains=Yale&sort=name",
@@ -1860,11 +1861,18 @@ def assert_entities(driver, django, rust, fixture):
     assert driver.find_element("id", "id_last_name").get_attribute("value") == "Created"
     participant.pop("ajax")
     participant["last_name"] = "Updated"
-    assert submit(rust_root, f"{debater}/edit", participant)[:2] == [200, debater]
+    database = Path(os.environ["BR_STATE"]) / "dev.sqlite3"
+    for origin in (django_root, rust_root):
+        with sqlite3.connect(database) as connection:
+            connection.execute("UPDATE core_debater SET dino_to_contact_opt_in=TRUE, region=? WHERE id=?",
+                               (json.dumps("north"), created_debater[2]))
+        assert submit(origin, f"{debater}/edit", participant)[:2] == [200, debater]
+        with sqlite3.connect(f"{database.as_uri()}?mode=ro", uri=True) as connection:
+            region = connection.execute("SELECT region FROM core_debater WHERE id=?", (created_debater[2],)).fetchone()[0]
+            assert json.loads(region) == ["north"], (origin, region)
     driver.get(f"{django_root}{debater}/edit")
     assert driver.find_element("id", "id_last_name").get_attribute("value") == "Updated"
     assert submit(rust_root, f"{school}/delete", {})[:2] == [200, "/core/schools/"]
-    database = Path(os.environ["BR_STATE"]) / "dev.sqlite3"
     with sqlite3.connect(f"{database.as_uri()}?mode=ro", uri=True) as connection:
         assert connection.execute("SELECT school_id FROM core_debater WHERE id = ?",
                                   (created_debater[2],)).fetchone() == (None,)
@@ -4126,8 +4134,6 @@ def assert_mittab_bundle_upload(driver, django, rust, fixture):
     answer = submit(rust, skipped)
     assert "Skipped 1 round with incomplete rosters." in answer["message"] and snapshot() == before, answer
 
-    from hashlib import sha256
-
     for writer, reader in ((django, rust), (rust, django)):
         keys = [
             "".join(sha256(f"{writer.name}-{row}-{piece}".encode()).hexdigest() for piece in range(12))
@@ -4155,6 +4161,32 @@ def assert_mittab_bundle_upload(driver, django, rust, fixture):
     assert "updated 1 rounds, deleted 1 stale rounds." in result["message"], result
     after = snapshot()
     assert len(after) == 1 and after[0][:4] == (before[0][0], "prelim-1", 2, "prelim"), after
+    for server in (django, rust):
+        driver.get(f"http://{HOST}:{server.port}{path}")
+        csrf = driver.find_element("name", "csrfmiddlewaretoken").get_attribute("value")
+        cookies = "; ".join(f"{name}={driver.get_cookie(name)['value']}" for name in ("sessionid", "csrftoken"))
+        boundary = "standings-local-large-upload"
+        with TemporaryFile() as body, closing(server.connect()) as client:
+            body.write((f'--{boundary}\r\nContent-Disposition: form-data; name="csrfmiddlewaretoken"\r\n\r\n'
+                        f'{csrf}\r\n--{boundary}\r\nContent-Disposition: form-data; name="bundle_file"; '
+                        'filename="large-fixture.json"\r\nContent-Type: application/json\r\n\r\n').encode())
+            padding = b" " * (1024 * 1024)
+            for _ in range(65):
+                body.write(padding)
+            bundle = {**reference, "tournament_name": f"Large fixture {server.name}",
+                      "rounds": [{**fixture_round, "opp": {}}]}
+            body.write(json.dumps(bundle).encode())
+            body.write(f"\r\n--{boundary}--\r\n".encode())
+            length = body.tell()
+            body.seek(0)
+            client.request("POST", path, body=body, headers={
+                "Content-Type": f"multipart/form-data; boundary={boundary}", "Content-Length": str(length),
+                "Cookie": cookies,
+            })
+            response = client.getresponse()
+            assert response.status == 302, (server.name, response.status)
+            response.read()
+    assert snapshot() == after
     driver.delete_all_cookies()
 
 
@@ -4454,6 +4486,8 @@ School.objects.create(name=sys.argv[1])
 target = School.objects.create(name="MIT-Tab mapping parity destination")
 SchoolLookup.objects.create(server_name=sys.argv[1], school=target)
 temporary_school = School.all_objects.create(name="Disposable temporary link school", temporary=True)
+School.all_objects.create(name="Unrelated archived review school", temporary=True)
+Debater.all_objects.create(first_name="Unrelatedarchived", last_name="Review Person", temporary=True)
 temporary = Debater.all_objects.create(first_name="Temporary link fixture", school=target, temporary=True)
 synthetic = Debater.all_objects.create(first_name="Synthetic link fixture", school=target, synthetic=True)
 Debater.objects.create(first_name="Reviewedmononym", school=target)
@@ -4492,8 +4526,10 @@ print(json.dumps([target.id, temporary_school.id, temporary.id, synthetic.id, ea
         driver.get(reference_review)
         reopened = (imported_rows("schools", "name"), imported_rows("debaters", "first_name"))
         assert "Incoming" in reopened[1], reopened
+        assert "Unrelated archived review school" not in reopened[0] and "Unrelatedarchived" not in reopened[1], reopened
         driver.get(rust_review)
-        assert reopened == (imported_rows("schools", "name"), imported_rows("debaters", "first_name"))
+        candidate = (imported_rows("schools", "name"), imported_rows("debaters", "first_name"))
+        assert reopened == candidate, (reopened, candidate)
         assert_import_snapshot_cache_resilience(driver, rust, provider, event, db)
 
     for review_url in filter(None, (reference_review, rust_review)):

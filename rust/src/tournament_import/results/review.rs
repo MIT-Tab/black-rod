@@ -149,7 +149,7 @@ pub(super) async fn seed(
         .await?;
     let data = &review.data;
     let mut offered_schools = BTreeSet::new();
-    let mut created_debaters = BTreeSet::new();
+    let mut offered_debaters = BTreeSet::new();
     for row in data["new_schools"].as_array().into_iter().flatten() {
         let name = text(row).trim().to_owned();
         if !name.is_empty() {
@@ -161,12 +161,9 @@ pub(super) async fn seed(
             .await?;
             let id = match exact {
                 Some(id) => id,
-                None => {
-                    let id = seed_school(&mut tx, &name).await?;
-                    offered_schools.insert(id);
-                    id
-                }
+                None => seed_school(&mut tx, &name).await?,
             };
+            offered_schools.insert(id);
             review.mappings.schools.insert(name, id);
         }
     }
@@ -205,11 +202,9 @@ pub(super) async fn seed(
         {
             id
         } else {
-            let id =
-                insert_person(&mut tx, first, &last, school, state.current_season, true).await?;
-            created_debaters.insert(id);
-            id
+            insert_person(&mut tx, first, &last, school, state.current_season, true).await?
         };
+        offered_debaters.insert(id);
         if !key.is_empty() {
             review.mappings.debaters.insert(key, id);
         }
@@ -217,20 +212,14 @@ pub(super) async fn seed(
     let mut schools = Panel::new(SCHOOL);
     for row in sqlx::query(
         "SELECT CAST(id AS BIGINT) AS id,name,
-         CAST(CASE WHEN included_in_oty THEN 1 ELSE 0 END AS BIGINT) AS included,
-         CAST(CASE WHEN temporary THEN 1 ELSE 0 END AS BIGINT) AS temporary
-         FROM core_school ORDER BY name",
+         CAST(CASE WHEN included_in_oty THEN 1 ELSE 0 END AS BIGINT) AS included
+         FROM core_school WHERE temporary ORDER BY name",
     )
     .fetch_all(&mut *tx)
     .await?
     {
         let id = row.try_get("id")?;
-        let eligible = if offered_schools.is_empty() {
-            row.try_get::<i64, _>("temporary")? == 1
-        } else {
-            offered_schools.contains(&id)
-        };
-        if eligible {
+        if offered_schools.contains(&id) {
             schools.rows.push(ResultRow {
                 record: Some(id),
                 name: row.try_get("name")?,
@@ -249,7 +238,7 @@ pub(super) async fn seed(
     .await?
     {
         let id = row.try_get("id")?;
-        if created_debaters.is_empty() || created_debaters.contains(&id) {
+        if offered_debaters.contains(&id) {
             debaters.rows.push(ResultRow {
                 record: Some(id),
                 name: row.try_get("first_name")?,

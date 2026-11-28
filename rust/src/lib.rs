@@ -58,6 +58,7 @@ mod tag_filter;
 mod team_profile;
 mod tournament_import;
 mod tournament_profile;
+mod upload_file;
 mod video;
 mod web;
 

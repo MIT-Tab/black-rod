@@ -8,6 +8,7 @@ use axum::{
     response::{Html, IntoResponse, Response},
 };
 use minijinja::context;
+use rust_decimal::prelude::ToPrimitive;
 use serde::Serialize;
 use serde_json::json;
 use sqlx::{Any, AnyPool, AssertSqlSafe, Row, any::AnyArguments, query::Query};
@@ -508,9 +509,13 @@ fn filter(kind: Kind, query: &HashMap<&str, &str>, current: i32, user_id: Option
     }
     let value = |key| query.get(key).copied().unwrap_or_default().trim();
     if !matches!(kind, Kind::Motions)
-        && let Ok(id) = value("id").parse::<i64>()
+        && let Ok(number) = crate::decimal::validate(value("id"), None, None)
     {
-        result.add("x.id = {}", FilterValue::Number(id));
+        if let Some(id) = number.trunc().to_i64() {
+            result.add("x.id = {}", FilterValue::Number(id));
+        } else {
+            result.query.push_str(" AND FALSE");
+        }
     }
     let text_fields: &[(&str, &str)] = match kind {
         Kind::Standing(_) => unreachable!(),

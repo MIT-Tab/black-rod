@@ -436,7 +436,7 @@ pub fn app(state: AppState) -> Router {
             "/core/admin/round-amendments/",
             get(admin::amendment::upload)
                 .post(admin::amendment::upload)
-                .layer(axum::extract::DefaultBodyLimit::max(64 * 1024 * 1024)),
+                .layer(axum::extract::DefaultBodyLimit::disable()),
         )
         .route(
             "/core/admin/tournament-pipeline-audit/",
@@ -528,7 +528,7 @@ pub fn app(state: AppState) -> Router {
             "/core/tournaments/mittab_bundle/upload",
             get(tournament_import::upload)
                 .post(tournament_import::upload)
-                .layer(axum::extract::DefaultBodyLimit::max(64 * 1024 * 1024)),
+                .layer(axum::extract::DefaultBodyLimit::disable()),
         )
         .route(
             "/core/tournaments/create",
@@ -577,7 +577,7 @@ pub fn app(state: AppState) -> Router {
             "/core/motions/import",
             get(motion::import::endpoint)
                 .post(motion::import::endpoint)
-                .layer(axum::extract::DefaultBodyLimit::max(64 * 1024 * 1024)),
+                .layer(axum::extract::DefaultBodyLimit::disable()),
         )
         .route("/core/motions/{motion}", get(motion::detail))
         .route(

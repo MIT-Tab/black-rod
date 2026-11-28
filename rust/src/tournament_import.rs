@@ -13,7 +13,12 @@ use ring::digest;
 use serde_json::{Value, json};
 use sqlx::AnyConnection;
 
-use crate::{ApiError, AppState, admin, flash, login, session::User, web};
+use crate::{
+    ApiError, AppState, admin, flash, login,
+    session::User,
+    upload_file::{self, UploadFile},
+    web,
+};
 
 #[derive(Debug)]
 pub(crate) enum Error {
@@ -114,7 +119,7 @@ struct Upload {
     token: Option<String>,
     tournament: Option<i64>,
     filename: String,
-    content: Vec<u8>,
+    content: Option<UploadFile>,
 }
 
 impl Upload {
@@ -129,15 +134,9 @@ impl Upload {
             .map_err(|error| error.status())?
         {
             match field.name() {
-                Some("csrfmiddlewaretoken") => {
-                    upload.token = Some(field.text().await.map_err(|error| error.status())?)
-                }
+                Some("csrfmiddlewaretoken") => upload.token = Some(upload_file::text(field).await?),
                 Some("tournament") => {
-                    upload.tournament = field
-                        .text()
-                        .await
-                        .ok()
-                        .and_then(|id| id.trim().parse().ok())
+                    upload.tournament = upload_file::text(field).await?.trim().parse().ok();
                 }
                 Some("bundle_file") => {
                     upload.filename = field
@@ -146,11 +145,7 @@ impl Upload {
                             name.rsplit(['/', '\\']).next().unwrap_or_default()
                         })
                         .to_owned();
-                    upload.content = field
-                        .bytes()
-                        .await
-                        .map_err(|error| error.status())?
-                        .to_vec();
+                    upload.content = Some(UploadFile::stage(field).await?);
                 }
                 _ => (),
             }
@@ -158,25 +153,35 @@ impl Upload {
         Ok(upload)
     }
 
-    fn document(&self) -> Result<Value, Error> {
+    async fn document(self) -> Result<(Value, String), Error> {
         if self.filename.is_empty() {
             return Err(invalid("This field is required."));
         }
-        if self.content.is_empty() {
+        let Some(content) = self.content.filter(|file| !file.empty) else {
             return Err(invalid("The submitted file is empty."));
-        }
+        };
         if !self.filename.to_ascii_lowercase().ends_with(".json") {
             return Err(invalid("Please upload a .json Mit-Tab bundle file."));
         }
-        let text = std::str::from_utf8(&self.content)
-            .map_err(|_| invalid("Mit-Tab bundle files must be valid UTF-8 JSON."))?;
-        serde_json::from_str(text.trim_start_matches('\u{feff}')).map_err(|error| {
-            let detail = error.to_string();
-            let detail = detail
-                .split_once(" at line ")
-                .map_or(detail.as_str(), |(head, _)| head);
-            invalid(format!("Invalid JSON: {detail}."))
-        })
+        content
+            .parse(|bytes| {
+                let text = std::str::from_utf8(bytes)
+                    .map_err(|_| invalid("Mit-Tab bundle files must be valid UTF-8 JSON."))?;
+                let document =
+                    serde_json::from_str(text.trim_start_matches('\u{feff}')).map_err(|error| {
+                        let detail = error.to_string();
+                        let detail = detail
+                            .split_once(" at line ")
+                            .map_or(detail.as_str(), |(head, _)| head);
+                        invalid(format!("Invalid JSON: {detail}."))
+                    })?;
+                Ok((
+                    document,
+                    hex::encode(digest::digest(&digest::SHA256, bytes)),
+                ))
+            })
+            .await
+            .map_err(|_| Error::from(ApiError::Serialization))?
     }
 }
 
@@ -210,11 +215,9 @@ async fn request(state: &AppState, request: Request) -> Result<Response, Error> 
     let Some(id) = id.or(upload.tournament) else {
         return Ok(StatusCode::BAD_REQUEST.into_response());
     };
-    let result = match upload.document() {
-        Ok(document) => {
-            let hash = hex::encode(digest::digest(&digest::SHA256, &upload.content));
-            bundle::apply(state, id, &document, &upload.filename, &hash).await
-        }
+    let filename = upload.filename.clone();
+    let result = match upload.document().await {
+        Ok((document, hash)) => bundle::apply(state, id, &document, &filename, &hash).await,
         Err(error) => Err(error),
     };
     let summary = match result {

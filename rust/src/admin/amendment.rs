@@ -17,6 +17,7 @@ use crate::{
         mutation::Failure,
     },
     delete_relations, flash, login, tournament_import,
+    upload_file::{self, UploadFile},
 };
 
 #[derive(Debug)]
@@ -370,7 +371,7 @@ pub(crate) async fn upload(State(state): State<AppState>, request: Request) -> R
     };
     let mut token = None;
     let mut filename = String::new();
-    let mut content = axum::body::Bytes::new();
+    let mut content = None;
     loop {
         let field = match multipart.next_field().await {
             Ok(Some(field)) => field,
@@ -378,7 +379,10 @@ pub(crate) async fn upload(State(state): State<AppState>, request: Request) -> R
             Err(error) => return error.status().into_response(),
         };
         match field.name() {
-            Some("csrfmiddlewaretoken") => token = field.text().await.ok(),
+            Some("csrfmiddlewaretoken") => match upload_file::text(field).await {
+                Ok(value) => token = Some(value),
+                Err(status) => return status.into_response(),
+            },
             Some("amendment_file") => {
                 filename = field
                     .file_name()
@@ -387,9 +391,9 @@ pub(crate) async fn upload(State(state): State<AppState>, request: Request) -> R
                     .next()
                     .unwrap_or_default()
                     .to_owned();
-                content = match field.bytes().await {
-                    Ok(content) => content,
-                    Err(error) => return error.status().into_response(),
+                content = match UploadFile::stage(field).await {
+                    Ok(content) => Some(content),
+                    Err(status) => return status.into_response(),
                 };
             }
             _ => (),
@@ -399,13 +403,17 @@ pub(crate) async fn upload(State(state): State<AppState>, request: Request) -> R
         return login::csrf_failure();
     }
     let result = async {
-        if content.is_empty() {
+        let Some(content) = content.filter(|file| !file.empty) else {
             return Err(invalid("Please upload a valid amendment JSON file."));
-        }
+        };
         if !filename.to_ascii_lowercase().ends_with(".json") {
             return Err(invalid("Please upload a .json amendment file."));
         }
-        let actions = actions(&document(&content)?)?;
+        let document = content
+            .parse(document)
+            .await
+            .map_err(|_| Error::Database(ApiError::Serialization))??;
+        let actions = actions(&document)?;
         let mut tx = state.pool.begin().await?;
         let summary = execute(
             &mut tx,

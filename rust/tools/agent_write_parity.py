@@ -153,6 +153,12 @@ def exercise(django, rust, fixture):
         payload = json.dumps(numeric).replace('"num_teams": 32.0', f'"num_teams": {representation}')
         assert run(django, "batches/", payload=payload) == normalized
         assert run(rust, "batches/", payload=payload) == normalized
+    invalid_year = prepare([{"op": "update", "resource": "tournaments", "id": event["id"],
+                            "revision": event["revision"], "data": {"date": "0000-01-01"}}])
+    assert run(django, "batches/", payload=invalid_year, expected=400) == run(
+        rust, "batches/", payload=invalid_year, expected=400,
+    )
+    assert run(django, f"records/tournaments/{event['id']}/")["date"] == event["date"]
 
     resources = ("rounds", "round_stats", "round_metadata", "teams")
     before = {resource: get(django, resource) for resource in resources}

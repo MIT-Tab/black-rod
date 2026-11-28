@@ -20,6 +20,7 @@ use zip::ZipArchive;
 use crate::{
     ApiError, AppState, autocomplete, flash, login,
     session::{self, User},
+    upload_file::{self, UploadFile},
     web,
 };
 
@@ -355,7 +356,7 @@ async fn page(state: &AppState, request: Request, user: User) -> Result<Response
                     Err(error) => return Ok(error.into_response()),
                 };
                 if field.name() == Some("csrfmiddlewaretoken") {
-                    csrf = match field.text().await {
+                    csrf = match upload_file::text(field).await {
                         Ok(text) => Some(text),
                         Err(err) => return Ok(err.into_response()),
                     };
@@ -365,18 +366,22 @@ async fn page(state: &AppState, request: Request, user: User) -> Result<Response
                         .filter(|name| !name.is_empty())
                         .map(str::to_owned)
                 {
-                    let bytes = match field.bytes().await {
-                        Ok(bytes) => bytes,
-                        Err(err) => return Ok(err.into_response()),
+                    let content = match UploadFile::stage(field).await {
+                        Ok(content) => content,
+                        Err(status) => return Ok(status.into_response()),
                     };
-                    file = Some((name, bytes));
+                    file = Some((name, content));
                 }
             }
             if !login::csrf_valid(&headers, csrf.as_deref(), &origin) {
                 return Ok(login::csrf_failure());
             }
             if let Some((name, body)) = file {
-                match spreadsheet(&body, &name) {
+                match body
+                    .parse(move |bytes| spreadsheet(bytes, &name))
+                    .await
+                    .map_err(|_| ApiError::Serialization)?
+                {
                     Ok(values) => match validate(&state.pool, &values).await? {
                         Ok(validated) => {
                             let payload =

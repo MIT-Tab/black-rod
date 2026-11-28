@@ -123,16 +123,29 @@ async fn debater(
     }
     let first = claims::edit::sanitize_name(&fields["first_name"], "Removed");
     let last = claims::edit::sanitize_name(&fields["last_name"], "");
-    let region = if state.pool.connect_options().database_url.scheme() == "sqlite" {
-        "'[]'"
+    let (empty_region, normalized_region) = if state.pool.connect_options().database_url.scheme()
+        == "sqlite"
+    {
+        (
+            "'[]'",
+            "CASE WHEN json_type(region)='text' THEN CASE WHEN json_extract(region,'$')=''
+            THEN '[]' ELSE json_array(json_extract(region,'$')) END ELSE region END",
+        )
     } else {
-        "CAST('[]' AS JSONB)"
+        (
+            "CAST('[]' AS JSONB)",
+            "CASE WHEN jsonb_typeof(region)='string' THEN CASE WHEN region=CAST('\"\"' AS JSONB)
+            THEN CAST('[]' AS JSONB) ELSE jsonb_build_array(region) END ELSE region END",
+        )
     };
     let id = if let Some(id) = debater_id {
-        let query = format!("UPDATE core_debater SET first_name=$1,last_name=$2,school_id=$3,alias_group_id=$4,
+        let query = format!(
+            "UPDATE core_debater SET first_name=$1,last_name=$2,school_id=$3,alias_group_id=$4,
             dino_judge_contact_opt_in=(status=2 AND dino_judge_contact_opt_in),
-            region=CASE WHEN dino_to_contact_opt_in OR (status=2 AND dino_judge_contact_opt_in) THEN region ELSE {region} END
-            WHERE id=$5 AND NOT synthetic AND NOT temporary RETURNING CAST(id AS BIGINT)");
+            region=CASE WHEN dino_to_contact_opt_in OR (status=2 AND dino_judge_contact_opt_in)
+                THEN {normalized_region} ELSE {empty_region} END
+            WHERE id=$5 AND NOT synthetic AND NOT temporary RETURNING CAST(id AS BIGINT)"
+        );
         let mut tx = state.pool.begin().await?;
         let updated = sqlx::query_scalar::<_, i64>(AssertSqlSafe(query))
             .bind(first)
@@ -150,7 +163,7 @@ async fn debater(
     } else {
         let sql=format!("INSERT INTO core_debater (first_name,last_name,school_id,alias_group_id,first_season,
             latest_season,status,dino_to_contact_opt_in,dino_judge_contact_opt_in,region,elo_manual_opt,temporary,synthetic)
-            VALUES ($1,$2,$3,$4,$5,$5,1,FALSE,FALSE,{region},'',FALSE,FALSE) RETURNING CAST(id AS BIGINT)");
+            VALUES ($1,$2,$3,$4,$5,$5,1,FALSE,FALSE,{empty_region},'',FALSE,FALSE) RETURNING CAST(id AS BIGINT)");
         Some(
             sqlx::query_scalar::<_, i64>(AssertSqlSafe(sql))
                 .bind(first)
