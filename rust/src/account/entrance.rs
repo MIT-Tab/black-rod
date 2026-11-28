@@ -393,9 +393,7 @@ async fn page(state: &AppState, request: Request) -> Result<Response, ApiError> 
             .map_or("", String::as_str)
             .trim()
             .to_lowercase();
-        remember = fields
-            .get("remember")
-            .is_some_and(|value| !matches!(value.as_str(), "" | "0" | "false" | "False"));
+        remember = login::remember_choice(fields.get("remember").map(String::as_str));
         let response = match kind {
             "signup" => sign_up(state, &context, &username, &email, fields, &mut errors).await?,
             "login" => {

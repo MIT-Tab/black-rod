@@ -1,4 +1,5 @@
 mod dates;
+mod facets;
 pub(super) mod filters;
 
 use std::{
@@ -994,9 +995,23 @@ async fn filters(
     for filter in &model.filter {
         if model.slug() == "teamresult" && filter == "profile_visibility" {
             let active = params.get(filter).map(String::as_str);
-            let choices = [(None,"All"),(Some("hidden"),"Hidden for a member"),(Some("visible"),"Visible for everyone")]
-                .into_iter().map(|(value,label)|context!{label,url=>link(params,filter,value),selected=>value==active})
-                .collect::<Vec<_>>();
+            let mut cleared = params.clone();
+            cleared.remove(filter);
+            let counts = facets::grouped(admin, model, filter, &cleared).await?;
+            let choices = [
+                (None, "All"),
+                (Some("hidden"), "Hidden for a member"),
+                (Some("visible"), "Visible for everyone"),
+            ]
+            .into_iter()
+            .map(|(value, label)| {
+                let label = value.map_or_else(
+                    || label.to_owned(),
+                    |value| facets::label(label, &counts, Some(value)),
+                );
+                context! {label,url=>link(params,filter,value),selected=>value==active}
+            })
+            .collect::<Vec<_>>();
             filters.push(context! {title=>"profile visibility",choices});
             continue;
         }
@@ -1028,13 +1043,17 @@ async fn filters(
                     let mut clean = params.clone();
                     clean.remove(&exact);
                     clean.remove(&null);
+                    let counts = facets::grouped(admin, model, filter, &clean).await?;
                     let mut links = vec![
                         context! {label=>"All",url=>link(&clean,&exact,None),selected=>active.is_none()&&!empty},
                     ];
-                    links.extend(rows.iter().map(|(id,label)|context!{label,url=>link(&clean,&exact,Some(id)),selected=>active==Some(id)}));
-                    links.push(
-                        context! {label=>"-",url=>link(&clean,&null,Some("True")),selected=>empty},
-                    );
+                    links.extend(rows.iter().map(|(id,label)| {
+                        let label = facets::label(label, &counts, Some(id));
+                        context!{label,url=>link(&clean,&exact,Some(id)),selected=>active==Some(id)}
+                    }));
+                    links.push(context! {
+                        label=>facets::label("-", &counts, None),url=>link(&clean,&null,Some("True")),selected=>empty
+                    });
                     filters.push(context! {title=>&field.label,choices=>links});
                 }
             }
@@ -1054,14 +1073,26 @@ async fn filters(
         };
         let active = params.get(&exact).or_else(|| params.get(filter));
         let mut cleared = params.clone();
+        let null_key = format!("{filter}__isnull");
+        let empty = params.contains_key(&null_key);
         cleared.remove(&exact);
         cleared.remove(filter);
+        cleared.remove(&null_key);
+        if matches!(field.kind.as_str(), "DateField" | "DateTimeField") {
+            let choices = date_filters(admin, model, filter, field, params).await?;
+            filters.push(context! {title=>name,choices});
+            continue;
+        }
+        let counts = facets::grouped(admin, model, filter, &cleared).await?;
         let mut choices = vec![
-            context! {label=>"All",url=>link(&cleared,&exact,None),selected=>active.is_none()},
+            context! {label=>"All",url=>link(&cleared,&exact,None),selected=>active.is_none()&&!empty},
         ];
         if field.kind == "BooleanField" {
             for (value, label) in [("1", "Yes"), ("0", "No")] {
-                choices.push(context!{label,url=>link(&cleared,&exact,Some(value)),selected=>active.is_some_and(|active|active==value)});
+                choices.push(context!{label=>facets::label(label,&counts,Some(value)),url=>link(&cleared,&exact,Some(value)),selected=>active.is_some_and(|active|active==value)&&!empty});
+            }
+            if field.null {
+                choices.push(context! {label=>facets::label("Unknown",&counts,None),url=>link(&cleared,&null_key,Some("True")),selected=>empty});
             }
         } else if !field.choices.is_empty() {
             for (key, label) in &field.choices {
@@ -1069,15 +1100,9 @@ async fn filters(
                     .as_str()
                     .map(str::to_owned)
                     .unwrap_or_else(|| key.to_string());
-                choices.push(context!{label,url=>link(&cleared,&exact,Some(&value)),selected=>active==Some(&value)});
+                choices.push(context!{label=>facets::label(label,&counts,Some(&value)),url=>link(&cleared,&exact,Some(&value)),selected=>active==Some(&value)});
             }
-        } else if matches!(field.kind.as_str(), "DateField" | "DateTimeField") {
-            choices = date_filters(filter, field, params);
         } else if matches!(field.kind.as_str(), "ForeignKey" | "OneToOneField") {
-            let null_key = format!("{filter}__isnull");
-            let empty = params.contains_key(&null_key);
-            cleared.remove(&null_key);
-            choices[0] = context! {label=>"All",url=>link(&cleared,&exact,None),selected=>active.is_none()&&!empty};
             if let Some(target) = field
                 .related
                 .as_ref()
@@ -1100,7 +1125,7 @@ async fn filters(
                     .fetch_all(&admin.state.pool)
                     .await?
                 {
-                    choices.push(context!{label,url=>link(&cleared,&exact,Some(&value)),selected=>active==Some(&value)});
+                    choices.push(context!{label=>facets::label(&label,&counts,Some(&value)),url=>link(&cleared,&exact,Some(&value)),selected=>active==Some(&value)});
                 }
             }
             if field.related.as_deref() == Some("contenttypes.contenttype") {
@@ -1116,14 +1141,14 @@ async fn filters(
                         .get(&key)
                         .cloned()
                         .unwrap_or_else(|| format!("{app} | {slug}"));
-                    choices.push(context!{label,url=>link(&cleared,&exact,Some(&id)),selected=>active==Some(&id)});
+                    choices.push(context!{label=>facets::label(&label,&counts,Some(&id)),url=>link(&cleared,&exact,Some(&id)),selected=>active==Some(&id)});
                 }
             }
             if choices.len() + usize::from(field.null) <= 2 {
                 continue;
             }
             if field.null {
-                choices.push(context!{label=>"-",url=>link(&cleared,&null_key,Some("True")),selected=>empty});
+                choices.push(context!{label=>facets::label("-",&counts,None),url=>link(&cleared,&null_key,Some("True")),selected=>empty});
             }
         } else {
             let ordering = if matches!(
@@ -1164,7 +1189,7 @@ async fn filters(
                 let value: &str = row.try_get("value")?;
                 let label: Option<&str> = row.try_get("label")?;
                 let label = label.unwrap_or("-");
-                choices.push(context!{label,url=>link(&cleared,&exact,Some(value)),selected=>active.is_some_and(|active|active==value)});
+                choices.push(context!{label=>facets::label(label,&counts,Some(value)),url=>link(&cleared,&exact,Some(value)),selected=>active.is_some_and(|active|active==value)});
             }
         }
         if choices.len() > 1 || matches!(filter.as_str(), "provider" | "app__provider") {
@@ -1208,7 +1233,13 @@ pub(super) fn choice_ordering(source: &mut Source, model: &Model) -> String {
     order.join(", ")
 }
 
-fn date_filters(path: &str, field: &Field, params: &Parameters) -> Vec<Value> {
+async fn date_filters(
+    admin: &AdminRequest<'_>,
+    model: &Model,
+    path: &str,
+    field: &Field,
+    params: &Parameters,
+) -> Result<Vec<Value>, ApiError> {
     use chrono::{Datelike, Days, NaiveDate, Utc};
 
     let today = Utc::now().date_naive();
@@ -1242,34 +1273,42 @@ fn date_filters(path: &str, field: &Field, params: &Parameters) -> Vec<Value> {
         .collect::<Parameters>();
     let mut clean = params.clone();
     clean.retain(|name, _| !name.starts_with(&prefix) && name != "p");
-    let choice = |label: &str, options: Parameters| {
-        let selected = active == options;
-        let mut query = clean.clone();
-        query.extend(options);
-        context! {label,url=>query_string(&query),selected}
-    };
-    let mut choices = vec![choice("Any date", Parameters::new())];
+    let mut choices = vec![("Any date", Parameters::new())];
     for (label, start, end) in [
         ("Today", today, tomorrow),
         ("Past 7 days", today - Days::new(7), tomorrow),
         ("This month", month, next_month),
         ("This year", year, next_year),
     ] {
-        choices.push(choice(
+        choices.push((
             label,
             Parameters::from([(since.clone(), format(start)), (until.clone(), format(end))]),
         ));
     }
     if field.null {
         choices.extend([
-            choice(
+            (
                 "No date",
                 Parameters::from([(null.clone(), "True".to_owned())]),
             ),
-            choice("Has date", Parameters::from([(null, "False".to_owned())])),
+            ("Has date", Parameters::from([(null, "False".to_owned())])),
         ]);
     }
-    choices
+    let counts = facets::date_ranges(admin, model, path, field, &clean, &choices).await?;
+    Ok(choices
+        .into_iter()
+        .enumerate()
+        .map(|(index, (label, options))| {
+            let selected = active == options;
+            let mut query = clean.clone();
+            query.extend(options);
+            let label = counts.as_ref().map_or_else(
+                || label.to_owned(),
+                |counts| format!("{label} ({})", counts[index]),
+            );
+            context! {label,url=>query_string(&query),selected}
+        })
+        .collect())
 }
 
 async fn save_speaker_visibility(

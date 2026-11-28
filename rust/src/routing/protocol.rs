@@ -2,7 +2,7 @@ use std::sync::LazyLock;
 
 use axum::{
     extract::{OriginalUri, Request, State},
-    http::{HeaderValue, Method, StatusCode, Uri, header},
+    http::{HeaderMap, HeaderValue, Method, StatusCode, Uri, header},
     response::{IntoResponse, Response},
 };
 
@@ -270,6 +270,28 @@ pub(super) async fn report_server_errors(
             .map_or("Unmatched route", |route| route.as_str());
         sentry::capture_event(crate::diagnostics::event(route, &method, status, cause));
     }
+    response
+}
+
+pub(crate) fn protect_private_response(headers: &mut HeaderMap) {
+    headers.insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static("max-age=0, no-cache, no-store, must-revalidate, private"),
+    );
+    let varies_by_cookie = headers
+        .get_all(header::VARY)
+        .iter()
+        .filter_map(|value| value.to_str().ok())
+        .flat_map(|value| value.split(','))
+        .any(|value| value.trim().eq_ignore_ascii_case("cookie"));
+    if !varies_by_cookie {
+        headers.append(header::VARY, HeaderValue::from_static("Cookie"));
+    }
+}
+
+pub(super) async fn private_responses(request: Request, next: axum::middleware::Next) -> Response {
+    let mut response = next.run(request).await;
+    protect_private_response(response.headers_mut());
     response
 }
 

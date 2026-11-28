@@ -1022,7 +1022,7 @@ def assert_motion_import(driver, django, rust, fixture):
 
     from base64 import b64encode
     csv = ('Motion,Date,Tournament,Topics\n'
-           f'"This House would import the fixture CSV.",2/14/2026,{fixture["tournament"]},"Ethics; Finance"\n'
+           f'"This House would import the fixture CSV.",2/14/2026,{fixture["tournament"]},"Ethics; Finance; Ethics"\n'
            'This House would import a short date.,2/14/26,,\n'
            'This House would import an older short date.,11/27/69,,\n'
            '\n'
@@ -1039,7 +1039,7 @@ book.active.append(["A non-selected worksheet"])
 sheet=book.create_sheet("Motion import")
 book.active=sheet
 sheet.append(["Motion", "Date", "Tournament", "Topics"])
-sheet.append(["This House would import the fixture XLSX.", date(2026, 2, 14), int(argv[1]), "Ethics; Finance"])
+sheet.append(["This House would import the fixture XLSX.", date(2026, 2, 14), int(argv[1]), "Ethics; Finance; Ethics"])
 out=BytesIO()
 book.save(out)
 print(b64encode(out.getvalue()).decode())
@@ -1058,6 +1058,15 @@ print(b64encode(out.getvalue()).decode())
         assert rejected["status"] == 400 and not rejected["redirected"], rejected
         saved = confirm(roots[confirmer], (actual if confirmer == 0 else expected)["token"])
         assert saved["status"] == 200 and saved["redirected"] and f"Imported {len(dates)} motions" in saved["text"], saved
+    database = Path(os.environ["BR_STATE"]) / "dev.sqlite3"
+    with sqlite3.connect(f"{database.as_uri()}?mode=ro", uri=True) as connection:
+        for extension in ("CSV", "XLSX"):
+            tags = connection.execute(
+                "SELECT t.name FROM core_taggedmotion m JOIN core_motiontopic t ON t.id=m.tag_id "
+                "JOIN core_motion r ON r.id=m.content_object_id WHERE r.text=? ORDER BY t.name",
+                (f"This House would import the fixture {extension}.",),
+            ).fetchall()
+            assert tags == [("Ethics",), ("Finance",)], (extension, tags)
     large_csv = "Motion,Background\n" + "".join(
         f"This House would test large spreadsheet row {index},{'x' * 65_000}\n"
         for index in range(34)
@@ -1533,6 +1542,53 @@ def assert_claims(driver, django, rust, fixture):
     driver.delete_all_cookies()
 
 
+def assert_admin_facets(driver, django, rust):
+    seed = """
+from datetime import date
+from django import setup
+setup()
+from core.models import Debater, Motion, School, SpeakerResult, Tournament
+school = School.objects.create(name="Facet browser fixture school")
+tournament = Tournament.objects.create(host=school, season="2042", date=date(2042, 9, 1))
+for index, (division, hidden) in enumerate(((1, True), (1, False), (0, False)), start=1):
+    person = Debater.objects.create(first_name="Facet", last_name=f"Browser {index}", school=school)
+    SpeakerResult.objects.create(tournament=tournament, debater=person, place=index,
+                                 type_of_place=division, hidden_from_profile=hidden)
+tagged = Motion.objects.create(text="FacetBrowserSample with date", date_set=date(2026, 1, 1))
+tagged.tags.add("Facet browser topic")
+Motion.objects.create(text="FacetBrowserSample without date")
+"""
+    subprocess.run([str(ROOT / "venv/bin/python"), "-c", seed], check=True, capture_output=True)
+    session = django_session()
+    cases = (
+        ("/admin/core/speakerresult/?tournament__season=2042&hidden_from_profile__exact=1", {
+            "hidden from profile": {"All", "Yes (1)", "No (2)"},
+            "type of place": {"All", "Varsity (1)", "Novice (0)"},
+        }),
+        ("/admin/core/motion/?q=FacetBrowserSample", {
+            "date set": {"Any date (2)", "No date (1)", "Has date (1)"},
+            "tags": {"All", "Facet browser topic (1)"},
+        }),
+    )
+    for server in (django, rust):
+        origin = f"http://{HOST}:{server.port}"
+        driver.get(origin + "/robots.txt")
+        driver.delete_all_cookies()
+        driver.add_cookie({"name": "sessionid", "value": session})
+        for path, expected in cases:
+            driver.get(origin + path)
+            driver.find_element("link text", "Show counts").click()
+            driver.find_element("link text", "Hide counts")
+            filters = driver.execute_script("""
+                return Object.fromEntries([...document.querySelectorAll("#changelist-filter details")]
+                    .map(filter => [filter.dataset.filterTitle.toLowerCase(),
+                        [...filter.querySelectorAll("li a")].map(choice => choice.textContent.trim())]));
+            """)
+            for title, labels in expected.items():
+                assert labels <= set(filters.get(title, [])), (server.name, title, labels, filters)
+    driver.delete_all_cookies()
+
+
 def assert_scheduling(driver, django, rust, fixture):
     path = "/core/admin/scheduling/"
     root = [f"http://{HOST}:{server.port}" for server in (django, rust)]
@@ -1600,6 +1656,20 @@ def assert_scheduling(driver, django, rust, fixture):
     for server in root:
         assert call(server, f"runs/{saved['run_id']}/output/") == [200, run["output_text"]]
         assert call(server, "download/schools/") == [200, schools]
+    for origin in root:
+        driver.get(origin + path)
+        protected = driver.execute_async_script("""
+            const [run, done] = arguments;
+            Promise.all(["workspace-data/", "download/schools/", "runs/" + run + "/output/"].map(
+                async endpoint => {
+                    const response = await fetch(location.pathname + endpoint);
+                    return [response.status, response.headers.get("Vary"), response.headers.get("Cache-Control")];
+                })).then(done);
+        """, saved["run_id"])
+        for status, vary, cache in protected:
+            assert status == 200 and "cookie" in vary.lower(), protected
+            if origin == root[1]:
+                assert {"no-store", "private"} <= set(cache.replace(" ", "").split(",")), protected
     driver.delete_all_cookies()
 
 
@@ -2771,9 +2841,14 @@ print(json.dumps([a, b, team.pk, resource.pk, one.pk, two.pk, synthetic.pk]))
                            "term": "Rosterlookup"})
         result = driver.execute_async_script("""
             const [url, done] = arguments;
-            fetch(url).then(response => response.json()).then(done);
+            fetch(url).then(async response => done({
+                ...(await response.json()), cache: response.headers.get("Cache-Control"),
+                vary: response.headers.get("Vary")
+            }));
         """, "/admin/autocomplete/?" + query)
         assert [entry["id"] for entry in result["results"]] == [str(team)]
+        assert {"no-cache", "no-store", "private"} <= set(result["cache"].replace(" ", "").split(","))
+        assert "cookie" in result["vary"].lower()
         school = f"/core/schools/{synthetic}"
         driver.get(root + school + "/edit")
         assert driver.find_element("id", "id_name").get_attribute("value") == "Synthetic school editor fixture"
@@ -3163,7 +3238,7 @@ print(school.id)
                 const blob=await response.blob();
                 const reader=new FileReader();
                 reader.onload=()=>done({status:response.status,type:response.headers.get('Content-Type'),
-                    attachment:response.headers.get('Content-Disposition'),blob:reader.result.split(',')[1]});
+                    attachment:response.headers.get('Content-Disposition'),cache:response.headers.get('Cache-Control'),blob:reader.result.split(',')[1]});
                 reader.readAsDataURL(blob);
             }).catch(error=>done({status:0,error:String(error)}));
         """,str(index))
@@ -3174,6 +3249,7 @@ print(school.id)
         for index in range(len(formats)):
             download = download_format(index)
             assert download["status"] == 200 and download["attachment"].endswith(f'.{formats[index]}"'), download["attachment"]
+            assert {"no-cache", "no-store", "private"} <= set(download["cache"].replace(" ", "").split(","))
             downloads.append(download)
         exports[server.port] = downloads
     django_exports = exports[django.port]
@@ -5278,6 +5354,7 @@ def browser_checks(database, options, output):
                 assert fraction <= 0.01, f"{mode} replay screenshot differs by {fraction:.2%}"
         assert_manual_results(driver, django, rust, fixture)
         assert_reviewed_tournament_import(driver, django, rust, fixture, provider)
+        assert_admin_facets(driver, django, rust)
 
 
 if __name__ == "__main__":

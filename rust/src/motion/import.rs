@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     io::{Cursor, Read},
     sync::LazyLock,
 };
@@ -306,10 +306,18 @@ async fn import(pool: &AnyPool, rows: Vec<ImportRow>) -> Result<(usize, usize), 
             skipped += 1;
             continue;
         };
-        for name in row.tags {
-            let tag = autocomplete::insert_tag(&mut tx, "core_motiontopic", &name).await?;
-            sqlx::query("INSERT INTO core_taggedmotion (content_object_id,tag_id) VALUES ($1,$2) ON CONFLICT DO NOTHING")
-                .bind(id).bind(tag).execute(&mut *tx).await?;
+        let mut seen = HashSet::new();
+        for name in &row.tags {
+            if seen.insert(name) {
+                let tag = autocomplete::insert_tag(&mut tx, "core_motiontopic", name).await?;
+                sqlx::query(
+                    "INSERT INTO core_taggedmotion (content_object_id,tag_id) VALUES ($1,$2)",
+                )
+                .bind(id)
+                .bind(tag)
+                .execute(&mut *tx)
+                .await?;
+            }
         }
         created += 1;
     }

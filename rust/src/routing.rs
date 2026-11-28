@@ -1,8 +1,12 @@
 mod protocol;
 
-use protocol::{api_protocol, append_slash, report_server_errors, security_headers, validate_host};
+use protocol::{
+    api_protocol, append_slash, private_responses, report_server_errors, security_headers,
+    validate_host,
+};
 pub(crate) use protocol::{
-    limit, missing_route, protected_api_path, public_api_path, slash_redirect,
+    limit, missing_route, protect_private_response, protected_api_path, public_api_path,
+    slash_redirect,
 };
 
 use axum::{Router, routing::get};
@@ -110,6 +114,31 @@ pub(crate) fn local_api(state: AppState) -> Router {
             api_protocol,
         ))
         .with_state(state)
+}
+
+fn scheduler_routes() -> Router<AppState> {
+    Router::new()
+        .route(
+            "/core/admin/scheduling/",
+            get(scheduling::dashboard).post(scheduling::dashboard),
+        )
+        .route(
+            "/core/admin/scheduling/workspace-data/",
+            get(scheduling::data),
+        )
+        .route(
+            "/core/admin/scheduling/save-browser-run/",
+            axum::routing::post(scheduling::save_run),
+        )
+        .route(
+            "/core/admin/scheduling/download/{kind}/",
+            get(scheduling::csv),
+        )
+        .route(
+            "/core/admin/scheduling/runs/{id}/output/",
+            get(scheduling::output),
+        )
+        .route_layer(axum::middleware::from_fn(private_responses))
 }
 
 pub fn app(state: AppState) -> Router {
@@ -301,26 +330,7 @@ pub fn app(state: AppState) -> Router {
             get(entity_forms::endpoint).post(entity_forms::endpoint),
         )
         .route("/core/debaters/", get(directory::page))
-        .route(
-            "/core/admin/scheduling/",
-            get(scheduling::dashboard).post(scheduling::dashboard),
-        )
-        .route(
-            "/core/admin/scheduling/workspace-data/",
-            get(scheduling::data),
-        )
-        .route(
-            "/core/admin/scheduling/save-browser-run/",
-            axum::routing::post(scheduling::save_run),
-        )
-        .route(
-            "/core/admin/scheduling/download/{kind}/",
-            get(scheduling::csv),
-        )
-        .route(
-            "/core/admin/scheduling/runs/{id}/output/",
-            get(scheduling::output),
-        )
+        .merge(scheduler_routes())
         .route(
             "/core/generated-codes/",
             get(generated_code::endpoint).post(generated_code::endpoint),

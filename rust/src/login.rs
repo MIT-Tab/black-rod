@@ -176,6 +176,10 @@ struct LoginPage<'a> {
     remember: bool,
 }
 
+pub(crate) fn remember_choice(value: Option<&str>) -> bool {
+    value.is_some_and(|value| !matches!(value, "" | "0") && !value.eq_ignore_ascii_case("false"))
+}
+
 pub(crate) fn csrf_tokens(
     headers: &HeaderMap,
 ) -> Result<(String, String), ring::error::Unspecified> {
@@ -340,8 +344,7 @@ pub(crate) async fn view(State(state): State<AppState>, request: Request) -> Res
     let next = field("next")
         .map(|value| safe_next(value, &origin))
         .unwrap_or(next);
-    let remember =
-        field("remember").is_some_and(|value| !matches!(value, "" | "0" | "false" | "False"));
+    let remember = remember_choice(field("remember"));
     if field("provider") == Some("apdaonline") {
         return crate::oauth::start(&state, &headers, &origin, &next, remember).await;
     }
@@ -612,6 +615,14 @@ pub(crate) async fn logout(State(state): State<AppState>, request: Request) -> R
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn remember_accepts_django_checkbox_values() {
+        for value in [None, Some(""), Some("0"), Some("false"), Some("FALSE")] {
+            assert!(!remember_choice(value));
+        }
+        assert!(remember_choice(Some("on")));
+    }
 
     #[test]
     fn cookie_builder_preserves_session_and_csrf_attributes() {

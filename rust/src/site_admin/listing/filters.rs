@@ -127,7 +127,7 @@ fn scalar(field: &Field, value: &str, sqlite: bool, values: &mut Vec<String>) ->
     }
 }
 
-fn predicate(
+pub(super) fn predicate(
     column: &str,
     field: &Field,
     lookup: &str,

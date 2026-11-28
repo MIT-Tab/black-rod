@@ -209,17 +209,8 @@ impl AdminRequest<'_> {
             eprintln!("Django admin template {name} failed: {reason}");
             ApiError::Serialization
         })?;
-        let mut result = (
-            [
-                (header::VARY, "Cookie"),
-                (
-                    header::CACHE_CONTROL,
-                    "max-age=0, no-cache, no-store, must-revalidate, private",
-                ),
-            ],
-            Html(source),
-        )
-            .into_response();
+        let mut result = Html(source).into_response();
+        crate::routing::protect_private_response(result.headers_mut());
         login::set_csrf_cookie(&mut result, &secret, self.secure());
         if !notices.is_empty() {
             flash::clear(&mut result, self.secure());
@@ -288,13 +279,18 @@ fn redirect(url: &str) -> Response {
 }
 
 pub(crate) async fn dispatch(State(state): State<AppState>, request: Request) -> Response {
-    match endpoint(&state, request).await {
+    let shared_catalog = request.uri().path() == "/admin/jsi18n/";
+    let mut response = match endpoint(&state, request).await {
         Ok(response) => response,
         Err(error) => {
             eprintln!("Django admin request failed: {error:?}");
             StatusCode::INTERNAL_SERVER_ERROR.into_response()
         }
+    };
+    if !shared_catalog {
+        crate::routing::protect_private_response(response.headers_mut());
     }
+    response
 }
 
 async fn endpoint(state: &AppState, request: Request) -> Result<Response, ApiError> {
