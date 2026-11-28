@@ -42,11 +42,7 @@ impl Memcached {
         format!("black-rod:rust:v1:{}", hex::encode(hash))
     }
 
-    pub(crate) async fn read_counter(&self, key: &str) -> Option<u32> {
-        self.read_counter_checked(key).await.ok().flatten()
-    }
-
-    pub(crate) async fn read_counter_checked(&self, key: &str) -> io::Result<Option<u32>> {
+    async fn read_counter_checked(&self, key: &str) -> io::Result<Option<u32>> {
         let Some((flags, value)) = self.read_raw_checked(key).await? else {
             return Ok(None);
         };
@@ -64,15 +60,84 @@ impl Memcached {
             .map_err(|_| crate::ApiError::QuotaUnavailable)
     }
 
-    // Callers hold the account's database lock until the write commits.
-    pub(crate) async fn record_quota(&self, key: &str, count: u32) -> Result<(), crate::ApiError> {
-        match self
-            .update_raw_checked(key, 2, count.to_string().as_bytes(), 86_400)
+    // Callers hold the account's database lock while reserving the slot.
+    pub(crate) async fn commit_with_quota(
+        &self,
+        mut tx: sqlx::Transaction<'static, sqlx::Any>,
+        key: &str,
+        prior: u32,
+    ) -> Result<(), crate::ApiError> {
+        // Check deferred PostgreSQL constraints while the transaction still
+        // owns the lock and before the external quota changes.
+        if tx.backend_name() == "PostgreSQL" {
+            sqlx::query("SET CONSTRAINTS ALL IMMEDIATE")
+                .execute(&mut *tx)
+                .await?;
+        }
+        let cache = self.clone();
+        let key = key.to_owned();
+        // Finish the reservation and commit even if the client disconnects.
+        let result = tokio::spawn(async move {
+            let reserved = (prior + 1).to_string();
+            if !cache
+                .update_raw_checked(&key, 2, reserved.as_bytes(), 86_400)
+                .await
+                .is_ok_and(|stored| stored)
+            {
+                return None;
+            }
+            let result = tx.commit().await;
+            if let Err(error) = &result
+                && error
+                    .as_database_error()
+                    .and_then(|error| error.code())
+                    .is_some_and(|code| {
+                        code.starts_with("23") || matches!(code.as_ref(), "40001" | "40P01" | "787")
+                    })
+                && let Ok(Some((2, data, version))) = cache.read_versioned(&key).await
+                && data == reserved.as_bytes()
+            {
+                // Refund a definite rejection if the slot is unchanged. A
+                // failed connection can leave the outcome of COMMIT unknown.
+                let _ = cache
+                    .compare_and_swap(&key, 2, prior.to_string().as_bytes(), 86_400, Some(version))
+                    .await;
+            }
+            Some(result)
+        })
+        .await
+        .map_err(|error| {
+            eprintln!("Quota commit task failed: {error}");
+            crate::ApiError::Database
+        })?;
+        Ok(result.ok_or(crate::ApiError::QuotaUnavailable)??)
+    }
+
+    pub(crate) async fn generation(&self, key: &str) -> Option<uuid::Uuid> {
+        let decode = |(flags, bytes): (u32, Vec<u8>)| {
+            (flags == 0)
+                .then(|| uuid::Uuid::from_slice(&bytes).ok())
+                .flatten()
+        };
+        if let Some(record) = self.read_raw_checked(key).await.ok()? {
+            return decode(record);
+        }
+        let proposed = uuid::Uuid::new_v4();
+        if self.write_raw(key, 0, proposed.as_bytes(), 0, false).await {
+            return Some(proposed);
+        }
+        self.read_raw(key).await.and_then(decode)
+    }
+
+    pub(crate) async fn advance_generation(&self, key: &str) -> bool {
+        if self
+            .write_raw(key, 0, uuid::Uuid::new_v4().as_bytes(), 0, true)
             .await
         {
-            Ok(true) => Ok(()),
-            _ => Err(crate::ApiError::QuotaUnavailable),
+            return true;
         }
+        self.invalidate_raw(key).await;
+        false
     }
 
     pub(crate) async fn advance_counter(&self, key: &str, seconds: u32) -> bool {

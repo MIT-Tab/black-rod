@@ -13,7 +13,7 @@ import psycopg2
 import requests
 
 from agent_write_parity import fixture_database
-from compare import HOST, ROOT, servers
+from compare import HOST, ROOT, RUST_BIN, available_port, servers, start_server
 
 SEED = """
 from reference import application
@@ -86,6 +86,33 @@ def exercise(server, user, session, control, observer):
                 control.commit()
 
 
+def signup_when_mail_is_unavailable(database):
+    port = available_port()
+    root = f"http://{HOST}:{port}"
+    config = {
+        "ENV": "production", "SECRET_KEY": "disposable-local-parity-key",
+        "DOT_ENV_FILE": os.devnull, "BLACK_ROD_CURRENT_SEASON": "2026",
+        "BLACK_ROD_DATABASE_URL": database, "BLACK_ROD_BIND": f"{HOST}:{port}",
+        "BLACK_ROD_DIRECT_CONNECTIONS": "1", "BLACK_ROD_ALLOWED_HOSTS": HOST,
+        "BLACK_ROD_PUBLIC_ORIGIN": root, "SENTRY_DSN": "", "LIVE_MITTAB_DIRECTORY_URL": "",
+        "BLACK_ROD_MEMCACHED_ADDR": f"{HOST}:{available_port()}",
+        "BLACK_ROD_SMTP_URL": f"smtp://{HOST}:{available_port()}",
+    }
+    with start_server("Rust", [str(RUST_BIN)], port, config), requests.Session() as client:
+        signup = root + "/accounts/signup/?next=/accounts/email/"
+        form = BeautifulSoup(client.get(signup, timeout=15).content, "html.parser")
+        csrf = form.select_one('input[name=csrfmiddlewaretoken]')["value"]
+        result = client.post(signup, timeout=25, allow_redirects=False, data={
+            "csrfmiddlewaretoken": csrf, "username": "delivery-failure-fixture",
+            "email": "unavailable@example.test", "password1": "W7fish!test-river-pony-93",
+            "password2": "W7fish!test-river-pony-93", "next": "/accounts/email/",
+        })
+        assert result.status_code == 302 and client.cookies.get("sessionid"), result.status_code
+        addresses = client.get(root + "/accounts/email/", timeout=15)
+        assert addresses.status_code == 200 and "unavailable@example.test" in addresses.text
+        assert "We could not send a confirmation email." in addresses.text
+
+
 def main():
     postgres = os.environ["BLACK_ROD_PARITY_POSTGRES_URL"]
     seed = Path(os.environ["BR_STATE"]) / "dev.sqlite3"
@@ -102,7 +129,8 @@ def main():
             ) as observer:
                 observer.autocommit = True
                 exercise(rust, user, session, control, observer)
-    print("Overlapping PostgreSQL email edits preserve the current primary address and account email")
+            signup_when_mail_is_unavailable(target)
+    print("Overlapping PostgreSQL email edits preserve the primary address, and signup survives mail failure")
 
 
 if __name__ == "__main__":

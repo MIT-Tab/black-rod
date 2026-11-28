@@ -1623,11 +1623,12 @@ two = Round.objects.create(tournament=tournament, gov=opp, opp=team, round_numbe
 RoundStats.objects.create(round=one, debater=first, speaks="25", ranks="2", debater_role="PM")
 RoundStats.objects.create(round=one, debater=second, speaks="27", ranks="1", debater_role="MG")
 RoundStats.objects.create(round=two, debater=second, speaks="29", ranks="1", debater_role="MO")
-print(json.dumps([team.pk, tournament.pk]))
+print(json.dumps([school.pk, team.pk, opp.pk, tournament.pk, first.pk, second.pk]))
 """
-    team, tournament = json.loads(subprocess.check_output(
+    records = json.loads(subprocess.check_output(
         [str(ROOT / "venv/bin/python"), "-c", seed], text=True
     ).splitlines()[-1])
+    _, team, _, tournament, _, _ = records
     session = django_session()
     pages = []
     for server in (django, rust):
@@ -1642,6 +1643,17 @@ print(json.dumps([team.pk, tournament.pk]))
     assert pages[0] == pages[1], pages
     assert pages[1][0][-2:] == ["First Fixture", "Second Fixture"], pages[1]
     assert len(pages[1][2]) == 5 and "MO / 29" in pages[1][2][-1], pages[1]
+    subprocess.run([str(ROOT / "venv/bin/python"), "-c", """
+from django import setup
+setup()
+from core.models import Debater, School, Team, Tournament
+from sys import argv
+school, team, opponent, tournament, first, second = map(int, argv[1:])
+Tournament.objects.filter(pk=tournament).delete()
+Team.objects.filter(pk__in=[team, opponent]).delete()
+Debater.all_objects.filter(pk__in=[first, second]).delete()
+School.objects.filter(pk=school).delete()
+""", *map(str, records)], check=True, capture_output=True)
     driver.delete_all_cookies()
 
 
@@ -3357,6 +3369,15 @@ print(json.dumps([temporary.pk, synthetic.pk, award.pk]))
         assert driver.current_url == root + route
         with sqlite3.connect(f"{db.as_uri()}?mode=ro", uri=True) as connection:
             assert {person for person, in connection.execute(membership, (record,))} == expected_members
+    subprocess.run([str(ROOT / "venv/bin/python"), "-c", """
+from django import setup
+setup()
+from core.models import Debater, TeamResult
+from sys import argv
+award, temporary, synthetic = map(int, argv[1:])
+TeamResult.objects.filter(pk=award).delete()
+Debater.all_objects.filter(pk__in=[temporary, synthetic]).delete()
+""", str(hidden_award), str(temporary), str(synthetic)], check=True, capture_output=True)
     driver.delete_all_cookies()
 
 
@@ -4366,7 +4387,7 @@ print(json.dumps([target.id, temporary_school.id, temporary.id, synthetic.id, ea
                 .then(async response => {
                     const page = new DOMParser().parseFromString(await response.text(), 'text/html');
                     const errors = [...page.querySelectorAll('.invalid-feedback, .errorlist, [role="alert"]')]
-                        .map(element => element.textContent.trim()).filter(Boolean);
+                        .map(element => [element.id, element.textContent.trim()]).filter(([, message]) => message);
                     done({status:response.status,path:new URL(response.url).pathname,errors});
                 }, () => done({status:0}));
         """, str(mapped_school))

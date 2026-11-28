@@ -23,6 +23,7 @@ SEED = """
 from reference import application
 from django.contrib.sessions.backends.db import SessionStore
 from django.contrib.sites.models import Site
+from django.db import connection
 from core.models import Debater, School, SchoolAdmin, User
 from uuid import uuid4
 import json
@@ -38,11 +39,32 @@ debater_ids = [
     Debater.objects.create(school=school, first_name="Claimable", last_name=f"Person {i}").pk
     for i in range(7)
 ]
+rejected = Debater.objects.create(school=school, first_name="Commit", last_name="Rejected")
+with connection.cursor() as cursor:
+    cursor.execute(
+        "CREATE TABLE quota_fixture_reference (debater_id INTEGER REFERENCES core_debater(id) "
+        "DEFERRABLE INITIALLY DEFERRED)"
+    )
+    tests = [
+        ("core_debater", "NEW.first_name='Created' AND NEW.last_name='Person -1'"),
+        ("core_claimdebaterrequest", f"NEW.debater_id={rejected.pk}"),
+    ]
+    if connection.vendor == "postgresql":
+        cursor.execute(
+            "CREATE FUNCTION reject_quota_fixture() RETURNS trigger LANGUAGE plpgsql AS $$ "
+            "BEGIN INSERT INTO quota_fixture_reference VALUES (-1); RETURN NEW; END; $$"
+        )
+    for table, condition in tests:
+        prefix = f"CREATE TRIGGER {table}_quota_fixture AFTER INSERT ON {table}"
+        clause = (f"FOR EACH ROW WHEN ({condition}) EXECUTE FUNCTION reject_quota_fixture()"
+                  if connection.vendor == "postgresql" else
+                  f"WHEN {condition} BEGIN INSERT INTO quota_fixture_reference VALUES (-1); END")
+        cursor.execute(f"{prefix} {clause}")
 session = SessionStore()
 session.update({"_auth_user_id": str(user.pk), "_auth_user_backend": "django.contrib.auth.backends.ModelBackend",
                 "_auth_user_hash": user.get_session_auth_hash()})
 session.save()
-print(json.dumps([school.id, debater_ids, session.session_key, username, Site.objects.get(pk=1).domain]))
+print(json.dumps([school.id, debater_ids, session.session_key, username, Site.objects.get(pk=1).domain, rejected.pk]))
 """
 
 COUNTS = """
@@ -167,7 +189,7 @@ def check_login_limits(roots, cache, username, site):
         assert len(backend.get(key(unknown))) == 5, "Workers did not share the five-attempt limit"
 
 
-def exercise(env, database, cache, school, debaters, session, username, site, counts):
+def exercise(env, database, cache, school, debaters, session, username, site, rejected, counts):
     with refusing_cache() as read_only:
         for failing in (f"{HOST}:{available_port()}", read_only):
             with worker(env, database, failing) as url:
@@ -178,6 +200,9 @@ def exercise(env, database, cache, school, debaters, session, username, site, co
 
     with worker(env, database, cache) as first, worker(env, database, cache) as second:
         clients = [forms(url, session, school) for url in (first, second)]
+        assert clients[0][0](-1).status_code == 500
+        assert clients[1][1](rejected).status_code == 500
+        assert counts() == [0, 0]
         with ThreadPoolExecutor(max_workers=2) as pool:
             creations = [pool.submit(clients[i % 2][0], i) for i in range(7)]
             assert sorted(result.result().status_code for result in creations) == [302] * 5 + [403] * 2
@@ -206,10 +231,10 @@ def main():
                 ).splitlines()
                 return json.loads(lines[-1])
 
-            school, debaters, session, username, site = fixture_query(SEED)
-            exercise(env, database, cache, school, debaters, session, username, site,
+            school, debaters, session, username, site, rejected = fixture_query(SEED)
+            exercise(env, database, cache, school, debaters, session, username, site, rejected,
                      lambda: fixture_query(COUNTS, str(school)))
-    print("Shared write quotas withstand cache failure, and concurrent logins retain all attempts")
+    print("Shared quotas withstand cache and database failures, and concurrent logins retain all attempts")
 
 
 if __name__ == "__main__":

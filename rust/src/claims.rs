@@ -274,10 +274,9 @@ async fn submit_claim(
     sqlx::query("INSERT INTO core_claimdebaterrequest (requested_by_id,debater_id,status,created_at,denial_reason)
         VALUES ($1,$2,'pending',CURRENT_TIMESTAMP,'')").bind(user).bind(debater).execute(&mut *tx).await?;
     if let Some(cache) = &state.memcached {
-        cache.record_quota(&key, current + 1).await?;
-    }
-    tx.commit().await?;
-    if state.memcached.is_none() {
+        cache.commit_with_quota(tx, &key, current).await?;
+    } else {
+        tx.commit().await?;
         *counter += 1;
         state.claim_limits.insert(user, local).await;
     }

@@ -121,7 +121,7 @@ pub struct AppState {
     home: Cache<(uuid::Uuid, i32), Arc<standings::Boards>>,
     stats: Cache<(), Arc<serde_json::Value>>,
     recent_results: Cache<(), Arc<String>>,
-    search: Cache<u32, Arc<search::SearchIndex>>,
+    search: Cache<search::SearchGeneration, Arc<search::SearchIndex>>,
     partnership_stats: Arc<partnership::stats::Cache>,
     claim_limits: claims::Limits,
     account_limits: account::limits::Limits,
@@ -135,6 +135,12 @@ impl AppState {
     }
 
     pub fn with_cache_lifetime(pool: AnyPool, current_season: i32, lifetime: Duration) -> Self {
+        let search = Cache::builder().max_capacity(1);
+        let search = if lifetime.is_zero() {
+            search.time_to_live(Duration::ZERO)
+        } else {
+            search
+        };
         Self {
             pool,
             secret: None,
@@ -164,10 +170,7 @@ impl AppState {
                 })
                 .max_capacity(1)
                 .build(),
-            search: Cache::builder()
-                .time_to_live(lifetime.min(Duration::from_secs(60)))
-                .max_capacity(1)
-                .build(),
+            search: search.build(),
             recent_results: Cache::builder()
                 .time_to_live(if lifetime.is_zero() {
                     Duration::ZERO

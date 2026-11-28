@@ -28,10 +28,10 @@ const FILE_COUNT_LIMIT: usize = 100;
 pub(crate) const REQUEST_LIMIT: usize = (FILE_COUNT_LIMIT + 1) * FILE_LIMIT;
 static IMAGE_UPLOADS: Semaphore = Semaphore::const_new(2);
 
-fn media_root() -> PathBuf {
+fn media_root(state: &AppState) -> PathBuf {
     std::env::var_os("BLACK_ROD_MEDIA_ROOT")
         .map(PathBuf::from)
-        .unwrap_or_default()
+        .unwrap_or_else(|| state.release_root.to_path_buf())
 }
 
 fn same_origin(mut response: Response) -> Response {
@@ -174,21 +174,23 @@ async fn read_uploads(state: &AppState, request: Request) -> Result<Vec<Upload>,
 }
 
 pub(crate) async fn write_attachment(
+    state: &AppState,
     name: &str,
     mime: Option<&str>,
     bytes: &[u8],
 ) -> std::io::Result<(String, PathBuf)> {
-    write_attachment_from(name, mime, bytes).await
+    write_attachment_from(state, name, mime, bytes).await
 }
 
 async fn write_attachment_from(
+    state: &AppState,
     name: &str,
     mime: Option<&str>,
     mut contents: impl AsyncRead + Unpin,
 ) -> io::Result<(String, PathBuf)> {
     let day = Utc::now().date_naive().to_string();
     let relative = PathBuf::from(FOLDER).join(day);
-    let root = media_root();
+    let root = media_root(state);
     tokio::fs::create_dir_all(root.join(&relative)).await?;
     let suffix = name.rsplit('.').next().unwrap_or_default();
     let extension = if let Some(mime) = mime {
@@ -238,7 +240,8 @@ async fn write_files(
     } in files
     {
         let file = tokio::fs::File::from_std(file);
-        let (storage_name, absolute) = write_attachment_from(&name, Some(mime), file).await?;
+        let (storage_name, absolute) =
+            write_attachment_from(state, &name, Some(mime), file).await?;
         saved.push(absolute);
         sqlx::query("INSERT INTO django_summernote_attachment (name,file,uploaded) VALUES ($1,$2,CURRENT_TIMESTAMP)")
             .bind(&name).bind(&storage_name).execute(&mut *tx).await?;
@@ -326,7 +329,10 @@ pub(crate) async fn upload(State(state): State<AppState>, request: Request) -> R
     }
 }
 
-pub(crate) async fn attachment(Path((day, name)): Path<(String, String)>) -> Response {
+pub(crate) async fn attachment(
+    State(state): State<AppState>,
+    Path((day, name)): Path<(String, String)>,
+) -> Response {
     let Some((id, extension)) = name.split_once('.') else {
         return StatusCode::NOT_FOUND.into_response();
     };
@@ -337,7 +343,7 @@ pub(crate) async fn attachment(Path((day, name)): Path<(String, String)>) -> Res
     {
         return StatusCode::NOT_FOUND.into_response();
     }
-    let file = media_root().join(FOLDER).join(day).join(name);
+    let file = media_root(&state).join(FOLDER).join(day).join(name);
     let Ok(bytes) = tokio::fs::read(file).await else {
         return StatusCode::NOT_FOUND.into_response();
     };

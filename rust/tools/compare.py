@@ -268,6 +268,8 @@ def fixture_cases(django):
         Case("/api/schedule/", "OPTIONS"), Case("/api/standings/", "OPTIONS"),
         Case("/api/oty-guide/", "OPTIONS"),
         Case("/robots.txt"), Case("/robots.txt", "HEAD"), Case("/llms.txt"),
+        Case("/core/videos/tags/Caf%C3%A9%20Debate"),
+        Case("/core/videos/tags/Tagged%20%22Debate%22"),
         Case("/.well-known/ai-plugin.json"),
         Case("/.well-known/openapi.json", accept="application/vnd.oai.openapi+json"),
         Case("/.well-known/openapi.json", accept="APPLICATION/VND.OAI.OPENAPI+JSON"),

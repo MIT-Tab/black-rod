@@ -160,10 +160,25 @@ pub(crate) async fn detail(
 }
 
 pub(crate) async fn tag(Path(name): Path<String>) -> Response {
-    let name = name.replace(' ', "%20");
+    // Django leaves URI delimiters intact and escapes other characters in the redirect.
+    const ESCAPED: &percent_encoding::AsciiSet = &percent_encoding::CONTROLS
+        .add(b' ')
+        .add(b'"')
+        .add(b'<')
+        .add(b'>')
+        .add(b'\\')
+        .add(b'^')
+        .add(b'\x60')
+        .add(b'{')
+        .add(b'|')
+        .add(b'}');
+    let name = percent_encoding::utf8_percent_encode(&name, ESCAPED);
     (
         StatusCode::FOUND,
-        [(header::LOCATION, format!("/core/videos/?tags={name}"))],
+        [
+            (header::LOCATION, format!("/core/videos/?tags={name}")),
+            (header::CONTENT_TYPE, "text/html; charset=utf-8".to_owned()),
+        ],
     )
         .into_response()
 }

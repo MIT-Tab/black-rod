@@ -2,23 +2,36 @@
 """Keep the search index consistent with committed data, including agent undo."""
 
 from functools import partial
+from uuid import uuid4
+
+from django.core.cache import cache
 
 from django.db import transaction
 from haystack.signals import RealtimeSignalProcessor
+
+
+def invalidate_rust_search():
+    cache.set("black-rod:search-index:generation:v2", uuid4().bytes, timeout=None)
 
 
 class CommitSignalProcessor(RealtimeSignalProcessor):
     """A rolled-back dry run must never edit the external search index."""
 
     def synchronize(self, sender, pk, using="default"):
-        instance = sender._default_manager.using(using).filter(pk=pk).first()
-        if instance is None:
-            # Haystack accepts an instance with just the original primary key.
-            super().handle_delete(sender, sender(pk=pk))
-        else:
-            super().handle_save(sender, instance)
+        try:
+            instance = sender._default_manager.using(using).filter(pk=pk).first()
+            if instance is None:
+                # Haystack accepts an instance with just the original primary key.
+                super().handle_delete(sender, sender(pk=pk))
+            else:
+                super().handle_save(sender, instance)
+        finally:
+            invalidate_rust_search()
 
     def handle_save(self, sender, instance, **kwargs):
+        using = kwargs.get("using", "default")
+        if sender._meta.label_lower == "core.school":
+            transaction.on_commit(invalidate_rust_search, using=using, robust=True)
         backends = self.connection_router.for_write(instance=instance)
         if not any(
             sender in self.connections[backend].get_unified_index().get_indexed_models()
@@ -27,9 +40,9 @@ class CommitSignalProcessor(RealtimeSignalProcessor):
             return
         transaction.on_commit(
             partial(
-                self.synchronize, sender, instance.pk, kwargs.get("using", "default")
+                self.synchronize, sender, instance.pk, using
             ),
-            using=kwargs.get("using", "default"),
+            using=using,
             robust=True,
         )
 

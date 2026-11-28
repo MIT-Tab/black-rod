@@ -25,21 +25,7 @@ pub(crate) async fn generation(state: &AppState) -> Option<uuid::Uuid> {
     let Some(cache) = &state.memcached else {
         return Some(uuid::Uuid::nil());
     };
-    let version = |record: (u32, Vec<u8>)| match record {
-        (0, bytes) => uuid::Uuid::from_slice(&bytes).ok(),
-        _ => None,
-    };
-    if let Some(record) = cache.read_raw_checked(GENERATION).await.ok()? {
-        return version(record);
-    }
-    let proposed = uuid::Uuid::new_v4();
-    if cache
-        .write_raw(GENERATION, 0, proposed.as_bytes(), 0, false)
-        .await
-    {
-        return Some(proposed);
-    }
-    cache.read_raw(GENERATION).await.and_then(version)
+    cache.generation(GENERATION).await
 }
 
 pub(crate) async fn invalidate(state: &AppState, season: &str, boards: &[&str]) {
@@ -54,12 +40,7 @@ pub(crate) async fn invalidate(state: &AppState, season: &str, boards: &[&str]) 
         let mut deletes = tokio::task::JoinSet::new();
         let writer = cache.clone();
         deletes.spawn(async move {
-            if !writer
-                .write_raw(GENERATION, 0, uuid::Uuid::new_v4().as_bytes(), 0, true)
-                .await
-            {
-                writer.invalidate_raw(GENERATION).await;
-            }
+            let _ = writer.advance_generation(GENERATION).await;
         });
         let keys = boards
             .iter()

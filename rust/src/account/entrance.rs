@@ -165,19 +165,27 @@ async fn sign_up(
         BACKEND,
     )
     .await;
+    let mut notices = vec![(25, format!("Successfully signed in as {username}."))];
     if let Some(email_id) = address
         && std::env::var("ENV").as_deref() == Ok("production")
+        && super::emails::send_confirmation(state, &visit.origin, email_id, email, username, true)
+            .await
+            .is_err()
     {
-        super::emails::send_confirmation(state, &visit.origin, email_id, email, username, true)
-            .await?;
+        eprintln!("Could not send signup confirmation");
+        sentry::capture_message("Could not send signup confirmation", sentry::Level::Warning);
+        notices.push((
+            30,
+            "We could not send a confirmation email. You can resend it from Email Addresses."
+                .to_owned(),
+        ));
     }
     if let Some(secret) = state.secret.as_deref() {
-        flash::push(
+        flash::push_all(
             &mut response,
             &visit.headers,
             secret,
-            25,
-            &format!("Successfully signed in as {username}."),
+            &notices,
             visit.secure(),
         );
     }

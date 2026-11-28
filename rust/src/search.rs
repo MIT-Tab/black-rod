@@ -222,12 +222,19 @@ impl SearchIndex {
     }
 }
 
-const GENERATION: &str = ":1:black-rod:search-index:generation";
+const GENERATION: &str = ":1:black-rod:search-index:generation:v2";
+
+#[derive(Clone, Copy, Hash, PartialEq, Eq)]
+pub(crate) enum SearchGeneration {
+    Local,
+    Shared(uuid::Uuid),
+    CacheUnavailable(i64),
+}
 
 pub(crate) async fn invalidate(state: &AppState) -> bool {
     state.search.invalidate_all();
     if let Some(cache) = &state.memcached
-        && !cache.advance_counter(GENERATION, 0).await
+        && !cache.advance_generation(GENERATION).await
     {
         eprintln!("Could not invalidate the shared search index");
         return false;
@@ -245,8 +252,14 @@ pub(crate) async fn reindex(state: &AppState) -> Result<usize, ApiError> {
 
 async fn cached_index(state: &AppState) -> Result<Arc<SearchIndex>, Arc<ApiError>> {
     let generation = match &state.memcached {
-        Some(cache) => cache.read_counter(GENERATION).await.unwrap_or_default(),
-        None => 0,
+        Some(cache) => cache
+            .generation(GENERATION)
+            .await
+            .map(SearchGeneration::Shared)
+            .unwrap_or_else(|| {
+                SearchGeneration::CacheUnavailable(chrono::Utc::now().timestamp() / 60)
+            }),
+        None => SearchGeneration::Local,
     };
     state
         .search

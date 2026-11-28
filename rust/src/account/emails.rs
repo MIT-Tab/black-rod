@@ -69,7 +69,7 @@ pub(super) async fn send_confirmation(
     username: &str,
     _signup: bool,
 ) -> Result<(), ApiError> {
-    if limits::consume(
+    let Some(attempt) = limits::consume(
         state,
         "confirm_email",
         &limits::digest(&email.to_lowercase()),
@@ -77,22 +77,27 @@ pub(super) async fn send_confirmation(
         180,
     )
     .await
-    .is_none()
-    {
+    else {
         return Ok(());
+    };
+    let result = async {
+        let secret = state.secret.as_deref().ok_or(ApiError::Serialization)?;
+        let site = mail::site(state).await?;
+        let domain = sqlx::query_scalar::<_, String>("SELECT domain FROM django_site WHERE id=1")
+            .fetch_optional(&state.pool)
+            .await?
+            .unwrap_or_else(|| "example.com".to_owned());
+        let key = session::encode_signed(&id.to_string(), secret, SALT);
+        let link = format!("{origin}/accounts/confirm-email/{key}/");
+        let body = format!(
+            "Hello from {site}!\n\nYou're receiving this email because user {username} has given your email address to register an account on {domain}.\n\nTo confirm this is correct, go to {link}\n\nThank you for using {site}!\n{domain}\n"
+        );
+        mail::send(email, &site, "Please Confirm Your Email Address", body).await
+    }.await;
+    if result.is_err() {
+        attempt.rollback(state).await;
     }
-    let secret = state.secret.as_deref().ok_or(ApiError::Serialization)?;
-    let site = mail::site(state).await?;
-    let domain = sqlx::query_scalar::<_, String>("SELECT domain FROM django_site WHERE id=1")
-        .fetch_optional(&state.pool)
-        .await?
-        .unwrap_or_else(|| "example.com".to_owned());
-    let key = session::encode_signed(&id.to_string(), secret, SALT);
-    let link = format!("{origin}/accounts/confirm-email/{key}/");
-    let body = format!(
-        "Hello from {site}!\n\nYou're receiving this email because user {username} has given your email address to register an account on {domain}.\n\nTo confirm this is correct, go to {link}\n\nThank you for using {site}!\n{domain}\n"
-    );
-    mail::send(email, &site, "Please Confirm Your Email Address", body).await
+    result
 }
 
 fn notice(state: &AppState, visit: &Visit, response: &mut Response, level: i32, message: &str) {

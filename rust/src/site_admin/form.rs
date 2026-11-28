@@ -1212,7 +1212,7 @@ pub(super) async fn page(
     }
     let mut staged = None;
     if let Some((name, bytes)) = uploaded {
-        let (stored, path) = crate::summernote::write_attachment(&name, None, &bytes)
+        let (stored, path) = crate::summernote::write_attachment(admin.state, &name, None, &bytes)
             .await
             .map_err(|_| ApiError::Database)?;
         staged = Some(path);

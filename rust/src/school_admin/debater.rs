@@ -355,9 +355,10 @@ async fn save(
         claims::edit::team_names(&mut tx, id).await?;
     }
     if let Some((cache, key, count)) = quota {
-        cache.record_quota(key, count + 1).await?;
+        cache.commit_with_quota(tx, key, count).await?;
+    } else {
+        tx.commit().await?;
     }
-    tx.commit().await?;
     crate::search::invalidate(state).await;
     Ok(Save::Saved)
 }
