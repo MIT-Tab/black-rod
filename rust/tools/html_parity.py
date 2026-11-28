@@ -270,6 +270,12 @@ def open_page(driver, server, route, session):
 
 def capture(driver, server, route, session, target, exclude):
     open_page(driver, server, route, session)
+    if route.startswith("/core/videos/") and route.endswith(("/create", "/edit")):
+        WebDriverWait(driver, 15).until(lambda browser: browser.execute_script("""
+            const editors = [...document.querySelectorAll('.summernoteinplacewidget > .note-editor')];
+            const heights = editors.map(editor => editor.getBoundingClientRect().height);
+            return heights.length === 2 && heights.every(height => Math.abs(height - 480) < 1);
+        """), "Both editors should settle at their configured height")
     if route.startswith("/standings/replay/"):
         WebDriverWait(driver, 20).until(lambda browser: browser.execute_script("""
             const slider = document.getElementById("replay-slider");
@@ -445,13 +451,13 @@ def compare(driver, django, rust, cases, sessions, output, viewports, exclude, p
                 if structural is None and left_sidebar != right_sidebar:
                     structural = ("video sidebar layout", left_sidebar, right_sidebar)
                 content_width = None
-                if route == "/stats/":
-                    # Chrome can paint the native thumb a pixel early during chart layout.
+                if route in {"/stats/", "/core/videos/create"}:
+                    # Chrome can paint the native thumb at a different point during layout.
                     # Compare the actual scroll extents and every pixel inside the viewport.
                     if left_viewport == right_viewport:
                         content_width = left_viewport[0]
                     elif structural is None:
-                        structural = ("statistics viewport and scroll extent", left_viewport, right_viewport)
+                        structural = ("viewport and scroll extent", left_viewport, right_viewport)
                 count, fraction, difference = pixels(reference, candidate, content_width)
                 if (structural is None and count <= MAX_CHANGED_PIXELS) or attempt == 1:
                     break

@@ -21,7 +21,7 @@ import initPartnershipNetwork from "./partnership_network";
 import "./immaculate_grid";
 import initPartnershipStats from "./partnership_stats";
 import initTagFilters from "./rust_tag_filters";
-import initRichTextEditors from "./rust_summernote";
+import settleSummernoteLayout from "./summernote_layout";
 import initSchedulingBrowserRunner from "./scheduling_browser_runner";
 
 function getCookie(name) {
@@ -114,4 +114,4 @@ $(document).ready(() => {
 });
 
 $(() => initTagFilters());
-$(initRichTextEditors);
+$(settleSummernoteLayout);
