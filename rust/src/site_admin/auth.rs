@@ -1,5 +1,4 @@
 use axum::{
-    body::to_bytes,
     extract::{Request, State},
     http::{Method, StatusCode},
     response::{IntoResponse, Response},
@@ -44,10 +43,10 @@ async fn login_page(state: &AppState, request: Request) -> Result<Response, ApiE
     let mut form_error = "";
     let mut field_errors = std::collections::HashMap::new();
     if parts.method == Method::POST {
-        let Ok(body) = to_bytes(body, 128 * 1024).await else {
-            return Ok(StatusCode::PAYLOAD_TOO_LARGE.into_response());
+        let form = match browser_login::parse_form(&parts.headers, body, 128 * 1024).await {
+            Ok(fields) => fields,
+            Err(status) => return Ok(status.into_response()),
         };
-        let form = browser_login::form_values(&body);
         if !browser_login::csrf_valid(
             &parts.headers,
             form.get("csrfmiddlewaretoken").map(String::as_str),
@@ -103,10 +102,10 @@ pub(crate) async fn logout(State(state): State<AppState>, request: Request) -> R
     let Some(origin) = state.origin(&parts.headers) else {
         return StatusCode::BAD_REQUEST.into_response();
     };
-    let Ok(content) = to_bytes(body, 128 * 1024).await else {
-        return StatusCode::PAYLOAD_TOO_LARGE.into_response();
+    let fields = match browser_login::parse_form(&parts.headers, body, 128 * 1024).await {
+        Ok(fields) => fields,
+        Err(status) => return status.into_response(),
     };
-    let fields = browser_login::form_values(&content);
     if !browser_login::csrf_valid(
         &parts.headers,
         fields.get("csrfmiddlewaretoken").map(String::as_str),

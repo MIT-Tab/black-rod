@@ -272,9 +272,10 @@ async fn submit(state: &AppState, request: Request) -> Result<Response, amendmen
         Ok(form) => form,
         Err(response) => return Ok(*response),
     };
-    let selections = url::form_urlencoded::parse(&body)
+    let selections = body
+        .iter()
         .filter(|(key, _)| key == "selected_ids")
-        .map(|(_, value)| value.into_owned())
+        .map(|(_, value)| value.clone())
         .collect::<Vec<_>>();
     if selections.is_empty() {
         return Ok(super::notices(

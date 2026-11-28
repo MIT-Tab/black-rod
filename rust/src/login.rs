@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use axum::{
-    body::to_bytes,
+    body::{Body, to_bytes},
     extract::{DefaultBodyLimit, FromRequest, Multipart, Request, State},
     http::{HeaderMap, HeaderValue, Method, StatusCode, Uri, header},
     response::{Html, IntoResponse, Response},
@@ -231,39 +231,58 @@ async fn page(state: &AppState, headers: &HeaderMap, https: bool, page: LoginPag
     response
 }
 
-async fn auth_form(mut request: Request) -> Result<HashMap<String, String>, StatusCode> {
-    const MAX_BYTES: usize = 128 * 1024;
-    let media_type = request
-        .headers()
-        .get(header::CONTENT_TYPE)
-        .and_then(|value| value.to_str().ok())
+pub(crate) async fn form_fields(
+    headers: &HeaderMap,
+    body: Body,
+    limit: usize,
+) -> Result<Vec<(String, String)>, StatusCode> {
+    let Some(content_type) = headers.get(header::CONTENT_TYPE) else {
+        return Ok(Vec::new());
+    };
+    let media_type = content_type
+        .to_str()
         .unwrap_or_default()
         .split(';')
         .next()
         .unwrap_or_default()
         .trim();
     if media_type.eq_ignore_ascii_case("multipart/form-data") {
-        DefaultBodyLimit::max(MAX_BYTES).apply(&mut request);
+        let mut request = Request::new(body);
+        request
+            .headers_mut()
+            .insert(header::CONTENT_TYPE, content_type.clone());
+        DefaultBodyLimit::max(limit).apply(&mut request);
         let mut parts = Multipart::from_request(request, &())
             .await
             .map_err(|_| StatusCode::BAD_REQUEST)?;
-        let mut fields = HashMap::new();
+        let mut fields = Vec::new();
         while let Some(field) = parts.next_field().await.map_err(|error| error.status())? {
             if field.file_name().is_none() {
                 let name = field.name().unwrap_or_default().to_owned();
                 let text = field.text().await.map_err(|error| error.status())?;
-                fields.insert(name, text);
+                fields.push((name, text));
             }
         }
         return Ok(fields);
     }
     if !media_type.eq_ignore_ascii_case("application/x-www-form-urlencoded") {
-        return Ok(HashMap::new());
+        return Ok(Vec::new());
     }
-    let body = to_bytes(request.into_body(), MAX_BYTES)
+    let body = to_bytes(body, limit)
         .await
         .map_err(|_| StatusCode::PAYLOAD_TOO_LARGE)?;
-    Ok(form_values(&body))
+    Ok(url::form_urlencoded::parse(&body).into_owned().collect())
+}
+
+pub(crate) async fn parse_form(
+    headers: &HeaderMap,
+    body: Body,
+    limit: usize,
+) -> Result<HashMap<String, String>, StatusCode> {
+    Ok(form_fields(headers, body, limit)
+        .await?
+        .into_iter()
+        .collect())
 }
 
 pub(crate) async fn view(State(state): State<AppState>, request: Request) -> Response {
@@ -290,8 +309,9 @@ pub(crate) async fn view(State(state): State<AppState>, request: Request) -> Res
         )
         .await;
     }
-    let headers = request.headers().clone();
-    let form = match auth_form(request).await {
+    let (parts, body) = request.into_parts();
+    let headers = parts.headers;
+    let form = match parse_form(&headers, body, 128 * 1024).await {
         Ok(form) => form,
         Err(status) => return status.into_response(),
     };
@@ -525,9 +545,10 @@ pub(crate) async fn logout(State(state): State<AppState>, request: Request) -> R
     let Some(origin) = state.origin(request.headers()) else {
         return StatusCode::BAD_REQUEST.into_response();
     };
-    let headers = request.headers().clone();
-    let query = form_values(request.uri().query().unwrap_or_default().as_bytes());
-    let form = match auth_form(request).await {
+    let (parts, body) = request.into_parts();
+    let headers = parts.headers;
+    let query = form_values(parts.uri.query().unwrap_or_default().as_bytes());
+    let form = match parse_form(&headers, body, 128 * 1024).await {
         Ok(form) => form,
         Err(status) => return status.into_response(),
     };

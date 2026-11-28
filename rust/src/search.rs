@@ -55,10 +55,10 @@ struct Clause {
     terms: Vec<String>,
 }
 
-fn parse(input: &str) -> Vec<Clause> {
-    fn unquoted(out: &mut Vec<Clause>, text: &str) {
+fn parse(input: &str, allow_exclusions: bool) -> Vec<Clause> {
+    fn unquoted(out: &mut Vec<Clause>, text: &str, allow_exclusions: bool) {
         for word in text.split_whitespace() {
-            let negative = word.starts_with('-') && word.len() > 1;
+            let negative = allow_exclusions && word.starts_with('-') && word.len() > 1;
             let analyzed = terms(if negative { &word[1..] } else { word });
             out.extend(analyzed.into_iter().map(|term| Clause {
                 phrase: false,
@@ -70,7 +70,7 @@ fn parse(input: &str) -> Vec<Clause> {
     let mut clauses = Vec::new();
     let mut end = 0;
     for phrase in PHRASES.find_iter(input) {
-        unquoted(&mut clauses, &input[end..phrase.start()]);
+        unquoted(&mut clauses, &input[end..phrase.start()], allow_exclusions);
         let text = phrase.as_str();
         let terms = terms(&text[1..text.len() - 1]);
         if !terms.is_empty() {
@@ -82,7 +82,7 @@ fn parse(input: &str) -> Vec<Clause> {
         }
         end = phrase.end();
     }
-    unquoted(&mut clauses, &input[end..]);
+    unquoted(&mut clauses, &input[end..], allow_exclusions);
     // The reference query optimizer combines repeated terms.
     let mut seen = HashSet::new();
     clauses.retain(|clause| seen.insert((clause.phrase, clause.negative, clause.terms.clone())));
@@ -168,11 +168,13 @@ impl SearchIndex {
         idf * (frequency * 2.2 / (frequency + 1.2 * (0.25 + 0.75 * length / self.average_length)))
     }
 
-    fn results(&self, query: &str) -> Vec<&Record> {
-        let clauses = parse(query);
-        if clauses.is_empty() {
-            return Vec::new();
-        }
+    fn matching<'index, 'query>(
+        &'index self,
+        clauses: &'query [Clause],
+    ) -> impl Iterator<Item = &'index Record> + 'query
+    where
+        'index: 'query,
+    {
         let required = clauses
             .iter()
             .filter(|clause| !clause.negative)
@@ -180,11 +182,12 @@ impl SearchIndex {
         let rarest = required.min_by_key(|term| self.postings.get(*term).map_or(0, Vec::len));
         let candidates: Box<dyn Iterator<Item = usize>> = if let Some(rarest) = rarest {
             Box::new(self.postings.get(rarest).into_iter().flatten().copied())
+        } else if clauses.is_empty() {
+            Box::new(std::iter::empty())
         } else {
             Box::new(0..self.records.len())
         };
-        let mut scored = Vec::new();
-        for id in candidates {
+        candidates.filter_map(move |id| {
             let doc = &self.records[id];
             let matched = clauses.iter().all(|clause| {
                 let found = if clause.phrase {
@@ -196,16 +199,24 @@ impl SearchIndex {
                 };
                 found != clause.negative
             });
-            if matched {
+            matched.then_some(doc)
+        })
+    }
+
+    fn results(&self, query: &str) -> Vec<&Record> {
+        let clauses = parse(query, true);
+        let mut scored: Vec<_> = self
+            .matching(&clauses)
+            .map(|doc| {
                 let score = clauses
                     .iter()
                     .filter(|clause| !clause.negative)
                     .flat_map(|clause| &clause.terms)
                     .map(|term| self.bm25(term, doc))
                     .sum::<f64>();
-                scored.push((score, doc));
-            }
-        }
+                (score, doc)
+            })
+            .collect();
         scored.sort_by(|(left, a), (right, b)| right.total_cmp(left).then_with(|| a.id.cmp(&b.id)));
         scored.into_iter().map(|(_, doc)| doc).collect()
     }
@@ -230,6 +241,28 @@ pub(crate) async fn reindex(state: &AppState) -> Result<usize, ApiError> {
         return Err(ApiError::Serialization);
     }
     Ok(index.records.len())
+}
+
+async fn cached_index(state: &AppState) -> Result<Arc<SearchIndex>, Arc<ApiError>> {
+    let generation = match &state.memcached {
+        Some(cache) => cache.read_counter(GENERATION).await.unwrap_or_default(),
+        None => 0,
+    };
+    state
+        .search
+        .try_get_with(generation, async {
+            SearchIndex::load(&state.pool).await.map(Arc::new)
+        })
+        .await
+}
+
+pub(crate) async fn matching_debaters(state: &AppState, query: &str) -> Result<Vec<i64>, ApiError> {
+    let index = cached_index(state).await.map_err(|error| {
+        eprintln!("Search index build failed: {error:?}");
+        ApiError::Database
+    })?;
+    let clauses = parse(query, false);
+    Ok(index.matching(&clauses).map(|record| record.id).collect())
 }
 
 pub(crate) async fn page(
@@ -259,17 +292,7 @@ pub(crate) async fn page(
     {
         Arc::new(SearchIndex::default())
     } else {
-        let generation = match &state.memcached {
-            Some(cache) => cache.read_counter(GENERATION).await.unwrap_or_default(),
-            None => 0,
-        };
-        match state
-            .search
-            .try_get_with(generation, async {
-                SearchIndex::load(&state.pool).await.map(Arc::new)
-            })
-            .await
-        {
+        match cached_index(&state).await {
             Ok(index) => index,
             Err(error) => {
                 eprintln!("Search index build failed: {error:?}");

@@ -1,7 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use axum::{
-    body::to_bytes,
     extract::{Request, State},
     http::{Method, StatusCode, header},
     response::{IntoResponse, Response},
@@ -35,10 +34,14 @@ async fn view(state: &AppState, request: Request, id: i64) -> Result<Response, A
         .is_some_and(|url| url.starts_with("https://"));
     let mut errors = BTreeMap::new();
     if parts.method == Method::POST {
-        let Ok(bytes) = to_bytes(body, 2_621_440).await else {
-            return Ok(StatusCode::PAYLOAD_TOO_LARGE.into_response());
+        let bytes = match login::form_fields(&parts.headers, body, 2_621_440).await {
+            Ok(fields) => fields,
+            Err(status) => return Ok(status.into_response()),
         };
-        let values = login::form_values(&bytes);
+        let values = bytes
+            .iter()
+            .cloned()
+            .collect::<std::collections::HashMap<_, _>>();
         let Some(origin) = state.origin(&parts.headers) else {
             return Ok(StatusCode::BAD_REQUEST.into_response());
         };
@@ -70,8 +73,7 @@ async fn view(state: &AppState, request: Request, id: i64) -> Result<Response, A
             errors.insert("short_name", "Null characters are not allowed.".to_owned());
         }
         let mut ids = BTreeSet::new();
-        for (_, value) in url::form_urlencoded::parse(&bytes).filter(|(name, _)| name == "debaters")
-        {
+        for (_, value) in bytes.iter().filter(|(name, _)| name == "debaters") {
             if let Ok(id) = value.parse::<i64>() {
                 ids.insert(id);
             } else {

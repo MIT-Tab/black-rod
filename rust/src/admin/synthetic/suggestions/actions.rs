@@ -16,7 +16,6 @@ use crate::{
         merge::{self, AuditActor},
         mutation::Failure,
     },
-    login,
 };
 
 struct Action<'a> {
@@ -94,7 +93,9 @@ pub(super) async fn apply(
         Ok(values) => values,
         Err(error) => return Ok(*error),
     };
-    let fields = login::form_values(&body);
+    let fields = body
+        .into_iter()
+        .collect::<std::collections::HashMap<_, _>>();
     let field = |name| fields.get(name).map_or("", |value| value.trim());
     let fallback = |name, default| {
         let value = field(name);

@@ -1,7 +1,6 @@
 use std::collections::{BTreeMap, HashSet};
 
 use axum::{
-    body::to_bytes,
     extract::{Request, State},
     http::{HeaderMap, Method, StatusCode, Uri, header},
     response::{Html, IntoResponse, Response},
@@ -80,9 +79,12 @@ impl Fields {
         pool: &AnyPool,
         user: &User,
         owned: &[(i64, String)],
-        body: &[u8],
+        body: &[(String, String)],
     ) -> Result<(Self, Errors), ApiError> {
-        let values = login::form_values(body);
+        let values = body
+            .iter()
+            .cloned()
+            .collect::<std::collections::HashMap<_, _>>();
         let field = |name| values.get(name).map_or("", |value| value.trim());
         let mut errors = Errors::new();
         let mut fields = Self {
@@ -94,7 +96,7 @@ impl Fields {
             viewing_permission: field("viewing_permission").to_owned(),
             authors: Vec::new(),
             tags: tag_filter::parse(
-                url::form_urlencoded::parse(body)
+                body.iter()
                     .filter(|(name, _)| name == "tags")
                     .map(|(_, value)| value),
             ),
@@ -167,9 +169,7 @@ impl Fields {
             );
         }
         let mut seen = HashSet::new();
-        for (_, submitted) in
-            url::form_urlencoded::parse(body).filter(|(name, _)| name == "authors")
-        {
+        for (_, submitted) in body.iter().filter(|(name, _)| name == "authors") {
             if !seen.insert(submitted.clone()) {
                 continue;
             }
@@ -428,10 +428,14 @@ async fn page(state: &AppState, request: Request, action: Action) -> Result<Resp
     let (parts, body) = request.into_parts();
     let mut errors = Errors::new();
     if method == Method::POST {
-        let Ok(body) = to_bytes(body, 2_621_440).await else {
-            return Ok(StatusCode::PAYLOAD_TOO_LARGE.into_response());
+        let body = match login::form_fields(&parts.headers, body, 2_621_440).await {
+            Ok(fields) => fields,
+            Err(status) => return Ok(status.into_response()),
         };
-        let values = login::form_values(&body);
+        let values = body
+            .iter()
+            .cloned()
+            .collect::<std::collections::HashMap<_, _>>();
         let Some(origin) = state.origin(&parts.headers) else {
             return Ok(StatusCode::BAD_REQUEST.into_response());
         };

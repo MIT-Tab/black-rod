@@ -137,16 +137,17 @@ def assert_debater_autocomplete_permissions(driver, django, rust, fixture):
     code = """
 from django import setup
 setup()
-from core.models import Debater
+from core.models import Debater, School
 import json
 
-visible = Debater.objects.create(first_name="Visible autocomplete fixture")
+school = School.objects.create(name="Fixture Academy")
+visible = Debater.objects.create(first_name="Visible autocomplete fixture", school=school)
 temporary = Debater.all_objects.create(first_name="Temporary autocomplete fixture", temporary=True)
 synthetic = Debater.all_objects.create(first_name="Synthetic autocomplete fixture", synthetic=True)
-print(json.dumps([visible.id, temporary.id, synthetic.id]))
+print(json.dumps([visible.id, temporary.id, synthetic.id, school.id]))
 """
     out = subprocess.check_output([str(ROOT / "venv/bin/python"), "-c", code], text=True)
-    visible, temporary, synthetic = json.loads(out.splitlines()[-1])
+    visible, temporary, synthetic, school = json.loads(out.splitlines()[-1])
     staff = django_session()
     for server in (django, rust):
         root = f"http://{HOST}:{server.port}"
@@ -168,8 +169,17 @@ print(json.dumps([visible.id, temporary.id, synthetic.id]))
                         .then(body => done(body.results.map(item => item.id)));
                 """, path)
                 assert [str(value) for value in ids] == ([str(ident)] if expected else []), server.name
+    for server in (django, rust):
+        for query in ("academies", "-academies"):
+            for school_id, expected in ((school, True), (school + 99999, False)):
+                params = urlencode({"q": query, "forward": json.dumps({"school": school_id})})
+                status, _, body = request(server, Case("/core/debaters/autocomplete?" + params))
+                assert status == 200, (server.name, status)
+                ids = [str(item["id"]) for item in json.loads(body)["results"]]
+                assert ids == ([str(visible)] if expected else []), (server.name, query, ids)
     with sqlite3.connect(Path(os.environ["BR_STATE"]) / "dev.sqlite3") as db:
         db.execute("DELETE FROM core_debater WHERE id IN (?, ?, ?)", (visible, temporary, synthetic))
+        db.execute("DELETE FROM core_school WHERE id = ?", (school,))
     driver.delete_all_cookies()
 
 
@@ -714,6 +724,17 @@ def assert_video_editor(driver, django, rust, fixture):
         assert renamed[0] == 200, (root, renamed[0])
         if root == rust_root:
             assert renamed[1].endswith(".png"), renamed[1]
+        oversized = driver.execute_async_script("""
+            const [data, done] = arguments;
+            const bytes = Uint8Array.from(atob(data), char => char.charCodeAt(0));
+            const body = new FormData();
+            body.append("files", new File([bytes, bytes], "fixture-oversized.png"));
+            body.set("csrfmiddlewaretoken", document.querySelector("[name=csrfmiddlewaretoken]").value);
+            fetch("/summernote/upload_attachment/", {method: "POST", body})
+                .then(async response => done([response.status, (await response.json()).message]))
+                .catch(() => done([0]));
+        """, b64encode(pixels.getvalue()).decode())
+        assert oversized == [400, "File size exceeds the limit allowed and cannot be saved"], oversized
     attachment = uploaded[1]["files"][0]["url"]
     wait.until(lambda browser: len(browser.find_elements("css selector", ".note-editor .note-editable")) == 2)
     from selenium.webdriver.support.expected_conditions import alert_is_present
@@ -1373,7 +1394,10 @@ def assert_claims(driver, django, rust, fixture):
         driver.get(f"{root}{path}")
         return driver.execute_async_script("""
             const [values, done] = arguments;
-            const data = new URLSearchParams(values);
+            const data = new FormData();
+            for (const [name, value] of Object.entries(values)) {
+                for (const item of Array.isArray(value) ? value : [value]) data.append(name, item);
+            }
             data.set("csrfmiddlewaretoken", document.querySelector("[name=csrfmiddlewaretoken]").value);
             fetch(location.pathname, {method: "POST", body: data}).then(async response => {
                 const html = await response.text();
@@ -1409,7 +1433,7 @@ def assert_claims(driver, django, rust, fixture):
                 "first_season": "2024", "latest_season": "2025", "status": "2",
                 "paradigm": "https://docs.google.com/document/d/fixture",
                 "elo_manual_opt": "opt_out", "dino_to_contact_opt_in": "on",
-                "dino_judge_contact_opt_in": "on", "region": "west",
+                "dino_judge_contact_opt_in": "on", "region": ["west", "online"],
             }
             for root in (django_root, rust_root):
                 invalid = post(root, edit, {**fields, "email": "a@@example.org"})
@@ -1421,6 +1445,7 @@ def assert_claims(driver, django, rust, fixture):
             assert driver.find_element("id", "id_last_name").get_attribute("value") == "Profile"
             assert driver.find_element("id", "id_dino_judge_contact_opt_in").is_selected()
             assert driver.find_element("css selector", "#id_region option[value=west]").is_selected()
+            assert driver.find_element("css selector", "#id_region option[value=online]").is_selected()
             for path in ("/core/dino-judges/?first_name__icontains=Parity&region=west",
                          "/core/dino-tos/?first_name__icontains=Parity"):
                 left = directory_state(driver, django, path)
@@ -3614,7 +3639,10 @@ def assert_mittab_bundle_upload(driver, django, rust, fixture):
         bad_extension = submit(server, reference, name="fixture.txt")
         assert bad_extension["error"] == "Please upload a .json Mit-Tab bundle file.", bad_extension
     assert not snapshot()
+    generation = elo_generation()
     saved = submit(rust, reference)
+    if os.environ.get("BLACK_ROD_PARITY_MEMCACHED_ADDR"):
+        assert elo_generation() > generation
     assert saved["redirected"] and saved["path"] == f"/core/tournaments/{event}", saved
     assert "Created 2 rounds" in saved["message"], saved
     with sqlite3.connect(db) as connection:
@@ -3662,7 +3690,10 @@ def assert_mittab_bundle_upload(driver, django, rust, fixture):
         assert snapshot() == before
 
     updated = {**reference, "rounds": [{**fixture_round, "victor": " 2 "}]}
+    generation = elo_generation()
     result = submit(rust, updated)
+    if os.environ.get("BLACK_ROD_PARITY_MEMCACHED_ADDR"):
+        assert elo_generation() > generation
     assert "updated 1 rounds, deleted 1 stale rounds." in result["message"], result
     after = snapshot()
     assert len(after) == 1 and after[0][:4] == (before[0][0], "prelim-1", 2, "prelim"), after
@@ -3851,17 +3882,27 @@ def shared_import_cache_keys():
 
 
 def cached_import_keys(keys):
+    return set(cached_values(keys))
+
+
+def elo_generation():
+    if not os.environ.get("BLACK_ROD_PARITY_MEMCACHED_ADDR"):
+        return 0
+    key = ":1:elo_dashboard_state:namespace_version"
+    return int(cached_values([key]).get(key, b"0"))
+
+
+def cached_values(keys):
     host, port = os.environ["BLACK_ROD_PARITY_MEMCACHED_ADDR"].rsplit(":", 1)
     with socket.create_connection((host, int(port)), timeout=2) as client, client.makefile("rwb") as cache:
         cache.write(("get " + " ".join(keys) + "\r\n").encode())
         cache.flush()
-        found = set()
+        found = {}
         while (header := cache.readline()) != b"END\r\n":
             value, key, _, length = header.split()
             assert value == b"VALUE"
-            cache.read(int(length))
+            found[key.decode()] = cache.read(int(length))
             assert cache.read(2) == b"\r\n"
-            found.add(key.decode())
         return found
 
 
@@ -4049,6 +4090,7 @@ print(target.pk)
         assert cached_import_keys([widget, *fragments]) == {widget, *fragments}
 
     original_teams = provider.import_payload["debater_counts"]["teams"]
+    generation = elo_generation()
     provider.import_payload["debater_counts"]["teams"] = 99
     try:
         result = driver.execute_async_script("""
@@ -4076,6 +4118,7 @@ print(target.pk)
         provider.import_payload["debater_counts"]["teams"] = original_teams
     assert result["status"] == 200 and result["path"] == f"/core/tournaments/{event}", result
     if shared:
+        assert elo_generation() > generation
         assert not cached_import_keys([widget, *fragments])
         assert request(rust, widget_page)[0] == 200
         assert cached_import_keys([widget]) == {widget}

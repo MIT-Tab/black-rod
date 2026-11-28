@@ -1,7 +1,6 @@
 use std::{cmp::Reverse, collections::HashMap};
 
 use axum::{
-    body::to_bytes,
     extract::{Request, State},
     http::{Method, StatusCode, header},
     response::{Html, IntoResponse, Response},
@@ -205,10 +204,10 @@ async fn page(state: &AppState, request: Request) -> Result<Response, ApiError> 
         .as_ref()
         .is_some_and(|origin| origin.starts_with("https://"));
     if parts.method == Method::POST {
-        let Ok(body) = to_bytes(body, 2_621_440).await else {
-            return Ok(StatusCode::PAYLOAD_TOO_LARGE.into_response());
+        let form = match login::parse_form(&parts.headers, body, 2_621_440).await {
+            Ok(fields) => fields,
+            Err(status) => return Ok(status.into_response()),
         };
-        let form = login::form_values(&body);
         let Some(origin) = origin else {
             return Ok(StatusCode::BAD_REQUEST.into_response());
         };

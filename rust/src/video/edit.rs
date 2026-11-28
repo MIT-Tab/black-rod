@@ -1,7 +1,6 @@
 use std::collections::BTreeMap;
 
 use axum::{
-    body::to_bytes,
     extract::{Request, State},
     http::{Method, StatusCode, Uri, header},
     response::{Html, IntoResponse, Response},
@@ -111,8 +110,14 @@ impl Fields {
         Ok(Some((fields, object)))
     }
 
-    async fn submitted(pool: &AnyPool, body: &[u8]) -> Result<(Self, Errors), ApiError> {
-        let values = login::form_values(body);
+    async fn submitted(
+        pool: &AnyPool,
+        body: &[(String, String)],
+    ) -> Result<(Self, Errors), ApiError> {
+        let values = body
+            .iter()
+            .cloned()
+            .collect::<std::collections::HashMap<_, _>>();
         let raw = |name| values.get(name).map_or("", String::as_str).trim();
         let mut errors = Errors::new();
         let mut fields = Self {
@@ -123,7 +128,7 @@ impl Fields {
             link: raw("link").to_owned(),
             password: raw("password").to_owned(),
             tags: tag_filter::parse(
-                url::form_urlencoded::parse(body)
+                body.iter()
                     .filter(|(name, _)| name == "tags")
                     .map(|(_, value)| value),
             ),
@@ -347,10 +352,14 @@ async fn view(state: &AppState, request: Request, action: Action) -> Result<Resp
         .origin(&parts.headers)
         .is_some_and(|url| url.starts_with("https://"));
     if parts.method == Method::POST {
-        let Ok(body) = to_bytes(body, 2_621_440).await else {
-            return Ok(StatusCode::PAYLOAD_TOO_LARGE.into_response());
+        let body = match login::form_fields(&parts.headers, body, 2_621_440).await {
+            Ok(fields) => fields,
+            Err(status) => return Ok(status.into_response()),
         };
-        let values = login::form_values(&body);
+        let values = body
+            .iter()
+            .cloned()
+            .collect::<std::collections::HashMap<_, _>>();
         let Some(origin) = state.origin(&parts.headers) else {
             return Ok(StatusCode::BAD_REQUEST.into_response());
         };

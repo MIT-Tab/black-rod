@@ -575,10 +575,10 @@ pub(crate) async fn provider(State(state): State<AppState>, request: Request) ->
         let secure = origin.starts_with("https://");
         let (parts, body) = request.into_parts();
         if parts.method == axum::http::Method::POST {
-            let Ok(body) = axum::body::to_bytes(body, 128 * 1024).await else {
-                return Ok(StatusCode::PAYLOAD_TOO_LARGE.into_response());
+            let form = match login::parse_form(&parts.headers, body, 128 * 1024).await {
+                Ok(fields) => fields,
+                Err(status) => return Ok(status.into_response()),
             };
-            let form = login::form_values(&body);
             if !login::csrf_valid(
                 &parts.headers,
                 form.get("csrfmiddlewaretoken").map(String::as_str),

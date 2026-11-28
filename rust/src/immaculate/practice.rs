@@ -1,5 +1,4 @@
 use axum::{
-    body::to_bytes,
     extract::{Request, State},
     http::{Method, StatusCode},
     response::{IntoResponse, Response},
@@ -75,10 +74,10 @@ pub(crate) async fn page(State(state): State<AppState>, request: Request) -> Res
     let mut status = StatusCode::OK;
     let mut data = json!({"day":game_day().to_string(), "infinite":true});
     if post {
-        let Ok(body) = to_bytes(body, 128 * 1024).await else {
-            return StatusCode::PAYLOAD_TOO_LARGE.into_response();
+        let fields = match login::parse_form(&parts.headers, body, 128 * 1024).await {
+            Ok(fields) => fields,
+            Err(status) => return status.into_response(),
         };
-        let fields = login::form_values(&body);
         if !login::csrf_valid(
             &parts.headers,
             fields.get("csrfmiddlewaretoken").map(String::as_str),
@@ -164,10 +163,10 @@ pub(crate) async fn guess(State(state): State<AppState>, request: Request) -> Re
         return StatusCode::BAD_REQUEST.into_response();
     };
     let (parts, body) = request.into_parts();
-    let Ok(body) = to_bytes(body, 128 * 1024).await else {
-        return StatusCode::PAYLOAD_TOO_LARGE.into_response();
+    let form = match login::parse_form(&parts.headers, body, 128 * 1024).await {
+        Ok(fields) => fields,
+        Err(status) => return status.into_response(),
     };
-    let form = login::form_values(&body);
     let field = |name| form.get(name).map(String::as_str).unwrap_or_default();
     if !login::csrf_valid(
         &parts.headers,

@@ -1,8 +1,11 @@
-use std::{io::Cursor, path::PathBuf};
+use std::{
+    fs::File,
+    io::{BufReader, Seek},
+    path::PathBuf,
+};
 
 use axum::{
     Json,
-    body::Bytes,
     extract::{FromRequest, Multipart, Path, Request, State},
     http::{HeaderMap, HeaderValue, Method, StatusCode, header},
     response::{Html, IntoResponse, Response},
@@ -11,7 +14,10 @@ use chrono::{NaiveDate, Utc};
 use image::{ImageReader, Limits};
 use minijinja::context;
 use serde_json::{Value, json};
-use tokio::{io::AsyncWriteExt, sync::Semaphore};
+use tokio::{
+    io::{self, AsyncRead, AsyncWriteExt},
+    sync::Semaphore,
+};
 use uuid::Uuid;
 
 use crate::{AppState, login, web};
@@ -20,7 +26,7 @@ const FOLDER: &str = "django-summernote";
 const FILE_LIMIT: usize = 1024 * 1024;
 const FILE_COUNT_LIMIT: usize = 100;
 pub(crate) const REQUEST_LIMIT: usize = (FILE_COUNT_LIMIT + 1) * FILE_LIMIT;
-static IMAGE_VALIDATORS: Semaphore = Semaphore::const_new(2);
+static IMAGE_UPLOADS: Semaphore = Semaphore::const_new(2);
 
 fn media_root() -> PathBuf {
     std::env::var_os("BLACK_ROD_MEDIA_ROOT")
@@ -43,7 +49,15 @@ fn error(status: StatusCode, message: &str) -> Response {
 struct Upload {
     name: String,
     mime: &'static str,
-    bytes: Bytes,
+    file: File,
+    size: usize,
+}
+
+fn read_error() -> Box<Response> {
+    Box::new(error(
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "Failed to read attachment",
+    ))
 }
 
 async fn read_uploads(state: &AppState, request: Request) -> Result<Vec<Upload>, Box<Response>> {
@@ -64,18 +78,24 @@ async fn read_uploads(state: &AppState, request: Request) -> Result<Vec<Upload>,
         .map_err(|err| Box::new(err.into_response()))?;
     let mut files = Vec::new();
     let mut csrf = None;
-    while let Some(field) = multipart
+    while let Some(mut field) = multipart
         .next_field()
         .await
         .map_err(|err| Box::new(err.into_response()))?
     {
         if field.name() == Some("csrfmiddlewaretoken") {
-            csrf = Some(
-                field
-                    .text()
-                    .await
-                    .map_err(|err| Box::new(err.into_response()))?,
-            );
+            let mut token = Vec::new();
+            while let Some(chunk) = field
+                .chunk()
+                .await
+                .map_err(|err| Box::new(err.into_response()))?
+            {
+                if token.len() + chunk.len() > 128 {
+                    return Err(Box::new(login::csrf_failure()));
+                }
+                token.extend_from_slice(&chunk);
+            }
+            csrf = String::from_utf8(token).ok();
         } else if field.name() == Some("files")
             && let Some(raw) = field.file_name().map(str::to_owned)
         {
@@ -95,11 +115,28 @@ async fn read_uploads(state: &AppState, request: Request) -> Result<Vec<Upload>,
                     "Too many files were requested",
                 )));
             }
-            let bytes = field
-                .bytes()
+            let temporary = tokio::task::spawn_blocking(tempfile::tempfile)
                 .await
-                .map_err(|err| Box::new(err.into_response()))?;
-            files.push((name, bytes));
+                .map_err(|_| read_error())?
+                .map_err(|_| read_error())?;
+            let mut file = tokio::fs::File::from_std(temporary);
+            let mut size = 0;
+            while let Some(chunk) = field
+                .chunk()
+                .await
+                .map_err(|err| Box::new(err.into_response()))?
+            {
+                size += chunk.len();
+                if size > FILE_LIMIT {
+                    return Err(Box::new(error(
+                        StatusCode::BAD_REQUEST,
+                        "File size exceeds the limit allowed and cannot be saved",
+                    )));
+                }
+                file.write_all(&chunk).await.map_err(|_| read_error())?;
+            }
+            file.flush().await.map_err(|_| read_error())?;
+            files.push((name, file.into_std().await, size));
         }
     }
     if !login::csrf_valid(&headers, csrf.as_deref(), &origin) {
@@ -108,39 +145,32 @@ async fn read_uploads(state: &AppState, request: Request) -> Result<Vec<Upload>,
     if files.is_empty() {
         return Ok(Vec::new());
     }
-    let failed = || {
-        Box::new(error(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "Failed to read attachment",
-        ))
-    };
-    let permit = IMAGE_VALIDATORS.acquire().await.map_err(|_| failed())?;
     tokio::task::spawn_blocking(move || {
-        let _permit = permit;
-        files.into_iter().map(|(name, bytes)| {
-            if bytes.len() > FILE_LIMIT {
-                return Err(Box::new(error(StatusCode::BAD_REQUEST,
-                    "File size exceeds the limit allowed and cannot be saved")));
-            }
-            let mime = ImageReader::new(Cursor::new(&bytes))
-                .with_guessed_format()
-                .ok()
-                .and_then(|mut reader| {
-                    let format = reader.format()?;
-                    let mut limits = Limits::default();
-                    limits.max_alloc = Some(64 * 1024 * 1024);
-                    limits.max_image_width = Some(16_384);
-                    limits.max_image_height = Some(16_384);
-                    reader.limits(limits);
-                    reader.decode().ok().map(|_| format.to_mime_type())
-                });
-            let Some(mime) = mime else {
-                return Err(Box::new(error(StatusCode::BAD_REQUEST,
-                    "Upload a valid image. The file you uploaded was either not an image or a corrupted image.")));
-            };
-            Ok(Upload {name, mime, bytes})
-        }).collect()
-    }).await.map_err(|_| failed())?
+        files
+            .into_iter()
+            .map(|(name, mut file, size)| {
+                file.rewind().map_err(|_| read_error())?;
+                let mime = ImageReader::new(BufReader::new(&mut file))
+                    .with_guessed_format()
+                    .ok()
+                    .and_then(|mut reader| {
+                        let format = reader.format()?;
+                        let mut limits = Limits::default();
+                        limits.max_alloc = Some(64 * 1024 * 1024);
+                        limits.max_image_width = Some(16_384);
+                        limits.max_image_height = Some(16_384);
+                        reader.limits(limits);
+                        reader.decode().ok().map(|_| format.to_mime_type())
+                    })
+                    .ok_or_else(|| Box::new(error(StatusCode::BAD_REQUEST,
+                        "Upload a valid image. The file you uploaded was either not an image or a corrupted image.")))?;
+                file.rewind().map_err(|_| read_error())?;
+                Ok(Upload { name, mime, file, size })
+            })
+            .collect()
+    })
+    .await
+    .map_err(|_| read_error())?
 }
 
 pub(crate) async fn write_attachment(
@@ -148,6 +178,14 @@ pub(crate) async fn write_attachment(
     mime: Option<&str>,
     bytes: &[u8],
 ) -> std::io::Result<(String, PathBuf)> {
+    write_attachment_from(name, mime, bytes).await
+}
+
+async fn write_attachment_from(
+    name: &str,
+    mime: Option<&str>,
+    mut contents: impl AsyncRead + Unpin,
+) -> io::Result<(String, PathBuf)> {
     let day = Utc::now().date_naive().to_string();
     let relative = PathBuf::from(FOLDER).join(day);
     let root = media_root();
@@ -174,7 +212,7 @@ pub(crate) async fn write_attachment(
         .open(&absolute)
         .await?;
     let result = async {
-        file.write_all(bytes).await?;
+        io::copy(&mut contents, &mut file).await?;
         file.flush().await
     }
     .await;
@@ -192,12 +230,19 @@ async fn write_files(
 ) -> Result<Vec<Value>, Box<dyn std::error::Error + Send + Sync>> {
     let mut tx = state.pool.begin().await?;
     let mut results = Vec::with_capacity(files.len());
-    for Upload { name, mime, bytes } in files {
-        let (storage_name, absolute) = write_attachment(&name, Some(mime), &bytes).await?;
+    for Upload {
+        name,
+        mime,
+        file,
+        size,
+    } in files
+    {
+        let file = tokio::fs::File::from_std(file);
+        let (storage_name, absolute) = write_attachment_from(&name, Some(mime), file).await?;
         saved.push(absolute);
         sqlx::query("INSERT INTO django_summernote_attachment (name,file,uploaded) VALUES ($1,$2,CURRENT_TIMESTAMP)")
             .bind(&name).bind(&storage_name).execute(&mut *tx).await?;
-        results.push(json!({"name":name,"size":bytes.len(),"url":format!("/{storage_name}")}));
+        results.push(json!({"name":name,"size":size,"url":format!("/{storage_name}")}));
     }
     tx.commit().await?;
     Ok(results)
@@ -255,6 +300,9 @@ pub(crate) async fn upload(State(state): State<AppState>, request: Request) -> R
             "Only POST method is allowed",
         ));
     }
+    let Ok(_permit) = IMAGE_UPLOADS.acquire().await else {
+        return *read_error();
+    };
     let files = match read_uploads(&state, request).await {
         Ok(files) => files,
         Err(response) => return same_origin(*response),

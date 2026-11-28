@@ -251,10 +251,10 @@ pub(super) async fn store(
             }
         }
     }
-    let skipped = if let Some((review, resolved)) = review.zip(resolved.as_ref()) {
+    let rounds = if let Some((review, resolved)) = review.zip(resolved.as_ref()) {
         review::rounds(&mut tx, event, state.current_season, review, resolved).await?
     } else {
-        Vec::new()
+        Default::default()
     };
     if season == state.current_season.to_string() {
         standings::awards(&mut tx, &season, Award::Team, &teams).await?;
@@ -265,6 +265,9 @@ pub(super) async fn store(
         historical_coty(&mut tx, &season, &affected).await?;
     }
     tx.commit().await?;
+    if rounds.changed() {
+        crate::elo::invalidate(state).await;
+    }
     crate::search::invalidate(state).await;
     let boards = if season == state.current_season.to_string() {
         crate::standings::STORED_BOARDS
@@ -277,5 +280,5 @@ pub(super) async fn store(
         crate::standings::invalidate(state, &season, boards),
         crate::recent_results::invalidate(state),
     );
-    Ok(skipped)
+    Ok(rounds.skipped)
 }

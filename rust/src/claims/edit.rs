@@ -1,7 +1,6 @@
 use std::collections::{BTreeMap, HashSet};
 
 use axum::{
-    body::to_bytes,
     extract::{Request, State},
     http::{Method, StatusCode},
     response::{IntoResponse, Response},
@@ -88,8 +87,11 @@ impl Profile {
         })
     }
 
-    fn submitted(data: &[u8]) -> Self {
-        let values = login::form_values(data);
+    fn submitted(data: &[(String, String)]) -> Self {
+        let values = data
+            .iter()
+            .cloned()
+            .collect::<std::collections::HashMap<_, _>>();
         let get = |field| {
             values
                 .get(field)
@@ -115,9 +117,10 @@ impl Profile {
             text.insert(field, get(field).to_owned());
         }
         let mut seen = HashSet::new();
-        let regions = url::form_urlencoded::parse(data)
+        let regions = data
+            .iter()
             .filter(|(key, _)| key == "region")
-            .map(|(_, value)| value.into_owned())
+            .map(|(_, value)| value.clone())
             .filter(|value| seen.insert(value.clone()))
             .collect();
         Self {
@@ -506,10 +509,14 @@ pub(crate) async fn endpoint(State(state): State<AppState>, request: Request) ->
     let (parts, body) = request.into_parts();
     let path = format!("/core/debaters/{id}");
     let (fields, errors) = if parts.method == Method::POST {
-        let Ok(body) = to_bytes(body, 128 * 1024).await else {
-            return StatusCode::PAYLOAD_TOO_LARGE.into_response();
+        let body = match login::form_fields(&parts.headers, body, 128 * 1024).await {
+            Ok(fields) => fields,
+            Err(status) => return status.into_response(),
         };
-        let values = login::form_values(&body);
+        let values = body
+            .iter()
+            .cloned()
+            .collect::<std::collections::HashMap<_, _>>();
         if !login::csrf_valid(
             &parts.headers,
             values.get("csrfmiddlewaretoken").map(String::as_str),

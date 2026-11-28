@@ -10,7 +10,6 @@ mod reset;
 use std::collections::HashMap;
 
 use axum::{
-    body::to_bytes,
     extract::Request,
     http::{HeaderMap, Method, StatusCode, header},
     response::{Html, IntoResponse, Response},
@@ -51,10 +50,9 @@ pub(crate) async fn visit(state: &AppState, request: Request) -> Result<Visit, B
         .ok_or_else(|| Box::new(StatusCode::BAD_REQUEST.into_response()))?;
     let query = login::form_values(parts.uri.query().unwrap_or_default().as_bytes());
     let fields = if parts.method == Method::POST {
-        let bytes = to_bytes(body, 128 * 1024)
+        let form = login::parse_form(&parts.headers, body, 128 * 1024)
             .await
-            .map_err(|_| Box::new(StatusCode::PAYLOAD_TOO_LARGE.into_response()))?;
-        let form = login::form_values(&bytes);
+            .map_err(|status| Box::new(status.into_response()))?;
         if !login::csrf_valid(
             &parts.headers,
             form.get("csrfmiddlewaretoken").map(String::as_str),

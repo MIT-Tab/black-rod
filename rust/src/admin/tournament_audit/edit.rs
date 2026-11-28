@@ -1,7 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use axum::{
-    body::to_bytes,
     extract::{Path, Request, State},
     http::{Method, StatusCode, header},
     response::{IntoResponse, Response},
@@ -614,8 +613,10 @@ pub(crate) async fn page(State(state): State<AppState>, request: Request) -> Res
             row
         }else{Value::Null};
         let values=if submitted {
-            let Ok(content)=to_bytes(request.into_body(),2_621_440).await else{return Ok(StatusCode::PAYLOAD_TOO_LARGE.into_response());};
-            let values=url::form_urlencoded::parse(&content).into_owned().collect::<Inputs>();
+            let values=match login::parse_form(&headers,request.into_body(),2_621_440).await {
+                Ok(values)=>values.into_iter().collect::<Inputs>(),
+                Err(status)=>return Ok(status.into_response()),
+            };
             if !login::csrf_valid(&headers,values.get("csrfmiddlewaretoken").map(String::as_str),&origin){
                 return Ok(login::csrf_failure());
             }
@@ -692,10 +693,10 @@ pub(crate) async fn change(
         return StatusCode::BAD_REQUEST.into_response();
     };
     let secure = origin.starts_with("https://");
-    let Ok(bytes) = to_bytes(request.into_body(), 2_621_440).await else {
-        return StatusCode::PAYLOAD_TOO_LARGE.into_response();
+    let fields = match login::parse_form(&headers, request.into_body(), 2_621_440).await {
+        Ok(fields) => fields,
+        Err(status) => return status.into_response(),
     };
-    let fields = login::form_values(&bytes);
     if !login::csrf_valid(
         &headers,
         fields.get("csrfmiddlewaretoken").map(String::as_str),

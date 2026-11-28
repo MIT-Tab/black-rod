@@ -1,9 +1,6 @@
-use std::collections::HashMap;
-
 use axum::{
     Json,
-    body::to_bytes,
-    extract::{FromRequest, Multipart, Request, State},
+    extract::{Request, State},
     http::{Method, StatusCode, header},
     response::{Html, IntoResponse, Response},
 };
@@ -19,35 +16,6 @@ const TYPES: [(&str, &str); 4] = [
     ("noty", "NOTY"),
 ];
 
-async fn parse(state: &AppState, request: Request) -> Result<HashMap<String, String>, StatusCode> {
-    if request
-        .headers()
-        .get(header::CONTENT_TYPE)
-        .and_then(|value| value.to_str().ok())
-        .is_some_and(|value| value.starts_with("multipart/form-data"))
-    {
-        let mut fields = Multipart::from_request(request, state)
-            .await
-            .map_err(|_| StatusCode::BAD_REQUEST)?;
-        let mut values = HashMap::new();
-        while let Some(field) = fields
-            .next_field()
-            .await
-            .map_err(|_| StatusCode::BAD_REQUEST)?
-        {
-            let name = field.name().unwrap_or_default().to_owned();
-            let text = field.text().await.map_err(|_| StatusCode::BAD_REQUEST)?;
-            values.insert(name, text);
-        }
-        Ok(values)
-    } else {
-        let bytes = to_bytes(request.into_body(), 2_621_440)
-            .await
-            .map_err(|_| StatusCode::PAYLOAD_TOO_LARGE)?;
-        Ok(login::form_values(&bytes))
-    }
-}
-
 pub(crate) async fn page(State(state): State<AppState>, request: Request) -> Response {
     let uri = request.uri().clone();
     let headers = request.headers().clone();
@@ -59,7 +27,7 @@ pub(crate) async fn page(State(state): State<AppState>, request: Request) -> Res
         let Some(origin) = state.origin(&headers) else {
             return StatusCode::BAD_REQUEST.into_response();
         };
-        let fields = match parse(&state, request).await {
+        let fields = match login::parse_form(&headers, request.into_body(), 2_621_440).await {
             Ok(fields) => fields,
             Err(status) => return status.into_response(),
         };

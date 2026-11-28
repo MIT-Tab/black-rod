@@ -21,6 +21,10 @@ pub(super) struct Summary {
 }
 
 impl Summary {
+    pub(super) fn changed(&self) -> bool {
+        self.created != 0 || self.updated != 0 || self.deleted != 0
+    }
+
     pub(super) fn flash(&self) -> (i32, String) {
         if self.skipped.is_empty() {
             return (
@@ -356,6 +360,9 @@ pub(super) async fn apply(
     )
     .await?;
     tx.commit().await.map_err(|_| ApiError::Database)?;
+    if summary.changed() {
+        crate::elo::invalidate(state).await;
+    }
     Ok(summary)
 }
 

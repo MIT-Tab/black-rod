@@ -4,7 +4,6 @@ use std::{
 };
 
 use axum::{
-    body::to_bytes,
     extract::{Request, State},
     http::{Method, StatusCode, Uri, header},
     response::{Html, IntoResponse, Response},
@@ -117,10 +116,13 @@ impl Form {
 
     async fn submitted(
         state: &AppState,
-        bytes: &[u8],
+        bytes: &[(String, String)],
         initial_dino: bool,
     ) -> Result<(Self, Errors), ApiError> {
-        let values = login::form_values(bytes);
+        let values = bytes
+            .iter()
+            .cloned()
+            .collect::<std::collections::HashMap<_, _>>();
         let field = |name| {
             values
                 .get(name)
@@ -140,14 +142,14 @@ impl Form {
         let mut errors = Errors::new();
         let mut regions = Vec::new();
         let mut seen = HashSet::new();
-        for (_, value) in url::form_urlencoded::parse(bytes).filter(|(name, _)| name == "region") {
+        for (_, value) in bytes.iter().filter(|(name, _)| name == "region") {
             if !outreach::REGIONS.contains(&value.as_ref()) {
                 errors.insert(
                     "region",
                     format!("Select a valid choice. {value} is not one of the available choices."),
                 );
             } else if (outreach || judging) && seen.insert(value.clone()) {
-                regions.push(value.into_owned());
+                regions.push(value.clone());
             }
         }
         let mut fields = Self {
@@ -390,10 +392,14 @@ async fn view(state: &AppState, request: Request) -> Result<Response, ApiError> 
         .origin(&parts.headers)
         .is_some_and(|origin| origin.starts_with("https://"));
     if parts.method == Method::POST {
-        let Ok(bytes) = to_bytes(body, 2_621_440).await else {
-            return Ok(StatusCode::PAYLOAD_TOO_LARGE.into_response());
+        let bytes = match login::form_fields(&parts.headers, body, 2_621_440).await {
+            Ok(fields) => fields,
+            Err(status) => return Ok(status.into_response()),
         };
-        let values = login::form_values(&bytes);
+        let values = bytes
+            .iter()
+            .cloned()
+            .collect::<std::collections::HashMap<_, _>>();
         let Some(origin) = state.origin(&parts.headers) else {
             return Ok(StatusCode::BAD_REQUEST.into_response());
         };

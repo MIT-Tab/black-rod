@@ -8,7 +8,6 @@ use std::collections::{BTreeMap, HashSet};
 
 use axum::{
     Json,
-    body::to_bytes,
     extract::{OriginalUri, Path, Request, State},
     http::{HeaderMap, HeaderValue, StatusCode, Uri, header},
     response::{Html, IntoResponse, Response},
@@ -781,10 +780,10 @@ pub(crate) async fn guess(State(state): State<AppState>, request: Request) -> Re
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     };
     let (parts, body) = request.into_parts();
-    let Ok(body) = to_bytes(body, 128 * 1024).await else {
-        return StatusCode::PAYLOAD_TOO_LARGE.into_response();
+    let form = match login::parse_form(&parts.headers, body, 128 * 1024).await {
+        Ok(fields) => fields,
+        Err(status) => return status.into_response(),
     };
-    let form = login::form_values(&body);
     let field = |name| form.get(name).map(String::as_str).unwrap_or_default();
     if !login::csrf_valid(
         &parts.headers,

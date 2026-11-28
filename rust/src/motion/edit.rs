@@ -1,7 +1,6 @@
 use std::collections::BTreeMap;
 
 use axum::{
-    body::to_bytes,
     extract::{Request, State},
     http::{Method, StatusCode, header},
     response::{Html, IntoResponse, Response},
@@ -56,8 +55,11 @@ impl Fields {
         }))
     }
 
-    fn submitted(raw: &[u8]) -> Self {
-        let values = login::form_values(raw);
+    fn submitted(raw: &[(String, String)]) -> Self {
+        let values = raw
+            .iter()
+            .cloned()
+            .collect::<std::collections::HashMap<_, _>>();
         let get = |key| {
             values
                 .get(key)
@@ -65,7 +67,7 @@ impl Fields {
                 .unwrap_or_default()
         };
         let tags = tag_filter::parse(
-            url::form_urlencoded::parse(raw)
+            raw.iter()
                 .filter(|(name, _)| name == "tags")
                 .map(|(_, value)| value),
         );
@@ -258,10 +260,14 @@ pub(crate) async fn endpoint(State(state): State<AppState>, request: Request) ->
     let (parts, body) = request.into_parts();
     let mut errors = BTreeMap::new();
     if parts.method == Method::POST {
-        let Ok(body) = to_bytes(body, 2_621_440).await else {
-            return StatusCode::PAYLOAD_TOO_LARGE.into_response();
+        let body = match login::form_fields(&parts.headers, body, 2_621_440).await {
+            Ok(fields) => fields,
+            Err(status) => return status.into_response(),
         };
-        let form = login::form_values(&body);
+        let form = body
+            .iter()
+            .cloned()
+            .collect::<std::collections::HashMap<_, _>>();
         if !login::csrf_valid(
             &parts.headers,
             form.get("csrfmiddlewaretoken").map(String::as_str),

@@ -2,7 +2,6 @@ use std::collections::HashMap;
 
 use axum::{
     Json,
-    body::to_bytes,
     extract::{Request, State},
     http::{Method, StatusCode},
     response::{IntoResponse, Response},
@@ -355,10 +354,10 @@ async fn content(state: &AppState, request: Request) -> Result<Response, ApiErro
     let (parts, body) = request.into_parts();
     let mut values = HashMap::new();
     if parts.method == Method::POST {
-        let Ok(body) = to_bytes(body, 2_621_440).await else {
-            return Ok(StatusCode::PAYLOAD_TOO_LARGE.into_response());
+        values = match login::parse_form(&parts.headers, body, 2_621_440).await {
+            Ok(fields) => fields,
+            Err(status) => return Ok(status.into_response()),
         };
-        values = login::form_values(&body);
         let Some(origin) = state.origin(&parts.headers) else {
             return Ok(StatusCode::BAD_REQUEST.into_response());
         };

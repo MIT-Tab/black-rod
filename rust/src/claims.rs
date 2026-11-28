@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 
 use axum::{
-    body::to_bytes,
     extract::{Request, State},
     http::{HeaderMap, Method, StatusCode, Uri, header},
     response::{Html, IntoResponse, Response},
@@ -342,10 +341,10 @@ pub(crate) async fn create(State(state): State<AppState>, request: Request) -> R
     let mut school = None;
     let mut debater = None;
     if parts.method == Method::POST {
-        let Ok(body) = to_bytes(body, 128 * 1024).await else {
-            return StatusCode::PAYLOAD_TOO_LARGE.into_response();
+        let fields = match login::parse_form(&parts.headers, body, 128 * 1024).await {
+            Ok(fields) => fields,
+            Err(status) => return status.into_response(),
         };
-        let fields = login::form_values(&body);
         if !login::csrf_valid(
             &parts.headers,
             fields.get("csrfmiddlewaretoken").map(String::as_str),
@@ -521,10 +520,10 @@ pub(crate) async fn review(State(state): State<AppState>, request: Request) -> R
     };
     let (parts, body) = request.into_parts();
     if parts.method == Method::POST {
-        let Ok(body) = to_bytes(body, 128 * 1024).await else {
-            return StatusCode::PAYLOAD_TOO_LARGE.into_response();
+        let form = match login::parse_form(&parts.headers, body, 128 * 1024).await {
+            Ok(fields) => fields,
+            Err(status) => return status.into_response(),
         };
-        let form = login::form_values(&body);
         if !login::csrf_valid(
             &parts.headers,
             form.get("csrfmiddlewaretoken").map(String::as_str),

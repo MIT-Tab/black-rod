@@ -5,7 +5,6 @@ pub(crate) mod standings;
 
 use axum::{
     Json,
-    body::to_bytes,
     extract::{OriginalUri, Request, State},
     http::{HeaderMap, Method, StatusCode, Uri, header},
     response::{Html, IntoResponse, Response},
@@ -250,16 +249,14 @@ async fn handle(state: &AppState, request: Request) -> Result<Response, Error> {
         .collect::<FormValues>();
     let submits = parts.method == Method::POST;
     let content = if submits {
-        match to_bytes(body, 2_621_440).await {
+        match login::form_fields(&parts.headers, body, 2_621_440).await {
             Ok(data) => data,
-            Err(_) => return Ok(StatusCode::PAYLOAD_TOO_LARGE.into_response()),
+            Err(status) => return Ok(status.into_response()),
         }
     } else {
         Default::default()
     };
-    let parameters = form_urlencoded::parse(&content)
-        .into_owned()
-        .collect::<FormValues>();
+    let parameters = content.iter().cloned().collect::<FormValues>();
     if submits
         && !login::csrf_valid(
             &parts.headers,
@@ -357,7 +354,8 @@ async fn handle(state: &AppState, request: Request) -> Result<Response, Error> {
     }
     let mut errors = Vec::new();
     let (panels, autoquals) = if submits {
-        let mut people = form_urlencoded::parse(&content)
+        let mut people = content
+            .iter()
             .filter(|(key, _)| key == "autoqual_debaters")
             .filter_map(|(_, value)| match value.parse::<i64>() {
                 Ok(id) if id > 0 => Some(id),

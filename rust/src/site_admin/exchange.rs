@@ -2,7 +2,7 @@ mod formats;
 mod import;
 
 use axum::{
-    body::{Body, to_bytes},
+    body::Body,
     http::{Method, StatusCode, header},
     response::{IntoResponse, Response},
 };
@@ -195,10 +195,10 @@ pub(super) async fn export_page(
     };
     let mut error = None;
     if method == Method::POST {
-        let Ok(data) = to_bytes(body, 128 * 1024).await else {
-            return Ok(StatusCode::PAYLOAD_TOO_LARGE.into_response());
+        let values = match login::parse_form(admin.headers, body, 128 * 1024).await {
+            Ok(fields) => fields,
+            Err(status) => return Ok(status.into_response()),
         };
-        let values = login::form_values(&data);
         let Some(origin) = admin.origin() else {
             return Ok(StatusCode::BAD_REQUEST.into_response());
         };

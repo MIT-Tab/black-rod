@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use axum::{
-    body::{Body, to_bytes},
+    body::Body,
     http::{Method, StatusCode},
     response::{IntoResponse, Response},
 };
@@ -48,10 +48,10 @@ pub(super) async fn change(
     let mut enabled = true;
     let mut errors = HashMap::new();
     if method == Method::POST {
-        let Ok(bytes) = to_bytes(body, 128 * 1024).await else {
-            return Ok(StatusCode::PAYLOAD_TOO_LARGE.into_response());
+        let posted = match login::parse_form(admin.headers, body, 128 * 1024).await {
+            Ok(fields) => fields,
+            Err(status) => return Ok(status.into_response()),
         };
-        let posted = login::form_values(&bytes);
         let Some(origin) = admin.origin() else {
             return Ok(StatusCode::BAD_REQUEST.into_response());
         };

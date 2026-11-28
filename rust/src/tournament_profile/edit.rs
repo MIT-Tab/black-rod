@@ -1,7 +1,6 @@
 use std::{collections::BTreeMap, sync::LazyLock};
 
 use axum::{
-    body::to_bytes,
     extract::{Request, State},
     http::{Method, StatusCode, header},
     response::{Html, IntoResponse, Response},
@@ -80,8 +79,10 @@ impl Fields {
         }))
     }
 
-    async fn submitted(state: &AppState, body: &[u8]) -> Result<(Self, Errors), ApiError> {
-        let params = login::form_values(body);
+    async fn submitted(
+        state: &AppState,
+        params: &std::collections::HashMap<String, String>,
+    ) -> Result<(Self, Errors), ApiError> {
         let get = |name| {
             params
                 .get(name)
@@ -432,10 +433,10 @@ async fn view(state: &AppState, request: Request, id: Option<i64>) -> Result<Res
         .is_some_and(|url| url.starts_with("https://"));
     let mut errors = Errors::new();
     if parts.method == Method::POST {
-        let Ok(body) = to_bytes(body, 2_621_440).await else {
-            return Ok(StatusCode::PAYLOAD_TOO_LARGE.into_response());
+        let values = match login::parse_form(&parts.headers, body, 2_621_440).await {
+            Ok(fields) => fields,
+            Err(status) => return Ok(status.into_response()),
         };
-        let values = login::form_values(&body);
         let Some(origin) = state.origin(&parts.headers) else {
             return Ok(StatusCode::BAD_REQUEST.into_response());
         };
@@ -446,7 +447,7 @@ async fn view(state: &AppState, request: Request, id: Option<i64>) -> Result<Res
         ) {
             return Ok(login::csrf_failure());
         }
-        (fields, errors) = Fields::submitted(state, &body).await?;
+        (fields, errors) = Fields::submitted(state, &values).await?;
         if errors.is_empty() {
             let Some(id) = save(state, &fields, id).await? else {
                 return Ok(StatusCode::NOT_FOUND.into_response());

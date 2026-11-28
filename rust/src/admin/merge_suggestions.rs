@@ -6,7 +6,6 @@ use std::{
 
 use axum::{
     Json,
-    body::to_bytes,
     extract::{Request, State},
     http::{Method, StatusCode, header},
     response::{Html, IntoResponse, Response},
@@ -280,10 +279,10 @@ async fn submit(state: &AppState, user: i64, request: Request) -> Result<Respons
         let (parts, body) = request.into_parts();
         (parts.headers, body)
     };
-    let Ok(body) = to_bytes(body, 2_621_440).await else {
-        return Ok(StatusCode::PAYLOAD_TOO_LARGE.into_response());
+    let values = match login::parse_form(&headers, body, 2_621_440).await {
+        Ok(fields) => fields,
+        Err(status) => return Ok(status.into_response()),
     };
-    let values = login::form_values(&body);
     let Some(origin) = state.origin(&headers) else {
         return Ok(StatusCode::BAD_REQUEST.into_response());
     };

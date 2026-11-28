@@ -541,10 +541,10 @@ pub(super) async fn rounds(
     season: i32,
     review: &Review,
     resolved: &Resolved,
-) -> Result<Vec<String>, Error> {
+) -> Result<bundle::Summary, Error> {
     let mut document = review.data["bundle"].clone();
     if !tournament_import::truthy(&document) {
-        return Ok(Vec::new());
+        return Ok(bundle::Summary::default());
     }
     if let Some(rows) = document["debaters"].as_array_mut() {
         for row in rows {
@@ -590,8 +590,7 @@ pub(super) async fn rounds(
     .fetch_optional(&mut *conn)
     .await?;
     if existing.is_some() {
-        return Ok(Vec::new());
+        return Ok(bundle::Summary::default());
     }
-    let summary = bundle::within(conn, event, season, &document, "api-bundle.json", &hash).await?;
-    Ok(summary.skipped)
+    bundle::within(conn, event, season, &document, "api-bundle.json", &hash).await
 }

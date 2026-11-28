@@ -8,7 +8,7 @@ use std::{
 };
 
 use axum::{
-    body::{Body, to_bytes},
+    body::Body,
     http::Method,
     http::StatusCode,
     response::{IntoResponse, Response},
@@ -1359,8 +1359,9 @@ async fn save_speaker_visibility(
     Ok(response)
 }
 
-fn action_scope(filter: &Filter<'_>, data: &[u8], across: bool) -> String {
-    let ids = url::form_urlencoded::parse(data)
+fn action_scope(filter: &Filter<'_>, data: &[(String, String)], across: bool) -> String {
+    let ids = data
+        .iter()
         .filter_map(|(name, id)| {
             (name == "_selected_action")
                 .then(|| id.parse::<i64>().ok())
@@ -1388,7 +1389,7 @@ async fn merge_topics(
     admin: &AdminRequest<'_>,
     model: &'static Model,
     filter: &Filter<'_>,
-    data: &[u8],
+    data: &[(String, String)],
     across: bool,
 ) -> Result<Response, ApiError> {
     if !admin.viewer.allows(model, "change") {
@@ -1515,10 +1516,11 @@ pub(super) async fn page(
         return Ok(StatusCode::BAD_REQUEST.into_response());
     };
     if method == Method::POST {
-        let Ok(data) = to_bytes(body, 2_621_440).await else {
-            return Ok(StatusCode::PAYLOAD_TOO_LARGE.into_response());
+        let data = match login::form_fields(admin.headers, body, 2_621_440).await {
+            Ok(fields) => fields,
+            Err(status) => return Ok(status.into_response()),
         };
-        let values = login::form_values(&data);
+        let values = data.iter().cloned().collect::<HashMap<_, _>>();
         let Some(origin) = admin.origin() else {
             return Ok(StatusCode::BAD_REQUEST.into_response());
         };

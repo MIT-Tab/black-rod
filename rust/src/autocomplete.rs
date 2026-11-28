@@ -2,13 +2,12 @@ use std::collections::HashMap;
 
 use axum::{
     Json,
-    body::to_bytes,
     extract::{OriginalUri, Request, State},
     http::{HeaderMap, StatusCode, header},
     response::{IntoResponse, Response},
 };
 use serde_json::{Value, json};
-use sqlx::{AnyConnection, AnyPool, AssertSqlSafe, Row};
+use sqlx::{AnyConnection, AssertSqlSafe, Row};
 
 use crate::{ApiError, AppState, login, schedule::season_display, session};
 
@@ -127,7 +126,7 @@ fn forwarded_id(value: &Value) -> Option<i64> {
 }
 
 async fn lookup(
-    pool: &AnyPool,
+    state: &AppState,
     resource: Kind,
     include_temporary: bool,
     remote: Option<bool>,
@@ -135,6 +134,7 @@ async fn lookup(
     query: &str,
     page: i64,
 ) -> Result<Option<Value>, ApiError> {
+    let pool = &state.pool;
     let (projection, source, order, columns) = resource.fields();
     let mut restriction = Vec::new();
     match resource {
@@ -184,6 +184,7 @@ async fn lookup(
     let mut id = None;
     let mut school = None;
     let mut patterns = Vec::new();
+    let mut indexed = None;
     let whole_words =
         !resource.is_tag() && !matches!(resource, Kind::Alias | Kind::Tournament { .. });
     let query = if whole_words { query.trim() } else { query };
@@ -221,9 +222,26 @@ async fn lookup(
                 )"));
             }
         }
+        if matches!(resource, Kind::Debater) && remote != Some(true) {
+            let ids = crate::search::matching_debaters(state, query).await?;
+            if !ids.is_empty() {
+                let parameter = patterns.len() + 1;
+                let source = if pool.connect_options().database_url.scheme() == "sqlite" {
+                    format!("json_each(${parameter})")
+                } else {
+                    format!(
+                        "json_array_elements_text(CAST(${parameter} AS JSON)) AS matches(value)"
+                    )
+                };
+                alternatives.push(format!(
+                    "x.id IN (SELECT CAST(value AS BIGINT) FROM {source})"
+                ));
+                indexed = Some(serde_json::to_string(&ids)?);
+            }
+        }
         restriction.push(format!("({})", alternatives.join(" OR ")));
     }
-    let mut args = patterns.len() + usize::from(id.is_some());
+    let mut args = patterns.len() + usize::from(id.is_some()) + usize::from(indexed.is_some());
     if matches!(resource, Kind::Debater)
         && let Some(value) = forwarded_id(&forwarded["school"]).filter(|id| *id != 0)
     {
@@ -247,6 +265,9 @@ async fn lookup(
     }
     for pattern in patterns {
         statement = statement.bind(pattern);
+    }
+    if let Some(indexed) = indexed {
+        statement = statement.bind(indexed);
     }
     if let Some(school) = school {
         statement = statement.bind(school);
@@ -426,7 +447,7 @@ pub(crate) async fn endpoint(
         }
     };
     match lookup(
-        &state.pool,
+        &state,
         resource,
         include_temporary,
         synthetic(get("synthetic")),
@@ -527,10 +548,10 @@ pub(crate) async fn create_tag(State(state): State<AppState>, request: Request) 
         return StatusCode::BAD_REQUEST.into_response();
     };
     let (parts, body) = request.into_parts();
-    let Ok(body) = to_bytes(body, 128 * 1024).await else {
-        return StatusCode::PAYLOAD_TOO_LARGE.into_response();
+    let form = match login::parse_form(&parts.headers, body, 128 * 1024).await {
+        Ok(fields) => fields,
+        Err(status) => return status.into_response(),
     };
-    let form = login::form_values(&body);
     if !login::csrf_valid(
         &parts.headers,
         form.get("csrfmiddlewaretoken").map(String::as_str),

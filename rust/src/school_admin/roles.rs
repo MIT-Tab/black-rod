@@ -1,6 +1,5 @@
 use axum::{
     Json,
-    body::to_bytes,
     extract::{OriginalUri, Request, State},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
@@ -227,10 +226,10 @@ async fn save(state: &AppState, request: Request) -> Result<Response, ApiError> 
         return Ok(StatusCode::BAD_REQUEST.into_response());
     };
     let (parts, body) = request.into_parts();
-    let Ok(bytes) = to_bytes(body, 2_621_440).await else {
-        return Ok(StatusCode::PAYLOAD_TOO_LARGE.into_response());
+    let fields = match login::parse_form(&parts.headers, body, 2_621_440).await {
+        Ok(fields) => fields,
+        Err(status) => return Ok(status.into_response()),
     };
-    let fields = login::form_values(&bytes);
     if !login::csrf_valid(
         &parts.headers,
         fields.get("csrfmiddlewaretoken").map(String::as_str),

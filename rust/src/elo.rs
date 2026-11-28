@@ -13,7 +13,6 @@ use std::{
 };
 
 use axum::{
-    body::to_bytes,
     extract::{Request, State},
     http::{Method, StatusCode, header},
     response::{Html, IntoResponse, Response},
@@ -85,13 +84,23 @@ async fn version(state: &AppState) -> u64 {
 }
 
 pub(crate) async fn invalidate(state: &AppState) -> u64 {
-    let next = version(state).await.saturating_add(1);
-    state.elo.generation.store(next, Ordering::Relaxed);
-    if let Some(cache) = &state.memcached {
-        cache
-            .write_raw(NAMESPACE, 2, next.to_string().as_bytes(), 0, true)
-            .await;
-    }
+    let previous = version(state).await;
+    let next = if let Some(cache) = &state.memcached
+        && cache.advance_counter(NAMESPACE, 0).await
+    {
+        let next = version(state).await;
+        state.elo.generation.fetch_max(next, Ordering::Relaxed);
+        next
+    } else {
+        let generation = &state.elo.generation;
+        generation.fetch_max(previous, Ordering::Relaxed);
+        let previous = generation
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
+                Some(value.saturating_add(1))
+            })
+            .expect("local generation always advances or saturates");
+        previous.saturating_add(1)
+    };
     state.elo.ingestion.invalidate_all();
     state.elo.ratings.invalidate_all();
     state.elo.results.invalidate_all();
@@ -522,10 +531,10 @@ async fn response(state: &AppState, request: Request) -> Result<Response, ApiErr
     let mut found = result(state, &latest).await;
     let mut errors = Vec::new();
     if parts.method == Method::POST {
-        let Ok(body) = to_bytes(body, 2_621_440).await else {
-            return Ok(StatusCode::PAYLOAD_TOO_LARGE.into_response());
+        let values = match login::parse_form(&parts.headers, body, 2_621_440).await {
+            Ok(fields) => fields,
+            Err(status) => return Ok(status.into_response()),
         };
-        let values = login::form_values(&body);
         let Some(origin) = state.origin(headers) else {
             return Ok(StatusCode::BAD_REQUEST.into_response());
         };
@@ -626,10 +635,10 @@ pub(crate) async fn invalidate_view(State(state): State<AppState>, request: Requ
     if let Err(response) = crate::admin::require(&state, &parts.uri, &parts.headers).await {
         return *response;
     }
-    let Ok(body) = to_bytes(body, 2_621_440).await else {
-        return StatusCode::PAYLOAD_TOO_LARGE.into_response();
+    let values = match login::parse_form(&parts.headers, body, 2_621_440).await {
+        Ok(fields) => fields,
+        Err(status) => return status.into_response(),
     };
-    let values = login::form_values(&body);
     let Some(origin) = state.origin(&parts.headers) else {
         return StatusCode::BAD_REQUEST.into_response();
     };

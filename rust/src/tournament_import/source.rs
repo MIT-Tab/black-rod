@@ -6,7 +6,6 @@ use std::{
 };
 
 use axum::{
-    body::to_bytes,
     extract::{Request, State},
     http::{HeaderMap, Method, StatusCode, header},
     response::{Html, IntoResponse, Response},
@@ -604,10 +603,10 @@ async fn request(state: &AppState, request: Request) -> Result<Response, Error> 
     let user_id = user.id.ok_or(ApiError::Serialization)?;
     if request.method() == Method::POST {
         let (parts, body) = request.into_parts();
-        let Ok(bytes) = to_bytes(body, 2_621_440).await else {
-            return Ok(StatusCode::PAYLOAD_TOO_LARGE.into_response());
+        let fields = match login::parse_form(&parts.headers, body, 2_621_440).await {
+            Ok(fields) => fields,
+            Err(status) => return Ok(status.into_response()),
         };
-        let fields = login::form_values(&bytes);
         if !login::csrf_valid(
             &parts.headers,
             fields.get("csrfmiddlewaretoken").map(String::as_str),

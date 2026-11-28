@@ -4,7 +4,6 @@ pub(crate) mod suggestions;
 pub(crate) use cleanup::page as cleanup_page;
 
 use axum::{
-    body::to_bytes,
     extract::{Request, State},
     http::{HeaderMap, StatusCode, Uri, header},
     response::{IntoResponse, Response},
@@ -44,19 +43,20 @@ fn notices(
 async fn form(
     state: &AppState,
     request: Request,
-) -> Result<(Uri, HeaderMap, axum::body::Bytes), Box<Response>> {
+) -> Result<(Uri, HeaderMap, Vec<(String, String)>), Box<Response>> {
     let (parts, body) = request.into_parts();
-    let values = to_bytes(body, 2_621_440)
+    let values = login::form_fields(&parts.headers, body, 2_621_440)
         .await
-        .map_err(|_| Box::new(StatusCode::PAYLOAD_TOO_LARGE.into_response()))?;
+        .map_err(|status| Box::new(status.into_response()))?;
     let origin = state
         .origin(&parts.headers)
         .ok_or_else(|| Box::new(StatusCode::BAD_REQUEST.into_response()))?;
-    let csrf = url::form_urlencoded::parse(&values)
+    let csrf = values
+        .iter()
         .filter(|(name, _)| name == "csrfmiddlewaretoken")
         .map(|(_, value)| value)
-        .last();
-    if !login::csrf_valid(&parts.headers, csrf.as_deref(), &origin) {
+        .next_back();
+    if !login::csrf_valid(&parts.headers, csrf.map(String::as_str), &origin) {
         return Err(Box::new(login::csrf_failure()));
     }
     Ok((parts.uri, parts.headers, values))
@@ -71,7 +71,9 @@ pub(crate) async fn resolve(State(state): State<AppState>, request: Request) -> 
         Ok(values) => values,
         Err(response) => return *response,
     };
-    let inputs = login::form_values(&body);
+    let inputs = body
+        .into_iter()
+        .collect::<std::collections::HashMap<_, _>>();
     let entity = inputs
         .get("entity_type")
         .map_or("", String::as_str)

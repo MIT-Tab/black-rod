@@ -5,7 +5,7 @@ use std::{
 };
 
 use axum::{
-    body::{Body, to_bytes},
+    body::Body,
     extract::{FromRequest, Multipart, Request},
     http::{Method, StatusCode, header},
     response::{IntoResponse, Response},
@@ -741,10 +741,10 @@ pub(in crate::site_admin) async fn confirm(
     if method != Method::POST {
         return Ok(StatusCode::METHOD_NOT_ALLOWED.into_response());
     }
-    let Ok(bytes) = to_bytes(body, 128 * 1024).await else {
-        return Ok(StatusCode::PAYLOAD_TOO_LARGE.into_response());
+    let fields = match login::parse_form(admin.headers, body, 128 * 1024).await {
+        Ok(fields) => fields,
+        Err(status) => return Ok(status.into_response()),
     };
-    let fields = login::form_values(&bytes);
     let Some(origin) = admin.origin() else {
         return Ok(StatusCode::BAD_REQUEST.into_response());
     };

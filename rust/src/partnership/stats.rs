@@ -9,7 +9,6 @@ use std::{
 };
 
 use axum::{
-    body::to_bytes,
     extract::{OriginalUri, Request, State},
     http::{HeaderMap, HeaderValue, StatusCode, Uri, header},
     response::{Html, IntoResponse, Response},
@@ -324,10 +323,10 @@ pub(crate) async fn stats(
 
 pub(crate) async fn clear(State(state): State<AppState>, request: Request) -> Response {
     let (parts, body) = request.into_parts();
-    let Ok(body) = to_bytes(body, 2_621_440).await else {
-        return StatusCode::PAYLOAD_TOO_LARGE.into_response();
+    let form = match login::parse_form(&parts.headers, body, 2_621_440).await {
+        Ok(fields) => fields,
+        Err(status) => return status.into_response(),
     };
-    let form = login::form_values(&body);
     let Some(origin) = state.origin(&parts.headers) else {
         return StatusCode::BAD_REQUEST.into_response();
     };
