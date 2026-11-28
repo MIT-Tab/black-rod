@@ -324,9 +324,10 @@ async fn from_key(
                 session.set_string(SESSION_KEY, &token)?;
             }
             if let Some(session) = session {
-                if !session.save(&state.pool, secret).await? {
+                let Some(session) = session.refresh(&state.pool, secret).await? else {
                     return Ok(StatusCode::CONFLICT.into_response());
-                }
+                };
+                session.set_cookie(&mut response, visit.secure());
             } else {
                 let session_id =
                     session::create_anonymous(&state.pool, secret, &json!({SESSION_KEY:token}))

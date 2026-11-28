@@ -138,6 +138,9 @@ async fn read_uploads(state: &AppState, request: Request) -> Result<Vec<Upload>,
                 return Err(Box::new(error(StatusCode::BAD_REQUEST,
                     "Upload a valid image. The file you uploaded was either not an image or a corrupted image.")));
             };
+            if image::ImageFormat::from_path(&name).is_err() {
+                return Err(Box::new(error(StatusCode::BAD_REQUEST, "Upload a valid image file extension.")));
+            }
             Ok(Upload {name, mime, bytes})
         }).collect()
     }).await.map_err(|_| failed())?

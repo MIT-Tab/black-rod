@@ -95,11 +95,14 @@ pub(crate) async fn page(State(state): State<AppState>, request: Request) -> Res
                     return StatusCode::INTERNAL_SERVER_ERROR.into_response();
                 };
                 stored.values.insert(SESSION_KEY.to_owned(), value);
-                match stored.save(&state.pool, secret).await {
-                    Ok(true) => {
-                        return redirect_with_message(URL, None, &parts.headers, secret, secure);
+                match stored.refresh(&state.pool, secret).await {
+                    Ok(Some(session)) => {
+                        let mut response =
+                            redirect_with_message(URL, None, &parts.headers, secret, secure);
+                        session.set_cookie(&mut response, secure);
+                        return response;
                     }
-                    Ok(false) => {
+                    Ok(None) => {
                         return redirect_with_message(
                             URL,
                             Some("This grid has changed. Choose a square on the current board."),
@@ -232,9 +235,13 @@ pub(crate) async fn guess(State(state): State<AppState>, request: Request) -> Re
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     };
     stored.values.insert(SESSION_KEY.to_owned(), value);
-    match stored.save(&state.pool, secret).await {
-        Ok(true) => redirect(None),
-        Ok(false) => redirect(Some("Your grid was updated. Choose a square to continue.")),
+    match stored.refresh(&state.pool, secret).await {
+        Ok(Some(session)) => {
+            let mut response = redirect(None);
+            session.set_cookie(&mut response, origin.starts_with("https://"));
+            response
+        }
+        Ok(None) => redirect(Some("Your grid was updated. Choose a square to continue.")),
         Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
     }
 }

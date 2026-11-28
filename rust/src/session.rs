@@ -1,6 +1,9 @@
 mod signing;
 
-use axum::http::{HeaderMap, header};
+use axum::{
+    http::{HeaderMap, header},
+    response::Response,
+};
 use chrono::{DateTime, Duration, Utc};
 use ring::{
     hmac,
@@ -10,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json, value::RawValue};
 use sqlx::{AnyConnection, AnyPool, Row};
 
-use signing::decode_signed_bytes;
+use signing::{MAX_SESSION_SIZE, decode_signed_bytes};
 pub(crate) use signing::{
     decode_signed, decode_timed, decode_timed_with_limits, encode_compressed, encode_signed, key,
 };
@@ -85,17 +88,23 @@ pub(crate) fn random_token(
     Ok(token)
 }
 
-fn encode(session: &Value, secret: &[u8]) -> String {
-    encode_signed(
-        &crate::django_json::ascii(&session.to_string()),
-        secret,
-        SESSION_SALT,
-    )
+fn encode_session(serialized: &str, secret: &[u8]) -> Result<String, sqlx::Error> {
+    let payload = crate::django_json::ascii(serialized);
+    let too_large = || sqlx::Error::Protocol("Session data exceeds its storage limit".to_owned());
+    if payload.len() as u64 > MAX_SESSION_SIZE {
+        return Err(too_large());
+    }
+    let data = encode_compressed(&payload, secret, SESSION_SALT)
+        .map_err(|error| sqlx::Error::Protocol(error.to_string()))?;
+    if data.len() as u64 > MAX_SESSION_SIZE {
+        return Err(too_large());
+    }
+    Ok(data)
 }
 
 type SessionValues = std::collections::BTreeMap<String, Box<RawValue>>;
 
-fn password_expiry(values: &SessionValues, now: DateTime<Utc>) -> (DateTime<Utc>, Option<u32>) {
+fn session_expiry(values: &SessionValues, now: DateTime<Utc>) -> (DateTime<Utc>, Option<u32>) {
     let policy = values
         .get("_session_expiry")
         .and_then(|value| serde_json::from_str::<Value>(value.get()).ok())
@@ -122,11 +131,29 @@ fn password_expiry(values: &SessionValues, now: DateTime<Utc>) -> (DateTime<Utc>
 fn encode_values(values: &SessionValues, secret: &[u8]) -> Result<String, sqlx::Error> {
     let serialized =
         serde_json::to_string(values).map_err(|error| sqlx::Error::Protocol(error.to_string()))?;
-    Ok(encode_signed(
-        &crate::django_json::ascii(&serialized),
-        secret,
-        SESSION_SALT,
-    ))
+    encode_session(&serialized, secret)
+}
+
+pub(crate) struct RefreshedSession {
+    id: String,
+    age: Option<u32>,
+}
+
+impl RefreshedSession {
+    pub(crate) fn set_cookie(self, response: &mut Response, secure: bool) {
+        let headers = response.headers_mut();
+        if !headers.get_all(header::VARY).iter().any(|value| {
+            value.to_str().is_ok_and(|value| {
+                value.split(',').any(|name| {
+                    let name = name.trim();
+                    name == "*" || name.eq_ignore_ascii_case("cookie")
+                })
+            })
+        }) {
+            headers.append(header::VARY, header::HeaderValue::from_static("Cookie"));
+        }
+        crate::login::set_cookie(response, "sessionid", &self.id, self.age, secure, true);
+    }
 }
 
 pub(crate) struct StoredSession {
@@ -186,7 +213,7 @@ impl StoredSession {
         let auth = serde_json::value::to_raw_value(&hex::encode(digest))
             .map_err(|error| sqlx::Error::Protocol(error.to_string()))?;
         self.values.insert("_auth_user_hash".to_owned(), auth);
-        let (deadline, age) = password_expiry(&self.values, Utc::now());
+        let (deadline, age) = session_expiry(&self.values, Utc::now());
         let sqlite = conn.backend_name() == "SQLite";
         let expiry = if sqlite {
             deadline.format("%Y-%m-%d %H:%M:%S%.6f").to_string()
@@ -215,26 +242,53 @@ impl StoredSession {
         Ok((id, age))
     }
 
-    pub(crate) async fn save(self, pool: &AnyPool, secret: &[u8]) -> Result<bool, sqlx::Error> {
-        self.save_on(&mut *pool.acquire().await?, secret).await
+    pub(crate) async fn refresh(
+        self,
+        pool: &AnyPool,
+        secret: &[u8],
+    ) -> Result<Option<RefreshedSession>, sqlx::Error> {
+        self.refresh_on(&mut *pool.acquire().await?, secret).await
     }
 
-    pub(crate) async fn save_on(
+    pub(crate) async fn refresh_on(
         self,
         conn: &mut AnyConnection,
         secret: &[u8],
-    ) -> Result<bool, sqlx::Error> {
+    ) -> Result<Option<RefreshedSession>, sqlx::Error> {
+        let (deadline, age) = session_expiry(&self.values, Utc::now());
+        let cookie = if self.values.is_empty() {
+            RefreshedSession {
+                id: String::new(),
+                age: Some(0),
+            }
+        } else {
+            RefreshedSession {
+                id: self.id.clone(),
+                age,
+            }
+        };
         let updated = encode_values(&self.values, secret)?;
-        let result = sqlx::query(
-            "UPDATE django_session SET session_data = $1
-            WHERE session_key = $2 AND session_data = $3 AND expire_date > CURRENT_TIMESTAMP",
-        )
-        .bind(updated)
-        .bind(self.id)
-        .bind(self.original)
-        .execute(conn)
-        .await?;
-        Ok(result.rows_affected() == 1)
+        let sqlite = conn.backend_name() == "SQLite";
+        let expiry = if sqlite {
+            deadline.format("%Y-%m-%d %H:%M:%S%.6f").to_string()
+        } else {
+            deadline.to_rfc3339()
+        };
+        let query = if sqlite {
+            "UPDATE django_session SET session_data=$1,expire_date=$4
+             WHERE session_key=$2 AND session_data=$3 AND expire_date>CURRENT_TIMESTAMP"
+        } else {
+            "UPDATE django_session SET session_data=$1,expire_date=CAST($4 AS TIMESTAMPTZ)
+             WHERE session_key=$2 AND session_data=$3 AND expire_date>CURRENT_TIMESTAMP"
+        };
+        let result = sqlx::query(query)
+            .bind(updated)
+            .bind(self.id)
+            .bind(self.original)
+            .bind(expiry)
+            .execute(conn)
+            .await?;
+        Ok((result.rows_affected() == 1).then_some(cookie))
     }
 }
 
@@ -256,7 +310,7 @@ pub(crate) async fn create_anonymous(
     };
     sqlx::query(query)
         .bind(&id)
-        .bind(encode(payload, secret))
+        .bind(encode_session(&payload.to_string(), secret)?)
         .bind(expiry)
         .execute(pool)
         .await?;
@@ -270,34 +324,19 @@ pub(crate) async fn oauth_start(
     state_id: &str,
     next: &str,
     remember: bool,
-) -> Result<Option<String>, sqlx::Error> {
+) -> Result<Option<RefreshedSession>, sqlx::Error> {
     if let Some(session) = StoredSession::read(pool, headers, secret).await? {
         return stash_oauth(session, pool, secret, state_id, next, Some(remember)).await;
     }
-    let session_key = random_token(b"abcdefghijklmnopqrstuvwxyz0123456789", 32)
-        .map_err(|_| sqlx::Error::Protocol("Unable to generate an OAuth session key".into()))?;
-    let now = Utc::now();
     let value = json!({
-        "socialaccount_states": {(state_id): [{"process": "login", "next": next, "data": {"results_remember": remember}}, now.timestamp()]},
+        "socialaccount_states": {(state_id): [{"process": "login", "next": next, "data": {"results_remember": remember}}, Utc::now().timestamp()]},
         "apda_remember_login": remember,
     });
-    let data = encode(&value, secret);
-    let mut expiry = (now + Duration::minutes(10))
-        .format("%Y-%m-%d %H:%M:%S%.6f")
-        .to_string();
-    let query = if pool.connect_options().database_url.scheme() == "sqlite" {
-        "INSERT INTO django_session (session_key, session_data, expire_date) VALUES ($1, $2, $3)"
-    } else {
-        expiry.push_str("+00");
-        "INSERT INTO django_session (session_key, session_data, expire_date) VALUES ($1, $2, CAST($3 AS TIMESTAMPTZ))"
-    };
-    sqlx::query(query)
-        .bind(&session_key)
-        .bind(data)
-        .bind(expiry)
-        .execute(pool)
-        .await?;
-    Ok(Some(session_key))
+    let id = create_anonymous(pool, secret, &value).await?;
+    Ok(Some(RefreshedSession {
+        id,
+        age: Some(crate::login::SESSION_AGE),
+    }))
 }
 
 pub(crate) async fn oauth_connect(
@@ -306,7 +345,7 @@ pub(crate) async fn oauth_connect(
     secret: &[u8],
     state_id: &str,
     next: &str,
-) -> Result<Option<String>, sqlx::Error> {
+) -> Result<Option<RefreshedSession>, sqlx::Error> {
     let Some(session) = StoredSession::read(pool, headers, secret).await? else {
         return Ok(None);
     };
@@ -320,7 +359,7 @@ async fn stash_oauth(
     state_id: &str,
     next: &str,
     remember: Option<bool>,
-) -> Result<Option<String>, sqlx::Error> {
+) -> Result<Option<RefreshedSession>, sqlx::Error> {
     let process = if let Some(remember) = remember {
         let value = serde_json::value::to_raw_value(&remember)
             .map_err(|error| sqlx::Error::Protocol(error.to_string()))?;
@@ -363,8 +402,7 @@ async fn stash_oauth(
     session
         .values
         .insert("socialaccount_states".to_owned(), state);
-    let key = session.id.clone();
-    Ok(session.save(pool, secret).await?.then_some(key))
+    session.refresh(pool, secret).await
 }
 
 pub(crate) struct OAuthContext {
@@ -378,7 +416,7 @@ pub(crate) async fn consume_oauth(
     headers: &HeaderMap,
     secret: &[u8],
     state_id: &str,
-) -> Result<Option<OAuthContext>, sqlx::Error> {
+) -> Result<Option<(OAuthContext, RefreshedSession)>, sqlx::Error> {
     let Some(mut session) = StoredSession::read(pool, headers, secret).await? else {
         return Ok(None);
     };
@@ -420,15 +458,18 @@ pub(crate) async fn consume_oauth(
                 .and_then(|value| serde_json::from_str::<bool>(value.get()).ok())
         })
         .unwrap_or(true);
-    if !session.save(pool, secret).await? {
+    let Some(refreshed) = session.refresh(pool, secret).await? else {
         return Ok(None);
-    }
+    };
     let next = state[0]["next"].as_str().unwrap_or_default().to_owned();
-    Ok(Some(OAuthContext {
-        next,
-        remember,
-        connect,
-    }))
+    Ok(Some((
+        OAuthContext {
+            next,
+            remember,
+            connect,
+        },
+        refreshed,
+    )))
 }
 
 pub(crate) async fn create(
@@ -703,6 +744,57 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn refresh_keeps_large_sessions_readable_and_rejects_oversized_updates() {
+        let pool = session_fixture().await;
+        let secret = b"disposable-session-refresh-key";
+        let key = "refreshfixture";
+        let payload = "x".repeat(800 * 1024);
+        let serialized = json!({"extra": payload, "_session_expiry": 3600}).to_string();
+        let old_expiry = (Utc::now() + Duration::minutes(10))
+            .format("%Y-%m-%d %H:%M:%S%.6f")
+            .to_string();
+        let initial = encode_compressed(&serialized, secret, SESSION_SALT).unwrap();
+        sqlx::query("INSERT INTO django_session VALUES ($1, $2, $3)")
+            .bind(key)
+            .bind(initial)
+            .bind(&old_expiry)
+            .execute(&pool)
+            .await
+            .unwrap();
+        let mut headers = HeaderMap::new();
+        headers.insert(header::COOKIE, format!("sessionid={key}").parse().unwrap());
+        let mut stored = StoredSession::read(&pool, &headers, secret)
+            .await
+            .unwrap()
+            .unwrap();
+        stored.set_string("board", "fixture").unwrap();
+        let refreshed = stored.refresh(&pool, secret).await.unwrap().unwrap();
+        assert_eq!(refreshed.id, key);
+        assert_eq!(refreshed.age, Some(3600));
+        let mut stored = StoredSession::read(&pool, &headers, secret)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(stored.string("extra").as_deref(), Some(payload.as_str()));
+        assert_eq!(stored.string("board").as_deref(), Some("fixture"));
+        let expiry: String =
+            sqlx::query_scalar("SELECT expire_date FROM django_session WHERE session_key=$1")
+                .bind(key)
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert!(expiry > old_expiry);
+
+        stored.set_string("board", &"y".repeat(300 * 1024)).unwrap();
+        assert!(stored.refresh(&pool, secret).await.is_err());
+        let stored = StoredSession::read(&pool, &headers, secret)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(stored.string("board").as_deref(), Some("fixture"));
+    }
+
+    #[tokio::test]
     async fn rotating_password_applies_the_session_expiry_policy() {
         let pool = session_fixture().await;
         let secret = b"disposable-password-expiry-key";
@@ -718,7 +810,8 @@ mod tests {
         ];
         for (index, (policy, seconds, persistent)) in cases.into_iter().enumerate() {
             let old = format!("fixture{index}");
-            let body = encode(&json!({"_session_expiry": policy}), secret);
+            let body =
+                encode_session(&json!({"_session_expiry": policy}).to_string(), secret).unwrap();
             sqlx::query("INSERT INTO django_session VALUES ($1, $2, $3)")
                 .bind(&old)
                 .bind(body)
@@ -797,14 +890,16 @@ mod tests {
                 oauth_start(&pool, &headers, secret, tab, next, false)
                     .await
                     .unwrap()
-                    .as_deref(),
-                Some("oauthfixture")
+                    .expect("session was renewed")
+                    .id,
+                "oauthfixture"
             );
         }
-        let context = consume_oauth(&pool, &headers, secret, "used")
+        let (context, refreshed) = consume_oauth(&pool, &headers, secret, "used")
             .await
             .unwrap()
             .unwrap();
+        assert_eq!(refreshed.id, "oauthfixture");
         assert!(context.connect && !context.remember);
         assert_eq!(context.next, "/café/");
         assert!(
@@ -814,7 +909,7 @@ mod tests {
                 .is_none()
         );
 
-        let other_tab = consume_oauth(&pool, &headers, secret, "one")
+        let (other_tab, _) = consume_oauth(&pool, &headers, secret, "one")
             .await
             .unwrap()
             .unwrap();
@@ -862,7 +957,7 @@ mod tests {
         assert_eq!(preserved.values["_session_expiry"].get(), "0");
         assert!(!preserved.values.contains_key("apda_remember_login"));
         assert!(!preserved.values.contains_key("socialaccount_sociallogin"));
-        let last_tab = consume_oauth(&pool, &headers, secret, "two")
+        let (last_tab, _) = consume_oauth(&pool, &headers, secret, "two")
             .await
             .unwrap()
             .unwrap();

@@ -12,11 +12,7 @@ use sqlx::{AnyPool, Row};
 
 use unicode_normalization::UnicodeNormalization;
 
-use crate::{
-    ApiError, AppState, account, flash,
-    login::{self, SESSION_AGE},
-    session, web,
-};
+use crate::{ApiError, AppState, account, flash, login, session, web};
 
 pub use provider::OAuth;
 use provider::{Profile, Token};
@@ -75,16 +71,7 @@ async fn start_process(
         ],
     )
         .into_response();
-    if !connect && session::session_id(headers) != Some(pending.as_str()) {
-        login::set_cookie(
-            &mut response,
-            "sessionid",
-            &pending,
-            Some(SESSION_AGE),
-            origin.starts_with("https://"),
-            true,
-        );
-    }
+    pending.set_cookie(&mut response, origin.starts_with("https://"));
     response
 }
 
@@ -408,10 +395,15 @@ async fn pending_signup(
         PENDING_SIGNUP.to_owned(),
         serde_json::value::to_raw_value(&value)?,
     );
-    if !session.save(&state.pool, secret).await? {
+    let Some(session) = session.refresh(&state.pool, secret).await? else {
         return Ok(StatusCode::CONFLICT.into_response());
-    }
-    Ok(redirect(SIGNUP_PAGE))
+    };
+    let mut response = redirect(SIGNUP_PAGE);
+    let secure = state
+        .origin(headers)
+        .is_some_and(|origin| origin.starts_with("https://"));
+    session.set_cookie(&mut response, secure);
+    Ok(response)
 }
 
 async fn signup_page(state: &AppState, request: Request) -> Result<Response, ApiError> {
@@ -635,7 +627,7 @@ pub(crate) async fn callback(
         return failed(&state, &uri, &headers).await;
     };
     let response = session::consume_oauth(&state.pool, &headers, secret, state_id).await;
-    let context = match response {
+    let (context, refreshed) = match response {
         Ok(Some(context)) => context,
         Ok(None) => return failed(&state, &uri, &headers).await,
         Err(_) => {
@@ -643,95 +635,112 @@ pub(crate) async fn callback(
             return failed(&state, &uri, &headers).await;
         }
     };
-    if params
-        .get("error")
-        .is_some_and(|error| error.as_ref() == "access_denied")
-    {
-        return redirect("/accounts/3rdparty/login/cancelled/");
-    }
-    if params.contains_key("error") {
-        return failed(&state, &uri, &headers).await;
-    }
-    let Some(code) = params.get("code").filter(|code| !code.is_empty()) else {
-        return failed(&state, &uri, &headers).await;
-    };
-    let Some((token, fields, profile)) = config.profile(&origin, code).await else {
-        eprintln!("OAuth provider rejected the exchange or sent an invalid response");
-        return failed(&state, &uri, &headers).await;
-    };
-    let connecting = if context.connect {
-        match session::user(&state.pool, &headers, Some(secret)).await {
-            Ok(user) if user.is_authenticated => user.id,
-            _ => return failed(&state, &uri, &headers).await,
+    let mut response = async {
+        if params
+            .get("error")
+            .is_some_and(|error| error.as_ref() == "access_denied")
+        {
+            return redirect("/accounts/3rdparty/login/cancelled/");
         }
-    } else {
-        None
-    };
-    let (id, password) = match save(&state.pool, &profile, &fields, &token, connecting, None).await
-    {
-        Ok(credentials) => credentials,
-        Err(AccountError::ExistingEmail) => {
-            return match pending_signup(
-                &state, &headers, config, &profile, &fields, &token, &context,
-            )
-            .await
-            {
-                Ok(response) => response,
-                Err(_) => failed(&state, &uri, &headers).await,
+        if params.contains_key("error") {
+            return failed(&state, &uri, &headers).await;
+        }
+        let Some(code) = params.get("code").filter(|code| !code.is_empty()) else {
+            return failed(&state, &uri, &headers).await;
+        };
+        let Some((token, fields, profile)) = config.profile(&origin, code).await else {
+            eprintln!("OAuth provider rejected the exchange or sent an invalid response");
+            return failed(&state, &uri, &headers).await;
+        };
+        let connecting = if context.connect {
+            match session::user(&state.pool, &headers, Some(secret)).await {
+                Ok(user) if user.is_authenticated => user.id,
+                _ => return failed(&state, &uri, &headers).await,
+            }
+        } else {
+            None
+        };
+        let (id, password) =
+            match save(&state.pool, &profile, &fields, &token, connecting, None).await {
+                Ok(credentials) => credentials,
+                Err(AccountError::ExistingEmail) => {
+                    return match pending_signup(
+                        &state, &headers, config, &profile, &fields, &token, &context,
+                    )
+                    .await
+                    {
+                        Ok(response) => response,
+                        Err(_) => failed(&state, &uri, &headers).await,
+                    };
+                }
+                Err(AccountError::ExistingUsername) => return failed(&state, &uri, &headers).await,
+                Err(AccountError::ConnectedOther) => {
+                    let mut response = (
+                        StatusCode::FOUND,
+                        [(header::LOCATION, "/accounts/3rdparty/")],
+                    )
+                        .into_response();
+                    flash::push(
+                        &mut response,
+                        &headers,
+                        secret,
+                        40,
+                        "The third-party account is already connected to a different account.",
+                        origin.starts_with("https://"),
+                    );
+                    return response;
+                }
+                Err(AccountError::Invalid) => return failed(&state, &uri, &headers).await,
+                Err(AccountError::Database) => return failed(&state, &uri, &headers).await,
             };
-        }
-        Err(AccountError::ExistingUsername) => return failed(&state, &uri, &headers).await,
-        Err(AccountError::ConnectedOther) => {
+        let next = login::safe_next(&context.next, &origin);
+        if connecting.is_some() {
             let mut response = (
                 StatusCode::FOUND,
-                [(header::LOCATION, "/accounts/3rdparty/")],
+                [(
+                    header::LOCATION,
+                    if next.is_empty() {
+                        "/accounts/3rdparty/"
+                    } else {
+                        &next
+                    },
+                )],
             )
                 .into_response();
             flash::push(
                 &mut response,
                 &headers,
                 secret,
-                40,
-                "The third-party account is already connected to a different account.",
+                20,
+                "The third-party account has been connected.",
                 origin.starts_with("https://"),
             );
             return response;
         }
-        Err(AccountError::Invalid) => return failed(&state, &uri, &headers).await,
-        Err(AccountError::Database) => return failed(&state, &uri, &headers).await,
-    };
-    let next = login::safe_next(&context.next, &origin);
-    if connecting.is_some() {
-        let mut response = (
-            StatusCode::FOUND,
-            [(
-                header::LOCATION,
-                if next.is_empty() {
-                    "/accounts/3rdparty/"
-                } else {
-                    &next
-                },
-            )],
-        )
-            .into_response();
-        flash::push(
-            &mut response,
+        login::sign_in(
+            &state,
             &headers,
-            secret,
-            20,
-            "The third-party account has been connected.",
             origin.starts_with("https://"),
-        );
-        return response;
+            &next,
+            context.remember,
+            (id, &password),
+            BACKEND,
+        )
+        .await
     }
-    login::sign_in(
-        &state,
-        &headers,
-        origin.starts_with("https://"),
-        &next,
-        context.remember,
-        (id, &password),
-        BACKEND,
-    )
-    .await
+    .await;
+    if !response.status().is_server_error()
+        && !response
+            .headers()
+            .get_all(header::SET_COOKIE)
+            .iter()
+            .any(|value| {
+                value
+                    .to_str()
+                    .is_ok_and(|value| value.starts_with("sessionid="))
+            })
+    {
+        refreshed.set_cookie(&mut response, origin.starts_with("https://"));
+    }
+    response
 }

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use axum::{
     body::to_bytes,
-    extract::{Request, State},
+    extract::{DefaultBodyLimit, FromRequest, Multipart, Request, State},
     http::{HeaderMap, HeaderValue, Method, StatusCode, Uri, header},
     response::{Html, IntoResponse, Response},
 };
@@ -231,6 +231,41 @@ async fn page(state: &AppState, headers: &HeaderMap, https: bool, page: LoginPag
     response
 }
 
+async fn login_form(mut request: Request) -> Result<HashMap<String, String>, StatusCode> {
+    const MAX_BYTES: usize = 128 * 1024;
+    let media_type = request
+        .headers()
+        .get(header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default()
+        .split(';')
+        .next()
+        .unwrap_or_default()
+        .trim();
+    if media_type.eq_ignore_ascii_case("multipart/form-data") {
+        DefaultBodyLimit::max(MAX_BYTES).apply(&mut request);
+        let mut parts = Multipart::from_request(request, &())
+            .await
+            .map_err(|_| StatusCode::BAD_REQUEST)?;
+        let mut fields = HashMap::new();
+        while let Some(field) = parts.next_field().await.map_err(|error| error.status())? {
+            if field.file_name().is_none() {
+                let name = field.name().unwrap_or_default().to_owned();
+                let text = field.text().await.map_err(|error| error.status())?;
+                fields.insert(name, text);
+            }
+        }
+        return Ok(fields);
+    }
+    if !media_type.eq_ignore_ascii_case("application/x-www-form-urlencoded") {
+        return Ok(HashMap::new());
+    }
+    let body = to_bytes(request.into_body(), MAX_BYTES)
+        .await
+        .map_err(|_| StatusCode::PAYLOAD_TOO_LARGE)?;
+    Ok(form_values(&body))
+}
+
 pub(crate) async fn view(State(state): State<AppState>, request: Request) -> Response {
     let Some(origin) = state.origin(request.headers()) else {
         return StatusCode::BAD_REQUEST.into_response();
@@ -255,13 +290,13 @@ pub(crate) async fn view(State(state): State<AppState>, request: Request) -> Res
         )
         .await;
     }
-    let (parts, body) = request.into_parts();
-    let Ok(body) = to_bytes(body, 128 * 1024).await else {
-        return StatusCode::PAYLOAD_TOO_LARGE.into_response();
+    let headers = request.headers().clone();
+    let form = match login_form(request).await {
+        Ok(form) => form,
+        Err(status) => return status.into_response(),
     };
-    let form = form_values(&body);
     let field = |name: &str| form.get(name).map(String::as_str);
-    if !csrf_valid(&parts.headers, field("csrfmiddlewaretoken"), &origin) {
+    if !csrf_valid(&headers, field("csrfmiddlewaretoken"), &origin) {
         return csrf_failure();
     }
     let next = field("next")
@@ -270,7 +305,7 @@ pub(crate) async fn view(State(state): State<AppState>, request: Request) -> Res
     let remember =
         field("remember").is_some_and(|value| !matches!(value, "" | "0" | "false" | "False"));
     if field("provider") == Some("apdaonline") {
-        return crate::oauth::start(&state, &parts.headers, &origin, &next, remember).await;
+        return crate::oauth::start(&state, &headers, &origin, &next, remember).await;
     }
     if state.secret.is_none() {
         return StatusCode::SERVICE_UNAVAILABLE.into_response();
@@ -292,7 +327,7 @@ pub(crate) async fn view(State(state): State<AppState>, request: Request) -> Res
     let Some(verified) = verified else {
         return page(
             &state,
-            &parts.headers,
+            &headers,
             secure,
             LoginPage {
                 next,
@@ -303,7 +338,7 @@ pub(crate) async fn view(State(state): State<AppState>, request: Request) -> Res
         )
         .await;
     };
-    finish_password_login(&state, &parts.headers, secure, &next, remember, verified).await
+    finish_password_login(&state, &headers, secure, &next, remember, verified).await
 }
 
 pub(crate) struct VerifiedPassword {

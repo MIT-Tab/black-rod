@@ -345,9 +345,10 @@ async fn confirm(
         let mut response = redirect(&format!("{CONFIRM}{uid}/set-password/"));
         if let Some(mut session) = session {
             session.set_string(TOKEN_KEY, &token)?;
-            if !session.save(&state.pool, secret).await? {
+            let Some(session) = session.refresh(&state.pool, secret).await? else {
                 return Ok(StatusCode::CONFLICT.into_response());
-            }
+            };
+            session.set_cookie(&mut response, visit.secure());
         } else {
             let key =
                 session::create_anonymous(&state.pool, secret, &json!({TOKEN_KEY:token})).await?;
@@ -364,14 +365,16 @@ async fn confirm(
             if !set_password(&mut tx, &person, &hash).await? {
                 return Ok(StatusCode::CONFLICT.into_response());
             }
+            let mut response = redirect(COMPLETE);
             if let Some(mut session) = session.take() {
                 session.remove(TOKEN_KEY);
-                if !session.save_on(&mut tx, secret).await? {
+                let Some(session) = session.refresh_on(&mut tx, secret).await? else {
                     return Ok(StatusCode::CONFLICT.into_response());
-                }
+                };
+                session.set_cookie(&mut response, visit.secure());
             }
             tx.commit().await?;
-            return Ok(redirect(COMPLETE));
+            return Ok(response);
         }
     }
     view(

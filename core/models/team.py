@@ -1,6 +1,6 @@
 from django.db import models
 from django.shortcuts import reverse
-from django.utils.html import format_html
+from django.utils.html import format_html_join
 
 from .debater import Debater
 
@@ -73,13 +73,10 @@ class Team(models.Model):
     @property
     def debaters_display(self):
         debaters = self.debaters.exclude(synthetic=True)
-        return format_html(
-            " and ".join(
-                [
-                    f'<a href="{debater.get_absolute_url()}">{debater.name}</a>'
-                    for debater in debaters
-                ]
-            )
+        return format_html_join(
+            " and ",
+            '<a href="{}">{}</a>',
+            ((debater.get_absolute_url(), debater.name) for debater in debaters),
         )
 
     @property

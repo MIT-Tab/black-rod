@@ -858,6 +858,20 @@ async fn rows(
         .await?;
     let mut table = Vec::new();
     let mut connection = pool.acquire().await?;
+    let winning_members = if matches!(kind, Kind::Tournaments) {
+        let mut teams = result
+            .iter()
+            .map(|row| row.try_get::<Option<i64>, _>("winner"))
+            .collect::<Result<Vec<_>, _>>()?
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>();
+        teams.sort_unstable();
+        teams.dedup();
+        team_profile::members_for(&mut connection, &teams, "").await?
+    } else {
+        HashMap::new()
+    };
     for row in result {
         let id: i64 = row.try_get("id")?;
         let url = format!("/core/{}/{id}", kind.title().to_ascii_lowercase());
@@ -1019,8 +1033,8 @@ async fn rows(
                 }
                 let winner: Option<i64> = row.try_get("winner")?;
                 let mut names = Vec::new();
-                if let Some(team) = winner {
-                    for member in team_profile::members(&mut connection, team, "").await? {
+                if let Some(members) = winner.and_then(|team| winning_members.get(&team)) {
+                    for member in members {
                         if let Some(name) = member["name"].as_str() {
                             names.push((name.to_owned(), empty()));
                         }

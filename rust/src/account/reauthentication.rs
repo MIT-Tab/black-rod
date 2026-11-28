@@ -80,8 +80,11 @@ async fn page(state: &AppState, request: Request) -> Result<Response, ApiError> 
                     let (key, age) = current.rotate_password(&mut tx, secret, &upgrade).await?;
                     tx.commit().await?;
                     login::set_cookie(&mut response, "sessionid", &key, age, visit.secure(), true);
-                } else if !current.save(&state.pool, secret).await? {
-                    return Ok(StatusCode::CONFLICT.into_response());
+                } else {
+                    let Some(session) = current.refresh(&state.pool, secret).await? else {
+                        return Ok(StatusCode::CONFLICT.into_response());
+                    };
+                    session.set_cookie(&mut response, visit.secure());
                 }
                 return Ok(response);
             }

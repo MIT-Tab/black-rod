@@ -119,17 +119,18 @@ def home_state(driver, server):
     """)
 
 
-def directory_state(driver, server, path):
+def directory_state(driver, server, path, limit=24):
     driver.get(f"http://{HOST}:{server.port}{path}")
     return driver.execute_script("""
+        const limit = arguments[0];
         const text = (node) => node.textContent.replace(/\s+/g, " ").trim();
         return {
             headings: Array.from(document.querySelectorAll(".container-fluid h3,.container-fluid h5,.container-fluid h6")).map(text),
-            rows: Array.from(document.querySelectorAll("table tr")).slice(0, 24).map(row => Array.from(row.children).map(text)),
+            rows: Array.from(document.querySelectorAll("table tr")).slice(0, limit).map(row => Array.from(row.children).map(text)),
             links: Array.from(document.querySelectorAll("table a, .table-container nav .page-link"))
-                .slice(0, 24).map(node => [node.getAttribute("href"), text(node)]),
+                .slice(0, limit).map(node => [node.getAttribute("href"), text(node)]),
         };
-    """)
+    """, limit)
 
 
 def assert_debater_autocomplete_permissions(driver, django, rust, fixture):
@@ -186,12 +187,14 @@ def assert_directories(driver, django, rust):
         "/core/resources/?title__icontains=browser&sort=title",
         "/core/tournaments/?season=2025&name__icontains=harvard&sort=-points",
         "/core/tournaments/?season=2025&points_min=15.5&num_teams_max=75&sort=date",
+        "/core/tournaments/?per_page=260&sort=-date",
         "/core/schools/7?season=2025",
         "/stats/",
     ]
     for path in paths:
-        expected = directory_state(driver, django, path)
-        candidate = directory_state(driver, rust, path)
+        limit = 261 if "per_page=260" in path else 24
+        expected = directory_state(driver, django, path, limit)
+        candidate = directory_state(driver, rust, path, limit)
         for key in expected:
             for index, (left, right) in enumerate(zip_longest(expected[key], candidate[key])):
                 assert left == right, f"{path} {key}[{index}] differed: {left!r} vs {right!r}"
@@ -666,6 +669,17 @@ def assert_video_editor(driver, django, rust, fixture):
             }, () => done([0]));
         """, b64encode(pixels.getvalue()).decode())
         assert uploaded[0] == 200 and [file["size"] for file in uploaded[1]["files"]] == [size] * 3, uploaded
+        rejected = driver.execute_async_script("""
+            const [data, done] = arguments;
+            const body = new FormData();
+            const bytes = Uint8Array.from(atob(data), char => char.charCodeAt(0));
+            body.append("files", new File([bytes], "fixture.txt"));
+            body.set("csrfmiddlewaretoken", document.querySelector("[name=csrfmiddlewaretoken]").value);
+            fetch("/summernote/upload_attachment/", {method: "POST", body})
+                .then(async response => done([response.status, (await response.json()).status]))
+                .catch(() => done([0]));
+        """, b64encode(pixels.getvalue()).decode())
+        assert rejected == [400, "false"], (root, rejected)
     attachment = uploaded[1]["files"][0]["url"]
     wait.until(lambda browser: len(browser.find_elements("css selector", ".note-editor .note-editable")) == 2)
     from selenium.webdriver.support.expected_conditions import alert_is_present
@@ -1186,7 +1200,42 @@ print(json.dumps({key: getattr(reference, key) for key in keys}))
 
 def assert_infinite_grid(driver, django, rust, fixture):
     path = "/immaculate-grid/infinite/"
-    cookie = fixture["sessions"]["ordinary"]
+    code = """
+from django import setup
+setup()
+from django.contrib.sessions.backends.db import SessionStore
+from django.contrib.sessions.models import Session
+from django.utils.timezone import now
+from datetime import timedelta
+import sys
+
+existing = SessionStore(sys.stdin.read()).load()
+stored = SessionStore()
+stored.update(existing)
+stored["fixture_payload"] = "x" * (800 * 1024)
+stored.set_expiry(24 * 60 * 60)
+stored.save()
+Session.objects.filter(session_key=stored.session_key).update(expire_date=now() + timedelta(hours=1))
+print(stored.session_key)
+"""
+    result = subprocess.check_output(
+        [str(ROOT / "venv/bin/python"), "-c", code], input=fixture["sessions"]["ordinary"],
+        env={**os.environ, "SECRET_KEY": "disposable-local-parity-key"}, text=True,
+    )
+    cookie = result.splitlines()[-1]
+    database = Path(os.environ["BR_STATE"]) / "dev.sqlite3"
+
+    def check_expiry():
+        from time import time
+
+        age = driver.get_cookie("sessionid")["expiry"] - time()
+        assert 86_300 < age <= 86_400, age
+        with sqlite3.connect(f"{database.as_uri()}?mode=ro", uri=True) as connection:
+            remaining, = connection.execute(
+                "SELECT (julianday(expire_date) - julianday('now')) * 86400 "
+                "FROM django_session WHERE session_key=?", (cookie,)
+            ).fetchone()
+            assert 86_300 < remaining <= 86_400, remaining
     rust_root = f"http://{HOST}:{rust.port}"
     django_root = f"http://{HOST}:{django.port}"
     driver.get(f"{rust_root}{path}")
@@ -1197,6 +1246,7 @@ def assert_infinite_grid(driver, django, rust, fixture):
     driver.execute_script("arguments[0].requestSubmit()", form)
     wait = WebDriverWait(driver, 15)
     wait.until(lambda browser: len(browser.find_elements("css selector", "[data-cell]")) == 9)
+    check_expiry()
     practice = driver.find_element("name", "board").get_attribute("value")
     assert int(practice) > 2**64
     driver.get(f"{django_root}{path}")
@@ -1208,7 +1258,9 @@ setup()
 from django.contrib.sessions.backends.db import SessionStore
 import json
 import sys
-play = SessionStore(sys.stdin.read()).load()["immaculate_grid_practice"]
+stored = SessionStore(sys.stdin.read()).load()
+assert stored["fixture_payload"] == "x" * (800 * 1024)
+play = stored["immaculate_grid_practice"]
 board = play["board"]
 people = set()
 picks = []
@@ -1222,7 +1274,13 @@ print(json.dumps(picks))
     result = subprocess.check_output([str(ROOT / "venv/bin/python"), "-c", code], input=cookie,
                                      env={**os.environ, "SECRET_KEY": "disposable-local-parity-key"}, text=True)
     for attempts, (values, writer) in enumerate(zip(json.loads(result.splitlines()[-1]), (django_root, rust_root))):
+        from time import time
+
         driver.get(f"{writer}{path}")
+        with sqlite3.connect(database) as connection:
+            connection.execute("UPDATE django_session SET expire_date=datetime('now', '+1 hour') WHERE session_key=?",
+                               (cookie,))
+        driver.add_cookie({"name": "sessionid", "value": cookie, "expiry": int(time()) + 3600})
         values["attempts"] = attempts
         response = driver.execute_async_script("""
             const [values, done] = arguments;
@@ -1232,6 +1290,7 @@ print(json.dumps(picks))
                 .then(response => done(response.status), () => done(0));
         """, values)
         assert response == 200, (writer, response)
+        check_expiry()
     for runtime in (django_root, rust_root):
         driver.get(f"{runtime}{path}")
         assert len(driver.find_elements("css selector", ".immaculate-correct")) == 2
@@ -4529,6 +4588,25 @@ def assert_login_roundtrip(driver, rust, django):
     assert result and driver.get_cookie("sessionid") is None
     driver.get(f"http://{HOST}:{django.port}/games/")
     assert "Sign in to play." in driver.find_element("tag name", "body").text
+
+    for server in (django, rust):
+        origin = f"http://{HOST}:{server.port}"
+        driver.delete_all_cookies()
+        driver.get(origin + "/auth/login/?next=/games/")
+        response = driver.execute_async_script("""
+            const done = arguments[0];
+            const token = document.querySelector('[name=csrfmiddlewaretoken]').value;
+            const form = new FormData();
+            for (const [key, value] of Object.entries({
+                username: "tab", password: "password", remember: "on", next: "/games/", csrfmiddlewaretoken: token
+            })) form.set(key, value);
+            fetch(location.href, {method: "POST", body: form})
+                .then(response => done({status: response.status, path: new URL(response.url).pathname}))
+                .catch(() => done({status: 0}));
+        """)
+        assert response == {"status": 200, "path": "/games/"}, (server.name, response)
+        assert driver.get_cookie("sessionid")["httpOnly"], server.name
+    driver.delete_all_cookies()
 
 
 def main():

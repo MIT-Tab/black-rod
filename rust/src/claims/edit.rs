@@ -1,7 +1,4 @@
-use std::{
-    collections::{BTreeMap, HashSet},
-    sync::LazyLock,
-};
+use std::collections::{BTreeMap, HashSet};
 
 use axum::{
     body::to_bytes,
@@ -10,7 +7,7 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use minijinja::context;
-use regex::Regex;
+use scraper::Html;
 use serde_json::{Value, json};
 use sqlx::{AnyConnection, AnyPool, AssertSqlSafe, Row};
 
@@ -26,16 +23,27 @@ const QUERY: &str = "
     FROM core_debater d LEFT JOIN core_school s ON s.id=d.school_id
     WHERE d.id=$1 AND NOT d.temporary AND NOT d.synthetic
 ";
-static MARKUP: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?s)<!--.*?-->|<![^>]*>|</?[a-zA-Z][^>]*>").unwrap());
 pub(crate) fn sanitize_name(value: &str, fallback: &str) -> String {
-    let stripped = MARKUP.replace_all(value, "");
-    let stripped = stripped.trim();
-    if stripped.is_empty() {
-        fallback.to_owned()
-    } else {
-        stripped.to_owned()
+    let mut name = std::borrow::Cow::Borrowed(value);
+    // Removing one tag can expose another. Bound the work as Django does.
+    for _ in 0..50 {
+        let stripped = if name.contains('<') && name.contains('>') {
+            // Preserve literal character references in stored names.
+            let escaped = name.replace('&', "&amp;");
+            let document = Html::parse_fragment(&escaped);
+            Some(document.root_element().text().collect::<String>())
+        } else {
+            None
+        };
+        match stripped {
+            Some(stripped) if name != stripped => name = std::borrow::Cow::Owned(stripped),
+            _ => {
+                let name = name.trim();
+                return if name.is_empty() { fallback } else { name }.to_owned();
+            }
+        }
     }
+    fallback.to_owned()
 }
 
 const STATES: [(&str, &str); 3] = [("1", "Varsity"), ("0", "Novice"), ("2", "Dino")];
@@ -561,4 +569,18 @@ pub(crate) async fn endpoint(State(state): State<AppState>, request: Request) ->
         context! {form,object,csrf=>token},
         Some(&csrf),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::sanitize_name;
+
+    #[test]
+    fn strips_reassembled_tags_and_keeps_plain_names() {
+        assert_eq!(sanitize_name("<<i>b>Alex</b>", "Removed"), "Alex");
+        assert_eq!(sanitize_name("<b title='a>b'>Alex</b>", ""), "Alex");
+        assert_eq!(sanitize_name(" <!-- comment --> ", "Removed"), "Removed");
+        assert_eq!(sanitize_name("  Éva & Jay <3  ", ""), "Éva & Jay <3");
+        assert_eq!(sanitize_name("<b>Jay &amp; Éva</b>", ""), "Jay &amp; Éva");
+    }
 }

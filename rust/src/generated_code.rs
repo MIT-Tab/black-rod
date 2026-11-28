@@ -10,7 +10,7 @@ use sqlx::{AnyConnection, AnyPool};
 
 use crate::{
     ApiError, AppState, login,
-    session::{self, StoredSession},
+    session::{self, RefreshedSession, StoredSession},
     web,
 };
 
@@ -41,30 +41,30 @@ async fn generate(
     headers: &axum::http::HeaderMap,
     secret: &[u8],
     user: i64,
-) -> Result<bool, ApiError> {
+) -> Result<Option<RefreshedSession>, ApiError> {
     for _ in 0..8 {
         let Some(mut session) = StoredSession::read(&state.pool, headers, secret).await? else {
-            return Ok(false);
+            return Ok(None);
         };
         let mut tx = state.pool.begin().await?;
         let code = unique_code(&mut tx, user).await?;
         session
             .values
             .insert(SESSION_KEY.to_owned(), to_raw_value(&code)?);
-        if session.save_on(&mut tx, secret).await? {
+        if let Some(refreshed) = session.refresh_on(&mut tx, secret).await? {
             tx.commit().await?;
-            return Ok(true);
+            return Ok(Some(refreshed));
         }
         tx.rollback().await?;
     }
-    Ok(false)
+    Ok(None)
 }
 
 async fn consume(
     pool: &AnyPool,
     headers: &axum::http::HeaderMap,
     secret: &[u8],
-) -> Result<Option<String>, ApiError> {
+) -> Result<Option<(Option<String>, RefreshedSession)>, ApiError> {
     for _ in 0..8 {
         let Some(mut session) = StoredSession::read(pool, headers, secret).await? else {
             return Ok(None);
@@ -72,8 +72,11 @@ async fn consume(
         let Some(code) = session.values.remove(SESSION_KEY) else {
             return Ok(None);
         };
-        if session.save(pool, secret).await? {
-            return Ok(serde_json::from_str::<String>(code.get()).ok());
+        if let Some(refreshed) = session.refresh(pool, secret).await? {
+            return Ok(Some((
+                serde_json::from_str::<String>(code.get()).ok(),
+                refreshed,
+            )));
         }
     }
     Ok(None)
@@ -107,12 +110,17 @@ async fn page(state: &AppState, request: Request) -> Result<Response, ApiError> 
         ) {
             return Ok(login::csrf_failure());
         }
-        if generate(state, &parts.headers, secret, user_id).await? {
-            return Ok((StatusCode::FOUND, [(header::LOCATION, PATH)]).into_response());
+        if let Some(session) = generate(state, &parts.headers, secret, user_id).await? {
+            let mut response = (StatusCode::FOUND, [(header::LOCATION, PATH)]).into_response();
+            session.set_cookie(&mut response, secure);
+            return Ok(response);
         }
         return Ok(login::redirect_to_login(&uri));
     }
-    let code = consume(&state.pool, request.headers(), secret).await?;
+    let (code, refreshed) = match consume(&state.pool, request.headers(), secret).await? {
+        Some((code, refreshed)) => (code, Some(refreshed)),
+        None => (None, None),
+    };
     let Ok((csrf, token)) = login::csrf_tokens(request.headers()) else {
         return Ok(StatusCode::INTERNAL_SERVER_ERROR.into_response());
     };
@@ -129,6 +137,9 @@ async fn page(state: &AppState, request: Request) -> Result<Response, ApiError> 
     };
     let mut response = ([(header::VARY, "Cookie")], Html(html)).into_response();
     login::set_csrf_cookie(&mut response, &csrf, secure);
+    if let Some(session) = refreshed {
+        session.set_cookie(&mut response, secure);
+    }
     Ok(response)
 }
 

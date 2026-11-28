@@ -8,7 +8,7 @@ use flate2::{Compression, read::ZlibDecoder, write::ZlibEncoder};
 use ring::{digest, hmac};
 use serde_json::Value;
 
-const MAX_SESSION_SIZE: u64 = 1024 * 1024;
+pub(super) const MAX_SESSION_SIZE: u64 = 1024 * 1024;
 
 pub(crate) fn key(salt: &[u8], secret: &[u8]) -> hmac::Key {
     let mut hash = digest::Context::new(&digest::SHA256);
