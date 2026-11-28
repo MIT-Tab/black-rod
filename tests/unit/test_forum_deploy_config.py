@@ -12,9 +12,14 @@ import yaml
 WORKFLOW = Path(__file__).resolve().parents[2] / '.github/workflows/main.yml'
 
 
-def credential_writer():
+def django_deploy_config():
     workflow = yaml.safe_load(WORKFLOW.read_text())
-    script = workflow['jobs']['deploy']['steps'][1]['with']['script']
+    steps = workflow['jobs']['deploy']['steps']
+    return next(step['with'] for step in steps if step.get('name') == 'Deploy over SSH')
+
+
+def credential_writer():
+    script = django_deploy_config()['script']
     return script.split("<<'PYTHON'\n", 1)[1].split('\nPYTHON', 1)[0]
 
 
@@ -49,8 +54,7 @@ def test_missing_or_invalid_secret_never_overwrites_config():
 
 def test_remote_deployment_script_handles_heredoc_and_stops_on_failure():
     """Run the shell consumed by ssh-action, including its script_stop expansion."""
-    workflow = yaml.safe_load(WORKFLOW.read_text())
-    config = workflow['jobs']['deploy']['steps'][1]['with']
+    config = django_deploy_config()
     for token, expected in (('a' * 64, 0), ('invalid', 1)):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
