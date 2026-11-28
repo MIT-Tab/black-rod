@@ -404,6 +404,7 @@ pub(crate) async fn redo_nine_point_rankings(
     conn: &mut AnyConnection,
     season: &str,
 ) -> Result<(), ApiError> {
+    super::lock_season(conn, season).await?;
     let teams = sqlx::query_as::<_, (i64, String, i64)>(
         "SELECT CAST(t.id AS BIGINT), t.name,
             CAST(CASE WHEN EXISTS(SELECT 1 FROM core_teamresult r WHERE r.team_id=t.id)

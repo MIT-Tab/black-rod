@@ -5,7 +5,6 @@ use axum::{
     http::{Method, StatusCode, header},
     response::{Html, IntoResponse, Response},
 };
-use chrono::NaiveDate;
 use minijinja::context;
 use serde::Serialize;
 use sqlx::{AnyPool, AssertSqlSafe, Row};
@@ -92,9 +91,7 @@ impl Fields {
             errors.insert("text", "Null characters are not allowed.");
         }
         if !self.date_set.is_empty() {
-            let date = ["%Y-%m-%d", "%m/%d/%Y", "%m/%d/%y"]
-                .iter()
-                .find_map(|format| NaiveDate::parse_from_str(&self.date_set, format).ok());
+            let date = crate::django_date::form(&self.date_set);
             if let Some(date) = date {
                 self.date_set = date.to_string();
             } else {

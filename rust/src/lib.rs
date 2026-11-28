@@ -11,6 +11,7 @@ mod decimal;
 mod delete_relations;
 mod directory;
 mod discovery;
+mod django_date;
 mod django_json;
 mod elo;
 mod entity_delete;

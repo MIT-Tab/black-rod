@@ -461,6 +461,23 @@ async fn write_awards(
                 row.try_get("school_id")?,
             )
         };
+        let outgoing =
+            format!("SELECT CAST(id AS BIGINT) FROM {reaff} WHERE season=$1 AND {old}=$2 LIMIT 1");
+        let reassigned = !novice
+            && sqlx::query_scalar::<_, i64>(AssertSqlSafe(outgoing))
+                .bind(season)
+                .bind(id)
+                .fetch_optional(&mut *conn)
+                .await?
+                .is_some();
+        if team && reassigned {
+            sqlx::query("DELETE FROM core_toty WHERE season=$1 AND team_id=$2")
+                .bind(season)
+                .bind(id)
+                .execute(&mut *conn)
+                .await?;
+            continue;
+        }
         if team && !included {
             sqlx::query(
                 "DELETE FROM core_toty WHERE season=$1 AND team_id IN (
@@ -474,15 +491,6 @@ async fn write_awards(
             .await?;
             continue;
         }
-        let outgoing =
-            format!("SELECT CAST(id AS BIGINT) FROM {reaff} WHERE season=$1 AND {old}=$2 LIMIT 1");
-        let reassigned = !novice
-            && sqlx::query_scalar::<_, i64>(AssertSqlSafe(outgoing))
-                .bind(season)
-                .bind(id)
-                .fetch_optional(&mut *conn)
-                .await?
-                .is_some();
         let incoming = format!(
             "SELECT CAST({old} AS BIGINT) FROM {reaff} WHERE season=$1 AND {new}=$2 ORDER BY id LIMIT 1"
         );

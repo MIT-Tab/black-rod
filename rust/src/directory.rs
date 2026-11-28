@@ -631,11 +631,7 @@ fn motion_filters(filters: &mut Filters, raw: &[QueryEntry<'_>], user: &session:
             .map(|(_, value)| value.as_ref())
     };
     for (key, comparison) in [("date_from", ">="), ("date_to", "<=")] {
-        if let Some(date) = value(key).and_then(|value| {
-            ["%Y-%m-%d", "%m/%d/%Y", "%m/%d/%y"]
-                .iter()
-                .find_map(|format| chrono::NaiveDate::parse_from_str(value, format).ok())
-        }) {
+        if let Some(date) = value(key).and_then(crate::django_date::form) {
             filters.add(
                 &format!("CAST(x.date_set AS TEXT) {comparison} {{}}"),
                 FilterValue::Text(date.to_string()),

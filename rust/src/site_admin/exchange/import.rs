@@ -10,7 +10,7 @@ use axum::{
     http::{Method, StatusCode, header},
     response::{IntoResponse, Response},
 };
-use chrono::{NaiveDate, NaiveDateTime, Utc};
+use chrono::{NaiveDateTime, Utc};
 use minijinja::context;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
@@ -222,36 +222,22 @@ fn clean(field: &Field, value: &Value, workbook: bool) -> Result<Value, String> 
             if empty {
                 Value::Null
             } else {
-                let parsed = [
-                    "%Y-%m-%d",
-                    "%m/%d/%Y",
-                    "%m/%d/%y",
-                    "%b %d %Y",
-                    "%b %d, %Y",
-                    "%d %b %Y",
-                    "%d %b, %Y",
-                    "%B %d %Y",
-                    "%B %d, %Y",
-                    "%d %B %Y",
-                    "%d %B, %Y",
-                ]
-                .into_iter()
-                .find_map(|format| NaiveDate::parse_from_str(text, format).ok())
-                .or_else(|| {
-                    if workbook {
-                        return NaiveDateTime::parse_from_str(text, "%Y-%m-%d %H:%M:%S%.f")
-                            .or_else(|_| text.parse::<NaiveDateTime>())
-                            .ok()
-                            .map(|value| value.date())
-                            .or_else(|| {
-                                chrono::DateTime::parse_from_rfc3339(text)
-                                    .ok()
-                                    .map(|value| value.date_naive())
-                            });
-                    }
-                    None
-                })
-                .ok_or("Enter a valid date.")?;
+                let parsed = crate::django_date::form(text)
+                    .or_else(|| {
+                        if workbook {
+                            return NaiveDateTime::parse_from_str(text, "%Y-%m-%d %H:%M:%S%.f")
+                                .or_else(|_| text.parse::<NaiveDateTime>())
+                                .ok()
+                                .map(|value| value.date())
+                                .or_else(|| {
+                                    chrono::DateTime::parse_from_rfc3339(text)
+                                        .ok()
+                                        .map(|value| value.date_naive())
+                                });
+                        }
+                        None
+                    })
+                    .ok_or("Enter a valid date.")?;
                 json!(parsed.to_string())
             }
         }

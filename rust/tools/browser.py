@@ -1001,6 +1001,8 @@ def assert_motion_import(driver, django, rust, fixture):
     from base64 import b64encode
     csv = ('Motion,Date,Tournament,Topics\n'
            f'"This House would import the fixture CSV.",2/14/2026,{fixture["tournament"]},"Ethics; Finance"\n'
+           'This House would import a short date.,2/14/26,,\n'
+           'This House would import an older short date.,11/27/69,,\n'
            'This is invalid,not-a-date,999999,\n'
            'This House would use a disposable browser fixture.,,,\n')
     xlsx = subprocess.check_output([str(ROOT / "venv/bin/python"), "-c", """
@@ -1024,11 +1026,14 @@ print(b64encode(out.getvalue()).decode())
         expected = preview(roots[0], name, content)
         actual = preview(roots[1], name, content)
         assert expected["status"] == actual["status"] == 200 and expected["rows"] == actual["rows"], (expected, actual)
-        assert actual["rows"][0][2] == "2026-02-14"
+        dates = ["2026-02-14"]
+        if name.endswith(".csv"):
+            dates.extend(["2026-02-14", "1969-11-27"])
+        assert [row[2] for row in actual["rows"][:len(dates)]] == dates
         rejected = confirm(roots[1], actual["token"] + "invalid")
         assert rejected["status"] == 400 and not rejected["redirected"], rejected
         saved = confirm(roots[confirmer], (actual if confirmer == 0 else expected)["token"])
-        assert saved["status"] == 200 and saved["redirected"] and "Imported 1 motions" in saved["text"], saved
+        assert saved["status"] == 200 and saved["redirected"] and f"Imported {len(dates)} motions" in saved["text"], saved
     large_csv = "Motion,Background\n" + "".join(
         f"This House would test large spreadsheet row {index},{'x' * 65_000}\n"
         for index in range(34)
@@ -1613,16 +1618,16 @@ def assert_entities(driver, django, rust, fixture):
         assert connection.execute("SELECT school_id FROM core_debater WHERE id = ?",
                                   (created_debater[2],)).fetchone() == (None,)
     assert submit(rust_root, f"{debater}/delete", {})[:2] == [200, "/core/debaters/"]
-    data = {"host": fixture["claim_candidates"][0][1], "season": "2026", "date": "2026-09-01",
+    data = {"host": fixture["claim_candidates"][0][1], "season": "2026", "date": "9/1/26",
             "num_teams": "24", "num_novice_debaters": "12", "qual_type": "15",
             "name_suffix": "0", "manual_name": "Disposable parity event", "short_name": ""}
     created_event = submit(rust_root, "/core/tournaments/create", data)
     assert created_event[0] == 200 and created_event[1].split("/")[-1].isdigit(), created_event[:2]
     tournament = created_event[1]
     with sqlite3.connect(f"{database.as_uri()}?mode=ro", uri=True) as connection:
-        row = connection.execute("SELECT qual,noty,toty,soty,autoqual_bar FROM core_tournament WHERE id=?",
+        row = connection.execute("SELECT qual,noty,toty,soty,autoqual_bar,date FROM core_tournament WHERE id=?",
                                  (tournament.split("/")[-1],)).fetchone()
-        assert row == (True, False, False, False, 2), row
+        assert row == (True, False, False, False, 2, "2026-09-01"), row
     driver.get(f"{django_root}{tournament}/edit")
     assert driver.find_element("id", "id_manual_name").get_attribute("value") == data["manual_name"]
     data["manual_name"] = "Edited parity event"

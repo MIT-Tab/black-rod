@@ -23,7 +23,7 @@ SEED = """
 from reference import application
 from datetime import date
 from django.contrib.sessions.backends.db import SessionStore
-from core.models import Debater, QUAL, School, Team, TeamResult, Tournament, TournamentAutoQual, User
+from core.models import Debater, QUAL, School, Team, TeamResult, Tournament, TournamentAutoQual, TOTY, TOTYReaff, User
 import json
 
 host = School.objects.create(name="Large import fixture")
@@ -59,7 +59,22 @@ parallel = [
     }
     for index, start in enumerate((550, 552))
 ]
-print(json.dumps((event.id, session.session_key, parallel)))
+excluded = School.objects.create(name="Reaffiliation fixture school", included_in_oty=False)
+former, unrelated, destination = (Team.objects.create(name=name) for name in
+    ("Reaffiliated fixture team", "Unrelated fixture team", "Reaffiliation destination"))
+members = []
+for team in (former, unrelated):
+    people = [Debater.objects.create(first_name=label, school=excluded)
+        for label in ("Fixture First Member", "Fixture Second Member")]
+    team.debaters.add(*people)
+    members.append([person.id for person in people])
+    TOTY.objects.create(team=team, season="2026", points=6)
+TOTYReaff.objects.create(old_team=former, new_team=destination, season="2026", reaff_date=date(2026, 10, 22))
+reaff_event = Tournament.objects.create(host=host, season="2026", date=date(2026, 10, 23),
+    manual_name="Reaffiliation result save fixture", num_teams=64)
+TeamResult.objects.create(tournament=reaff_event, team=former, place=1, counts_for_points=True)
+reaff = (reaff_event.id, members[0], former.id, unrelated.id)
+print(json.dumps((event.id, session.session_key, parallel, reaff)))
 """
 
 def request_save(server, session, event, members=None, gate=None):
@@ -110,11 +125,23 @@ def snapshot(conn):
         contents.append(cursor.fetchall())
     return contents
 
+LOCK_KEYS = "hashtext('black-rod standings'), hashtext('2026')"
+
+
+def season_lock_waiters(cursor):
+    cursor.execute("""
+        SELECT COUNT(*) FROM pg_locks
+        WHERE locktype='advisory' AND objsubid=2 AND NOT granted
+          AND database=(SELECT oid FROM pg_database WHERE datname=current_database())
+          AND classid=hashtext('black-rod standings')::oid AND objid=hashtext('2026')::oid
+    """)
+    return cursor.fetchone()[0]
+
+
 def simultaneous_saves(servers, session, entries, db):
-    lock_keys = "hashtext('black-rod standings'), hashtext('2026')"
     gate = Barrier(len(entries))
     with db.cursor() as cursor, ThreadPoolExecutor(max_workers=len(entries)) as executor:
-        cursor.execute(f"SELECT pg_advisory_xact_lock({lock_keys})")
+        cursor.execute(f"SELECT pg_advisory_xact_lock({LOCK_KEYS})")
         try:
             pending = [
                 executor.submit(request_save, server, session, entry["event"], entry["members"], gate)
@@ -122,13 +149,7 @@ def simultaneous_saves(servers, session, entries, db):
             ]
             deadline = perf_counter() + 15
             while perf_counter() < deadline:
-                cursor.execute("""
-                    SELECT COUNT(*) FROM pg_locks
-                    WHERE locktype='advisory' AND objsubid=2 AND NOT granted
-                      AND database=(SELECT oid FROM pg_database WHERE datname=current_database())
-                      AND classid=hashtext('black-rod standings')::oid AND objid=hashtext('2026')::oid
-                """)
-                if cursor.fetchone()[0] == len(entries):
+                if season_lock_waiters(cursor) == len(entries):
                     break
                 assert not any(future.done() for future in pending), "A writer bypassed the season lock"
                 sleep(0.025)
@@ -165,6 +186,46 @@ def check_concurrent_rebuilds(seed, postgres, session, entries):
     print("Concurrent same-season Rust and mixed-runtime saves match serial qualifications and COTY")
 
 
+def check_reaffiliation_precedence(seed, postgres, session, reaff):
+    event, members, former, unrelated = reaff
+    for name in ("Django", "Rust"):
+        with fixture_database(seed, seed, postgres):
+            with compare.servers(seed) as (django, rust):
+                request_save(django if name == "Django" else rust, session, event, members)
+            with closing(psycopg2.connect(os.environ["BLACK_ROD_PARITY_POSTGRES_URL"])) as db, db.cursor() as cursor:
+                cursor.execute("SELECT team_id, points FROM core_toty WHERE season='2026' AND team_id IN (%s,%s)",
+                               (former, unrelated))
+                assert cursor.fetchall() == [(unrelated, 6)], f"{name} removed unrelated TOTY standings"
+    print("Incremental result saves preserve unrelated TOTY rankings for reaffiliated teams")
+
+
+def check_ranking_maintenance(seed, postgres):
+    with fixture_database(seed, seed, postgres):
+        target = os.environ["BLACK_ROD_PARITY_POSTGRES_URL"]
+        env = {**os.environ, "BLACK_ROD_DATABASE_URL": target, "BLACK_ROD_CURRENT_SEASON": "2026"}
+        with closing(psycopg2.connect(target)) as db, db.cursor() as cursor:
+            cursor.execute(f"SELECT pg_advisory_xact_lock({LOCK_KEYS})")
+            process = subprocess.Popen([str(compare.RUST_BIN), "redo_rankings"], env=env, text=True,
+                                       stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            try:
+                try:
+                    deadline = perf_counter() + 15
+                    while not season_lock_waiters(cursor):
+                        assert process.poll() is None, "Rankings maintenance bypassed the season lock"
+                        if perf_counter() >= deadline:
+                            raise AssertionError("Rankings maintenance did not take the season transaction lock")
+                        sleep(0.025)
+                finally:
+                    db.commit()
+                _, error = process.communicate(timeout=30)
+                assert process.returncode == 0, error
+            finally:
+                if process.poll() is None:
+                    process.kill()
+                    process.communicate()
+    print("Rankings maintenance waits for the same PostgreSQL season transaction lock as result saves")
+
+
 def main():
     parser = ArgumentParser(description=__doc__)
     parser.add_argument("--samples", type=int, default=1)
@@ -190,7 +251,7 @@ def main():
                 "SECRET_KEY": "disposable-local-parity-key",
             }
             raw = subprocess.check_output([str(compare.ROOT / "venv/bin/python"), "-c", SEED], text=True, env=env)
-            event, session, parallel = json.loads(raw.splitlines()[-1])
+            event, session, parallel, reaff = json.loads(raw.splitlines()[-1])
             benchmark_source = os.environ["BLACK_ROD_PARITY_POSTGRES_URL"]
             for label, binary in runtimes.items():
                 compare.RUST_BIN = binary
@@ -207,6 +268,8 @@ def main():
                             print(label, "median ms", round(median(timings[1:]), 2), flush=True)
             compare.RUST_BIN = default_binary
             check_concurrent_rebuilds(seed, benchmark_source, session, parallel)
+            check_ranking_maintenance(seed, benchmark_source)
+            check_reaffiliation_precedence(seed, benchmark_source, session, reaff)
     for label, contents in documents.items():
         for name, left, right in zip(("qual", "qualpoints", "onlinequal", "coty", "latest_season"),
                                      documents["Django"], contents):

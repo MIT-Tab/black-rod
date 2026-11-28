@@ -5,7 +5,6 @@ use axum::{
     http::{Method, StatusCode, header},
     response::{Html, IntoResponse, Response},
 };
-use chrono::NaiveDate;
 use minijinja::context;
 use regex::Regex;
 use serde::Serialize;
@@ -159,9 +158,7 @@ impl Fields {
             }
         }
         if !fields.date.is_empty() {
-            let date = ["%Y-%m-%d", "%m/%d/%Y", "%m/%d/%y", "%b %d %Y", "%b %d, %Y"]
-                .iter()
-                .find_map(|pattern| NaiveDate::parse_from_str(&fields.date, pattern).ok());
+            let date = crate::django_date::form(&fields.date);
             if let Some(date) = date {
                 fields.date = date.to_string();
             } else {

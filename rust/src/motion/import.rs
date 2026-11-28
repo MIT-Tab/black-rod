@@ -11,7 +11,6 @@ use axum::{
     response::{Html, IntoResponse, Response},
 };
 use calamine::{Data, DataType, Reader, Xlsx};
-use chrono::NaiveDate;
 use minijinja::context;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -201,9 +200,7 @@ async fn validate(
         let date_set = if date.is_empty() {
             String::new()
         } else {
-            ["%Y-%m-%d", "%m/%d/%Y", "%m/%d/%y"]
-                .iter()
-                .find_map(|format| NaiveDate::parse_from_str(date, format).ok())
+            crate::django_date::numeric(date)
                 .map(|date| date.to_string())
                 .unwrap_or_else(|| {
                     errors.push("invalid date (use YYYY-MM-DD or MM/DD/YYYY)".to_owned());
