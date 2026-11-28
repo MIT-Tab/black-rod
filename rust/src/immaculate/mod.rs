@@ -4,7 +4,10 @@ mod near_miss;
 pub(crate) mod practice;
 mod scoring;
 
-use std::collections::{BTreeMap, HashSet};
+use std::{
+    cmp::Reverse,
+    collections::{BTreeMap, HashSet},
+};
 
 use axum::{
     Json,
@@ -18,6 +21,7 @@ use scoring::{Board, CELLS, Guess, breakdown, person_key, solved};
 use serde_json::{Value, json};
 use sqlx::{Any, AnyConnection, AnyPool, AssertSqlSafe, Executor, Row};
 use tokio_stream::StreamExt;
+use unicode_casefold::UnicodeCaseFold;
 
 use crate::{ApiError, AppState, flash, login, session, web};
 
@@ -190,19 +194,17 @@ fn score_row(id: i64, name: &str, day: &str, guesses: &[Guess]) -> Value {
 }
 
 fn rank(rows: &mut [Value], viewer: i64) {
-    rows.sort_by(|a, b| {
-        b["score"]
-            .as_i64()
-            .cmp(&a["score"].as_i64())
-            .then_with(|| {
-                a["name"]
-                    .as_str()
-                    .unwrap_or_default()
-                    .to_lowercase()
-                    .cmp(&b["name"].as_str().unwrap_or_default().to_lowercase())
-            })
-            .then_with(|| a["id"].as_i64().cmp(&b["id"].as_i64()))
-            .then_with(|| a["day"].as_str().cmp(&b["day"].as_str()))
+    rows.sort_by_cached_key(|row| {
+        (
+            Reverse(row["score"].as_i64()),
+            row["name"]
+                .as_str()
+                .unwrap_or_default()
+                .case_fold()
+                .collect::<String>(),
+            row["id"].as_i64(),
+            row["day"].as_str().map(str::to_owned),
+        )
     });
     let mut last = None;
     let mut place = 0;
@@ -1053,5 +1055,22 @@ pub(crate) async fn answers(
     match reveal(&state.pool, &board, &guesses, cell).await {
         Ok(data) => uncached(Json(data).into_response()),
         Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn leaderboard_ties_follow_unicode_case_folding() {
+        let mut rows = [
+            json!({"name":"Gross","id":2,"score":50}),
+            json!({"name":"Groß","id":1,"score":50}),
+        ];
+        rank(&mut rows, 2);
+        assert_eq!(rows[0]["id"], 1);
+        assert_eq!(rows[1]["id"], 2);
+        assert_eq!(rows[0]["rank"], rows[1]["rank"]);
     }
 }

@@ -339,6 +339,10 @@ def fixture_cases(django):
         "/core/motions/topics?q=zzznonexistent",
     ])
     cases.extend([
+        Case("/api/schools/%37/detail/"),
+        Case("/api/schools/%37/detail/?format=invalid"),
+        Case("/api/private/debater-emails/", "POST", body=json.dumps({"debater_ids": ["١", "２"]}),
+             authorization="Bearer fixture-one"),
         Case("/api/private/debater-emails/", "POST", body='{"debater_ids":[1]}'),
         Case("/api/private/debater-emails/", "POST", body='{"debater_ids":[1,2,"1",999999]}',
              authorization="Bearer fixture-two"),

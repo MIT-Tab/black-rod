@@ -36,6 +36,7 @@ PUBLIC = [
     ("games", "/games/", False),
     ("api-schools", "/api/schools/?format=api", False),
     ("api-school", "/api/schools/7/detail/?format=api", False),
+    ("api-school-encoded", "/api/schools/%37/detail/?format=api", False),
     ("api-standings", "/api/standings/?season=2025&default=toty&limit=2&format=api", False),
     ("api-agent-auth", "/api/agent/v1/?format=api", False),
     ("account-login", "/accounts/login/?next=/games/", False),

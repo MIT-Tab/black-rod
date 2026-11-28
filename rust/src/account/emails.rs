@@ -5,7 +5,7 @@ use axum::{
 };
 use minijinja::context;
 use serde::Serialize;
-use sqlx::{AnyConnection, Row, any::AnyRow};
+use sqlx::{Any, AnyConnection, Executor, Row, any::AnyRow};
 
 use super::{Visit, entrance::email_valid, limits, mail, redirect, render, visit};
 use crate::{
@@ -47,11 +47,14 @@ impl Address {
     }
 }
 
-async fn addresses(state: &AppState, user: i64) -> Result<Vec<Address>, ApiError> {
+async fn addresses<'e>(
+    db: impl Executor<'e, Database = Any>,
+    user: i64,
+) -> Result<Vec<Address>, ApiError> {
     let statement = format!("{ADDRESS} WHERE a.user_id=$1 ORDER BY a.email");
     Ok(sqlx::query(sqlx::AssertSqlSafe(statement))
         .bind(user)
-        .fetch_all(&state.pool)
+        .fetch_all(db)
         .await?
         .iter()
         .map(Address::read)
@@ -111,6 +114,14 @@ fn changed(state: &AppState, visit: &Visit, message: &str) -> Response {
     result
 }
 
+async fn lock_user(conn: &mut AnyConnection, user: i64) -> Result<(), ApiError> {
+    sqlx::query("UPDATE core_user SET id=id WHERE id=$1")
+        .bind(user)
+        .execute(conn)
+        .await?;
+    Ok(())
+}
+
 async fn primary(conn: &mut AnyConnection, address: &Address) -> Result<(), ApiError> {
     sqlx::query(
         r#"UPDATE account_emailaddress SET "primary"=FALSE WHERE user_id=$1 AND "primary""#,
@@ -118,11 +129,15 @@ async fn primary(conn: &mut AnyConnection, address: &Address) -> Result<(), ApiE
     .bind(address.user)
     .execute(&mut *conn)
     .await?;
-    sqlx::query(r#"UPDATE account_emailaddress SET "primary"=TRUE WHERE id=$1 AND user_id=$2"#)
-        .bind(address.id)
-        .bind(address.user)
-        .execute(&mut *conn)
-        .await?;
+    let changed =
+        sqlx::query(r#"UPDATE account_emailaddress SET "primary"=TRUE WHERE id=$1 AND user_id=$2"#)
+            .bind(address.id)
+            .bind(address.user)
+            .execute(&mut *conn)
+            .await?;
+    if changed.rows_affected() != 1 {
+        return Err(ApiError::Constraint);
+    }
     sqlx::query("UPDATE core_user SET email=$1 WHERE id=$2")
         .bind(&address.email)
         .bind(address.user)
@@ -181,24 +196,24 @@ async fn confirm(
         .is_none();
         if can_confirm && visit.fields.is_some() {
             let mut tx = state.pool.begin().await?;
-            sqlx::query("UPDATE core_user SET id=id WHERE id=$1")
-                .bind(address.user)
-                .execute(&mut *tx)
-                .await?;
+            lock_user(&mut tx, address.user).await?;
             let validation = sqlx::query(
                 "UPDATE account_emailaddress SET verified=TRUE WHERE id=$1 AND NOT verified",
             )
             .bind(address.id)
             .execute(&mut *tx)
             .await;
-            if let Err(error) = validation {
-                if error
-                    .as_database_error()
-                    .is_some_and(|error| error.is_unique_violation())
+            match validation {
+                Ok(update) if update.rows_affected() == 1 => (),
+                Ok(_) => return Ok(StatusCode::NOT_FOUND.into_response()),
+                Err(error)
+                    if error
+                        .as_database_error()
+                        .is_some_and(|error| error.is_unique_violation()) =>
                 {
                     return Ok(StatusCode::CONFLICT.into_response());
                 }
-                return Err(error.into());
+                Err(error) => return Err(error.into()),
             }
             let user_primary=sqlx::query_scalar::<_,i64>(r#"SELECT CAST(id AS BIGINT) FROM account_emailaddress WHERE user_id=$1 AND "primary" LIMIT 1"#)
                 .bind(address.user).fetch_optional(&mut *tx).await?;
@@ -277,7 +292,7 @@ async fn page(state: &AppState, request: Request) -> Result<Response, ApiError> 
     {
         return Ok(limits::denied());
     }
-    let list = addresses(state, id).await?;
+    let mut list = addresses(&state.pool, id).await?;
     let mut error = None;
     let mut entered = String::new();
     let mut warning = None;
@@ -326,11 +341,11 @@ async fn page(state: &AppState, request: Request) -> Result<Response, ApiError> 
                     &format!("Confirmation email sent to {email}."),
                 ));
             }
-        } else if let Some(address) = list
-            .iter()
-            .find(|address| address.email.eq_ignore_ascii_case(&email))
-        {
-            if fields.contains_key("action_send") {
+        } else if fields.contains_key("action_send") {
+            if let Some(address) = list
+                .iter()
+                .find(|address| address.email.eq_ignore_ascii_case(&email))
+            {
                 send_confirmation(
                     state,
                     &visit.origin,
@@ -346,28 +361,28 @@ async fn page(state: &AppState, request: Request) -> Result<Response, ApiError> 
                     &format!("Confirmation email sent to {}.", address.email),
                 ));
             }
-            if fields.contains_key("action_primary") {
-                if !address.verified && list.iter().any(|other| other.verified) {
-                    warning = Some("Your primary email address must be verified.".to_owned());
-                } else {
-                    let mut tx = state.pool.begin().await?;
-                    sqlx::query("UPDATE core_user SET id=id WHERE id=$1")
-                        .bind(id)
-                        .execute(&mut *tx)
-                        .await?;
-                    primary(&mut tx, address).await?;
-                    tx.commit().await?;
-                    return Ok(changed(state, &visit, "Primary email address set."));
-                }
-            }
-            if fields.contains_key("action_remove") {
-                if address.primary && list.len() > 1 {
+        } else if fields.contains_key("action_primary") || fields.contains_key("action_remove") {
+            let mut tx = state.pool.begin().await?;
+            lock_user(&mut tx, id).await?;
+            list = addresses(&mut *tx, id).await?;
+            if let Some(address) = list
+                .iter()
+                .find(|address| address.email.eq_ignore_ascii_case(&email))
+            {
+                if fields.contains_key("action_primary") {
+                    if !address.verified && list.iter().any(|other| other.verified) {
+                        warning = Some("Your primary email address must be verified.".to_owned());
+                    } else {
+                        primary(&mut tx, address).await?;
+                        tx.commit().await?;
+                        return Ok(changed(state, &visit, "Primary email address set."));
+                    }
+                } else if address.primary && list.len() > 1 {
                     warning = Some(format!(
                         "You cannot remove your primary email address ({}).",
                         address.email
                     ));
                 } else {
-                    let mut tx = state.pool.begin().await?;
                     sqlx::query("DELETE FROM account_emailconfirmation WHERE email_address_id=$1")
                         .bind(address.id)
                         .execute(&mut *tx)
@@ -392,6 +407,7 @@ async fn page(state: &AppState, request: Request) -> Result<Response, ApiError> 
                     ));
                 }
             }
+            tx.commit().await?;
         }
     }
     let mut response = render(

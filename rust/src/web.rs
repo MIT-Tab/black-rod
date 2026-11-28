@@ -489,6 +489,10 @@ const VIEWS: &[(&str, &str)] = &[
     ("500.html", include_str!("../../core/templates/500.html")),
     ("403.html", include_str!("../../core/templates/403.html")),
     (
+        "403_csrf.html",
+        include_str!("../../core/templates/403_csrf.html"),
+    ),
+    (
         "search/search.html",
         include_str!("../../core/templates/search/search.html"),
     ),

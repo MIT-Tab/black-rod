@@ -8,6 +8,12 @@ use axum::{
 
 use crate::{AppState, agent, drf, is_django_integer, json_error, private_api, web};
 
+fn numeric_path_segment(value: &str) -> bool {
+    percent_encoding::percent_decode_str(value)
+        .decode_utf8()
+        .is_ok_and(|value| is_django_integer(&value))
+}
+
 pub(crate) fn public_api_path(path: &str) -> bool {
     matches!(
         path,
@@ -21,7 +27,7 @@ pub(crate) fn public_api_path(path: &str) -> bool {
     ) || path
         .strip_prefix("/api/debaters/")
         .and_then(|tail| tail.strip_suffix('/'))
-        .is_some_and(is_django_integer)
+        .is_some_and(numeric_path_segment)
         || [
             "/api/schools/",
             "/api/teams/",
@@ -32,8 +38,20 @@ pub(crate) fn public_api_path(path: &str) -> bool {
         .any(|prefix| {
             path.strip_prefix(prefix)
                 .and_then(|tail| tail.strip_suffix("/detail/"))
-                .is_some_and(is_django_integer)
+                .is_some_and(numeric_path_segment)
         })
+}
+
+fn normalized_public_uri(uri: &Uri) -> Option<Uri> {
+    let path = uri.path();
+    if !path.contains('%') {
+        return None;
+    }
+    let target = uri.path_and_query()?.as_str();
+    let decoded = percent_encoding::percent_decode_str(path)
+        .decode_utf8()
+        .ok()?;
+    format!("{decoded}{}", &target[path.len()..]).parse().ok()
 }
 
 pub(super) async fn api_protocol(
@@ -59,9 +77,17 @@ pub(super) async fn api_protocol(
         .as_deref()
         .is_none_or(|format| matches!(format, "" | "json" | "api"))
         && drf::wants_html(request.headers(), format.as_deref());
+    let canonical_uri = if public {
+        normalized_public_uri(request.uri())
+    } else {
+        None
+    };
     let view = browse.then(|| {
         (
-            request.uri().clone(),
+            canonical_uri
+                .as_ref()
+                .unwrap_or_else(|| request.uri())
+                .clone(),
             request.method().clone(),
             request.headers().clone(),
         )
@@ -127,6 +153,9 @@ pub(super) async fn api_protocol(
                 ) =>
             {
                 request.extensions_mut().insert(user);
+                if let Some(uri) = canonical_uri {
+                    request.extensions_mut().insert(OriginalUri(uri));
+                }
                 next.run(request).await
             }
             Ok(_) => json_error(

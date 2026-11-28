@@ -249,7 +249,7 @@ impl Service {
         let mut ids = Vec::new();
         let mut seen = HashSet::new();
         for value in input {
-            let id = normalized_id(value).ok_or(PrivateError::Validation(
+            let id = crate::django_int(value).ok_or(PrivateError::Validation(
                 "debater_ids must contain only integers.",
             ))?;
             if seen.insert(id) {
@@ -287,20 +287,6 @@ impl Service {
         Ok(json!({"debaters": ids.into_iter().map(|id| {
             json!({"id": id, "email": addresses.remove(&id).flatten()})
         }).collect::<Vec<_>>()}))
-    }
-}
-
-fn normalized_id(value: &Value) -> Option<i64> {
-    match value {
-        Value::Number(number) => number.as_i64().or_else(|| {
-            number
-                .as_f64()
-                .filter(|value| *value >= i64::MIN as f64 && *value < -(i64::MIN as f64))
-                .map(|value| value as i64)
-        }),
-        Value::String(string) => string.trim().parse().ok(),
-        Value::Bool(boolean) => Some(i64::from(*boolean)),
-        _ => None,
     }
 }
 

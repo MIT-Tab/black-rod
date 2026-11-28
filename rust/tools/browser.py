@@ -862,6 +862,21 @@ for place, team in [(1, winner), (2, finalist)]:
     widget = next(card for card, _ in cards[0] if "Widget visibility fixture tournament" in card)
     assert "Visible widget member" in widget and "Widget fallback team label" in widget
     assert "Temporary widget member" not in widget and "Synthetic widget member" not in widget
+    if address := os.environ.get("BLACK_ROD_PARITY_MEMCACHED_ADDR"):
+        key = ":1:recent_results_widget_html"
+        assert key in cached_values([key])
+        original = Path(os.environ["BR_STATE"]) / "dev.sqlite3"
+        with TemporaryDirectory(prefix="standings-widget-command-") as folder:
+            clone = Path(folder) / "dev.sqlite3"
+            with sqlite3.connect(f"{original.as_uri()}?mode=ro", uri=True) as source_db, sqlite3.connect(clone) as copy_db:
+                source_db.backup(copy_db)
+                copy_db.execute("UPDATE core_tournament SET name='Widget (old title)' WHERE manual_name=?", (
+                    "Widget visibility fixture tournament",
+                ))
+            env = {**os.environ, "BLACK_ROD_DATABASE_URL": f"sqlite://{clone}?mode=rw",
+                   "BLACK_ROD_MEMCACHED_ADDR": address}
+            subprocess.run([str(RUST_BIN), "shorten_names"], env=env, check=True, capture_output=True)
+        assert key not in cached_values([key])
     subprocess.run([str(ROOT / "venv/bin/python"), "-c", """
 from django import setup
 setup()
@@ -4949,6 +4964,16 @@ def assert_login_roundtrip(driver, rust, django):
         origin = f"http://{HOST}:{server.port}"
         driver.delete_all_cookies()
         driver.get(origin + "/auth/login/?next=/games/")
+        csrf_error = driver.execute_async_script("""
+            const done = arguments[0];
+            fetch(location.href, {method: "POST", body: new URLSearchParams()}).then(async response => {
+                const page = new DOMParser().parseFromString(await response.text(), "text/html");
+                done([response.status, page.querySelector("h1")?.textContent.trim(),
+                      page.querySelector("main p")?.textContent.trim(),
+                      page.querySelector("main a")?.getAttribute("href")]);
+            }).catch(() => done([0]));
+        """)
+        assert csrf_error == [403, "Request verification failed", "Reload the page and try again.", "/"], (server.name, csrf_error)
         response = driver.execute_async_script("""
             const done = arguments[0];
             const token = document.querySelector('[name=csrfmiddlewaretoken]').value;

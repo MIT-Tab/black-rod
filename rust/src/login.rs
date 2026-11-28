@@ -141,11 +141,10 @@ pub(crate) fn csrf_valid(headers: &HeaderMap, token: Option<&str>, origin: &str)
 }
 
 pub(crate) fn csrf_failure() -> Response {
-    (
-        StatusCode::FORBIDDEN,
-        Html("<h1>Forbidden (403)</h1><p>CSRF verification failed. Request aborted.</p>"),
-    )
-        .into_response()
+    let page = crate::web::render("403_csrf.html", context! {}).unwrap_or_else(|_| {
+        "<h1>Request verification failed</h1><p>Reload the page and try again.</p>".to_owned()
+    });
+    (StatusCode::FORBIDDEN, Html(page)).into_response()
 }
 
 pub(crate) fn set_cookie(

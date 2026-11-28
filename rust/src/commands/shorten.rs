@@ -18,6 +18,7 @@ pub(super) async fn names(state: &AppState, dry_run: bool) -> Result<()> {
 
     let mut tx = state.pool.begin().await?;
     let mut tournaments_changed = 0;
+    let mut updated_tournaments = false;
     let tournaments = sqlx::query(
         "SELECT CAST(t.id AS BIGINT) AS id, t.name,t.short_name,t.manual_name,t.season,
           CAST(t.qual_type AS BIGINT) AS qual_type,CAST(t.name_suffix AS TEXT) AS name_suffix,
@@ -88,6 +89,7 @@ pub(super) async fn names(state: &AppState, dry_run: bool) -> Result<()> {
             .bind(id)
             .execute(&mut *tx)
             .await?;
+            updated_tournaments = true;
         }
         if name != short {
             println!("  Tournament: \"{name}\" -> \"{short}\"");
@@ -132,6 +134,9 @@ pub(super) async fn names(state: &AppState, dry_run: bool) -> Result<()> {
         }
     }
     tx.commit().await?;
+    if updated_tournaments {
+        crate::recent_results::invalidate(state).await;
+    }
 
     println!("\n{}", "=".repeat(60));
     println!(
