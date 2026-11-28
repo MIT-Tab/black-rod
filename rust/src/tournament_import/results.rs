@@ -118,33 +118,42 @@ async fn render_entry(
     submitted: bool,
     review: Option<&review::Review>,
 ) -> Result<Response, Error> {
-    let (people, schools, eligible_autoquals) = {
+    let (people, schools) = {
         let mut conn = render.state.pool.acquire().await?;
+        if submitted {
+            review::validate_school_names(&mut conn, &mut panels).await?;
+        }
         (
             forms::labels(&mut conn, &panels, &autoquals, review.is_some()).await?,
             review::school_labels(&mut conn, &panels).await?,
-            forms::labels(&mut conn, &[], &autoquals, false).await?,
         )
     };
     if submitted {
         let error = "Select a valid choice. That choice is not one of the available choices.";
         for panel in &mut panels {
-            let choices = if panel.tab.kind == "school" {
-                &schools
-            } else {
-                &people
+            let link = match panel.tab.kind {
+                "school" => Some(("existing_school", &schools.active)),
+                "debater" => Some(("existing_debater", &people.active)),
+                _ => None,
             };
             let max = if panel.tab.kind == "school" { 64 } else { 32 };
             for row in panel.rows.iter_mut().filter(|row| !row.deleted) {
-                if [row.first, row.second]
+                if let Some((name, eligible)) = link {
+                    if row.first.is_some_and(|id| !eligible.contains(&id)) {
+                        row.field_errors.insert(name, error);
+                    }
+                } else if [row.first, row.second]
                     .into_iter()
                     .flatten()
-                    .any(|id| !choices.contains_key(&id.to_string()))
-                    || row
-                        .school
-                        .is_some_and(|id| !schools.contains_key(&id.to_string()))
+                    .any(|id| !people.labels.contains_key(&id.to_string()))
                 {
                     row.errors.push(error.to_owned());
+                }
+                if row
+                    .school
+                    .is_some_and(|id| !schools.labels.contains_key(&id.to_string()))
+                {
+                    row.field_errors.insert("school", error);
                 }
                 if matches!(panel.tab.kind, "school" | "debater")
                     && (row.name.chars().count() > max
@@ -156,10 +165,7 @@ async fn render_entry(
                 }
             }
         }
-        if autoquals
-            .iter()
-            .any(|id| !eligible_autoquals.contains_key(&id.to_string()))
-        {
+        if autoquals.iter().any(|id| !people.active.contains(id)) {
             autoqual_errors.push(error.to_owned());
         }
         if panels.iter().all(Panel::valid) && autoqual_errors.is_empty() {
@@ -228,7 +234,7 @@ async fn render_entry(
             panel.tab.kind == kind && (!panel.rows.is_empty() || !panel.errors.is_empty())
         })
     };
-    render.page("tournaments/data_entry.html",context!{tournament=>event,panels,people,schools,autoquals,autoqual_errors,
+    render.page("tournaments/data_entry.html",context!{tournament=>event,panels,people=>people.labels,schools=>schools.labels,autoquals,autoqual_errors,
         active_tab,error_message,has_api_data=>review.is_some(),show_school_tab=>shown("school"),show_debater_tab=>shown("debater"),
         review_token=>review.map_or("",|item|item.token.as_str()),current_api_url=>review.map_or("",|item|item.url.as_str()),
         selected_api_tabs,import_counts_from_api=>review.is_some()})

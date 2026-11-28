@@ -2344,9 +2344,15 @@ def assert_native_site_admin(driver, django, rust):
     driver.get(root + edit)
     submit("a.deletelink")
     assert driver.title.startswith("Delete |") and "Are you sure" in driver.find_element("tag name","body").text
-    submit('input[value="Yes, I’m sure"]')
-    assert urlsplit(driver.current_url).path == school_admin
-    assert "was deleted successfully" in driver.page_source
+    deleted = driver.execute_async_script("""
+        const done = arguments[0];
+        const form = document.querySelector('input[name=post]').form;
+        fetch(location.href, {method:"POST", body:new FormData(form)})
+            .then(async response => done([response.status, new URL(response.url).pathname,
+                (await response.text()).includes("was deleted successfully")]))
+            .catch(() => done([0]));
+    """)
+    assert deleted == [200, school_admin, True], deleted
 
     for origin, label in ((reference, "Disposable Django admin credential"), (root, "Disposable native admin credential")):
         driver.get(origin + credentials + "add/")
@@ -4072,16 +4078,24 @@ def assert_reviewed_tournament_import(driver, django, rust, fixture, provider):
     code = """
 from django import setup
 setup()
-from core.models import School, SchoolLookup
+from core.models import Debater, School, SchoolLookup
+import json
 import sys
 
 School.objects.create(name=sys.argv[1])
 target = School.objects.create(name="MIT-Tab mapping parity destination")
 SchoolLookup.objects.create(server_name=sys.argv[1], school=target)
-print(target.pk)
+temporary_school = School.all_objects.create(name="Disposable temporary link school", temporary=True)
+temporary = Debater.all_objects.create(first_name="Temporary link fixture", school=target, temporary=True)
+synthetic = Debater.all_objects.create(first_name="Synthetic link fixture", school=target, synthetic=True)
+Debater.objects.create(first_name="Reviewedmononym", school=target)
+earliest = Debater.objects.create(first_name="ReviewDuplicate", last_name="Participant", school=target)
+latest = Debater.all_objects.create(first_name="REVIEWDUPLICATE", last_name="participant",
+                                    school=target, latest_season="2018", temporary=True)
+print(json.dumps([target.id, temporary_school.id, temporary.id, synthetic.id, earliest.id, latest.id]))
 """
     seeded = subprocess.check_output([str(ROOT / "venv/bin/python"), "-c", code, alias_name], text=True)
-    mapped_school = int(seeded.splitlines()[-1])
+    mapped_school, temporary_school, temporary, synthetic, earliest, latest = json.loads(seeded.splitlines()[-1])
     provider.import_payload["new_schools"].append(alias_name)
     provider.import_payload["new_debater_data"].append(
         {"debater_id": 99991, "name": "School Lookup Fixture", "school_id": -1, "school_name": alias_name})
@@ -4155,6 +4169,35 @@ print(target.pk)
                 assert "Debaters tab" in rejected["alert"], rejected
                 assert database.execute("SELECT * FROM core_teamresult WHERE tournament_id=? ORDER BY id",
                                         (event,)).fetchall() == prior_awards
+            invalid_choice = "Select a valid choice. That choice is not one of the available choices."
+            for prefix, label, field, target, tab, error in (
+                ("debaters", "Incoming", "existing_debater", temporary, "Debaters", invalid_choice),
+                ("debaters", "Incoming", "existing_debater", synthetic, "Debaters", invalid_choice),
+                ("schools", "Fixture School From MIT-Tab", "existing_school", temporary_school, "Schools", invalid_choice),
+                ("schools", "Fixture School From MIT-Tab", "name", alias_name, "Schools",
+                 "School with this Name already exists."),
+            ):
+                driver.get(review_url)
+                rejected = driver.execute_async_script("""
+                    const [prefix, label, field, target, done] = arguments;
+                    const form = document.querySelector('#data-entry-form');
+                    const nameField = prefix === 'debaters' ? 'first_name' : 'name';
+                    const inputs = [...form.querySelectorAll(`input[name^="${prefix}-"][name$="-${nameField}"]`)];
+                    const row = inputs.find(input => input.value === label);
+                    const name = row.name.slice(0, -nameField.length) + field;
+                    const body = new URLSearchParams(new FormData(form));
+                    body.set(name, target);
+                    fetch(location.pathname + location.search, {method:"POST", body}).then(async response => {
+                        const page = new DOMParser().parseFromString(await response.text(), 'text/html');
+                        done([response.status, response.redirected,
+                              page.querySelector('#error_1_id_' + name)?.textContent.trim(),
+                              page.querySelector('[role="alert"]')?.textContent.trim()]);
+                    }).catch(() => done([0]));
+                """, prefix, label, field, target)
+                assert rejected[:3] == [200, False, error], (urlsplit(review_url).netloc, field, rejected)
+                assert f"{tab} tab" in rejected[3], rejected
+                assert database.execute("SELECT * FROM core_teamresult WHERE tournament_id=? ORDER BY id",
+                                        (event,)).fetchall() == prior_awards
     driver.get(rust_review)
 
     school_input = next(field for field in driver.find_elements("css selector", 'input[id^=id_schools-][id$=-name]')
@@ -4183,10 +4226,14 @@ print(target.pk)
             const body = new URLSearchParams(new FormData(form));
             const debaters = Number(body.get('debaters-TOTAL_FORMS'));
             const schools = Number(body.get('schools-TOTAL_FORMS'));
-            body.set('debaters-TOTAL_FORMS', debaters + 2);
-            body.set(`debaters-${debaters}-first_name`, 'Manual');
-            body.set(`debaters-${debaters}-last_name`, 'Review Entry');
-            body.set(`debaters-${debaters}-school`, school);
+            body.set('debaters-TOTAL_FORMS', debaters + 4);
+            for (const [offset, first, last] of [[0, 'Manual', 'Review Entry'],
+                    [1, 'Reviewedmononym', ''], [2, 'reviewduplicate', 'PARTICIPANT']]) {
+                const prefix = `debaters-${debaters + offset}-`;
+                body.set(prefix + 'first_name', first);
+                body.set(prefix + 'last_name', last);
+                body.set(prefix + 'school', school);
+            }
             body.set('schools-TOTAL_FORMS', schools + 1);
             body.set(`schools-${schools}-server_name`, 'School fallback parity');
             body.set(`schools-${schools}-included_in_oty`, 'True');
@@ -4222,6 +4269,14 @@ print(target.pk)
             "School fallback parity",)
         assert database.execute("""SELECT temporary,status FROM core_debater
             WHERE first_name='Manual' AND last_name='Review Entry' AND school_id=?""", (mapped_school,)).fetchone() == (0, 1)
+        assert database.execute("""SELECT COUNT(*) FROM core_debater
+            WHERE first_name='Reviewedmononym' AND last_name='' AND school_id=? AND NOT temporary""",
+            (mapped_school,)).fetchone() == (2,)
+        assert database.execute("""SELECT id, first_name, last_name, temporary FROM core_debater
+            WHERE LOWER(first_name)='reviewduplicate' AND school_id=? ORDER BY id""", (mapped_school,)).fetchall() == [
+                (earliest, "ReviewDuplicate", "Participant", 0),
+                (latest, "REVIEWDUPLICATE", "participant", 0),
+            ]
         assert database.execute("""SELECT d.temporary,s.name FROM core_debater d JOIN core_school s ON s.id=d.school_id
             WHERE d.first_name='Incoming' AND d.last_name='Participant'""").fetchone() == (0, "Reviewed Fixture School")
     driver.get(f"http://{HOST}:{django.port}/core/tournaments/{event}")

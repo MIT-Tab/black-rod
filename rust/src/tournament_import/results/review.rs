@@ -7,7 +7,7 @@ use ring::digest;
 use serde_json::{Value, json};
 use sqlx::{AnyConnection, Row};
 
-use super::forms::{self, DEBATER, Panel, ResultRow, SCHOOL};
+use super::forms::{self, Choices, DEBATER, Panel, ResultRow, SCHOOL};
 use crate::{
     ApiError, AppState, claims, delete_relations, django_json,
     tournament_import::{
@@ -72,7 +72,7 @@ async fn seed_school(conn: &mut AnyConnection, name: &str) -> Result<i64, ApiErr
     Ok(id)
 }
 
-async fn same_person(
+async fn seed_debater_match(
     conn: &mut AnyConnection,
     first: &str,
     last: &str,
@@ -201,7 +201,7 @@ pub(super) async fn seed(
         };
         let key = reference_id(row);
         let id = if let Some(id) =
-            same_person(&mut tx, first, &last, school, state.current_season).await?
+            seed_debater_match(&mut tx, first, &last, school, state.current_season).await?
         {
             id
         } else {
@@ -302,7 +302,7 @@ pub(super) async fn seed(
 pub(super) async fn school_labels(
     conn: &mut AnyConnection,
     panels: &[Panel],
-) -> Result<BTreeMap<String, String>, ApiError> {
+) -> Result<Choices, ApiError> {
     let ids = panels
         .iter()
         .flat_map(|panel| {
@@ -319,17 +319,55 @@ pub(super) async fn school_labels(
         })
         .flatten()
         .collect::<BTreeSet<_>>();
-    let mut schools = BTreeMap::new();
+    let mut schools = Choices::default();
     for id in ids {
-        let name = sqlx::query_scalar::<_, String>("SELECT name FROM core_school WHERE id=$1")
-            .bind(id)
-            .fetch_optional(&mut *conn)
-            .await?;
-        if let Some(name) = name {
-            schools.insert(id.to_string(), name);
+        let entry = sqlx::query_as::<_, (String, i64)>(
+            "SELECT name, CAST(CASE WHEN NOT temporary THEN 1 ELSE 0 END AS BIGINT)
+             FROM core_school WHERE id=$1",
+        )
+        .bind(id)
+        .fetch_optional(&mut *conn)
+        .await?;
+        if let Some((name, active)) = entry {
+            schools.labels.insert(id.to_string(), name);
+            if active == 1 {
+                schools.active.insert(id);
+            }
         }
     }
     Ok(schools)
+}
+
+pub(super) async fn validate_school_names(
+    conn: &mut AnyConnection,
+    panels: &mut [Panel],
+) -> Result<(), ApiError> {
+    for row in panels
+        .iter_mut()
+        .filter(|panel| panel.tab.kind == "school")
+        .flat_map(|panel| &mut panel.rows)
+        .filter(|row| !row.deleted && row.first.is_none())
+    {
+        let Some(source) = row.record else { continue };
+        let name = if row.name.trim().is_empty() {
+            row.first_source.trim()
+        } else {
+            row.name.trim()
+        };
+        let duplicate = sqlx::query_scalar::<_, i64>(
+            "SELECT CAST(id AS BIGINT) FROM core_school
+             WHERE name=$1 AND id<>$2 AND NOT temporary LIMIT 1",
+        )
+        .bind(name)
+        .bind(source)
+        .fetch_optional(&mut *conn)
+        .await?;
+        if duplicate.is_some() {
+            row.field_errors
+                .insert("name", "School with this Name already exists.");
+        }
+    }
+    Ok(())
 }
 
 type Resolution = BTreeMap<i64, Option<i64>>;
@@ -422,6 +460,27 @@ async fn resolve_schools(
     Ok((map, cleanup))
 }
 
+async fn existing_debater_for_save(
+    conn: &mut AnyConnection,
+    first: &str,
+    last: &str,
+    school: Option<i64>,
+) -> Result<Option<(i64, String, String)>, ApiError> {
+    let Some(school) = school.filter(|_| !first.is_empty() && !last.is_empty()) else {
+        return Ok(None);
+    };
+    Ok(sqlx::query_as(
+        "SELECT CAST(id AS BIGINT), first_name, last_name FROM core_debater
+         WHERE LOWER(first_name)=LOWER($1) AND LOWER(last_name)=LOWER($2)
+           AND school_id=$3 ORDER BY id DESC LIMIT 1",
+    )
+    .bind(first)
+    .bind(last)
+    .bind(school)
+    .fetch_optional(conn)
+    .await?)
+}
+
 async fn resolve_people(
     conn: &mut AnyConnection,
     rows: &[ResultRow],
@@ -448,20 +507,27 @@ async fn resolve_people(
             }
             continue;
         }
-        let first = claims::edit::sanitize_name(&row.name, "Removed");
-        let last = claims::edit::sanitize_name(&row.last_name, "");
-        if old.is_none() && row.name.trim().is_empty() {
+        let submitted_first = row.name.trim();
+        let submitted_last = row.last_name.trim();
+        if old.is_none() && submitted_first.is_empty() {
             continue;
         }
         let school = row
             .school
             .and_then(|id| schools.get(&id).copied().unwrap_or(Some(id)));
         let matched = if old.is_none() {
-            same_person(conn, &first, &last, school, season).await?
+            existing_debater_for_save(conn, submitted_first, submitted_last, school).await?
         } else {
-            old
+            None
         };
-        let id = match matched {
+        let (id, first, last) = if let Some((id, first, last)) = matched {
+            (Some(id), first, last)
+        } else {
+            (old, row.name.clone(), row.last_name.clone())
+        };
+        let first = claims::edit::sanitize_name(&first, "Removed");
+        let last = claims::edit::sanitize_name(&last, "");
+        let id = match id {
             Some(id) => id,
             None => insert_person(conn, &first, &last, school, season, false).await?,
         };

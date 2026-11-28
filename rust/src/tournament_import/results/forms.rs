@@ -327,12 +327,18 @@ pub(super) async fn current(
     Ok(panels.into())
 }
 
+#[derive(Default)]
+pub(super) struct Choices {
+    pub(super) labels: BTreeMap<String, String>,
+    pub(super) active: BTreeSet<i64>,
+}
+
 pub(super) async fn labels(
     conn: &mut AnyConnection,
     panels: &[Panel],
     autoquals: &[i64],
     temporary: bool,
-) -> Result<BTreeMap<String, String>, ApiError> {
+) -> Result<Choices, ApiError> {
     let mut ids = autoquals.iter().copied().collect::<BTreeSet<_>>();
     ids.extend(
         panels
@@ -342,18 +348,23 @@ pub(super) async fn labels(
             .flat_map(|row| [row.first, row.second])
             .flatten(),
     );
-    let mut people = BTreeMap::new();
+    let mut people = Choices::default();
     for id in ids {
-        let label = sqlx::query_scalar::<_, String>(
-            "SELECT TRIM(d.first_name || ' ' || d.last_name) FROM core_debater d
-            WHERE d.id=$1 AND ($2 OR NOT(d.synthetic OR d.temporary))",
+        let entry = sqlx::query_as::<_, (String, i64)>(
+            "SELECT TRIM(first_name || ' ' || last_name),
+                CAST(CASE WHEN NOT (synthetic OR temporary) THEN 1 ELSE 0 END AS BIGINT)
+             FROM core_debater WHERE id=$1",
         )
         .bind(id)
-        .bind(temporary)
         .fetch_optional(&mut *conn)
         .await?;
-        if let Some(label) = label {
-            people.insert(id.to_string(), label);
+        if let Some((label, active)) = entry {
+            if active == 1 {
+                people.active.insert(id);
+            }
+            if active == 1 || temporary {
+                people.labels.insert(id.to_string(), label);
+            }
         }
     }
     Ok(people)
