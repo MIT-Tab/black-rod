@@ -502,7 +502,8 @@ pub fn app(state: AppState) -> Router {
         )
         .nest_service(
             "/static",
-            tower_http::services::ServeDir::new("apda/assets"),
+            tower_http::services::ServeDir::new("apda/assets")
+                .fallback(tower_http::services::ServeDir::new("rust/static/vendor")),
         )
         .route(
             "/api/private/forum-profiles/",

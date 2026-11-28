@@ -1,6 +1,7 @@
 """Check current-season results saves on cloned PostgreSQL fixtures."""
 
 from argparse import ArgumentParser
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
 from http.cookies import SimpleCookie
 import json
@@ -9,7 +10,8 @@ from pathlib import Path
 from statistics import median
 import subprocess
 from tempfile import TemporaryDirectory
-from time import perf_counter
+from threading import Barrier
+from time import perf_counter, sleep
 from urllib.parse import urlencode
 
 import psycopg2
@@ -49,10 +51,18 @@ session = SessionStore()
 session.update({"_auth_user_id": str(user.pk), "_auth_user_backend": "django.contrib.auth.backends.ModelBackend",
                 "_auth_user_hash":user.get_session_auth_hash()})
 session.save()
-print(json.dumps((event.id, session.session_key)))
+parallel = [
+    {
+        "event": Tournament.objects.create(host=host, season="2026", date=date(2026, 10, 20 + index),
+            manual_name=f"Independent qualification save {index}", num_teams=64).pk,
+        "members": [person.pk for person in people[start:start + 2]],
+    }
+    for index, start in enumerate((550, 552))
+]
+print(json.dumps((event.id, session.session_key, parallel)))
 """
 
-def request_save(server, session, event):
+def request_save(server, session, event, members=None, gate=None):
     with closing(server.connect()) as client:
         path = f"/core/tournaments/data_entry?tournament={event}"
         client.request("GET", path, headers={"Cookie": f"sessionid={session}"})
@@ -69,6 +79,16 @@ def request_save(server, session, event):
             data[f"{tab}-INITIAL_FORMS"] = 0
             data[f"{tab}-TOTAL_FORMS"] = 0
         data["csrfmiddlewaretoken"] = csrf
+        if members:
+            data.update({
+                "varsity_teams-TOTAL_FORMS": 1,
+                "varsity_teams-0-debater_one": members[0],
+                "varsity_teams-0-debater_two": members[1],
+                "varsity_teams-0-ORDER": 1,
+                "varsity_teams-0-counts_for_points": "on",
+            })
+        if gate:
+            gate.wait(timeout=15)
         start = perf_counter()
         client.request("POST", path, urlencode(data), {"Cookie": f"sessionid={session}; csrftoken={csrf}",
             "Content-Type": "application/x-www-form-urlencoded"})
@@ -89,6 +109,61 @@ def snapshot(conn):
         cursor.execute("SELECT id,latest_season FROM core_debater WHERE first_name='Batch' ORDER BY id")
         contents.append(cursor.fetchall())
     return contents
+
+def simultaneous_saves(servers, session, entries, db):
+    lock_keys = "hashtext('black-rod standings'), hashtext('2026')"
+    gate = Barrier(len(entries))
+    with db.cursor() as cursor, ThreadPoolExecutor(max_workers=len(entries)) as executor:
+        cursor.execute(f"SELECT pg_advisory_xact_lock({lock_keys})")
+        try:
+            pending = [
+                executor.submit(request_save, server, session, entry["event"], entry["members"], gate)
+                for server, entry in zip(servers, entries)
+            ]
+            deadline = perf_counter() + 15
+            while perf_counter() < deadline:
+                cursor.execute("""
+                    SELECT COUNT(*) FROM pg_locks
+                    WHERE locktype='advisory' AND objsubid=2 AND NOT granted
+                      AND database=(SELECT oid FROM pg_database WHERE datname=current_database())
+                      AND classid=hashtext('black-rod standings')::oid AND objid=hashtext('2026')::oid
+                """)
+                if cursor.fetchone()[0] == len(entries):
+                    break
+                assert not any(future.done() for future in pending), "A writer bypassed the season lock"
+                sleep(0.025)
+            else:
+                raise AssertionError("Both writers did not wait for the same season transaction lock")
+        finally:
+            db.commit()
+        for future in pending:
+            future.result(timeout=30)
+
+
+def check_concurrent_rebuilds(seed, postgres, session, entries):
+    expected = None
+    for mode in ("serial", "rust", "mixed"):
+        with fixture_database(seed, seed, postgres):
+            with closing(psycopg2.connect(os.environ["BLACK_ROD_PARITY_POSTGRES_URL"])) as db:
+                with compare.servers(seed) as (django, rust):
+                    if mode == "serial":
+                        for entry in entries:
+                            request_save(django, session, entry["event"], entry["members"])
+                    else:
+                        writers = (rust, rust) if mode == "rust" else (django, rust)
+                        simultaneous_saves(writers, session, entries, db)
+
+                with db.cursor() as cursor:
+                    cursor.execute("SELECT tournament_id FROM core_teamresult WHERE tournament_id=ANY(%s) ORDER BY tournament_id",
+                                   ([entry["event"] for entry in entries],))
+                    assert [row[0] for row in cursor.fetchall()] == sorted(entry["event"] for entry in entries)
+                result = snapshot(db)
+                if mode == "serial":
+                    expected = result
+                else:
+                    assert expected == result, f"{mode} concurrent standings diverged from serial imports"
+    print("Concurrent same-season Rust and mixed-runtime saves match serial qualifications and COTY")
+
 
 def main():
     parser = ArgumentParser(description=__doc__)
@@ -115,7 +190,7 @@ def main():
                 "SECRET_KEY": "disposable-local-parity-key",
             }
             raw = subprocess.check_output([str(compare.ROOT / "venv/bin/python"), "-c", SEED], text=True, env=env)
-            event, session = json.loads(raw.splitlines()[-1])
+            event, session, parallel = json.loads(raw.splitlines()[-1])
             benchmark_source = os.environ["BLACK_ROD_PARITY_POSTGRES_URL"]
             for label, binary in runtimes.items():
                 compare.RUST_BIN = binary
@@ -130,6 +205,8 @@ def main():
                                 timings.append(request_save(django if label == "Django" else rust, session, event))
                             documents[label] = snapshot(db)
                             print(label, "median ms", round(median(timings[1:]), 2), flush=True)
+            compare.RUST_BIN = default_binary
+            check_concurrent_rebuilds(seed, benchmark_source, session, parallel)
     for label, contents in documents.items():
         for name, left, right in zip(("qual", "qualpoints", "onlinequal", "coty", "latest_season"),
                                      documents["Django"], contents):

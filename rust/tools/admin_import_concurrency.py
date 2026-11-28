@@ -2,6 +2,9 @@
 
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
+from datetime import datetime
+from io import BytesIO
+import json
 import os
 from pathlib import Path
 import subprocess
@@ -10,6 +13,7 @@ from time import monotonic, sleep
 from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup
+from openpyxl import Workbook
 import psycopg2
 import requests
 
@@ -17,10 +21,12 @@ from agent_write_parity import fixture_database
 from compare import HOST, ROOT, servers
 
 SEED = """
+import json
 from reference import application
 
+from datetime import date
 from django.contrib.sessions.backends.db import SessionStore
-from core.models import User
+from core.models import School, Team, TeamResult, Tournament, User
 
 user = User.objects.create_superuser(username="admin_import_fixture")
 session = SessionStore()
@@ -28,7 +34,11 @@ session["_auth_user_id"] = str(user.pk)
 session["_auth_user_backend"] = "django.contrib.auth.backends.ModelBackend"
 session["_auth_user_hash"] = user.get_session_auth_hash()
 session.save()
-print(session.session_key)
+school = School.objects.create(name="Admin import relationship fixture")
+tournament = Tournament.objects.create(host=school, season="2026", date=date(2026, 11, 13))
+team = Team.objects.create(name="Admin import fixture team")
+award = TeamResult.objects.create(tournament=tournament, team=team, place=1)
+print(json.dumps([session.session_key, tournament.pk, award.pk]))
 """
 IMPORT = "/admin/core/school/import/"
 AUTO_NAME = "Automatic sequence fixture"
@@ -133,6 +143,53 @@ def exercise(client, root, control, writer):
     assert insert_school(control, "Writer after the lower explicit ID fixture") > reserved
 
 
+def validate_import_cells(django, rust, session, tournament, award, control):
+    attempts = [
+        ("/admin/core/tournament/import/", f"id,date\n{tournament},2026-10-05 or 2026-10-06\n"),
+        ("/admin/core/tournament/import/", f"id,date\n{tournament},2026-10-05 14:30:00\n"),
+        ("/admin/core/teamresult/import/", f"id,tournament\n{award},{tournament}.7\n"),
+        ("/admin/core/teamresult/import/", f"id,tournament\n{award},999999999\n"),
+    ]
+
+    def upload(client, root, path, file, contents, format_index):
+        url = root + path
+        document = BeautifulSoup(client.get(url, timeout=30).content, "html.parser")
+        response = client.post(url, data={
+            "csrfmiddlewaretoken": document.select_one("input[name=csrfmiddlewaretoken]")["value"],
+            "input_format": format_index,
+        }, files={"import_file": (file, contents)}, timeout=30)
+        assert response.status_code == 200
+        return BeautifulSoup(response.content, "html.parser")
+
+    for server in (django, rust):
+        root = f"http://{HOST}:{server.port}"
+        with requests.Session() as client:
+            client.cookies.set("sessionid", session)
+            for path, contents in attempts:
+                page = upload(client, root, path, "invalid.csv", contents, "0")
+                assert "error" in page.select_one("#content").get_text().lower(), (server.name, path)
+                assert page.select_one('input[name="import_file_name"]') is None, (server.name, path)
+                assert query(control, "SELECT tournament_id FROM core_teamresult WHERE id=%s", award) == tournament
+                assert str(query(control, "SELECT date FROM core_tournament WHERE id=%s", tournament)) == "2026-11-13"
+
+            book = Workbook()
+            book.active.append(["id", "date"])
+            book.active.append([tournament, datetime(2026, 10, 5, 14, 30)])
+            contents = BytesIO()
+            book.save(contents)
+            path = "/admin/core/tournament/import/"
+            page = upload(client, root, path, "fixture.xlsx", contents.getvalue(), "2")
+            field = page.select_one('input[name="import_file_name"]')
+            assert field is not None, (server.name, "workbook datetime could not be previewed")
+            if server is rust:
+                form = field.find_parent("form")
+                draft = (urljoin(root + path, form["action"]), {
+                    item["name"]: item.get("value", "") for item in form.select('input[type="hidden"][name]')
+                })
+                confirm(client, draft)
+                assert str(query(control, "SELECT date FROM core_tournament WHERE id=%s", tournament)) == "2026-10-05"
+
+
 def main():
     postgres = os.environ["BLACK_ROD_PARITY_POSTGRES_URL"]
     seed = Path(os.environ["BR_STATE"]) / "dev.sqlite3"
@@ -142,15 +199,17 @@ def main():
             os.environ.update(BR_STATE=folder, BLACK_ROD_PARITY_WRITABLE="1")
             env = {**os.environ, "SECRET_KEY": "disposable-local-parity-key",
                    "PYTHONPATH": f"{Path(__file__).resolve().parent}{os.pathsep}{os.environ['PYTHONPATH']}"}
-            session = subprocess.check_output([str(ROOT / "venv/bin/python"), "-c", SEED], env=env, text=True)
+            data = subprocess.check_output([str(ROOT / "venv/bin/python"), "-c", SEED], env=env, text=True)
+            session, tournament, award = json.loads(data.splitlines()[-1])
             clone = os.environ["BLACK_ROD_PARITY_POSTGRES_URL"]
-            with servers(database) as (_, rust), requests.Session() as client, closing(
+            with servers(database) as (django, rust), requests.Session() as client, closing(
                 psycopg2.connect(clone)
             ) as control, closing(psycopg2.connect(clone)) as writer:
-                client.cookies.set("sessionid", session.splitlines()[-1])
+                client.cookies.set("sessionid", session)
                 control.autocommit = True
+                validate_import_cells(django, rust, session, tournament, award, control)
                 exercise(client, f"http://{HOST}:{rust.port}", control, writer)
-    print("PostgreSQL admin import IDs advance safely across automatic and explicit concurrent writes")
+    print("PostgreSQL admin imports validate complete dates and foreign keys, and advance IDs safely")
 
 
 if __name__ == "__main__":

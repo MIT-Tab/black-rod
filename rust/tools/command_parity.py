@@ -41,6 +41,61 @@ def snapshot(path, table, columns):
         return connection.execute(f"SELECT {columns} FROM {table} ORDER BY id").fetchall()
 
 
+def seed_fixture_tags(database):
+    script = """
+import json
+from core.models import Motion, Resource
+from core.models.tags import MotionTopic, ResourceTag
+
+motion = Motion.objects.create(text="Sparse fixture motion")
+resource = Resource.objects.create(title="Sparse fixture resource", content_link="https://example.test/resource")
+for index, tag_id in enumerate((901001, 902507)):
+    topic = MotionTopic.objects.create(pk=tag_id, name=f"Fixture motion topic {index}")
+    label = ResourceTag.objects.create(pk=tag_id + 10, name=f"Fixture resource tag {index}")
+    motion.tags.add(topic)
+    resource.tags.add(label)
+print(json.dumps([motion.pk, resource.pk]))
+"""
+    return json.loads(run("shell", database, "django", "--verbosity", "0", "-c", script).splitlines()[-1])
+
+
+def verify_fixture_tag_roundtrip(document, ids, parent):
+    motion, resource = ids
+    prefix = "Fixture "
+    selected = [
+        row for row in document
+        if (row["model"] == "core.motion" and row["pk"] == motion)
+        or (row["model"] == "core.resource" and row["pk"] == resource)
+        or (row["model"] in {"core.motiontopic", "core.resourcetag"}
+            and row["fields"]["name"].startswith(prefix))
+        or (row["model"] == "core.taggedmotion" and row["fields"]["content_object"] == motion)
+        or (row["model"] == "core.taggedresource" and row["fields"]["object_id"] == resource
+            and row["fields"]["content_type"] == ["core", "resource"])
+    ]
+    assert len(selected) == 10
+    for row in selected:
+        if row["model"] in {"core.taggedmotion", "core.taggedresource"}:
+            assert row["pk"] and isinstance(row["fields"]["tag"], list)
+    with TemporaryDirectory(prefix="fixture-tags-", dir=parent) as folder:
+        database = Path(folder) / "dev.sqlite3"
+        fixture = Path(folder) / "sparse-tags.json"
+        fixture.write_text(json.dumps(selected))
+        run("migrate", database, "django", "--noinput", "--verbosity", "0")
+        for _ in range(2):
+            run("loaddata", database, "django", str(fixture), "--verbosity", "0")
+        with closing(sqlite3.connect(database)) as connection:
+            for table, tag_table, column, target, names in (
+                ("core_taggedmotion", "core_motiontopic", "content_object_id", motion, "motion topic"),
+                ("core_taggedresource", "core_resourcetag", "object_id", resource, "resource tag"),
+            ):
+                tags = connection.execute(
+                    f"SELECT t.name FROM {table} a JOIN {tag_table} t ON t.id=a.tag_id "
+                    f"WHERE a.{column}=? ORDER BY t.name", (target,),
+                ).fetchall()
+                assert tags == [(f"Fixture {names} 0",), (f"Fixture {names} 1",)]
+
+
+
 def verify_late_commands(databases):
     for args in (("--dry-run",), ()):
         output = [run("shorten_names", path, engine, *args) for engine, path in databases.items()]
@@ -71,11 +126,15 @@ def verify_late_commands(databases):
 
     documents = []
     for engine, path in databases.items():
+        ids = seed_fixture_tags(path)
         target = path.with_name("sanitized.json")
         run("create_dev_fixtures", path, engine, "--output", str(target))
-        documents.append(json.loads(target.read_text()))
+        document = json.loads(target.read_text())
+        verify_fixture_tag_roundtrip(document, ids, path.parent)
+        documents.append(document)
     assert Counter(entry["model"] for entry in documents[0]) == Counter(entry["model"] for entry in documents[1])
-    for model in ("core.user", "core.video", "core.round", "auth.group", "taggit.taggeditem"):
+    for model in ("core.user", "core.video", "core.round", "auth.group", "taggit.taggeditem",
+                  "core.motiontopic", "core.resourcetag", "core.taggedmotion", "core.taggedresource"):
         left, right = [[entry for entry in document if entry["model"] == model] for document in documents]
         assert left == right, f"Fixture data for {model} differs"
     for document in documents:

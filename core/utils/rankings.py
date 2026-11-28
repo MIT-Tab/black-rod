@@ -1,6 +1,9 @@
+from contextlib import contextmanager
+
 from django.conf import settings
 from django.core.cache import cache
 from django.core.cache.utils import make_template_fragment_key
+from django.db import connection
 from django.db.models import Exists, OuterRef, Q
 
 from core.live_results import invalidate_live_standings
@@ -17,6 +20,19 @@ from core.models.team import Team
 from core.models.tournament import Tournament
 from core.utils.qualifications import coty_bonus_quals, qual_awards_coty_bonus, sync_manual_autoquals
 from core.models.tournament_autoqual import TournamentAutoQual
+
+
+@contextmanager
+def standings_write_lock(season):
+    """Serialize result writes that recompute the same season on PostgreSQL."""
+    if connection.vendor == "postgresql":
+        with connection.cursor() as cursor:
+            # Match the Rust standings writer during a staged cutover.
+            cursor.execute(
+                "SELECT pg_advisory_xact_lock(hashtext('black-rod standings'), hashtext(%s))",
+                (str(season),),
+            )
+    yield
 
 
 def _school_included_in_oty(debater):

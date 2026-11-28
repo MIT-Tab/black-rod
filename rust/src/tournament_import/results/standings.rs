@@ -48,6 +48,17 @@ fn year(season: &str) -> Option<i64> {
     season.split('-').next()?.parse().ok()
 }
 
+pub(super) async fn lock_season(conn: &mut AnyConnection, season: &str) -> Result<(), ApiError> {
+    if conn.backend_name() == "PostgreSQL" {
+        // Match Django's standings_write_lock so a staged cutover can share the database.
+        sqlx::query("SELECT pg_advisory_xact_lock(hashtext('black-rod standings'), hashtext($1))")
+            .bind(season)
+            .execute(conn)
+            .await?;
+    }
+    Ok(())
+}
+
 pub(super) async fn rank(
     conn: &mut AnyConnection,
     table: &str,
@@ -300,6 +311,7 @@ pub(crate) async fn recompute_rankings(
     ranking: &str,
     current: i32,
 ) -> Result<(), ApiError> {
+    lock_season(conn, selected).await?;
     if ranking == "coty" {
         return qualifications::recompute(conn, selected, selected == current.to_string()).await;
     }
@@ -607,6 +619,7 @@ pub(crate) async fn rerank_current_awards(
     current: i32,
 ) -> Result<(), ApiError> {
     let season = current.to_string();
+    lock_season(conn, &season).await?;
     for table in ["core_toty", "core_coty", "core_soty"] {
         rank(conn, table, &season).await?;
     }

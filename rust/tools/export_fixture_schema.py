@@ -5,7 +5,7 @@ import json
 from django import setup
 
 
-def model_schema(model):
+def model_schema(model, explicit_pks):
     opts = model._meta
     fields = {}
     storage = {}
@@ -42,7 +42,7 @@ def model_schema(model):
     return {
         "model": opts.label_lower,
         "title": model.__name__,
-        "natural": hasattr(model, "natural_key"),
+        "natural": hasattr(model, "natural_key") and opts.label_lower not in explicit_pks,
         "fields": fields,
         "memberships": memberships,
         "ordering": ordering,
@@ -56,6 +56,7 @@ def main():
     from django.contrib.auth.models import Group, Permission
     from django.contrib.contenttypes.models import ContentType
     from taggit.models import Tag, TaggedItem
+    from core.management.commands.create_dev_fixtures import FIXTURE_EXPLICIT_PKS
 
     user = apps.get_model("core.User")
     video = apps.get_model("core.Video")
@@ -66,7 +67,7 @@ def main():
     ))
     models.append(video)
     output = Path(__file__).resolve().parents[1] / "schema" / "fixture.json"
-    lines = [json.dumps(model_schema(model), separators=(",", ":")) for model in models]
+    lines = [json.dumps(model_schema(model, FIXTURE_EXPLICIT_PKS), separators=(",", ":")) for model in models]
     output.write_text("[\n" + ",\n".join(lines) + "\n]\n", encoding="utf-8")
 
 

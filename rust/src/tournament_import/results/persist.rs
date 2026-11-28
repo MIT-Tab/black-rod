@@ -130,15 +130,35 @@ pub(super) async fn store(
     review: Option<&Review>,
 ) -> Result<Vec<String>, Error> {
     let mut tx = state.pool.begin().await?;
-    let Some(season) = sqlx::query_scalar::<_, String>(
-        "UPDATE core_tournament SET id=id WHERE id=$1 RETURNING season",
+    let expected_season = if tx.backend_name() == "PostgreSQL" {
+        let season =
+            sqlx::query_scalar::<_, String>("SELECT season FROM core_tournament WHERE id=$1")
+                .bind(event)
+                .fetch_optional(&mut *tx)
+                .await?
+                .ok_or_else(|| invalid("Tournament not found."))?;
+        // Lock the season before the tournament row. The rebuild can reference
+        // other tournaments while writing the season's qualifications.
+        standings::lock_season(&mut tx, &season).await?;
+        Some(season)
+    } else {
+        None
+    };
+    let season = sqlx::query_scalar::<_, String>(
+        "UPDATE core_tournament SET id=id
+         WHERE id=$1 AND (CAST($2 AS TEXT) IS NULL OR season=$2) RETURNING season",
     )
     .bind(event)
+    .bind(expected_season.as_deref())
     .fetch_optional(&mut *tx)
     .await?
-    else {
-        return Err(invalid("Tournament not found."));
-    };
+    .ok_or_else(|| {
+        invalid(if expected_season.is_some() {
+            "The tournament changed. Reload its results before saving."
+        } else {
+            "Tournament not found."
+        })
+    })?;
     let resolved = if let Some(review) = review {
         let rows = review::resolve(&mut tx, panels, state.current_season).await?;
         review::counts(&mut tx, event, review).await?;

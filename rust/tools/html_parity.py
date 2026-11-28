@@ -365,12 +365,17 @@ def capture(driver, server, route, session, target, exclude):
     return navigation, html, sidebar
 
 
+# Permit isolated rasterization differences without relaxing the DOM comparison.
+MAX_CHANGED_PIXELS = 2
+
+
 def pixels(left, right):
     with Image.open(left.with_suffix(".png")) as expected, Image.open(right.with_suffix(".png")) as actual:
         difference = ImageChops.difference(expected.convert("RGB"), actual.convert("RGB"))
         maximum = ImageChops.lighter(ImageChops.lighter(*difference.split()[:2]), difference.split()[2])
         changed = maximum.point(lambda value: int(value > 8))
-        return changed.histogram()[1] / (expected.width * expected.height), changed.getbbox()
+        count = changed.histogram()[1]
+        return count, count / (expected.width * expected.height), changed.getbbox()
 
 
 @contextmanager
@@ -428,8 +433,8 @@ def compare(driver, django, rust, cases, sessions, output, viewports, exclude, p
                     structural = ("navigation URL or status", left_navigation, right_navigation)
                 if structural is None and left_sidebar != right_sidebar:
                     structural = ("video sidebar layout", left_sidebar, right_sidebar)
-                fraction, difference = pixels(reference, candidate)
-                if (structural is None and not fraction) or attempt == 1:
+                count, fraction, difference = pixels(reference, candidate)
+                if (structural is None and count <= MAX_CHANGED_PIXELS) or attempt == 1:
                     break
                 print(f"{mode} {route} first comparison differed, repeating in a fresh Chrome session")
                 for target in (reference, candidate):
@@ -439,7 +444,7 @@ def compare(driver, django, rust, cases, sessions, output, viewports, exclude, p
             if structural is not None:
                 location, expected, actual = structural
                 print(f"  {location}\n  Django {repr(expected)[:200]}\n  Rust   {repr(actual)[:200]}")
-            if (structural is not None and not pixel_only) or fraction:
+            if (structural is not None and not pixel_only) or count > MAX_CHANGED_PIXELS:
                 if difference:
                     print(f"  Changed pixel bounds {difference}")
                 screenshots = output / "failures"

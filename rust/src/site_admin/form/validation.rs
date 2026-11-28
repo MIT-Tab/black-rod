@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use chrono::{DateTime, NaiveDate, NaiveDateTime, NaiveTime, SecondsFormat};
 use rust_decimal::Decimal;
 use serde_json::{Value as Json, json};
-use sqlx::AssertSqlSafe;
+use sqlx::{AnyConnection, AssertSqlSafe};
 
 use super::{
     AdminRequest, ApiError, Errors, Field, Model, Values, Widget, error, primitive, raw,
@@ -32,6 +32,22 @@ fn related_scope(model: &Model, field: &Field) -> &'static str {
         (Some("core.school"), _, _) => " AND NOT temporary",
         _ => "",
     }
+}
+
+pub(in crate::site_admin) async fn related_exists(
+    conn: &mut AnyConnection,
+    model: &Model,
+    field: &Field,
+    id: i64,
+) -> Result<bool, ApiError> {
+    let table = related_table(field).ok_or(ApiError::Serialization)?;
+    let scope = related_scope(model, field);
+    let sql = format!("SELECT CAST(id AS BIGINT) FROM {table} WHERE id=$1{scope}");
+    Ok(sqlx::query_scalar::<_, i64>(AssertSqlSafe(sql))
+        .bind(id)
+        .fetch_optional(conn)
+        .await?
+        .is_some())
 }
 
 fn datetime(values: &Values, name: &str) -> Option<Json> {
@@ -121,18 +137,10 @@ pub(super) async fn cleaned(
         return Ok(None);
     }
     if matches!(field.kind.as_str(), "ForeignKey" | "OneToOneField") && !raw.trim().is_empty() {
-        if let Ok(id) = raw.trim().parse::<i64>() {
-            let table = related_table(field).ok_or(ApiError::Serialization)?;
-            let scope = related_scope(model, field);
-            let sql = format!("SELECT CAST(id AS BIGINT) FROM {table} WHERE id=$1{scope}");
-            if sqlx::query_scalar::<_, i64>(AssertSqlSafe(sql))
-                .bind(id)
-                .fetch_optional(&admin.state.pool)
-                .await?
-                .is_some()
-            {
-                return Ok(Some(json!(id)));
-            }
+        if let Ok(id) = raw.trim().parse::<i64>()
+            && related_exists(&mut *admin.state.pool.acquire().await?, model, field, id).await?
+        {
+            return Ok(Some(json!(id)));
         }
         error(
             errors,

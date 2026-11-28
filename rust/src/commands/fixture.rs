@@ -49,8 +49,9 @@ fn natural_key(model: &str, row: &Map<String, Value>) -> Option<Value> {
             let content = row["content_type"].as_array()?;
             json!([row["codename"], content.first()?, content.get(1)?])
         }
-        "auth.group" | "taggit.tag" => json!([row["name"]]),
-        "taggit.taggeditem" => json!([row["object_id"]]),
+        "auth.group" | "taggit.tag" | "core.motiontopic" | "core.resourcetag" => {
+            json!([row["name"]])
+        }
         "core.user" => json!([row["username"]]),
         _ => return None,
     })
@@ -221,12 +222,17 @@ pub(super) async fn export(state: &AppState, output: &Path) -> Result<()> {
                 );
             }
             sanitize(&model.model, id, index, length, &mut fields, &examples);
-            let key = natural_key(&model.model, &fields);
+            let key = if model.natural {
+                Some(
+                    natural_key(&model.model, &fields)
+                        .ok_or_else(|| format!("No natural fixture key for {}", model.model))?,
+                )
+            } else {
+                None
+            };
             let mut record = json!({"model":model.model,"fields":fields});
-            if model.natural {
-                if let Some(key) = key {
-                    keys.entry(model.model.clone()).or_default().insert(id, key);
-                }
+            if let Some(key) = key {
+                keys.entry(model.model.clone()).or_default().insert(id, key);
             } else {
                 record["pk"] = json!(id);
             }

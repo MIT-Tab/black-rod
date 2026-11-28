@@ -59,6 +59,7 @@ from core.utils.result_visibility import preserve_profile_result_visibility
 from core.utils.rankings import (
     rebuild_import_qualifications,
     redo_rankings,
+    standings_write_lock,
     update_noty,
     update_soty,
     update_toty,
@@ -993,7 +994,11 @@ class TournamentDataEntryView(PermissionRequiredMixin, View):
         autoqual_form=None,
     ) -> list[str]:
         skipped_rounds = []
-        with transaction.atomic(), preserve_profile_result_visibility(tournament):
+        with (
+            transaction.atomic(),
+            standings_write_lock(tournament.season),
+            preserve_profile_result_visibility(tournament),
+        ):
             resolution = ImportResolution(
                 teams_to_update=list(Team.objects.filter(team_results__tournament=tournament).distinct()),
                 speakers_to_update=list(Debater.all_objects.filter(speaker_results__tournament=tournament,

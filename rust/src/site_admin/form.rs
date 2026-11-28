@@ -1,6 +1,6 @@
 mod inlines;
 mod tags;
-mod validation;
+pub(super) mod validation;
 
 use std::collections::{BTreeMap, BTreeSet};
 

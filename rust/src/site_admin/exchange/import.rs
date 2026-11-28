@@ -164,7 +164,7 @@ fn number(value: &Value, text: &str) -> Option<i64> {
         .or_else(|| Decimal::from_str(text.trim()).ok()?.trunc().to_i64())
 }
 
-fn clean(field: &Field, value: &Value) -> Result<Value, String> {
+fn clean(field: &Field, value: &Value, workbook: bool) -> Result<Value, String> {
     let raw = formats::text(value);
     let text = raw.trim();
     let empty = text.is_empty();
@@ -177,7 +177,16 @@ fn clean(field: &Field, value: &Value) -> Result<Value, String> {
             .ok_or("Enter a whole number.".to_owned())
     };
     if field.related.is_some() {
-        return parse_integer();
+        if empty || value == &Value::Bool(false) || value.as_f64() == Some(0.0) {
+            return Ok(Value::Null);
+        }
+        let id = text.parse::<i64>().ok().or_else(|| {
+            value.as_f64().filter(|number| number.fract() == 0.0)?;
+            number(value, text)
+        });
+        return id
+            .map(|id| json!(id))
+            .ok_or_else(|| "Enter a whole number.".to_owned());
     }
     let cleaned = match field.kind.as_str() {
         "BooleanField" => match text.to_ascii_lowercase().as_str() {
@@ -213,11 +222,36 @@ fn clean(field: &Field, value: &Value) -> Result<Value, String> {
             if empty {
                 Value::Null
             } else {
-                let date = text.get(..10).unwrap_or(text);
-                let parsed = ["%Y-%m-%d", "%m/%d/%Y", "%m/%d/%y"]
-                    .into_iter()
-                    .find_map(|format| NaiveDate::parse_from_str(date, format).ok())
-                    .ok_or("Enter a valid date.")?;
+                let parsed = [
+                    "%Y-%m-%d",
+                    "%m/%d/%Y",
+                    "%m/%d/%y",
+                    "%b %d %Y",
+                    "%b %d, %Y",
+                    "%d %b %Y",
+                    "%d %b, %Y",
+                    "%B %d %Y",
+                    "%B %d, %Y",
+                    "%d %B %Y",
+                    "%d %B, %Y",
+                ]
+                .into_iter()
+                .find_map(|format| NaiveDate::parse_from_str(text, format).ok())
+                .or_else(|| {
+                    if workbook {
+                        return NaiveDateTime::parse_from_str(text, "%Y-%m-%d %H:%M:%S%.f")
+                            .or_else(|_| text.parse::<NaiveDateTime>())
+                            .ok()
+                            .map(|value| value.date())
+                            .or_else(|| {
+                                chrono::DateTime::parse_from_rfc3339(text)
+                                    .ok()
+                                    .map(|value| value.date_naive())
+                            });
+                    }
+                    None
+                })
+                .ok_or("Enter a valid date.")?;
                 json!(parsed.to_string())
             }
         }
@@ -318,6 +352,12 @@ async fn column_diff(
     Ok(result)
 }
 
+#[derive(Clone, Copy)]
+struct ImportMode {
+    actor: Option<i64>,
+    workbook: bool,
+}
+
 async fn apply_row(
     conn: &mut AnyConnection,
     admin_model: &Model,
@@ -325,7 +365,7 @@ async fn apply_row(
     exchange: &Exchange,
     current_season: i32,
     row: &Map<String, Value>,
-    actor: Option<i64>,
+    mode: ImportMode,
 ) -> Result<Result<PreviewRow, String>, ApiError> {
     let Some(value) = row.get("id") else {
         return Ok(Err("'id'".to_owned()));
@@ -344,7 +384,7 @@ async fn apply_row(
     let mut columns = before.as_object().cloned().unwrap_or_default();
     let mut previous = Map::new();
     if let Some(id) = existing
-        && actor.is_none()
+        && mode.actor.is_none()
     {
         for name in &exchange.headers {
             if model.fields[name].through.is_some() {
@@ -363,12 +403,19 @@ async fn apply_row(
         if field.auto_now || field.auto_now_add && existing.is_none() {
             columns.insert(column.clone(), form::default(field));
         } else if let Some(input) = row.get(name) {
-            match clean(field, input) {
-                Ok(cleaned) => {
-                    columns.insert(column.clone(), cleaned);
-                }
+            let cleaned = match clean(field, input, mode.workbook) {
+                Ok(cleaned) => cleaned,
                 Err(problem) => return Ok(Err(format!("{name}: {problem}"))),
+            };
+            if field.related.is_some()
+                && let Some(id) = cleaned.as_i64()
+                && !form::validation::related_exists(conn, model, field, id).await?
+            {
+                return Ok(Err(format!(
+                    "{name}: The referenced record could not be found."
+                )));
             }
+            columns.insert(column.clone(), cleaned);
         } else if existing.is_none() {
             columns.insert(column.clone(), form::default(field));
         }
@@ -445,7 +492,7 @@ async fn apply_row(
         crate::claims::edit::team_names(conn, id).await?;
     }
     let kind = if existing.is_none() { "new" } else { "update" };
-    let cells = if let Some(actor) = actor {
+    let cells = if let Some(actor) = mode.actor {
         let name = form::loaded_label(conn, model, id).await?;
         form::log(
             conn,
@@ -475,9 +522,18 @@ async fn process(
     admin_model: &Model,
     exchange: &Exchange,
     rows: &[Map<String, Value>],
+    format: usize,
     confirming: bool,
 ) -> Result<ResultRows, ApiError> {
     let model = exchange.resource(admin_model)?;
+    let kind = exchange
+        .import_formats
+        .get(format)
+        .ok_or(ApiError::Serialization)?;
+    let mode = ImportMode {
+        actor: confirming.then_some(admin.viewer.user.id).flatten(),
+        workbook: matches!(kind.as_str(), "xlsx" | "xls" | "ods"),
+    };
     let mut tx = admin.state.pool.begin().await?;
     let sync_sequence =
         confirming && tx.backend_name() == "PostgreSQL" && rows.iter().any(has_explicit_id);
@@ -491,7 +547,6 @@ async fn process(
     }
     let mut imported_explicit_id = false;
     let mut result = ResultRows::default();
-    let actor = confirming.then_some(admin.viewer.user.id).flatten();
     for (index, row) in rows.iter().enumerate() {
         let mut savepoint = tx.begin().await?;
         match apply_row(
@@ -501,7 +556,7 @@ async fn process(
             exchange,
             admin.state.current_season,
             row,
-            actor,
+            mode,
         )
         .await?
         {
@@ -648,7 +703,7 @@ pub(in crate::site_admin) async fn preview(
                 );
             }
         };
-        let result = process(admin, model, exchange, &rows, false).await?;
+        let result = process(admin, model, exchange, &rows, format, false).await?;
         if !result.errors.is_empty() {
             return admin.view(
                 "site_admin/exchange.html",
@@ -723,7 +778,7 @@ pub(in crate::site_admin) async fn confirm(
     if tokio::fs::rename(&path, &claimed).await.is_err() {
         return Ok(StatusCode::CONFLICT.into_response());
     }
-    let outcome = process(admin, model, exchange, &pending.rows, true).await;
+    let outcome = process(admin, model, exchange, &pending.rows, pending.format, true).await;
     let _ = tokio::fs::remove_file(claimed).await;
     let result = outcome?;
     if !result.errors.is_empty() {
